@@ -1,0 +1,6 @@
+export const APP_NAME = "ERP HD";
+export const APP_FULL_NAME = "ERP HD Soluções Industriais";
+export const COMPANY_NAME = "HD Projetos & Soluções em HVAC";
+
+/** Tenant default usado durante o Módulo 1 (multi-tenant futuro). */
+export const DEFAULT_TENANT_SLUG = "hd-interna";
