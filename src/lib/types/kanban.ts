@@ -67,7 +67,50 @@ export interface BoardDetail extends Board {
   member_role: BoardMemberRole;
 }
 
+/** Resposta da API com join opcional do assignee. */
+export interface TaskAssigneePreview {
+  id: string;
+  full_name: string | null;
+  email: string;
+}
+
+/** Campos habitualmente devolvidos pelas listagens/API (sem obrigar `external_ref_*`, etc.). */
+export type TaskWithAssignee = Pick<
+  Task,
+  | "id"
+  | "tenant_id"
+  | "board_id"
+  | "column_id"
+  | "title"
+  | "description"
+  | "priority"
+  | "due_date"
+  | "assignee_id"
+  | "created_by"
+  | "sort_order"
+  | "is_completed"
+  | "completed_at"
+  | "created_at"
+  | "updated_at"
+> & {
+  assignee: TaskAssigneePreview | null;
+};
+
 /* ---------- Constantes do Módulo 1 ---------- */
+
+export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  low: "Baixa",
+  medium: "Média",
+  high: "Alta",
+  urgent: "Urgente",
+};
+
+export const TASK_PRIORITY_DOT_CLASS: Record<TaskPriority, string> = {
+  low: "bg-slate-400",
+  medium: "bg-blue-500",
+  high: "bg-amber-500",
+  urgent: "bg-red-600",
+};
 
 export const DEFAULT_COLUMNS: ReadonlyArray<{
   name: string;
@@ -79,5 +122,4 @@ export const DEFAULT_COLUMNS: ReadonlyArray<{
   { name: "Concluído", color: "#16a34a", sort_order: 3000 },
 ];
 
-/** Espaço entre `sort_order` consecutivos — facilita reordenações. */
-export const SORT_ORDER_GAP = 1000;
+export { SORT_ORDER_GAP } from "@/lib/utils/kanban-helpers";
