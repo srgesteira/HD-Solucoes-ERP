@@ -1,0 +1,83 @@
+import type { Database } from "./database";
+
+type PublicTables = Database["public"]["Tables"];
+
+/* ---------- Aliases enxutos das tabelas do Módulo 1 ---------- */
+
+export type Tenant = PublicTables["tenants"]["Row"];
+
+export type UserProfile = PublicTables["user_profiles"]["Row"];
+export type UserProfileInsert = PublicTables["user_profiles"]["Insert"];
+export type UserProfileUpdate = PublicTables["user_profiles"]["Update"];
+
+export type Board = PublicTables["boards"]["Row"];
+export type BoardInsert = PublicTables["boards"]["Insert"];
+export type BoardUpdate = PublicTables["boards"]["Update"];
+
+export type BoardMember = PublicTables["board_members"]["Row"];
+export type BoardMemberInsert = PublicTables["board_members"]["Insert"];
+
+export type BoardColumn = PublicTables["board_columns"]["Row"];
+export type BoardColumnInsert = PublicTables["board_columns"]["Insert"];
+export type BoardColumnUpdate = PublicTables["board_columns"]["Update"];
+
+export type Label = PublicTables["labels"]["Row"];
+export type LabelInsert = PublicTables["labels"]["Insert"];
+
+export type Task = PublicTables["tasks"]["Row"];
+export type TaskInsert = PublicTables["tasks"]["Insert"];
+export type TaskUpdate = PublicTables["tasks"]["Update"];
+
+export type TaskComment = PublicTables["task_comments"]["Row"];
+export type TaskCommentInsert = PublicTables["task_comments"]["Insert"];
+
+export type TaskAttachment = PublicTables["task_attachments"]["Row"];
+export type TaskAttachmentInsert = PublicTables["task_attachments"]["Insert"];
+
+export type TaskActivity = PublicTables["task_activity"]["Row"];
+
+/* ---------- Enums de domínio ---------- */
+
+export const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+export const BOARD_MEMBER_ROLES = ["owner", "admin", "member", "viewer"] as const;
+export type BoardMemberRole = (typeof BOARD_MEMBER_ROLES)[number];
+
+export const PROFILE_ROLES = ["admin", "member"] as const;
+export type ProfileRole = (typeof PROFILE_ROLES)[number];
+
+/* ---------- Composições úteis ---------- */
+
+export interface BoardWithMembership extends Board {
+  member_role: BoardMemberRole;
+}
+
+export interface BoardSummary extends BoardWithMembership {
+  task_count: number;
+  column_count: number;
+}
+
+export interface ColumnWithTasks extends BoardColumn {
+  tasks: Task[];
+}
+
+export interface BoardDetail extends Board {
+  columns: ColumnWithTasks[];
+  member_role: BoardMemberRole;
+}
+
+/* ---------- Constantes do Módulo 1 ---------- */
+
+export const DEFAULT_COLUMNS: ReadonlyArray<{
+  name: string;
+  color: string;
+  sort_order: number;
+}> = [
+  { name: "A Fazer", color: "#64748b", sort_order: 1000 },
+  { name: "Em Andamento", color: "#0d9488", sort_order: 2000 },
+  { name: "Concluído", color: "#16a34a", sort_order: 3000 },
+];
+
+/** Espaço entre `sort_order` consecutivos — facilita reordenações. */
+export const SORT_ORDER_GAP = 1000;

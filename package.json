@@ -5,7 +5,7 @@
   "description": "ERP HD Soluções Industriais — sistema corporativo modular (Módulo 1: Agendador de Tarefas Kanban).",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
