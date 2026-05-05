@@ -142,10 +142,12 @@ export async function POST(request: NextRequest) {
   }
 
   /**
-   * Inserção do board (o trigger trg_board_add_owner cria a board_membership).
-   * O cliente do usuário respeita RLS — `created_by = auth.uid()`.
+   * Inserção via service role: evita falsos negativos de RLS no PostgREST
+   * (JWT em Route Handler + `.select()` após INSERT + trigger em board_members).
+   * Segurança: só após `getUser()` válido e `tenant_id`/`created_by` amarrados a esse user.
    */
-  const { data: created, error: insertErr } = await supabase
+  const admin = createSupabaseAdminClient();
+  const { data: created, error: insertErr } = await admin
     .from("boards")
     .insert({
       tenant_id: profile.tenant_id,
@@ -165,12 +167,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  /**
-   * Colunas padrão. Usa cliente admin para escapar de qualquer race com a
-   * propagação de board_membership (o trigger já rodou, mas RLS pode demorar
-   * a ver dependendo do isolation level).
-   */
-  const admin = createSupabaseAdminClient();
   const { error: colErr } = await admin.from("board_columns").insert(
     DEFAULT_COLUMNS.map((c) => ({
       board_id: created.id,
