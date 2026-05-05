@@ -13,7 +13,8 @@
     "supabase:link": "supabase link --project-ref ahkxjjrsnwzwicczzvlg",
     "supabase:types": "supabase gen types typescript --linked > src/lib/types/database.ts",
     "admin:create": "node scripts/create-admin.mjs",
-    "admin:check": "node scripts/check-users.mjs"
+    "admin:check": "node scripts/check-users.mjs",
+    "test:smoke": "node scripts/smoke-board.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
