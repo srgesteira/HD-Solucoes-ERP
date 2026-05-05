@@ -3,26 +3,22 @@
 import type { BoardColumn } from "@/lib/types/kanban";
 import type { TaskWithAssignee } from "@/lib/types/kanban";
 import { TaskCard } from "@/components/kanban/task-card";
-import { useCreateTask } from "@/hooks/use-board-tasks";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 
 type ColumnProps = {
-  boardId: string;
   column: Pick<BoardColumn, "id" | "name" | "color">;
   tasks: TaskWithAssignee[];
   onOpenTask: (task: TaskWithAssignee) => void;
+  onBeginCreate: (columnId: string, initialTitle: string) => void;
 };
 
 export function KanbanColumn({
-  boardId,
   column,
   tasks,
   onOpenTask,
+  onBeginCreate,
 }: ColumnProps) {
-  const createTask = useCreateTask(boardId);
-
   return (
     <div className="w-72 shrink-0 flex flex-col gap-2 rounded-lg bg-slate-100/70 p-3 max-h-[calc(100vh-12rem)]">
       <div className="flex items-center justify-between gap-2 px-1 shrink-0">
@@ -56,21 +52,8 @@ export function KanbanColumn({
           const form = e.currentTarget;
           const fd = new FormData(form);
           const title = String(fd.get("title") ?? "").trim();
-          if (!title) return;
-          createTask.mutate(
-            {
-              board_id: boardId,
-              column_id: column.id,
-              title,
-              description: null,
-              priority: "medium",
-              due_date: null,
-            },
-            {
-              onSuccess: () => form.reset(),
-              onError: (err) => toast.error(err.message),
-            }
-          );
+          onBeginCreate(column.id, title);
+          form.reset();
         }}
       >
         <label className="sr-only" htmlFor={`quick-title-${column.id}`}>
@@ -82,14 +65,13 @@ export function KanbanColumn({
             name="title"
             placeholder="Título da tarefa…"
             autoComplete="off"
-            disabled={createTask.isPending}
             className="text-sm"
           />
           <Button
             type="submit"
             size="sm"
-            disabled={createTask.isPending}
-            aria-label={`Adicionar tarefa em ${column.name}`}
+            aria-label={`Abrir nova tarefa em ${column.name}`}
+            title="Abrir formulário com descrição e responsável"
           >
             +
           </Button>

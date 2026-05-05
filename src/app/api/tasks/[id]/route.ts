@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { updateTaskSchema, patchDueDate } from "@/lib/validators/task";
 import { apiError, apiOk } from "@/lib/http";
 import type { TaskUpdate, TaskWithAssignee } from "@/lib/types/kanban";
+import { notifyTaskAssigned } from "@/lib/notifications/task-assigned";
 
 export const dynamic = "force-dynamic";
 
@@ -135,6 +136,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const admin = createSupabaseAdminClient();
 
+  const { data: beforeSnap } = await admin
+    .from("tasks")
+    .select("assignee_id")
+    .eq("id", taskId)
+    .maybeSingle();
+
   if (p.column_id !== undefined) {
     const { data: col } = await admin
       .from("board_columns")
@@ -191,6 +198,35 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   const full = await attachAssignee(updated as TaskWithAssignee);
+
+  if (
+    p.assignee_id !== undefined &&
+    full.assignee?.email &&
+    beforeSnap?.assignee_id !== updated.assignee_id &&
+    updated.assignee_id
+  ) {
+    const { data: boardRow } = await admin
+      .from("boards")
+      .select("name")
+      .eq("id", meta.board_id)
+      .maybeSingle();
+    const { data: creator } = await admin
+      .from("user_profiles")
+      .select("full_name, email")
+      .eq("id", user.id)
+      .maybeSingle();
+    void notifyTaskAssigned({
+      boardId: meta.board_id,
+      boardName: boardRow?.name ?? "Quadro",
+      taskId: updated.id,
+      taskTitle: updated.title,
+      taskDescription: updated.description,
+      assigneeEmail: full.assignee.email,
+      assigneeName: full.assignee.full_name,
+      creatorName: creator?.full_name?.trim() || creator?.email || null,
+    });
+  }
+
   return apiOk({ task: full });
 }
 

@@ -15,8 +15,8 @@ import { cn } from "@/lib/utils/cn";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { useDeleteTask, useUpdateTask } from "@/hooks/use-board-tasks";
-import type { UpdateTaskInput } from "@/lib/validators/task";
+import { useCreateTask, useDeleteTask, useUpdateTask } from "@/hooks/use-board-tasks";
+import type { CreateTaskInput, UpdateTaskInput } from "@/lib/validators/task";
 import { X } from "lucide-react";
 
 function isoToLocalDatetimeValue(iso: string | null): string {
@@ -35,9 +35,17 @@ function localDatetimeToIsoOrNull(v: string): string | null {
   return d.toISOString();
 }
 
+export type CreateTaskIntent = {
+  columnId: string;
+  initialTitle: string;
+};
+
 type TaskModalProps = {
   open: boolean;
-  task: TaskWithAssignee | null;
+  /** Edição: tarefa existente. Criação: null. */
+  editingTask: TaskWithAssignee | null;
+  /** Criação: coluna e título vindos do atalho. */
+  createIntent: CreateTaskIntent | null;
   boardId: string;
   columns: Pick<BoardColumn, "id" | "name">[];
   tenantUsers: UserProfile[];
@@ -46,12 +54,16 @@ type TaskModalProps = {
 
 export function TaskModal({
   open,
-  task,
+  editingTask,
+  createIntent,
   boardId,
   columns,
   tenantUsers,
   onClose,
 }: TaskModalProps) {
+  const isCreate = createIntent !== null && editingTask === null;
+
+  const createTask = useCreateTask(boardId);
   const updateTask = useUpdateTask(boardId);
   const deleteTask = useDeleteTask(boardId);
 
@@ -63,8 +75,7 @@ export function TaskModal({
   const [dueLocal, setDueLocal] = useState("");
   const [descTab, setDescTab] = useState<"edit" | "preview">("edit");
 
-  const syncFromTask = useCallback((t: TaskWithAssignee | null) => {
-    if (!t) return;
+  const syncFromTask = useCallback((t: TaskWithAssignee) => {
     setTitle(t.title);
     setDescription(t.description ?? "");
     setPriority((t.priority as TaskPriority) ?? "medium");
@@ -74,9 +85,24 @@ export function TaskModal({
     setDescTab("edit");
   }, []);
 
+  const syncCreate = useCallback((intent: CreateTaskIntent) => {
+    setTitle(intent.initialTitle);
+    setDescription("");
+    setPriority("medium");
+    setColumnId(intent.columnId);
+    setAssigneeId("");
+    setDueLocal("");
+    setDescTab("edit");
+  }, []);
+
   useEffect(() => {
-    if (task) syncFromTask(task);
-  }, [task, syncFromTask]);
+    if (!open) return;
+    if (isCreate && createIntent) {
+      syncCreate(createIntent);
+    } else if (!isCreate && editingTask) {
+      syncFromTask(editingTask);
+    }
+  }, [open, isCreate, createIntent, editingTask, syncCreate, syncFromTask]);
 
   useEffect(() => {
     if (!open) return;
@@ -95,9 +121,39 @@ export function TaskModal({
     [tenantUsers]
   );
 
-  if (!open || !task) return null;
+  if (!open || (isCreate && !createIntent) || (!isCreate && !editingTask)) {
+    return null;
+  }
 
-  const handleSave = () => {
+  const handleSaveCreate = () => {
+    if (!createIntent) return;
+    const trimmed = title.trim();
+    if (!trimmed) {
+      toast.error("O título é obrigatório.");
+      return;
+    }
+
+    const input: CreateTaskInput = {
+      board_id: boardId,
+      column_id: columnId,
+      title: trimmed,
+      description: description.trim() ? description : null,
+      priority,
+      due_date: localDatetimeToIsoOrNull(dueLocal),
+      assignee_id: assigneeId === "" ? null : assigneeId,
+    };
+
+    createTask.mutate(input, {
+      onSuccess: () => {
+        toast.success("Tarefa criada.");
+        onClose();
+      },
+      onError: (e) => toast.error(e.message),
+    });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingTask) return;
     const trimmed = title.trim();
     if (!trimmed) {
       toast.error("O título é obrigatório.");
@@ -105,29 +161,29 @@ export function TaskModal({
     }
 
     const patch: UpdateTaskInput = {};
-    if (trimmed !== task.title) patch.title = trimmed;
+    if (trimmed !== editingTask.title) patch.title = trimmed;
 
     const nextDesc = description.trim() ? description : null;
-    if (nextDesc !== (task.description ?? null)) {
+    if (nextDesc !== (editingTask.description ?? null)) {
       patch.description = nextDesc;
     }
 
-    if (priority !== (task.priority as TaskPriority)) {
+    if (priority !== (editingTask.priority as TaskPriority)) {
       patch.priority = priority;
     }
-    if (columnId !== task.column_id) {
+    if (columnId !== editingTask.column_id) {
       patch.column_id = columnId;
     }
 
     const nextAssignee = assigneeId === "" ? null : assigneeId;
-    const prevAssignee = task.assignee_id ?? null;
+    const prevAssignee = editingTask.assignee_id ?? null;
     if (nextAssignee !== prevAssignee) {
       patch.assignee_id = nextAssignee;
     }
 
     const nextDue = localDatetimeToIsoOrNull(dueLocal);
-    const prevDue = task.due_date
-      ? new Date(task.due_date).toISOString()
+    const prevDue = editingTask.due_date
+      ? new Date(editingTask.due_date).toISOString()
       : null;
     if (nextDue !== prevDue) {
       patch.due_date = nextDue;
@@ -139,7 +195,7 @@ export function TaskModal({
     }
 
     updateTask.mutate(
-      { taskId: task.id, patch },
+      { taskId: editingTask.id, patch },
       {
         onSuccess: () => toast.success("Tarefa atualizada."),
         onError: (e) => toast.error(e.message),
@@ -148,13 +204,14 @@ export function TaskModal({
   };
 
   const handleDelete = () => {
+    if (!editingTask) return;
     if (
       typeof window !== "undefined" &&
       !window.confirm("Excluir esta tarefa? Esta ação não pode ser desfeita.")
     ) {
       return;
     }
-    deleteTask.mutate(task.id, {
+    deleteTask.mutate(editingTask.id, {
       onSuccess: () => {
         toast.success("Tarefa excluída.");
         onClose();
@@ -163,7 +220,12 @@ export function TaskModal({
     });
   };
 
-  const busy = updateTask.isPending || deleteTask.isPending;
+  const busy =
+    createTask.isPending ||
+    updateTask.isPending ||
+    deleteTask.isPending;
+
+  const heading = isCreate ? "Nova tarefa" : "Detalhe da tarefa";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -183,7 +245,7 @@ export function TaskModal({
       >
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <h2 id="task-modal-title" className="text-lg font-semibold text-slate-900">
-            Detalhe da tarefa
+            {heading}
           </h2>
           <Button
             type="button"
@@ -361,20 +423,31 @@ export function TaskModal({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/80 px-4 py-3">
-          <Button
-            type="button"
-            variant="danger"
-            onClick={handleDelete}
-            disabled={busy}
-          >
-            Excluir
-          </Button>
+          {!isCreate ? (
+            <Button
+              type="button"
+              variant="danger"
+              onClick={handleDelete}
+              disabled={busy}
+            >
+              Excluir
+            </Button>
+          ) : (
+            <span className="text-xs text-slate-500 max-w-[14rem]">
+              Com responsável definido, o sistema pode enviar e-mail (e webhook, se
+              configurado).
+            </span>
+          )}
           <div className="flex gap-2 ml-auto">
             <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               Cancelar
             </Button>
-            <Button type="button" onClick={handleSave} disabled={busy}>
-              Guardar
+            <Button
+              type="button"
+              onClick={isCreate ? handleSaveCreate : handleSaveEdit}
+              disabled={busy}
+            >
+              {isCreate ? "Criar tarefa" : "Guardar"}
             </Button>
           </div>
         </div>

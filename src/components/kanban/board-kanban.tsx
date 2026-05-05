@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import type { BoardColumn } from "@/lib/types/kanban";
 import type { TaskWithAssignee } from "@/lib/types/kanban";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
-import { TaskModal } from "@/components/kanban/task-modal";
+import {
+  TaskModal,
+  type CreateTaskIntent,
+} from "@/components/kanban/task-modal";
 import { useBoardTasks } from "@/hooks/use-board-tasks";
 import { useTenantUsers } from "@/hooks/use-tenant-users";
 
@@ -16,6 +19,10 @@ type BoardKanbanProps = {
 
 export function BoardKanban({ boardId, columns, initialTasks }: BoardKanbanProps) {
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [createIntent, setCreateIntent] = useState<CreateTaskIntent | null>(
+    null
+  );
+
   const { data: taskList = [], isLoading, isError, error } = useBoardTasks(
     boardId,
     initialTasks
@@ -45,6 +52,14 @@ export function BoardKanban({ boardId, columns, initialTasks }: BoardKanbanProps
     [columns]
   );
 
+  const modalOpen =
+    createIntent !== null || (detailId !== null && selected !== null);
+
+  const closeModal = () => {
+    setDetailId(null);
+    setCreateIntent(null);
+  };
+
   return (
     <>
       {isLoading && (
@@ -65,10 +80,16 @@ export function BoardKanban({ boardId, columns, initialTasks }: BoardKanbanProps
             sortedColumns.map((col) => (
               <KanbanColumn
                 key={col.id}
-                boardId={boardId}
                 column={col}
                 tasks={tasksByColumn.get(col.id) ?? []}
-                onOpenTask={(t) => setDetailId(t.id)}
+                onOpenTask={(t) => {
+                  setCreateIntent(null);
+                  setDetailId(t.id);
+                }}
+                onBeginCreate={(columnId, initialTitle) => {
+                  setDetailId(null);
+                  setCreateIntent({ columnId, initialTitle });
+                }}
               />
             ))
           )}
@@ -76,12 +97,13 @@ export function BoardKanban({ boardId, columns, initialTasks }: BoardKanbanProps
       )}
 
       <TaskModal
-        open={detailId !== null && selected !== null}
-        task={selected}
+        open={modalOpen}
+        editingTask={selected}
+        createIntent={createIntent}
         boardId={boardId}
         columns={sortedColumns.map((c) => ({ id: c.id, name: c.name }))}
         tenantUsers={tenantUsers}
-        onClose={() => setDetailId(null)}
+        onClose={closeModal}
       />
     </>
   );

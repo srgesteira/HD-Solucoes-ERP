@@ -5,6 +5,7 @@ import { createTaskSchema } from "@/lib/validators/task";
 import { nextSortOrderForColumn } from "@/lib/utils/kanban-helpers";
 import { apiError, apiOk } from "@/lib/http";
 import type { TaskWithAssignee } from "@/lib/types/kanban";
+import { notifyTaskAssigned } from "@/lib/notifications/task-assigned";
 
 export const dynamic = "force-dynamic";
 
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest) {
 
   const { data: board, error: bErr } = await admin
     .from("boards")
-    .select("id, tenant_id")
+    .select("id, tenant_id, name")
     .eq("id", board_id)
     .single();
 
@@ -209,6 +210,24 @@ export async function POST(request: NextRequest) {
   }
 
   const full: TaskWithAssignee = { ...task, assignee };
+
+  if (task.assignee_id && assignee?.email) {
+    const { data: creator } = await admin
+      .from("user_profiles")
+      .select("full_name, email")
+      .eq("id", user.id)
+      .maybeSingle();
+    void notifyTaskAssigned({
+      boardId: board_id,
+      boardName: board.name,
+      taskId: task.id,
+      taskTitle: task.title,
+      taskDescription: task.description,
+      assigneeEmail: assignee.email,
+      assigneeName: assignee.full_name,
+      creatorName: creator?.full_name?.trim() || creator?.email || null,
+    });
+  }
 
   return apiOk({ task: full }, 201);
 }
