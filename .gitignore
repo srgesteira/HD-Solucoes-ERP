@@ -22,6 +22,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# supabase CLI (link state, branches, generated artifacts)
+supabase/.temp/
+supabase/.branches/
+
 # OS
 Thumbs.db
 Desktop.ini

@@ -5,6 +5,14 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Layout do app autenticado.
+ *
+ * No Passo 0 ainda não existe a tabela `user_profiles` (será criada no Passo 2).
+ * Por isso, derivamos o nome a exibir do `user_metadata` quando presente, ou
+ * caímos no email. A partir do Passo 2 este layout passará a buscar o profile
+ * completo na tabela `user_profiles`.
+ */
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const supabase = await createServerSupabaseClient();
 
@@ -16,28 +24,17 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect("/login");
   }
 
-  /**
-   * O profile pode ainda não existir no Passo 0 (schema só será criado no Passo 2).
-   * O shell tolera fullName vazio.
-   */
-  let fullName = "";
-  try {
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("full_name")
-      .eq("id", user.id)
-      .maybeSingle();
-    fullName = profile?.full_name ?? "";
-  } catch {
-    /** Tabela user_profiles ainda não criada (Módulo 1, Passo 2). */
-  }
+  const metadataName =
+    typeof user.user_metadata?.full_name === "string"
+      ? user.user_metadata.full_name
+      : "";
 
   return (
     <AppShell
       user={{
         id: user.id,
         email: user.email ?? "",
-        fullName,
+        fullName: metadataName,
       }}
     >
       {children}
