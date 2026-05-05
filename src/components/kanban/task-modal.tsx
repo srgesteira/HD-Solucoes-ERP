@@ -434,8 +434,7 @@ export function TaskModal({
             </Button>
           ) : (
             <span className="text-xs text-slate-500 max-w-[14rem]">
-              Com responsável definido, o sistema pode enviar e-mail (e webhook, se
-              configurado).
+              Com responsável, enviamos e-mail para o endereço de cadastro (Resend).
             </span>
           )}
           <div className="flex gap-2 ml-auto">

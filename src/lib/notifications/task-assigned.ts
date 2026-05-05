@@ -1,8 +1,9 @@
 /**
- * Notifica o responsável quando uma tarefa lhe é atribuída (POST /api/tasks ou PATCH com novo assignee).
+ * Notifica o responsável por e-mail (Resend) quando uma tarefa lhe é atribuída.
+ * O destino é o e-mail de cadastro: {@link resolveAssigneeCadastroEmail}.
  *
- * E-mail: defina RESEND_API_KEY e NOTIFICATIONS_EMAIL_FROM (domínio verificado na Resend).
- * WhatsApp/outros: use TASK_ASSIGNMENT_NOTIFY_WEBHOOK_URL (POST JSON) e ligue a n8n/Make/Twilio no destino.
+ * Variáveis: `RESEND_API_KEY`, opcional `NOTIFICATIONS_EMAIL_FROM`,
+ * `NEXT_PUBLIC_APP_URL` para o link "Abrir quadro".
  */
 
 type NotifyPayload = {
@@ -33,40 +34,15 @@ function escapeHtml(s: string): string {
 export async function notifyTaskAssigned(
   payload: NotifyPayload
 ): Promise<void> {
-  const webhookUrl = process.env.TASK_ASSIGNMENT_NOTIFY_WEBHOOK_URL?.trim();
-  if (webhookUrl) {
-    try {
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: "task_assigned",
-          channel_hint: "whatsapp_or_sms_bridge",
-          ...payload,
-          boardUrl: buildBoardUrl(payload.boardId),
-        }),
-      });
-      if (!res.ok) {
-        console.warn(
-          "[notify] Webhook respondeu",
-          res.status,
-          await res.text().catch(() => "")
-        );
-      }
-    } catch (e) {
-      console.warn("[notify] Falha no webhook:", e);
-    }
-  }
-
   const resendKey = process.env.RESEND_API_KEY?.trim();
   const from =
     process.env.NOTIFICATIONS_EMAIL_FROM?.trim() ??
     "ERP HD Soluções <onboarding@resend.dev>";
 
   if (!resendKey) {
-    if (process.env.NODE_ENV === "development" && !webhookUrl) {
+    if (process.env.NODE_ENV === "development") {
       console.log(
-        "[notify] E-mail ignorado: defina RESEND_API_KEY (e opcionalmente NOTIFICATIONS_EMAIL_FROM)."
+        "[notify] E-mail não enviado: defina RESEND_API_KEY e, se quiser, NOTIFICATIONS_EMAIL_FROM."
       );
     }
     return;
@@ -88,7 +64,7 @@ export async function notifyTaskAssigned(
       <p style="font-size:1.1em;"><strong>${escapeHtml(payload.taskTitle)}</strong></p>
       ${descBlock}
       <p style="margin-top:20px;"><a href="${escapeHtml(link)}" style="display:inline-block;background:#0f766e;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Abrir quadro</a></p>
-      <p style="font-size:12px;color:#64748b;">ERP HD Soluções Industriais — notificação automática.</p>
+      <p style="font-size:12px;color:#64748b;">ERP HD Soluções Industriais — notificação automática (e-mail de cadastro).</p>
     </body>
     </html>
   `.trim();

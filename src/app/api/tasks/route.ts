@@ -6,6 +6,7 @@ import { nextSortOrderForColumn } from "@/lib/utils/kanban-helpers";
 import { apiError, apiOk } from "@/lib/http";
 import type { TaskWithAssignee } from "@/lib/types/kanban";
 import { notifyTaskAssigned } from "@/lib/notifications/task-assigned";
+import { resolveAssigneeCadastroEmail } from "@/lib/notifications/resolve-assignee-email";
 
 export const dynamic = "force-dynamic";
 
@@ -211,22 +212,29 @@ export async function POST(request: NextRequest) {
 
   const full: TaskWithAssignee = { ...task, assignee };
 
-  if (task.assignee_id && assignee?.email) {
-    const { data: creator } = await admin
-      .from("user_profiles")
-      .select("full_name, email")
-      .eq("id", user.id)
-      .maybeSingle();
-    void notifyTaskAssigned({
-      boardId: board_id,
-      boardName: board.name,
-      taskId: task.id,
-      taskTitle: task.title,
-      taskDescription: task.description,
-      assigneeEmail: assignee.email,
-      assigneeName: assignee.full_name,
-      creatorName: creator?.full_name?.trim() || creator?.email || null,
-    });
+  if (task.assignee_id) {
+    const toEmail = await resolveAssigneeCadastroEmail(
+      admin,
+      task.assignee_id,
+      assignee?.email
+    );
+    if (toEmail) {
+      const { data: creator } = await admin
+        .from("user_profiles")
+        .select("full_name, email")
+        .eq("id", user.id)
+        .maybeSingle();
+      void notifyTaskAssigned({
+        boardId: board_id,
+        boardName: board.name,
+        taskId: task.id,
+        taskTitle: task.title,
+        taskDescription: task.description,
+        assigneeEmail: toEmail,
+        assigneeName: assignee?.full_name ?? null,
+        creatorName: creator?.full_name?.trim() || creator?.email || null,
+      });
+    }
   }
 
   return apiOk({ task: full }, 201);
