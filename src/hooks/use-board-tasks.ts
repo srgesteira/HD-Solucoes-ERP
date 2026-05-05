@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import type { TaskWithAssignee } from "@/lib/types/kanban";
 import type { CreateTaskInput, UpdateTaskInput } from "@/lib/validators/task";
+import { TASKS_PIPELINE_KEY } from "@/hooks/use-tasks-pipeline";
 
 export const boardTasksKey = (boardId: string) => ["board-tasks", boardId] as const;
 
@@ -92,6 +93,7 @@ export function useCreateTask(boardId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: boardTasksKey(boardId) });
       void qc.invalidateQueries({ queryKey: ["boards"] });
+      void qc.invalidateQueries({ queryKey: TASKS_PIPELINE_KEY });
     },
   });
 }
@@ -109,6 +111,7 @@ export function useUpdateTask(boardId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: boardTasksKey(boardId) });
       void qc.invalidateQueries({ queryKey: ["boards"] });
+      void qc.invalidateQueries({ queryKey: TASKS_PIPELINE_KEY });
     },
   });
 }
@@ -120,6 +123,7 @@ export function useDeleteTask(boardId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: boardTasksKey(boardId) });
       void qc.invalidateQueries({ queryKey: ["boards"] });
+      void qc.invalidateQueries({ queryKey: TASKS_PIPELINE_KEY });
     },
   });
 }

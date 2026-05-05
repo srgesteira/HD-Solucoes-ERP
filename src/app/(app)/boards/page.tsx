@@ -5,6 +5,7 @@ import { Plus, KanbanSquare, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BoardCard } from "@/components/boards/board-card";
+import { BoardsPipelineKanban } from "@/components/boards/boards-pipeline-kanban";
 import { useBoards } from "@/hooks/use-boards";
 
 export default function BoardsPage() {
@@ -27,6 +28,8 @@ export default function BoardsPage() {
           <span>Novo quadro</span>
         </Link>
       </div>
+
+      <BoardsPipelineKanban />
 
       {error ? (
         <Card>
