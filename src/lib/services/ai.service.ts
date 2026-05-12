@@ -6,7 +6,9 @@ export function getAnthropicClient(): Anthropic {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key?.trim()) {
     throw new Error(
-      "ANTHROPIC_API_KEY não configurada. Adicione em .env.local."
+      process.env.NODE_ENV === "production"
+        ? "ANTHROPIC_API_KEY não está definida no servidor. Na Vercel: Project → Settings → Environment Variables → adicione ANTHROPIC_API_KEY (Production) com uma chave de console.anthropic.com e faça Redeploy."
+        : "ANTHROPIC_API_KEY não configurada. Adicione em .env.local."
     );
   }
   return new Anthropic({ apiKey: key });

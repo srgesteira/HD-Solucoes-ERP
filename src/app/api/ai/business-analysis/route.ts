@@ -9,6 +9,19 @@ import type { Json } from "@/lib/types/database";
 
 export const dynamic = "force-dynamic";
 
+/** Estado da configuração da IA (sem expor a chave). */
+export async function GET() {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return apiError("Não autenticado", 401);
+
+  return apiOk({
+    anthropicConfigured: !!process.env.ANTHROPIC_API_KEY?.trim(),
+  });
+}
+
 export async function POST() {
   const supabase = await createServerSupabaseClient();
   const {
@@ -24,7 +37,10 @@ export async function POST() {
   }
 
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    return apiError("ANTHROPIC_API_KEY não configurada.", 503);
+    return apiError(
+      "IA indisponível: falta ANTHROPIC_API_KEY no servidor. Na Vercel: Settings → Environment Variables → crie ANTHROPIC_API_KEY (Production) com uma chave de console.anthropic.com e faça Redeploy.",
+      503
+    );
   }
 
   let insights;

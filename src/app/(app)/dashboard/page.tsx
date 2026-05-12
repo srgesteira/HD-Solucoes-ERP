@@ -135,8 +135,11 @@ function sortInsights(a: InsightRow, b: InsightRow): number {
   return tb - ta;
 }
 
-async function fetchJson<T>(url: string): Promise<{ ok: boolean; json: T }> {
-  const res = await fetch(url);
+async function fetchJson<T>(
+  url: string,
+  init?: RequestInit
+): Promise<{ ok: boolean; json: T }> {
+  const res = await fetch(url, { credentials: "include", ...init });
   let json = {} as T;
   try {
     json = (await res.json()) as T;
@@ -209,6 +212,10 @@ export default function ConsultantDashboardPage() {
   const [refreshingAnalysis, setRefreshingAnalysis] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  /** null = a carregar; só relevante para admins (botão «Atualizar Análises»). */
+  const [anthropicConfigured, setAnthropicConfigured] = useState<
+    boolean | null
+  >(null);
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
 
@@ -240,6 +247,21 @@ export default function ConsultantDashboardPage() {
       else setIsAdmin(false);
     } catch {
       setIsAdmin(false);
+    }
+  }, []);
+
+  const fetchAiEnv = useCallback(async () => {
+    try {
+      const { ok, json } = await fetchJson<{
+        anthropicConfigured?: boolean;
+      }>("/api/ai/business-analysis");
+      if (ok && typeof json.anthropicConfigured === "boolean") {
+        setAnthropicConfigured(json.anthropicConfigured);
+      } else {
+        setAnthropicConfigured(null);
+      }
+    } catch {
+      setAnthropicConfigured(null);
     }
   }, []);
 
@@ -427,8 +449,13 @@ export default function ConsultantDashboardPage() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    await Promise.all([fetchInsights(), fetchRole(), loadMetrics()]);
-  }, [fetchInsights, fetchRole, loadMetrics]);
+    await Promise.all([
+      fetchInsights(),
+      fetchRole(),
+      loadMetrics(),
+      fetchAiEnv(),
+    ]);
+  }, [fetchInsights, fetchRole, fetchAiEnv, loadMetrics]);
 
   useEffect(() => {
     void loadAll();
@@ -522,6 +549,7 @@ export default function ConsultantDashboardPage() {
     try {
       const res = await fetch("/api/ai/business-analysis", {
         method: "POST",
+        credentials: "include",
       });
       const j = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(j.error ?? "Erro ao analisar");
@@ -587,7 +615,15 @@ export default function ConsultantDashboardPage() {
                 type="button"
                 size="sm"
                 className="bg-brand-700 hover:bg-brand-800"
-                disabled={refreshingAnalysis}
+                disabled={
+                  refreshingAnalysis ||
+                  anthropicConfigured === false
+                }
+                title={
+                  anthropicConfigured === false
+                    ? "Configure ANTHROPIC_API_KEY na Vercel para ativar a análise por IA."
+                    : undefined
+                }
                 onClick={() => void runAnalysis()}
               >
                 {refreshingAnalysis ? (
@@ -601,6 +637,20 @@ export default function ConsultantDashboardPage() {
           </div>
         </div>
       </div>
+
+      {isAdmin && anthropicConfigured === false ? (
+        <div
+          className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"
+          role="status"
+        >
+          <strong className="font-semibold">Análise por IA desativada neste deploy:</strong>{" "}
+          defina a variável de ambiente{" "}
+          <code className="rounded bg-sky-100/90 px-1 text-xs">ANTHROPIC_API_KEY</code> na
+          Vercel (Project → Settings → Environment Variables → Production), com uma chave de{" "}
+          <span className="whitespace-nowrap">console.anthropic.com</span>, e faça{" "}
+          <strong>Redeploy</strong>. Os KPIs e o resto do dashboard funcionam sem esta chave.
+        </div>
+      ) : null}
 
       {(staleSuggestion || !lastAnalyzedAt) && !insightsLoading ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center gap-2 justify-between">
@@ -616,7 +666,14 @@ export default function ConsultantDashboardPage() {
               variant="outline"
               size="sm"
               className="border-amber-300 shrink-0"
-              disabled={refreshingAnalysis}
+              disabled={
+                refreshingAnalysis || anthropicConfigured === false
+              }
+              title={
+                anthropicConfigured === false
+                  ? "Configure ANTHROPIC_API_KEY na Vercel para ativar a análise por IA."
+                  : undefined
+              }
               onClick={() => void runAnalysis()}
             >
               Atualizar agora
