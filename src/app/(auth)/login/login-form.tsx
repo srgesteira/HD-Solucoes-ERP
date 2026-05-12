@@ -69,7 +69,7 @@ export function LoginForm() {
       if (!supabase) {
         setErrorMsg(
           process.env.NODE_ENV === "production"
-            ? "Supabase não está configurado neste deploy. Na Vercel: Project → Settings → Environment Variables — adicione NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY (Production) e faça Redeploy."
+            ? "Supabase não está configurado neste deploy. Na Vercel: Project → Settings → Environment Variables — adicione NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY (Production), e também SUPABASE_SERVICE_ROLE_KEY (só servidor; chave «service_role» no painel do Supabase). Depois faça Redeploy."
             : "Supabase ainda não foi configurado. Preencha NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY em .env.local."
         );
         return;

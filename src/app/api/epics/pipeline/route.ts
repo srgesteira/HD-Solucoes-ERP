@@ -24,6 +24,14 @@ export async function GET() {
     return apiError("Não autenticado", 401);
   }
 
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!serviceRole) {
+    return apiError(
+      "Configure SUPABASE_SERVICE_ROLE_KEY na Vercel (Project → Settings → Environment Variables). Use a chave «service_role» em Supabase → Project Settings → API. Ela fica só no servidor; o painel de projetos depende dela.",
+      500
+    );
+  }
+
   const admin = createSupabaseAdminClient();
 
   const { data: profile, error: pErr } = await admin

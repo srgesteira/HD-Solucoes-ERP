@@ -11,11 +11,24 @@ async function fetchEpicsPipeline(): Promise<EpicsPipelineResponse> {
     cache: "no-store",
     signal: AbortSignal.timeout(60_000),
   });
+  const raw = await res.text();
   if (!res.ok) {
-    const j = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(j.error ?? "Erro ao carregar projetos");
+    let apiMessage: string | undefined;
+    try {
+      const j = JSON.parse(raw) as { error?: string };
+      apiMessage = j.error;
+    } catch {
+      /* corpo não-JSON (ex.: página HTML da Vercel) */
+    }
+    const snippet = raw.replace(/\s+/g, " ").trim().slice(0, 280);
+    throw new Error(
+      apiMessage ??
+        (snippet
+          ? `Erro ${res.status}: ${snippet}`
+          : `Erro ${res.status} ao carregar projetos`)
+    );
   }
-  return res.json() as Promise<EpicsPipelineResponse>;
+  return JSON.parse(raw) as EpicsPipelineResponse;
 }
 
 export function useEpicsPipeline(enabled: boolean) {
