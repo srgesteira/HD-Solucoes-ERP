@@ -4,10 +4,10 @@ const path = require("path");
 const nextConfig = {
   reactStrictMode: true,
   /**
-   * Saída standalone (Docker / hospedagem com imagem Node). Na Vercel o builder
-   * usa o fluxo próprio; esta opção não atrapalha o deploy serverless.
+   * Não usar `output: "standalone"` aqui: na Vercel o passo de cópia para
+   * `.next/standalone` falha com rotas em grupos `(app)` (ENOENT no manifest).
+   * Standalone fica para Docker/CI com `next.config.docker.js` ou variável à parte.
    */
-  output: "standalone",
   images: {
     remotePatterns: [
       {
