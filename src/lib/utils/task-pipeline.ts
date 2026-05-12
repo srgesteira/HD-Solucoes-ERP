@@ -1,6 +1,6 @@
 import { DEFAULT_COLUMNS } from "@/lib/types/kanban";
 
-/** Etapas fixas de execução (alinha com colunas padrão dos quadros). */
+/** Etapas fixas de execução (alinha com colunas padrão dos projetos Kanban). */
 export const PIPELINE_STAGE_KEYS = [0, 1, 2] as const;
 export type PipelineStageIndex = (typeof PIPELINE_STAGE_KEYS)[number];
 
@@ -16,7 +16,7 @@ export function columnRankInBoard(
   return idx < 0 ? 0 : idx;
 }
 
-/** 1ª / 2ª / 3ª coluna do quadro; colunas extra contam como última etapa. */
+/** 1ª / 2ª / 3ª coluna do projeto; colunas extra contam como última etapa. */
 export function stageIndexFromColumnRank(rank: number): PipelineStageIndex {
   return Math.min(Math.max(rank, 0), 2) as PipelineStageIndex;
 }

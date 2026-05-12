@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useCreateTask, useDeleteTask, useUpdateTask } from "@/hooks/use-board-tasks";
+import { useWorkAreas } from "@/hooks/use-work-areas";
 import type { CreateTaskInput, UpdateTaskInput } from "@/lib/validators/task";
 import { X } from "lucide-react";
 
@@ -66,14 +68,22 @@ export function TaskModal({
   const createTask = useCreateTask(boardId);
   const updateTask = useUpdateTask(boardId);
   const deleteTask = useDeleteTask(boardId);
+  const workAreasQuery = useWorkAreas();
+  const workAreas = workAreasQuery.data ?? [];
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [columnId, setColumnId] = useState("");
   const [assigneeId, setAssigneeId] = useState<string>("");
+  const [areaId, setAreaId] = useState("");
   const [dueLocal, setDueLocal] = useState("");
   const [descTab, setDescTab] = useState<"edit" | "preview">("edit");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const syncFromTask = useCallback((t: TaskWithAssignee) => {
     setTitle(t.title);
@@ -81,6 +91,7 @@ export function TaskModal({
     setPriority((t.priority as TaskPriority) ?? "medium");
     setColumnId(t.column_id);
     setAssigneeId(t.assignee_id ?? "");
+    setAreaId(t.area_id ?? "");
     setDueLocal(isoToLocalDatetimeValue(t.due_date));
     setDescTab("edit");
   }, []);
@@ -91,6 +102,7 @@ export function TaskModal({
     setPriority("medium");
     setColumnId(intent.columnId);
     setAssigneeId("");
+    setAreaId("");
     setDueLocal("");
     setDescTab("edit");
   }, []);
@@ -121,6 +133,14 @@ export function TaskModal({
     [tenantUsers]
   );
 
+  const areaOptions = useMemo(
+    () =>
+      [...workAreas]
+        .filter((a) => !a.is_archived)
+        .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code, "pt")),
+    [workAreas]
+  );
+
   if (!open || (isCreate && !createIntent) || (!isCreate && !editingTask)) {
     return null;
   }
@@ -141,6 +161,7 @@ export function TaskModal({
       priority,
       due_date: localDatetimeToIsoOrNull(dueLocal),
       assignee_id: assigneeId === "" ? null : assigneeId,
+      area_id: areaId === "" ? null : areaId,
     };
 
     createTask.mutate(input, {
@@ -179,6 +200,12 @@ export function TaskModal({
     const prevAssignee = editingTask.assignee_id ?? null;
     if (nextAssignee !== prevAssignee) {
       patch.assignee_id = nextAssignee;
+    }
+
+    const nextArea = areaId === "" ? null : areaId;
+    const prevArea = editingTask.area_id ?? null;
+    if (nextArea !== prevArea) {
+      patch.area_id = nextArea;
     }
 
     const nextDue = localDatetimeToIsoOrNull(dueLocal);
@@ -225,10 +252,17 @@ export function TaskModal({
     updateTask.isPending ||
     deleteTask.isPending;
 
+  const areaSelectDisabled =
+    busy || workAreasQuery.isPending || !!workAreasQuery.isError;
+
   const heading = isCreate ? "Nova tarefa" : "Detalhe da tarefa";
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  if (!mounted) {
+    return null;
+  }
+
+  const modal = (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <button
         type="button"
         className="absolute inset-0 bg-slate-900/50 backdrop-blur-[1px]"
@@ -420,6 +454,39 @@ export function TaskModal({
               </select>
             </div>
           </div>
+
+          <div>
+            <Label htmlFor="task-area">Área / centro de custo</Label>
+            <select
+              id="task-area"
+              value={areaId}
+              onChange={(e) => setAreaId(e.target.value)}
+              disabled={areaSelectDisabled}
+              className={cn(
+                "mt-1 flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm",
+                "shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700",
+                "disabled:cursor-not-allowed disabled:opacity-60"
+              )}
+            >
+              <option value="">— Nenhuma —</option>
+              {areaOptions.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} · {a.name}
+                </option>
+              ))}
+            </select>
+            {workAreasQuery.isError ? (
+              <p className="mt-1 text-xs text-red-600">
+                Não foi possível carregar as áreas. Recarregue a página ou tente de novo em instantes.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">
+                Classifique esta tarefa por departamento ou centro de custo — administradores
+                mantêm o catálogo em <strong className="font-medium">Áreas / centros de custo</strong>{" "}
+                no menu lateral.
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/80 px-4 py-3">
@@ -453,4 +520,6 @@ export function TaskModal({
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }

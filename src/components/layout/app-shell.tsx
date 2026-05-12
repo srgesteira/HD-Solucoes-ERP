@@ -4,7 +4,25 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, KanbanSquare, Settings, LogOut, Menu, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  KanbanSquare,
+  Building2,
+  Layers,
+  ClipboardList,
+  Factory,
+  FileText,
+  LayoutDashboard,
+  Package,
+  Percent,
+  Settings,
+  LogOut,
+  Menu,
+  ShoppingBag,
+  ShoppingCart,
+  Truck,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,11 +32,69 @@ import { APP_NAME } from "@/lib/utils/constants";
 type NavItem = {
   href: string;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: LucideIcon;
 };
 
-const NAV_ITEMS: NavItem[] = [
-  { href: "/boards", label: "Quadros", icon: KanbanSquare },
+const MEMBER_NAV: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/boards", label: "Tarefas", icon: KanbanSquare },
+  { href: "/products", label: "Produtos", icon: Package },
+  {
+    href: "/production/orders",
+    label: "Produção",
+    icon: ClipboardList,
+  },
+  {
+    href: "/purchasing/orders",
+    label: "Pedidos de compra",
+    icon: ShoppingCart,
+  },
+  { href: "/sales/quotes", label: "Orçamentos", icon: FileText },
+  { href: "/sales/orders", label: "Pedidos de Venda", icon: ShoppingBag },
+  { href: "/settings/profile", label: "Perfil", icon: Settings },
+];
+
+const ADMIN_NAV: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/boards", label: "Tarefas", icon: KanbanSquare },
+  { href: "/products", label: "Produtos", icon: Package },
+  {
+    href: "/production/orders",
+    label: "Produção",
+    icon: ClipboardList,
+  },
+  {
+    href: "/settings/company",
+    label: "Configurações da Empresa",
+    icon: Building2,
+  },
+  {
+    href: "/settings/work-areas",
+    label: "Áreas / centros de custo",
+    icon: Layers,
+  },
+  {
+    href: "/settings/work-centers",
+    label: "Centros de trabalho",
+    icon: Factory,
+  },
+  {
+    href: "/settings/bdi",
+    label: "BDI precificação",
+    icon: Percent,
+  },
+  {
+    href: "/purchasing/suppliers",
+    label: "Fornecedores",
+    icon: Truck,
+  },
+  {
+    href: "/purchasing/orders",
+    label: "Pedidos de compra",
+    icon: ShoppingCart,
+  },
+  { href: "/sales/quotes", label: "Orçamentos", icon: FileText },
+  { href: "/sales/orders", label: "Pedidos de Venda", icon: ShoppingBag },
   { href: "/settings/profile", label: "Perfil", icon: Settings },
 ];
 
@@ -28,6 +104,7 @@ type AppShellProps = {
     id: string;
     email: string;
     fullName: string;
+    tenantRole?: "admin" | "member";
   } | null;
 };
 
@@ -35,6 +112,7 @@ export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const navItems = user?.tenantRole === "admin" ? ADMIN_NAV : MEMBER_NAV;
 
   async function handleLogout() {
     const supabase = createClient();
@@ -64,7 +142,7 @@ export function AppShell({ children, user }: AppShellProps) {
       >
         <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200">
           <Link
-            href="/boards"
+            href="/dashboard"
             className="flex items-center gap-2 font-semibold text-slate-900"
             onClick={() => setMobileOpen(false)}
           >
@@ -84,7 +162,7 @@ export function AppShell({ children, user }: AppShellProps) {
         </div>
 
         <nav className="p-3 flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const active =
               pathname === item.href || pathname.startsWith(item.href + "/");

@@ -7,6 +7,13 @@ import { apiError, apiOk } from "@/lib/http";
 import type { TaskWithAssignee } from "@/lib/types/kanban";
 import { notifyTaskAssigned } from "@/lib/notifications/task-assigned";
 import { resolveAssigneeCadastroEmail } from "@/lib/notifications/resolve-assignee-email";
+import { getDefaultEpicIdForBoard } from "@/lib/utils/board-epic";
+import { TASK_DETAIL_SELECT } from "@/lib/utils/task-select";
+import {
+  enrichTasksWithAssigneeAndArea,
+  type TaskRowWithAreaEmbed,
+} from "@/lib/utils/task-embed-map";
+import { assertWorkAreaBelongsToTenant } from "@/lib/utils/work-area";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +32,7 @@ async function assertBoardMember(
 }
 
 /**
- * GET /api/tasks?board_id=uuid — lista tarefas do quadro com assignee resolvido.
+ * GET /api/tasks?board_id=uuid — lista tarefas do projeto com assignee resolvido.
  */
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -38,22 +45,36 @@ export async function GET(request: NextRequest) {
   }
 
   const boardId = request.nextUrl.searchParams.get("board_id")?.trim();
+  const epicId = request.nextUrl.searchParams.get("epic_id")?.trim() ?? null;
+
   if (!boardId) {
     return apiError("Parâmetro board_id obrigatório", 400);
   }
 
   if (!(await assertBoardMember(user.id, boardId))) {
-    return apiError("Sem acesso a este quadro", 403);
+    return apiError("Sem acesso a este projeto", 403);
   }
 
   const admin = createSupabaseAdminClient();
-  const { data: tasks, error: tErr } = await admin
+  const defaultEpicId = await getDefaultEpicIdForBoard(admin, boardId);
+
+  let taskQuery = admin
     .from("tasks")
-    .select(
-      "id, tenant_id, board_id, column_id, title, description, priority, due_date, assignee_id, created_by, sort_order, is_completed, completed_at, created_at, updated_at"
-    )
-    .eq("board_id", boardId)
-    .order("sort_order", { ascending: true });
+    .select(TASK_DETAIL_SELECT)
+    .eq("board_id", boardId);
+
+  if (epicId) {
+    taskQuery = taskQuery.eq("epic_id", epicId);
+  } else if (defaultEpicId) {
+    /** Vista interna: tarefas do projeto principal (alimenta o Kanban global). */
+    taskQuery = taskQuery.eq("epic_id", defaultEpicId);
+  } else {
+    taskQuery = taskQuery.is("epic_id", null);
+  }
+
+  const { data: tasks, error: tErr } = await taskQuery.order("sort_order", {
+    ascending: true,
+  });
 
   if (tErr) {
     return apiError("Falha ao carregar tarefas: " + tErr.message, 500);
@@ -88,10 +109,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const out: TaskWithAssignee[] = list.map((t) => ({
-    ...t,
-    assignee: t.assignee_id ? assigneeMap.get(t.assignee_id) ?? null : null,
-  }));
+  const out: TaskWithAssignee[] = enrichTasksWithAssigneeAndArea(
+    list as unknown as TaskRowWithAreaEmbed[],
+    assigneeMap
+  );
 
   return apiOk({ tasks: out });
 }
@@ -121,11 +142,20 @@ export async function POST(request: NextRequest) {
     return apiError("Dados inválidos", 400, parsed.error.flatten());
   }
 
-  const { board_id, column_id, title, description, priority, due_date, assignee_id } =
-    parsed.data;
+  const {
+    board_id,
+    column_id,
+    title,
+    description,
+    priority,
+    due_date,
+    assignee_id,
+    epic_id,
+    area_id,
+  } = parsed.data;
 
   if (!(await assertBoardMember(user.id, board_id))) {
-    return apiError("Sem acesso a este quadro", 403);
+    return apiError("Sem acesso a este projeto", 403);
   }
 
   const admin = createSupabaseAdminClient();
@@ -137,7 +167,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (bErr || !board) {
-    return apiError("Quadro não encontrado", 404);
+    return apiError("Projeto não encontrado", 404);
   }
 
   const { data: col, error: cErr } = await admin
@@ -147,7 +177,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (cErr || !col || col.board_id !== board_id) {
-    return apiError("Coluna inválida para este quadro", 400);
+    return apiError("Coluna inválida para este projeto", 400);
   }
 
   if (assignee_id) {
@@ -161,10 +191,47 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { data: colTasks, error: ctErr } = await admin
+  let resolvedEpicId = epic_id ?? null;
+  if (!resolvedEpicId) {
+    const primary = await getDefaultEpicIdForBoard(admin, board_id);
+    if (primary) resolvedEpicId = primary;
+  }
+
+  if (resolvedEpicId) {
+    const { data: epicRow } = await admin
+      .from("epics")
+      .select("id, board_id")
+      .eq("id", resolvedEpicId)
+      .maybeSingle();
+    if (!epicRow || epicRow.board_id !== board_id) {
+      return apiError("Épico inválido para este projeto", 400);
+    }
+  }
+
+  let resolvedAreaId = area_id ?? null;
+  if (resolvedAreaId) {
+    if (
+      !(await assertWorkAreaBelongsToTenant(
+        admin,
+        resolvedAreaId,
+        board.tenant_id
+      ))
+    ) {
+      return apiError("Área / centro de custo inválido ou inativo", 400);
+    }
+  }
+
+  let colTasksQuery = admin
     .from("tasks")
     .select("sort_order")
     .eq("column_id", column_id);
+  if (resolvedEpicId) {
+    colTasksQuery = colTasksQuery.eq("epic_id", resolvedEpicId);
+  } else {
+    colTasksQuery = colTasksQuery.is("epic_id", null);
+  }
+
+  const { data: colTasks, error: ctErr } = await colTasksQuery;
 
   if (ctErr) {
     return apiError("Falha ao calcular ordem: " + ctErr.message, 500);
@@ -183,12 +250,12 @@ export async function POST(request: NextRequest) {
       priority,
       due_date,
       assignee_id: assignee_id ?? null,
+      epic_id: resolvedEpicId,
+      area_id: resolvedAreaId,
       created_by: user.id,
       sort_order,
     })
-    .select(
-      "id, tenant_id, board_id, column_id, title, description, priority, due_date, assignee_id, created_by, sort_order, is_completed, completed_at, created_at, updated_at"
-    )
+    .select(TASK_DETAIL_SELECT)
     .single();
 
   if (insErr || !task) {
@@ -198,25 +265,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let assignee: TaskWithAssignee["assignee"] = null;
+  let assigneeMap = new Map<string, NonNullable<TaskWithAssignee["assignee"]>>();
   if (task.assignee_id) {
     const { data: ap } = await admin
       .from("user_profiles")
       .select("id, full_name, email")
       .eq("id", task.assignee_id)
       .maybeSingle();
-    assignee = ap
-      ? { id: ap.id, full_name: ap.full_name, email: ap.email }
-      : null;
+    if (ap) {
+      assigneeMap.set(ap.id, {
+        id: ap.id,
+        full_name: ap.full_name,
+        email: ap.email,
+      });
+    }
   }
 
-  const full: TaskWithAssignee = { ...task, assignee };
+  const full = enrichTasksWithAssigneeAndArea(
+    [task as unknown as TaskRowWithAreaEmbed],
+    assigneeMap
+  )[0]!;
 
   if (task.assignee_id) {
+    const assigneeProfile = assigneeMap.get(task.assignee_id);
     const toEmail = await resolveAssigneeCadastroEmail(
       admin,
       task.assignee_id,
-      assignee?.email
+      assigneeProfile?.email
     );
     if (toEmail) {
       const { data: creator } = await admin
@@ -231,7 +306,7 @@ export async function POST(request: NextRequest) {
         taskTitle: task.title,
         taskDescription: task.description,
         assigneeEmail: toEmail,
-        assigneeName: assignee?.full_name ?? null,
+        assigneeName: assigneeProfile?.full_name ?? null,
         creatorName: creator?.full_name?.trim() || creator?.email || null,
       });
     }

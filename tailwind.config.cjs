@@ -1,10 +1,12 @@
+const path = require("path");
+
+/** Globs com caminho absoluto — evita falhas do scanner no Windows com pastas acentuadas. */
+const toPosix = (p) => p.split(path.sep).join("/");
+const srcRoot = path.join(__dirname, "src");
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    "./src/app/**/*.{js,ts,jsx,tsx}",
-    "./src/components/**/*.{js,ts,jsx,tsx}",
-    "./src/**/*.{ts,tsx}",
-  ],
+  content: [toPosix(path.join(srcRoot, "**", "*.{js,ts,jsx,tsx}"))],
   theme: {
     extend: {
       colors: {

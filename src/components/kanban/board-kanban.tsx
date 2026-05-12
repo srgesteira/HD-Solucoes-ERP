@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { BoardColumn } from "@/lib/types/kanban";
 import type { TaskWithAssignee } from "@/lib/types/kanban";
-import { KanbanColumn } from "@/components/kanban/kanban-column";
+import { DndKanbanBoard } from "@/components/kanban/dnd-kanban-board";
 import {
   TaskModal,
   type CreateTaskIntent,
@@ -28,19 +28,6 @@ export function BoardKanban({ boardId, columns, initialTasks }: BoardKanbanProps
     initialTasks
   );
   const { data: tenantUsers = [] } = useTenantUsers();
-
-  const tasksByColumn = useMemo(() => {
-    const m = new Map<string, TaskWithAssignee[]>();
-    for (const t of taskList) {
-      const arr = m.get(t.column_id) ?? [];
-      arr.push(t);
-      m.set(t.column_id, arr);
-    }
-    for (const arr of m.values()) {
-      arr.sort((a, b) => a.sort_order - b.sort_order);
-    }
-    return m;
-  }, [taskList]);
 
   const selected = useMemo(
     () => (detailId ? taskList.find((t) => t.id === detailId) ?? null : null),
@@ -71,29 +58,19 @@ export function BoardKanban({ boardId, columns, initialTasks }: BoardKanbanProps
         </p>
       )}
       {!isLoading && !isError && (
-        <div className="kanban-scroll flex-1 flex gap-4 overflow-x-auto pb-3">
-          {sortedColumns.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Este quadro ainda não tem colunas.
-            </p>
-          ) : (
-            sortedColumns.map((col) => (
-              <KanbanColumn
-                key={col.id}
-                column={col}
-                tasks={tasksByColumn.get(col.id) ?? []}
-                onOpenTask={(t) => {
-                  setCreateIntent(null);
-                  setDetailId(t.id);
-                }}
-                onBeginCreate={(columnId, initialTitle) => {
-                  setDetailId(null);
-                  setCreateIntent({ columnId, initialTitle });
-                }}
-              />
-            ))
-          )}
-        </div>
+        <DndKanbanBoard
+          boardId={boardId}
+          columns={sortedColumns}
+          tasks={taskList}
+          onOpenTask={(t) => {
+            setCreateIntent(null);
+            setDetailId(t.id);
+          }}
+          onBeginCreate={(columnId, initialTitle) => {
+            setDetailId(null);
+            setCreateIntent({ columnId, initialTitle });
+          }}
+        />
       )}
 
       <TaskModal

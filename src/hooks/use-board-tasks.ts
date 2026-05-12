@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query";
 import type { TaskWithAssignee } from "@/lib/types/kanban";
 import type { CreateTaskInput, UpdateTaskInput } from "@/lib/validators/task";
-import { TASKS_PIPELINE_KEY } from "@/hooks/use-tasks-pipeline";
+import { EPICS_PIPELINE_KEY } from "@/hooks/use-epics-pipeline";
 
 export const boardTasksKey = (boardId: string) => ["board-tasks", boardId] as const;
 
@@ -35,6 +35,33 @@ export function useBoardTasks(
     ...(initialData !== undefined
       ? { initialData, initialDataUpdatedAt: Date.now() }
       : {}),
+  });
+}
+
+async function fetchEpicTasks(
+  boardId: string,
+  epicId: string
+): Promise<TaskWithAssignee[]> {
+  const res = await fetch(
+    `/api/tasks?board_id=${encodeURIComponent(boardId)}&epic_id=${encodeURIComponent(epicId)}`,
+    { credentials: "include", cache: "no-store" }
+  );
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(j.error ?? "Erro ao carregar sub-tarefas");
+  }
+  const data = (await res.json()) as { tasks: TaskWithAssignee[] };
+  return data.tasks;
+}
+
+export const epicTasksKey = (boardId: string, epicId: string) =>
+  [...boardTasksKey(boardId), "epic", epicId] as const;
+
+export function useEpicTasks(boardId: string, epicId: string | null) {
+  return useQuery({
+    queryKey: epicTasksKey(boardId, epicId ?? ""),
+    queryFn: () => fetchEpicTasks(boardId, epicId!),
+    enabled: !!boardId && !!epicId,
   });
 }
 
@@ -86,14 +113,22 @@ async function deleteTask(taskId: string): Promise<void> {
   }
 }
 
-export function useCreateTask(boardId: string) {
+export function useCreateTask(
+  boardId: string,
+  options?: { epicId?: string | null }
+) {
   const qc = useQueryClient();
+  const forcedEpic = options?.epicId;
   return useMutation({
-    mutationFn: createTask,
+    mutationFn: (input: CreateTaskInput) =>
+      createTask({
+        ...input,
+        epic_id: input.epic_id ?? forcedEpic ?? null,
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: boardTasksKey(boardId) });
       void qc.invalidateQueries({ queryKey: ["boards"] });
-      void qc.invalidateQueries({ queryKey: TASKS_PIPELINE_KEY });
+      void qc.invalidateQueries({ queryKey: EPICS_PIPELINE_KEY });
     },
   });
 }
@@ -111,7 +146,7 @@ export function useUpdateTask(boardId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: boardTasksKey(boardId) });
       void qc.invalidateQueries({ queryKey: ["boards"] });
-      void qc.invalidateQueries({ queryKey: TASKS_PIPELINE_KEY });
+      void qc.invalidateQueries({ queryKey: EPICS_PIPELINE_KEY });
     },
   });
 }
@@ -123,7 +158,7 @@ export function useDeleteTask(boardId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: boardTasksKey(boardId) });
       void qc.invalidateQueries({ queryKey: ["boards"] });
-      void qc.invalidateQueries({ queryKey: TASKS_PIPELINE_KEY });
+      void qc.invalidateQueries({ queryKey: EPICS_PIPELINE_KEY });
     },
   });
 }

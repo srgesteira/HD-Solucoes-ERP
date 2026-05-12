@@ -28,6 +28,10 @@ export type Task = PublicTables["tasks"]["Row"];
 export type TaskInsert = PublicTables["tasks"]["Insert"];
 export type TaskUpdate = PublicTables["tasks"]["Update"];
 
+export type Epic = PublicTables["epics"]["Row"];
+export type EpicInsert = PublicTables["epics"]["Insert"];
+export type EpicUpdate = PublicTables["epics"]["Update"];
+
 export type TaskComment = PublicTables["task_comments"]["Row"];
 export type TaskCommentInsert = PublicTables["task_comments"]["Insert"];
 
@@ -35,6 +39,8 @@ export type TaskAttachment = PublicTables["task_attachments"]["Row"];
 export type TaskAttachmentInsert = PublicTables["task_attachments"]["Insert"];
 
 export type TaskActivity = PublicTables["task_activity"]["Row"];
+
+export type WorkArea = PublicTables["work_areas"]["Row"];
 
 /* ---------- Enums de domínio ---------- */
 
@@ -74,6 +80,13 @@ export interface TaskAssigneePreview {
   email: string;
 }
 
+/** Join leve nas listagens para mostrar centro de custo / área. */
+export interface TaskAreaPreview {
+  id: string;
+  code: string;
+  name: string;
+}
+
 /** Campos habitualmente devolvidos pelas listagens/API (sem obrigar `external_ref_*`, etc.). */
 export type TaskWithAssignee = Pick<
   Task,
@@ -85,6 +98,8 @@ export type TaskWithAssignee = Pick<
   | "description"
   | "priority"
   | "due_date"
+  | "epic_id"
+  | "area_id"
   | "assignee_id"
   | "created_by"
   | "sort_order"
@@ -94,6 +109,8 @@ export type TaskWithAssignee = Pick<
   | "updated_at"
 > & {
   assignee: TaskAssigneePreview | null;
+  /** Área organizacional / centro de custo (opcional por tarefa). */
+  work_area: TaskAreaPreview | null;
 };
 
 /* ---------- Constantes do Módulo 1 ---------- */

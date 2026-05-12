@@ -46,7 +46,7 @@ export async function GET() {
     .eq("user_id", user.id);
 
   if (memErr) {
-    return apiError("Falha ao listar quadros: " + memErr.message, 500);
+    return apiError("Falha ao listar projetos: " + memErr.message, 500);
   }
 
   const boardsRaw = (memberships ?? [])
@@ -59,29 +59,30 @@ export async function GET() {
 
   const boardIds = boardsRaw.map((b) => b.id);
 
-  /** Contagens em paralelo — um RPC seria melhor mas evita criar mais SQL agora. */
-  const [tasksCounts, columnsCounts] = await Promise.all([
-    supabase
-      .from("tasks")
-      .select("board_id", { count: "exact", head: false })
-      .in("board_id", boardIds),
-    supabase
-      .from("board_columns")
-      .select("board_id", { count: "exact", head: false })
-      .in("board_id", boardIds),
+  /** Contagens só com HEAD (exact count) por projeto — evita transferir todas as linhas de tasks. */
+  const [taskCountsPairs, columnCountsPairs] = await Promise.all([
+    Promise.all(
+      boardIds.map(async (board_id) => {
+        const { count, error } = await supabase
+          .from("tasks")
+          .select("*", { count: "exact", head: true })
+          .eq("board_id", board_id);
+        return [board_id, error ? 0 : (count ?? 0)] as const;
+      })
+    ),
+    Promise.all(
+      boardIds.map(async (board_id) => {
+        const { count, error } = await supabase
+          .from("board_columns")
+          .select("*", { count: "exact", head: true })
+          .eq("board_id", board_id);
+        return [board_id, error ? 0 : (count ?? 0)] as const;
+      })
+    ),
   ]);
 
-  const taskCountByBoard = new Map<string, number>();
-  for (const row of tasksCounts.data ?? []) {
-    taskCountByBoard.set(row.board_id, (taskCountByBoard.get(row.board_id) ?? 0) + 1);
-  }
-  const columnCountByBoard = new Map<string, number>();
-  for (const row of columnsCounts.data ?? []) {
-    columnCountByBoard.set(
-      row.board_id,
-      (columnCountByBoard.get(row.board_id) ?? 0) + 1
-    );
-  }
+  const taskCountByBoard = new Map(taskCountsPairs);
+  const columnCountByBoard = new Map(columnCountsPairs);
 
   const boards: BoardSummary[] = boardsRaw
     .map((b) => ({
@@ -162,7 +163,7 @@ export async function POST(request: NextRequest) {
 
   if (insertErr || !created) {
     return apiError(
-      "Falha ao criar quadro: " + (insertErr?.message ?? "desconhecido"),
+      "Falha ao criar projeto: " + (insertErr?.message ?? "desconhecido"),
       500
     );
   }
@@ -180,6 +181,24 @@ export async function POST(request: NextRequest) {
     /** Rollback: remove o board recém-criado para deixar o estado consistente. */
     await admin.from("boards").delete().eq("id", created.id);
     return apiError("Falha ao criar colunas padrão: " + colErr.message, 500);
+  }
+
+  const { error: epicErr } = await admin.from("epics").insert({
+    tenant_id: profile.tenant_id,
+    board_id: created.id,
+    title: parsed.data.name,
+    description: parsed.data.description ?? null,
+    created_by: user.id,
+    sort_order: 1000,
+    is_default: true,
+  });
+
+  if (epicErr) {
+    await admin.from("boards").delete().eq("id", created.id);
+    return apiError(
+      "Falha ao criar projeto principal do Kanban: " + epicErr.message,
+      500
+    );
   }
 
   return apiOk({ board: created }, 201);

@@ -53,10 +53,10 @@ export default function NewBoardPage() {
 
     try {
       const board = await createBoard.mutateAsync(parsed.data);
-      toast.success("Quadro criado!");
+      toast.success("Projeto criado!");
       router.push(`/boards/${board.id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao criar quadro");
+      toast.error(err instanceof Error ? err.message : "Falha ao criar projeto");
     }
   }
 
@@ -67,15 +67,15 @@ export default function NewBoardPage() {
         className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 mb-4"
       >
         <ArrowLeft className="h-4 w-4" />
-        Voltar para quadros
+        Voltar para tarefas
       </Link>
 
       <Card>
         <CardHeader>
-          <CardTitle>Novo quadro</CardTitle>
+          <CardTitle>Novo projeto</CardTitle>
           <CardDescription>
-            Vamos criar um quadro Kanban com 3 colunas padrão (A Fazer, Em Andamento,
-            Concluído). Você poderá customizar as colunas depois.
+            Vamos criar um projeto Kanban com 3 colunas padrão (A Fazer, Em Andamento,
+            Concluído). Poderá customizar as colunas depois.
           </CardDescription>
         </CardHeader>
 
@@ -86,7 +86,7 @@ export default function NewBoardPage() {
             noValidate
           >
             <div>
-              <Label htmlFor="name">Nome do quadro *</Label>
+              <Label htmlFor="name">Nome do projeto *</Label>
               <Input
                 id="name"
                 name="name"
@@ -113,7 +113,7 @@ export default function NewBoardPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                placeholder="Para que serve este quadro?"
+                placeholder="Para que serve este projeto?"
                 className="flex w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 disabled:cursor-not-allowed disabled:opacity-60 resize-none"
               />
               {errors.description ? (
@@ -154,7 +154,7 @@ export default function NewBoardPage() {
                     <span>Criando…</span>
                   </>
                 ) : (
-                  <span>Criar quadro</span>
+                  <span>Criar projeto</span>
                 )}
               </Button>
               <Button

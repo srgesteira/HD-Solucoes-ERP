@@ -17,7 +17,7 @@ export function patchDueDate(v: unknown): string | null | undefined {
 }
 
 export const createTaskSchema = z.object({
-  board_id: z.string().uuid("Quadro inválido"),
+  board_id: z.string().uuid("Projeto inválido"),
   column_id: z.string().uuid("Coluna inválida"),
   title: z
     .string({ error: "Título é obrigatório" })
@@ -36,6 +36,8 @@ export const createTaskSchema = z.object({
     .optional()
     .transform(toDueIso),
   assignee_id: z.union([z.string().uuid(), z.null()]).optional(),
+  epic_id: z.string().uuid().optional().nullable(),
+  area_id: z.union([z.string().uuid(), z.null()]).optional(),
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
@@ -48,8 +50,15 @@ export const updateTaskSchema = z
     due_date: z.union([z.string(), z.null(), z.literal("")]).optional(),
     assignee_id: z.union([z.string().uuid(), z.null()]).optional(),
     column_id: z.string().uuid().optional(),
+    /** Posição final (0..n) dentro da coluna `column_id`; usado com DnD. */
+    insert_index: z.number().int().min(0).optional(),
+    area_id: z.union([z.string().uuid(), z.null()]).optional(),
     is_completed: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (d) => d.insert_index === undefined || d.column_id !== undefined,
+    { message: "insert_index requer column_id" }
+  );
 
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;

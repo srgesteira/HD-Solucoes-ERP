@@ -11,7 +11,12 @@ out/
 # env
 .env
 .env.local
+.env.production
 .env.*.local
+
+# build artifacts
+build/
+dist/
 
 # logs
 npm-debug.log*

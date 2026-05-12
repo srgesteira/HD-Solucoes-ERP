@@ -19,7 +19,7 @@ export function BoardCard({ board }: BoardCardProps) {
         "transition-all hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
       )}
-      aria-label={`Abrir quadro ${board.name}`}
+      aria-label={`Abrir projeto ${board.name}`}
     >
       <div className="flex items-start gap-3">
         <span
@@ -42,7 +42,7 @@ export function BoardCard({ board }: BoardCardProps) {
         {isOwner ? (
           <span
             className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 text-xs px-2 py-0.5"
-            title="Você é o dono deste quadro"
+            title="Você é o dono deste projeto"
           >
             <Crown className="h-3 w-3" />
             Dono

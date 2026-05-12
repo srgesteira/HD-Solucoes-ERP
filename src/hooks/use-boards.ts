@@ -15,10 +15,11 @@ async function fetchBoards(): Promise<BoardSummary[]> {
   const res = await fetch("/api/boards", {
     credentials: "include",
     cache: "no-store",
+    signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error ?? `Erro ${res.status} ao listar quadros`);
+    throw new Error(data.error ?? `Erro ${res.status} ao listar projetos`);
   }
   const json = (await res.json()) as { boards: BoardSummary[] };
   return json.boards;
@@ -43,7 +44,7 @@ async function createBoard(input: CreateBoardInput): Promise<Board> {
     error?: string;
   };
   if (!res.ok || !json.board) {
-    throw new Error(json.error ?? `Erro ${res.status} ao criar quadro`);
+    throw new Error(json.error ?? `Erro ${res.status} ao criar projeto`);
   }
   return json.board;
 }

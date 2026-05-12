@@ -57,6 +57,11 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
             {assigneeLabel}
           </span>
         )}
+        {task.work_area && (
+          <span title="Área / centro de custo" className="text-slate-600">
+            {task.work_area.code}
+          </span>
+        )}
       </div>
     </button>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -8,19 +8,51 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+function stripCredentialsFromUrlOnce(router: ReturnType<typeof useRouter>) {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams(window.location.search);
+  const hasPassword = params.has("password");
+  const hasEmail = params.has("email");
+  if (!hasPassword && !hasEmail) return;
+  params.delete("email");
+  params.delete("password");
+  const qs = params.toString();
+  router.replace(qs ? `/login?${qs}` : "/login", { scroll: false });
+  if (hasPassword) {
+    toast.error(
+      "A senha não deve ir no endereço do browser. Faça login de novo apenas pelo formulário."
+    );
+  }
+}
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [errorMsg, setErrorMsg] = useState(() =>
-    searchParams.get("error") === "credenciais"
-      ? "Email ou senha incorretos."
-      : ""
-  );
+  const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  /** Erro vindo de redirect (?error=credenciais) — lido uma vez. */
+  useEffect(() => {
+    if (searchParams.get("error") === "credenciais") {
+      setErrorMsg("Email ou senha incorretos.");
+    }
+  }, [searchParams]);
+
+  /**
+   * GET com email/senha na URL: limpar sem depender de `searchParams` a cada render
+   * (evita re-execuções com Next 15/16 que poderiam atrapalhar).
+   */
+  useEffect(() => {
+    stripCredentialsFromUrlOnce(router);
+  }, [router]);
+
+  function onFormSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
+    void runLogin(e.currentTarget);
+  }
+
+  async function runLogin(form: HTMLFormElement) {
+    const fd = new FormData(form);
     const email = String(fd.get("email") ?? "").trim();
     const password = String(fd.get("password") ?? "");
 
@@ -38,40 +70,52 @@ export function LoginForm() {
         setErrorMsg(
           "Supabase ainda não foi configurado. Preencha NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY em .env.local."
         );
-        setLoading(false);
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error: signErr } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
+      if (signErr) {
         setErrorMsg(
-          error.message === "Invalid login credentials"
+          signErr.message === "Invalid login credentials"
             ? "Email ou senha incorretos."
-            : error.message
+            : signErr.message
         );
-        setLoading(false);
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        setErrorMsg(
+          "Sessão não foi criada. Actualize a página, confirme o Supabase Auth e tente de novo."
+        );
         return;
       }
 
       toast.success("Bem-vindo!");
-      router.refresh();
-      router.push("/boards");
+      /**
+       * Navegação completa garante que o middleware vê os cookies `sb-*` no próximo pedido.
+       * Só `router.push` em cliente por vezes chega antes da persistência visível ao servidor.
+       */
+      window.location.assign("/boards");
     } catch (err) {
       setErrorMsg(
         err instanceof Error
           ? err.message
           : "Não foi possível entrar. Tente novamente."
       );
+    } finally {
       setLoading(false);
     }
   }
 
   return (
-    <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+    <form method="post" onSubmit={onFormSubmit} className="space-y-4">
       <div>
         <Label htmlFor="email">Email</Label>
         <Input

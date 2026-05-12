@@ -33,9 +33,11 @@ export async function middleware(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value)
-        );
+        /*
+         * Não usar request.cookies.set — no middleware do Next isto pode lançar
+         * ("Cookies... cannot be mutated") e dá 500 em todas as páginas.
+         * Actualizar apenas a NextResponse é o fluxo oficial do Supabase SSR.
+         */
         supabaseResponse = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
           supabaseResponse.cookies.set(name, value, options)
@@ -60,5 +62,12 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  matcher: [
+    /*
+     * Excluímos /api/*: cada Route Handler já faz getUser via createServerSupabaseClient.
+     * Manter middleware nas APIs duplicava lógica e, em cenários Edge, podia contribuir para
+     * pedidos lentos ou aparentarem “pending” indefinido no navegador.
+     */
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+  ],
 };

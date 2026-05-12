@@ -15,7 +15,7 @@ export default async function BoardDetailPage({ params }: PageProps) {
   const { boardId } = await params;
   const supabase = await createServerSupabaseClient();
 
-  const [boardRes, columnsRes, tasksRes] = await Promise.all([
+  const [boardRes, columnsRes, defaultEpicRes] = await Promise.all([
     supabase
       .from("boards")
       .select("id, name, description, color")
@@ -27,9 +27,19 @@ export default async function BoardDetailPage({ params }: PageProps) {
       .eq("board_id", boardId)
       .order("sort_order", { ascending: true }),
     supabase
-      .from("tasks")
-      .select(
-        `
+      .from("epics")
+      .select("id")
+      .eq("board_id", boardId)
+      .eq("is_default", true)
+      .maybeSingle(),
+  ]);
+
+  const defaultEpicId = defaultEpicRes.data?.id ?? null;
+
+  let tasksQuery = supabase
+    .from("tasks")
+    .select(
+      `
         id,
         tenant_id,
         board_id,
@@ -39,8 +49,10 @@ export default async function BoardDetailPage({ params }: PageProps) {
         priority,
         due_date,
         assignee_id,
+        area_id,
         created_by,
         sort_order,
+        epic_id,
         is_completed,
         completed_at,
         created_at,
@@ -49,12 +61,24 @@ export default async function BoardDetailPage({ params }: PageProps) {
           id,
           full_name,
           email
+        ),
+        work_area:work_areas!tasks_area_id_fkey (
+          id,
+          code,
+          name
         )
       `
-      )
-      .eq("board_id", boardId)
-      .order("sort_order", { ascending: true }),
-  ]);
+    )
+    .eq("board_id", boardId)
+    .order("sort_order", { ascending: true });
+
+  if (defaultEpicId) {
+    tasksQuery = tasksQuery.eq("epic_id", defaultEpicId);
+  } else {
+    tasksQuery = tasksQuery.is("epic_id", null);
+  }
+
+  const tasksRes = await tasksQuery;
 
   if (boardRes.error || !boardRes.data) {
     notFound();
@@ -72,11 +96,13 @@ export default async function BoardDetailPage({ params }: PageProps) {
           full_name: string | null;
           email: string;
         } | null;
+        work_area: { id: string; code: string; name: string } | null;
       };
-      const { assignee, ...rest } = r;
+      const { assignee, work_area, ...rest } = r;
       return {
         ...rest,
         assignee: assignee ?? null,
+        work_area: work_area ?? null,
       };
     });
   }
@@ -90,7 +116,7 @@ export default async function BoardDetailPage({ params }: PageProps) {
             className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 mb-1"
           >
             <ArrowLeft className="h-4 w-4" />
-            Quadros
+            Tarefas
           </Link>
           <div className="flex items-center gap-2">
             <span

@@ -3,7 +3,7 @@
  * O destino é o e-mail de cadastro: {@link resolveAssigneeCadastroEmail}.
  *
  * Variáveis: `RESEND_API_KEY`, opcional `NOTIFICATIONS_EMAIL_FROM`,
- * `NEXT_PUBLIC_APP_URL` para o link "Abrir quadro".
+ * `NEXT_PUBLIC_APP_URL` para o link "Abrir tarefas".
  */
 
 type NotifyPayload = {
@@ -60,10 +60,10 @@ export async function notifyTaskAssigned(
     <html>
     <body style="font-family:system-ui,sans-serif;line-height:1.5;color:#1e293b;">
       <p>Olá${payload.assigneeName ? ` ${escapeHtml(payload.assigneeName)}` : ""},</p>
-      <p><strong>${escapeHtml(by)}</strong> atribuiu-lhe uma tarefa no quadro <strong>${escapeHtml(payload.boardName)}</strong>.</p>
+      <p><strong>${escapeHtml(by)}</strong> atribuiu-lhe uma tarefa no projeto <strong>${escapeHtml(payload.boardName)}</strong>.</p>
       <p style="font-size:1.1em;"><strong>${escapeHtml(payload.taskTitle)}</strong></p>
       ${descBlock}
-      <p style="margin-top:20px;"><a href="${escapeHtml(link)}" style="display:inline-block;background:#0f766e;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Abrir quadro</a></p>
+      <p style="margin-top:20px;"><a href="${escapeHtml(link)}" style="display:inline-block;background:#0f766e;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Abrir tarefas</a></p>
       <p style="font-size:12px;color:#64748b;">ERP HD Soluções Industriais — notificação automática (e-mail de cadastro).</p>
     </body>
     </html>
