@@ -1,18 +1,20 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   KanbanSquare,
   Building2,
-  Layers,
-  ClipboardList,
+  ChevronDown,
+  ChevronRight,
+  DollarSign,
   Factory,
   FileText,
   LayoutDashboard,
+  Layers,
   Package,
   Percent,
   Settings,
@@ -20,7 +22,10 @@ import {
   Menu,
   ShoppingBag,
   ShoppingCart,
+  Tags,
   Truck,
+  User,
+  Users,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,74 +33,173 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 import { APP_NAME } from "@/lib/utils/constants";
+import { usePermissions } from "@/hooks/use-permissions";
+import type { ModuleKey } from "@/lib/permissions";
 
-type NavItem = {
+type NavLeaf = {
+  title: string;
   href: string;
-  label: string;
   icon: LucideIcon;
+  module: ModuleKey;
 };
 
-const MEMBER_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/boards", label: "Tarefas", icon: KanbanSquare },
-  { href: "/products", label: "Produtos", icon: Package },
-  {
-    href: "/production/orders",
-    label: "Produção",
-    icon: ClipboardList,
-  },
-  {
-    href: "/purchasing/orders",
-    label: "Pedidos de compra",
-    icon: ShoppingCart,
-  },
-  { href: "/sales/quotes", label: "Orçamentos", icon: FileText },
-  { href: "/sales/orders", label: "Pedidos de Venda", icon: ShoppingBag },
-  { href: "/settings/profile", label: "Perfil", icon: Settings },
-];
+type NavGroup = {
+  type: "group";
+  title: string;
+  icon: LucideIcon;
+  module: ModuleKey;
+  children: NavLeaf[];
+};
 
-const ADMIN_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/boards", label: "Tarefas", icon: KanbanSquare },
-  { href: "/products", label: "Produtos", icon: Package },
+type NavLink = {
+  type: "link";
+  title: string;
+  href: string;
+  icon: LucideIcon;
+  module: ModuleKey;
+};
+
+type NavEntry = NavGroup | NavLink;
+
+const MENU_STRUCTURE: NavEntry[] = [
   {
-    href: "/production/orders",
-    label: "Produção",
-    icon: ClipboardList,
+    type: "link",
+    title: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    module: "dashboard",
   },
   {
-    href: "/settings/company",
-    label: "Configurações da Empresa",
-    icon: Building2,
+    type: "link",
+    title: "Tarefas",
+    href: "/boards",
+    icon: KanbanSquare,
+    module: "boards",
   },
   {
-    href: "/settings/work-areas",
-    label: "Áreas / centros de custo",
-    icon: Layers,
-  },
-  {
-    href: "/settings/work-centers",
-    label: "Centros de trabalho",
+    type: "group",
+    title: "Produção",
     icon: Factory,
+    module: "production",
+    children: [
+      {
+        title: "Linhas de produção",
+        href: "/production/lines",
+        icon: Factory,
+        module: "production",
+      },
+      {
+        title: "Ordens de produção",
+        href: "/production/orders",
+        icon: Package,
+        module: "production",
+      },
+    ],
   },
   {
-    href: "/settings/bdi",
-    label: "BDI precificação",
-    icon: Percent,
-  },
-  {
-    href: "/purchasing/suppliers",
-    label: "Fornecedores",
-    icon: Truck,
-  },
-  {
-    href: "/purchasing/orders",
-    label: "Pedidos de compra",
+    type: "group",
+    title: "Compras",
     icon: ShoppingCart,
+    module: "purchasing",
+    children: [
+      {
+        title: "Fornecedores",
+        href: "/purchasing/suppliers",
+        icon: Truck,
+        module: "purchasing",
+      },
+      {
+        title: "Pedidos de compra",
+        href: "/purchasing/orders",
+        icon: ShoppingCart,
+        module: "purchasing",
+      },
+    ],
   },
-  { href: "/sales/quotes", label: "Orçamentos", icon: FileText },
-  { href: "/sales/orders", label: "Pedidos de Venda", icon: ShoppingBag },
-  { href: "/settings/profile", label: "Perfil", icon: Settings },
+  {
+    type: "group",
+    title: "Vendas",
+    icon: DollarSign,
+    module: "sales",
+    children: [
+      {
+        title: "Orçamentos",
+        href: "/sales/quotes",
+        icon: FileText,
+        module: "sales",
+      },
+      {
+        title: "Pedidos de venda",
+        href: "/sales/orders",
+        icon: ShoppingBag,
+        module: "sales",
+      },
+    ],
+  },
+  {
+    type: "group",
+    title: "Produtos",
+    icon: Package,
+    module: "products",
+    children: [
+      {
+        title: "Cadastro",
+        href: "/products",
+        icon: Package,
+        module: "products",
+      },
+      {
+        title: "Classificação técnica",
+        href: "/settings/product-families",
+        icon: Tags,
+        module: "products",
+      },
+    ],
+  },
+  {
+    type: "group",
+    title: "Configurações",
+    icon: Settings,
+    module: "settings",
+    children: [
+      {
+        title: "Empresa",
+        href: "/settings/company",
+        icon: Building2,
+        module: "settings",
+      },
+      {
+        title: "Áreas / centros de custo",
+        href: "/settings/work-areas",
+        icon: Layers,
+        module: "settings",
+      },
+      {
+        title: "Centros de trabalho",
+        href: "/settings/work-centers",
+        icon: Factory,
+        module: "settings",
+      },
+      {
+        title: "BDI precificação",
+        href: "/settings/bdi",
+        icon: Percent,
+        module: "settings",
+      },
+      {
+        title: "Utilizadores",
+        href: "/settings/users",
+        icon: Users,
+        module: "settings",
+      },
+      {
+        title: "Perfil",
+        href: "/settings/profile",
+        icon: User,
+        module: "settings",
+      },
+    ],
+  },
 ];
 
 type AppShellProps = {
@@ -108,11 +212,38 @@ type AppShellProps = {
   } | null;
 };
 
+function pathActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const navItems = user?.tenantRole === "admin" ? ADMIN_NAV : MEMBER_NAV;
+  const { can } = usePermissions();
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const o: Record<string, boolean> = {};
+    for (const e of MENU_STRUCTURE) {
+      if (e.type === "group") o[e.title] = true;
+    }
+    return o;
+  });
+
+  const visibleMenu = useMemo(() => {
+    const out: NavEntry[] = [];
+    for (const e of MENU_STRUCTURE) {
+      if (e.type === "link") {
+        if (can(e.module)) out.push(e);
+        continue;
+      }
+      const children = e.children.filter((c) => can(c.module));
+      if (children.length === 0) continue;
+      if (!can(e.module)) continue;
+      out.push({ ...e, children });
+    }
+    return out;
+  }, [can]);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -128,6 +259,10 @@ export function AppShell({ children, user }: AppShellProps) {
     toast.success("Você saiu da sessão.");
     router.push("/login");
     router.refresh();
+  }
+
+  function toggleGroup(title: string) {
+    setOpenGroups((s) => ({ ...s, [title]: !s[title] }));
   }
 
   return (
@@ -161,26 +296,80 @@ export function AppShell({ children, user }: AppShellProps) {
           </button>
         </div>
 
-        <nav className="p-3 flex flex-col gap-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active =
-              pathname === item.href || pathname.startsWith(item.href + "/");
+        <nav className="p-3 flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-8rem)]">
+          {visibleMenu.map((entry) => {
+            if (entry.type === "link") {
+              const Icon = entry.icon;
+              const active = pathActive(pathname, entry.href);
+              return (
+                <Link
+                  key={entry.href}
+                  href={entry.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm",
+                    active
+                      ? "bg-brand-50 text-brand-700 font-medium"
+                      : "text-slate-700 hover:bg-slate-100"
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span>{entry.title}</span>
+                </Link>
+              );
+            }
+
+            const open = openGroups[entry.title] !== false;
+            const anyChildActive = entry.children.some((c) =>
+              pathActive(pathname, c.href)
+            );
+            const GroupIcon = entry.icon;
+
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm",
-                  active
-                    ? "bg-brand-50 text-brand-700 font-medium"
-                    : "text-slate-700 hover:bg-slate-100"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{item.label}</span>
-              </Link>
+              <div key={entry.title} className="rounded-md">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(entry.title)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left",
+                    anyChildActive
+                      ? "bg-slate-100 text-slate-900 font-medium"
+                      : "text-slate-800 hover:bg-slate-50"
+                  )}
+                >
+                  {open ? (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
+                  )}
+                  <GroupIcon className="h-4 w-4 shrink-0" />
+                  <span className="font-medium">{entry.title}</span>
+                </button>
+                {open ? (
+                  <div className="ml-2 mt-1 flex flex-col gap-0.5 border-l border-slate-200 pl-2">
+                    {entry.children.map((c) => {
+                      const CIcon = c.icon;
+                      const active = pathActive(pathname, c.href);
+                      return (
+                        <Link
+                          key={c.href}
+                          href={c.href}
+                          onClick={() => setMobileOpen(false)}
+                          className={cn(
+                            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+                            active
+                              ? "bg-brand-50 text-brand-700 font-medium"
+                              : "text-slate-600 hover:bg-slate-100"
+                          )}
+                        >
+                          <CIcon className="h-3.5 w-3.5 shrink-0" />
+                          <span>{c.title}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </nav>

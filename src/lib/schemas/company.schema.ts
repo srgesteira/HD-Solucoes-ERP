@@ -35,6 +35,7 @@ export const companySettingsUpdateSchema = z.object({
   default_ncm: z.string().max(32).nullable().optional(),
   default_payment_terms: z.string().max(200).nullable().optional(),
   default_delivery_days: z.coerce.number().int().min(0).max(3650).nullable().optional(),
+  das_aliquot: z.coerce.number().min(0).max(100).nullable().optional(),
 });
 
 export type CompanySettingsUpdateInput = z.infer<

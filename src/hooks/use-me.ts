@@ -1,10 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import type { ModulePermissions } from "@/lib/permissions";
 
 export type MeResponse = {
   id: string;
   role: "admin" | "member";
+  permissions: ModulePermissions;
 };
 
 async function fetchMe(): Promise<MeResponse> {

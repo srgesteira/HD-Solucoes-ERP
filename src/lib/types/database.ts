@@ -397,6 +397,7 @@ export type Database = {
           cnpj: string | null
           company_name: string
           created_at: string | null
+          das_aliquot: number | null
           default_delivery_days: number | null
           default_ncm: string | null
           default_payment_terms: string | null
@@ -425,6 +426,7 @@ export type Database = {
           cnpj?: string | null
           company_name: string
           created_at?: string | null
+          das_aliquot?: number | null
           default_delivery_days?: number | null
           default_ncm?: string | null
           default_payment_terms?: string | null
@@ -453,6 +455,7 @@ export type Database = {
           cnpj?: string | null
           company_name?: string
           created_at?: string | null
+          das_aliquot?: number | null
           default_delivery_days?: number | null
           default_ncm?: string | null
           default_payment_terms?: string | null
@@ -863,6 +866,51 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      privacy_consents: {
+        Row: {
+          accepted_at: string | null
+          id: string
+          ip_address: string | null
+          tenant_id: string
+          user_agent: string | null
+          user_profile_id: string
+          version: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          id?: string
+          ip_address?: string | null
+          tenant_id: string
+          user_agent?: string | null
+          user_profile_id: string
+          version?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          id?: string
+          ip_address?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+          user_profile_id?: string
+          version?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "privacy_consents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "privacy_consents_user_profile_id_fkey"
+            columns: ["user_profile_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2571,6 +2619,7 @@ export type Database = {
           full_name: string | null
           id: string
           is_active: boolean | null
+          permissions: Json | null
           role: string
           tenant_id: string
           updated_at: string | null
@@ -2582,6 +2631,7 @@ export type Database = {
           full_name?: string | null
           id: string
           is_active?: boolean | null
+          permissions?: Json | null
           role?: string
           tenant_id: string
           updated_at?: string | null
@@ -2593,6 +2643,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           is_active?: boolean | null
+          permissions?: Json | null
           role?: string
           tenant_id?: string
           updated_at?: string | null

@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { apiError, apiOk } from "@/lib/http";
+import { effectivePermissions } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export async function GET() {
 
   const { data: profile, error } = await supabase
     .from("user_profiles")
-    .select("id, role")
+    .select("id, role, permissions")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -23,8 +24,12 @@ export async function GET() {
     return apiError("Perfil: " + error.message, 500);
   }
 
+  const role =
+    (profile?.role as "admin" | "member" | undefined) ?? "member";
+
   return apiOk({
     id: user.id,
-    role: (profile?.role as "admin" | "member" | undefined) ?? "member",
+    role,
+    permissions: effectivePermissions(role, profile?.permissions),
   });
 }

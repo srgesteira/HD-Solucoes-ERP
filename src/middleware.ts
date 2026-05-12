@@ -1,7 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = new Set<string>(["/login", "/auth/callback"]);
+const PUBLIC_PATHS = new Set<string>([
+  "/login",
+  "/auth/callback",
+  "/reset-password",
+  "/update-password",
+  "/privacy",
+]);
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
@@ -54,7 +60,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login`);
   }
 
-  if (user && pathname.startsWith("/login")) {
+  if (user && pathname === "/login") {
     return NextResponse.redirect(`${origin}/boards`);
   }
 

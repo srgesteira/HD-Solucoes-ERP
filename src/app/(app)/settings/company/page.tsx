@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Building2, Loader2, Save, Upload } from "lucide-react";
+import { ArrowLeft, Building2, Download, Loader2, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -88,6 +88,7 @@ function emptyDraft(): Partial<CompanyRow> {
     default_ncm: "84213990",
     default_payment_terms: "30 dias",
     default_delivery_days: 30,
+    das_aliquot: null,
   };
 }
 
@@ -99,6 +100,7 @@ export default function CompanySettingsPage() {
 
   const [tab, setTab] = useState<TabKey>("info");
   const [draft, setDraft] = useState<Partial<CompanyRow>>(emptyDraft);
+  const [exporting, setExporting] = useState(false);
 
   const companyQuery = useQuery({
     queryKey: ["company-settings"],
@@ -196,6 +198,12 @@ export default function CompanySettingsPage() {
         d.default_delivery_days != null ?
           Math.floor(Number(d.default_delivery_days))
         : null,
+      das_aliquot:
+        d.tax_regime === "simples_nacional" &&
+        d.das_aliquot != null &&
+        Number.isFinite(Number(d.das_aliquot))
+          ? Math.min(100, Math.max(0, Number(d.das_aliquot)))
+          : null,
     };
   }, [draft]);
 
@@ -206,6 +214,32 @@ export default function CompanySettingsPage() {
       return;
     }
     saveMutation.mutate(payloadFromDraft);
+  }
+
+  async function handleExportLgpd() {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/company/export-data", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `Erro ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `export-lgpd-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Download iniciado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro na exportação");
+    } finally {
+      setExporting(false);
+    }
   }
 
   const tabs: { key: TabKey; label: string }[] = [
@@ -334,6 +368,36 @@ export default function CompanySettingsPage() {
                       <option value="lucro_real">Lucro Real</option>
                     </select>
                   </div>
+                  {draft.tax_regime === "simples_nacional" ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="das_aliquot">Alíquota DAS (%)</Label>
+                      <Input
+                        id="das_aliquot"
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        max={100}
+                        value={
+                          draft.das_aliquot != null ?
+                            String(draft.das_aliquot)
+                          : ""
+                        }
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            das_aliquot:
+                              e.target.value === "" ? null : (
+                                parseFloat(e.target.value)
+                              ),
+                          }))
+                        }
+                        placeholder="ex.: 6,5"
+                      />
+                      <p className="text-xs text-slate-500">
+                        Usada na precificação BDI quando o regime é Simples Nacional.
+                      </p>
+                    </div>
+                  ) : null}
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label htmlFor="company_name">Razão social *</Label>
                     <Input
@@ -698,6 +762,42 @@ export default function CompanySettingsPage() {
               </CardContent>
             </Card>
           ) : null}
+
+          <Card className="border-slate-200">
+            <CardHeader>
+              <CardTitle className="text-lg">Dados pessoais (LGPD)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-slate-700">
+              <p>
+                Exporte uma cópia dos dados do tenant em JSON para arquivo ou pedido
+                do titular.
+              </p>
+              <div className="flex flex-wrap gap-3 items-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={exporting}
+                  onClick={() => void handleExportLgpd()}
+                >
+                  {exporting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  <span className="ml-1">Exportar dados (LGPD)</span>
+                </Button>
+                <Link
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-brand-700 hover:underline"
+                >
+                  Política de privacidade
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="flex justify-end">
             <Button

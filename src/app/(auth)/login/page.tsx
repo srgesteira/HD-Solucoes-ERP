@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { LoginForm } from "./login-form";
 
@@ -30,6 +31,12 @@ export default function LoginPage() {
       <Suspense fallback={<LoginFormFallback />}>
         <LoginForm />
       </Suspense>
+
+      <p className="text-center text-xs text-slate-500 mt-4">
+        <Link href="/privacy" className="text-brand-700 hover:underline">
+          Política de privacidade (LGPD)
+        </Link>
+      </p>
     </div>
   );
 }

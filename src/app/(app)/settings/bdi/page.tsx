@@ -18,7 +18,7 @@ import {
   approximateBdiBreakdown,
   calculateBdiSellingPrice,
   defaultBdiSettings,
-  totalTaxPctFromSettings,
+  totalTaxPctFromSettingsOrCompany,
 } from "@/lib/pricing/bdi-calculate";
 
 function fmtBRL(n: number): string {
@@ -31,6 +31,8 @@ function fmtBRL(n: number): string {
 type ApiGetResponse = {
   data: Tables<"bdi_settings"> | null;
   slice: BdiSettingsSlice;
+  company_tax_regime: string | null;
+  company_das_aliquot: number | null;
 };
 
 async function fetchBdi(): Promise<ApiGetResponse> {
@@ -101,10 +103,23 @@ export default function BdiSettingsPage() {
   });
 
   const [draft, setDraft] = useState<BdiSettingsSlice>(defaultBdiSettings());
+  const [companyTaxRegime, setCompanyTaxRegime] = useState<string | null>(null);
+  const [companyDasAliquot, setCompanyDasAliquot] = useState<number | null>(null);
+
+  const isSimples = companyTaxRegime === "simples_nacional";
 
   useEffect(() => {
     if (apiData?.slice) setDraft(apiData.slice);
-  }, [apiData?.slice]);
+    if (apiData) {
+      setCompanyTaxRegime(apiData.company_tax_regime ?? null);
+      setCompanyDasAliquot(
+        apiData.company_das_aliquot != null &&
+          Number.isFinite(apiData.company_das_aliquot)
+          ? apiData.company_das_aliquot
+          : null
+      );
+    }
+  }, [apiData]);
 
   useEffect(() => {
     if (meLoading) return;
@@ -116,12 +131,22 @@ export default function BdiSettingsPage() {
 
   const previewCost = 100;
   const previewPrice = useMemo(
-    () => calculateBdiSellingPrice({ cost: previewCost, settings: draft }),
-    [draft]
+    () =>
+      calculateBdiSellingPrice({
+        cost: previewCost,
+        settings: draft,
+        companyTaxRegime,
+        companyDasAliquot,
+      }),
+    [draft, companyTaxRegime, companyDasAliquot]
   );
 
   const previewBreakdown = useMemo(() => {
-    const tax = totalTaxPctFromSettings(draft);
+    const tax = totalTaxPctFromSettingsOrCompany(
+      draft,
+      companyTaxRegime,
+      companyDasAliquot
+    );
     return approximateBdiBreakdown(previewCost, previewPrice, {
       taxes: tax,
       admin: draft.admin_overhead,
@@ -135,7 +160,7 @@ export default function BdiSettingsPage() {
         pct,
       };
     });
-  }, [draft, previewPrice]);
+  }, [draft, previewPrice, companyTaxRegime, companyDasAliquot]);
 
   const saveMut = useMutation({
     mutationFn: saveBdi,
@@ -175,6 +200,9 @@ export default function BdiSettingsPage() {
         Parâmetros de impostos, despesas indirectas e margem para geração de preço
         de venda a partir do custo (
         {draft.use_compound_bdi ? "BDI composto" : "BDI simples"}).
+        {isSimples ?
+          " Regime Simples Nacional: a carga fiscal do modelo segue a alíquota DAS definida em Configurações da empresa."
+        : null}
       </p>
 
       {isLoading ? (
@@ -188,11 +216,11 @@ export default function BdiSettingsPage() {
           onSubmit={(e) => {
             e.preventDefault();
             saveMut.mutate({
-              tax_icms: draft.tax_icms,
-              tax_pis: draft.tax_pis,
-              tax_cofins: draft.tax_cofins,
-              tax_ipi: draft.tax_ipi,
-              tax_iss: draft.tax_iss,
+              tax_icms: isSimples ? 0 : draft.tax_icms,
+              tax_pis: isSimples ? 0 : draft.tax_pis,
+              tax_cofins: isSimples ? 0 : draft.tax_cofins,
+              tax_ipi: isSimples ? 0 : draft.tax_ipi,
+              tax_iss: isSimples ? 0 : draft.tax_iss,
               admin_overhead: draft.admin_overhead,
               commercial_overhead: draft.commercial_overhead,
               financial_overhead: draft.financial_overhead,
@@ -212,38 +240,54 @@ export default function BdiSettingsPage() {
                 <h3 className="text-sm font-medium text-slate-800 mb-3 dark:text-slate-100">
                   Impostos sobre o preço (%)
                 </h3>
-                <div className="grid sm:grid-cols-3 md:grid-cols-5 gap-4">
-                  {pctField(
-                    draft.tax_icms,
-                    (v) => setDraft((d) => ({ ...d, tax_icms: v })),
-                    "tax_icms",
-                    "ICMS"
-                  )}
-                  {pctField(
-                    draft.tax_pis,
-                    (v) => setDraft((d) => ({ ...d, tax_pis: v })),
-                    "tax_pis",
-                    "PIS"
-                  )}
-                  {pctField(
-                    draft.tax_cofins,
-                    (v) => setDraft((d) => ({ ...d, tax_cofins: v })),
-                    "tax_cofins",
-                    "COFINS"
-                  )}
-                  {pctField(
-                    draft.tax_ipi,
-                    (v) => setDraft((d) => ({ ...d, tax_ipi: v })),
-                    "tax_ipi",
-                    "IPI"
-                  )}
-                  {pctField(
-                    draft.tax_iss,
-                    (v) => setDraft((d) => ({ ...d, tax_iss: v })),
-                    "tax_iss",
-                    "ISS"
-                  )}
-                </div>
+                {isSimples ? (
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    ICMS, PIS, COFINS, IPI e ISS não são usados no cálculo automático em
+                    Simples Nacional. Utilize a alíquota DAS em{" "}
+                    <a
+                      href="/settings/company"
+                      className="text-brand-700 font-medium hover:underline"
+                    >
+                      Configurações da empresa
+                    </a>
+                    {companyDasAliquot != null ?
+                      ` (actualmente ${companyDasAliquot}%).`
+                    : " (ainda não definida)."}
+                  </p>
+                ) : (
+                  <div className="grid sm:grid-cols-3 md:grid-cols-5 gap-4">
+                    {pctField(
+                      draft.tax_icms,
+                      (v) => setDraft((d) => ({ ...d, tax_icms: v })),
+                      "tax_icms",
+                      "ICMS"
+                    )}
+                    {pctField(
+                      draft.tax_pis,
+                      (v) => setDraft((d) => ({ ...d, tax_pis: v })),
+                      "tax_pis",
+                      "PIS"
+                    )}
+                    {pctField(
+                      draft.tax_cofins,
+                      (v) => setDraft((d) => ({ ...d, tax_cofins: v })),
+                      "tax_cofins",
+                      "COFINS"
+                    )}
+                    {pctField(
+                      draft.tax_ipi,
+                      (v) => setDraft((d) => ({ ...d, tax_ipi: v })),
+                      "tax_ipi",
+                      "IPI"
+                    )}
+                    {pctField(
+                      draft.tax_iss,
+                      (v) => setDraft((d) => ({ ...d, tax_iss: v })),
+                      "tax_iss",
+                      "ISS"
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>

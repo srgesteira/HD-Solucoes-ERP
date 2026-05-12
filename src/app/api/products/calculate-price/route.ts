@@ -7,7 +7,7 @@ import { getCurrentTenantId } from "@/lib/utils/tenant";
 import {
   approximateBdiBreakdown,
   calculateBdiSellingPrice,
-  totalTaxPctFromSettings,
+  totalTaxPctFromSettingsOrCompany,
 } from "@/lib/pricing/bdi-calculate";
 import { bdiRowToSlice } from "@/lib/pricing/bdi-db";
 
@@ -63,14 +63,6 @@ export async function POST(request: NextRequest) {
   const unitCost = Number(product.cost_price ?? 0);
   const lineCost = unitCost * quantity;
 
-  const { data: settingsRow } = await admin
-    .from("bdi_settings")
-    .select("*")
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-
-  const slice = bdiRowToSlice(settingsRow);
-
   const custom = Boolean(product.use_custom_bdi);
   const overrideTax =
     custom && product.custom_tax_rate != null
@@ -81,17 +73,44 @@ export async function POST(request: NextRequest) {
       ? Number(product.custom_profit_margin)
       : null;
 
+  const { data: settingsRow } = await admin
+    .from("bdi_settings")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  const { data: companyRow } = await admin
+    .from("company_settings")
+    .select("tax_regime, das_aliquot")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  const slice = bdiRowToSlice(settingsRow);
+
   const unitSelling = calculateBdiSellingPrice({
     cost: unitCost,
     settings: slice,
     overrideTaxPct: overrideTax,
     overrideProfitPct: overrideProfit,
+    companyTaxRegime: companyRow?.tax_regime ?? null,
+    companyDasAliquot:
+      companyRow?.das_aliquot != null ?
+        Number(companyRow.das_aliquot)
+      : null,
   });
 
-  const lineSelling = Math.round(unitSelling * quantity * 100) / 100;
-
   const effectiveTaxPct =
-    overrideTax !== null ? overrideTax : totalTaxPctFromSettings(slice);
+    overrideTax !== null ?
+      overrideTax
+    : totalTaxPctFromSettingsOrCompany(
+        slice,
+        companyRow?.tax_regime ?? null,
+        companyRow?.das_aliquot != null ?
+          Number(companyRow.das_aliquot)
+        : null
+      );
+
+  const lineSelling = Math.round(unitSelling * quantity * 100) / 100;
 
   const breakdownUnit = approximateBdiBreakdown(unitCost, unitSelling, {
     taxes: effectiveTaxPct,

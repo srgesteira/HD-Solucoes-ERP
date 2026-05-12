@@ -24,7 +24,34 @@ export type BdiPriceInput = {
   overrideTaxPct?: number | null;
   /** Margem desejada em % quando BDI personalizado */
   overrideProfitPct?: number | null;
+  /** Regime da empresa (ex.: simples_nacional) — usado com `companyDasAliquot`. */
+  companyTaxRegime?: string | null;
+  /** Alíquota DAS (%) em Simples Nacional (company_settings). */
+  companyDasAliquot?: number | null;
 };
+
+function companyUsesSimplesDas(
+  regime: string | null | undefined,
+  das: number | null | undefined
+): boolean {
+  return (
+    regime === "simples_nacional" &&
+    das != null &&
+    Number.isFinite(das) &&
+    coerceNum(das) >= 0
+  );
+}
+
+export function totalTaxPctFromSettingsOrCompany(
+  s: BdiSettingsSlice,
+  regime: string | null | undefined,
+  das: number | null | undefined
+): number {
+  if (companyUsesSimplesDas(regime, das)) {
+    return coerceNum(das);
+  }
+  return totalTaxPctFromSettings(s);
+}
 
 function clampCost(cost: number): number {
   if (!Number.isFinite(cost) || cost <= 0) return 0;
@@ -68,6 +95,11 @@ export function calculateBdiSellingPrice(input: BdiPriceInput): number {
   const totalTaxPct =
     input.overrideTaxPct !== undefined && input.overrideTaxPct !== null
       ? coerceNum(input.overrideTaxPct)
+      : companyUsesSimplesDas(
+            input.companyTaxRegime,
+            input.companyDasAliquot
+          ) ?
+        coerceNum(input.companyDasAliquot)
       : totalTaxPctFromSettings(s);
 
   const profitPct =

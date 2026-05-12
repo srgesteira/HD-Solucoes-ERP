@@ -34,6 +34,24 @@ function defaultsForInsert(
   };
 }
 
+async function companyTaxPayload(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  tenantId: string
+) {
+  const { data: companyRow } = await admin
+    .from("company_settings")
+    .select("tax_regime, das_aliquot")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  return {
+    company_tax_regime: companyRow?.tax_regime ?? null,
+    company_das_aliquot:
+      companyRow?.das_aliquot != null ?
+        Number(companyRow.das_aliquot)
+      : null,
+  };
+}
+
 export async function GET() {
   const supabase = await createServerSupabaseClient();
   const {
@@ -45,7 +63,7 @@ export async function GET() {
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
+  const { data: settingsRow, error } = await admin
     .from("bdi_settings")
     .select("*")
     .eq("tenant_id", tenantId)
@@ -59,8 +77,9 @@ export async function GET() {
   }
 
   return apiOk({
-    data,
-    slice: bdiRowToSlice(data),
+    data: settingsRow,
+    slice: bdiRowToSlice(settingsRow),
+    ...(await companyTaxPayload(admin, tenantId)),
   });
 }
 
@@ -175,7 +194,11 @@ export async function PUT(request: NextRequest) {
         supabaseErrorToHttp(error.code)
       );
     }
-    return apiOk({ data: updated, slice: bdiRowToSlice(updated) });
+    return apiOk({
+      data: updated,
+      slice: bdiRowToSlice(updated),
+      ...(await companyTaxPayload(admin, tenantId)),
+    });
   }
 
   const { data: inserted, error } = await admin
@@ -191,5 +214,9 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  return apiOk({ data: inserted, slice: bdiRowToSlice(inserted) });
+  return apiOk({
+    data: inserted,
+    slice: bdiRowToSlice(inserted),
+    ...(await companyTaxPayload(admin, tenantId)),
+  });
 }
