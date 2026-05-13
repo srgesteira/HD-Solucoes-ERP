@@ -22,6 +22,7 @@ export async function GET(_request: NextRequest) {
     .select("id,code,name,sort_order")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
+    .order("sort_order", { ascending: true })
     .order("code", { ascending: true });
 
   if (error) {

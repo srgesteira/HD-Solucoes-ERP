@@ -221,16 +221,17 @@ export function ProductFormFields({
           className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700 leading-relaxed"
         >
           <p className="font-medium text-slate-800">
-            Onde está o «sufixo» do código técnico?
+            Sufixo de entrada e sequência do código
           </p>
           <p className="mt-1">
-            No exemplo <span className="font-mono text-slate-900">HD1-A10A10-001</span>, a parte final{' '}
-            <span className="font-mono text-slate-900">-001</span> é o{' '}
-            <strong>sufixo numérico</strong> (sequência). Ele{" "}
-            <strong>não aparece como campo</strong>: a base de dados atribui automaticamente o próximo
-            número (001, 002…) quando grava o produto, depois de escolher prefixo, família, sub-família,
-            material e acabamento. Comece por <strong>Prefixo</strong> e <strong>Família</strong>. Se as
-            listas estiverem vazias, cadastre os dados em{" "}
+            O primeiro campo abaixo lista <strong>HD1, HD2, HD3</strong> (linha comercial) e{' '}
+            <strong>MP, SE, EB, MC, RV, AC</strong> — passa a ser o <strong>primeiro segmento</strong>{' '}
+            do código técnico (ex.: <span className="font-mono text-slate-900">HD1-A10A10-001</span> ou{' '}
+            <span className="font-mono text-slate-900">MP-A10A10-001</span>). A parte{' '}
+            <span className="font-mono">-001</span> no fim é a <strong>sequência numérica</strong>,
+            atribuída automaticamente na gravação (não é um campo). O <strong>MRP</strong> continua a
+            usar o campo <strong>Natureza</strong>; mantenha os dois alinhados quando possível. Se as
+            listas estiverem vazias, cadastre em{' '}
             <Link
               href="/settings/product-families"
               className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
@@ -242,7 +243,7 @@ export function ProductFormFields({
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="prefix_id">Prefixo *</Label>
+            <Label htmlFor="prefix_id">Sufixo / prefixo *</Label>
             <select
               id="prefix_id"
               className={SELECT_CLASS}
@@ -258,6 +259,9 @@ export function ProductFormFields({
                 </option>
               ))}
             </select>
+            <p className="text-xs text-slate-500">
+              HD1–HD3 ou MP, SE, EB, MC, RV, AC (9 opções após migração da base de dados).
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="family_id">Família *</Label>
@@ -354,12 +358,12 @@ export function ProductFormFields({
               title={
                 formData.technical_code
                   ? undefined
-                  : "Guardar o produto para gerar o código HD1-A10A10-001"
+                  : "Guardar o produto para gerar o código (ex.: HD1-A10A10-001 ou MP-A10A10-001)"
               }
             />
             <p className="text-xs text-slate-500">
               Identificador único do produto. Gerado na base de dados a partir da
-              classificação (ex.: HD1-A10A10-001). Não é editável.
+              classificação (ex.: HD1-A10A10-001 ou MP-A10A10-001). Não é editável.
             </p>
           </div>
           <div className="space-y-2 md:col-span-2">
