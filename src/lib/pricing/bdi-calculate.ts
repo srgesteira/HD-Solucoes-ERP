@@ -30,24 +30,12 @@ export type BdiPriceInput = {
   companyDasAliquot?: number | null;
 };
 
-function companyUsesSimplesDas(
-  regime: string | null | undefined,
-  das: number | null | undefined
-): boolean {
-  return (
-    regime === "simples_nacional" &&
-    das != null &&
-    Number.isFinite(das) &&
-    coerceNum(das) >= 0
-  );
-}
-
 export function totalTaxPctFromSettingsOrCompany(
   s: BdiSettingsSlice,
   regime: string | null | undefined,
   das: number | null | undefined
 ): number {
-  if (companyUsesSimplesDas(regime, das)) {
+  if (regime === "simples_nacional") {
     return coerceNum(das);
   }
   return totalTaxPctFromSettings(s);
@@ -95,11 +83,8 @@ export function calculateBdiSellingPrice(input: BdiPriceInput): number {
   const totalTaxPct =
     input.overrideTaxPct !== undefined && input.overrideTaxPct !== null
       ? coerceNum(input.overrideTaxPct)
-      : companyUsesSimplesDas(
-            input.companyTaxRegime,
-            input.companyDasAliquot
-          ) ?
-        coerceNum(input.companyDasAliquot)
+      : input.companyTaxRegime === "simples_nacional"
+        ? coerceNum(input.companyDasAliquot)
       : totalTaxPctFromSettings(s);
 
   const profitPct =
@@ -154,6 +139,8 @@ export function approximateBdiBreakdown(
     commercial: number;
     financial: number;
     profit: number;
+    /** Ex.: «DAS (est.)» em Simples Nacional. */
+    taxLabel?: string;
   }
 ): Array<{ label: string; amount: number; color: string }> {
   const pool = Math.max(sellingPrice - cost, 0);
@@ -171,7 +158,7 @@ export function approximateBdiBreakdown(
     pool > 0 && wSum > 0
       ? [
           {
-            label: "Impostos (est.)",
+            label: weights.taxLabel ?? "Impostos (est.)",
             amount: pool * (coerceNum(weights.taxes, 0) / wSum),
             color: "bg-rose-400",
           },

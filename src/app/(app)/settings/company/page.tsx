@@ -125,6 +125,13 @@ export default function CompanySettingsPage() {
         row.default_delivery_days != null ?
           Number(row.default_delivery_days)
         : 30,
+      das_aliquot:
+        row.tax_regime === "simples_nacional" &&
+        (row.das_aliquot == null || !Number.isFinite(Number(row.das_aliquot)))
+          ? 6
+          : row.das_aliquot != null
+            ? Number(row.das_aliquot)
+            : null,
     });
   }, [companyQuery.data]);
 
@@ -212,6 +219,21 @@ export default function CompanySettingsPage() {
       toast.error("Razão social é obrigatória.");
       setTab("info");
       return;
+    }
+    if (draft.tax_regime === "simples_nacional") {
+      const d = Number(draft.das_aliquot);
+      if (
+        draft.das_aliquot == null ||
+        !Number.isFinite(d) ||
+        d < 0 ||
+        d > 100
+      ) {
+        toast.error(
+          "Em Simples Nacional indique a alíquota DAS (%) entre 0 e 100 (sugestão: 6)."
+        );
+        setTab("info");
+        return;
+      }
     }
     saveMutation.mutate(payloadFromDraft);
   }
@@ -353,13 +375,22 @@ export default function CompanySettingsPage() {
                       className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm dark:bg-slate-950 dark:border-slate-600"
                       value={draft.tax_regime ?? ""}
                       onChange={(e) =>
-                        setDraft((d) => ({
-                          ...d,
-                          tax_regime:
-                            e.target.value === "" ? null : (
-                              (e.target.value as CompanyRow["tax_regime"])
-                            ),
-                        }))
+                        setDraft((d) => {
+                          const v =
+                            e.target.value === "" ?
+                              null
+                            : (e.target.value as CompanyRow["tax_regime"]);
+                          const next = { ...d, tax_regime: v };
+                          if (v === "simples_nacional") {
+                            if (
+                              d.das_aliquot == null ||
+                              !Number.isFinite(Number(d.das_aliquot))
+                            ) {
+                              return { ...next, das_aliquot: 6 };
+                            }
+                          }
+                          return next;
+                        })
                       }
                     >
                       <option value="">— Seleccionar —</option>
@@ -370,13 +401,16 @@ export default function CompanySettingsPage() {
                   </div>
                   {draft.tax_regime === "simples_nacional" ? (
                     <div className="space-y-1.5">
-                      <Label htmlFor="das_aliquot">Alíquota DAS (%)</Label>
+                      <Label htmlFor="das_aliquot">
+                        Alíquota DAS (%) <span className="text-red-600">*</span>
+                      </Label>
                       <Input
                         id="das_aliquot"
                         type="number"
                         step="0.01"
                         min={0}
                         max={100}
+                        required
                         value={
                           draft.das_aliquot != null ?
                             String(draft.das_aliquot)
@@ -391,7 +425,7 @@ export default function CompanySettingsPage() {
                               ),
                           }))
                         }
-                        placeholder="ex.: 6,5"
+                        placeholder="6"
                       />
                       <p className="text-xs text-slate-500">
                         Usada na precificação BDI quando o regime é Simples Nacional.

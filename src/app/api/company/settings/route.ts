@@ -210,6 +210,19 @@ export async function PUT(request: NextRequest) {
     updatePayload.das_aliquot = b.das_aliquot;
   }
 
+  const nextRegime = b.tax_regime ?? row.tax_regime;
+  const nextDas =
+    b.das_aliquot !== undefined ? b.das_aliquot : row.das_aliquot;
+  if (nextRegime === "simples_nacional") {
+    const d = Number(nextDas);
+    if (nextDas == null || !Number.isFinite(d) || d < 0 || d > 100) {
+      return apiError(
+        "Em Simples Nacional a alíquota DAS (%) é obrigatória (0–100).",
+        400
+      );
+    }
+  }
+
   const { data, error } = await admin
     .from("company_settings")
     .update(updatePayload)

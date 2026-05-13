@@ -59,6 +59,15 @@ export default function PrivacyPolicyPage() {
         contra acessos não autorizados, perda ou alteração indevida.
       </p>
 
+      <h2>7. Encarregado de dados (DPO) e contacto</h2>
+      <p>
+        O encarregado de protecção de dados (DPO) ou o canal de contacto para questões
+        relacionadas com esta política e com o exercício dos seus direitos deve ser
+        indicado pela sua organização (controlador). Se utilizar o ERP HD no âmbito
+        laboral, dirija-se ao departamento jurídico ou de recursos humanos da entidade
+        patronal.
+      </p>
+
       <p className="not-prose pt-6">
         <Link href="/login" className="text-brand-700 text-sm font-medium hover:underline">
           Ir para o login

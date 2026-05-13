@@ -7,7 +7,8 @@ export type ModuleKey =
   | "purchasing"
   | "sales"
   | "products"
-  | "settings";
+  | "settings"
+  | "reports";
 
 export type ModulePermissions = Record<ModuleKey, boolean>;
 
@@ -19,6 +20,7 @@ export const MODULE_KEYS: ModuleKey[] = [
   "sales",
   "products",
   "settings",
+  "reports",
 ];
 
 export const DEFAULT_MODULE_PERMISSIONS: ModulePermissions = {
@@ -29,6 +31,7 @@ export const DEFAULT_MODULE_PERMISSIONS: ModulePermissions = {
   sales: true,
   products: true,
   settings: true,
+  reports: true,
 };
 
 function isModuleKey(k: string): k is ModuleKey {
@@ -50,7 +53,11 @@ export function mergeModulePermissions(
 }
 
 export function fullAccessPermissions(): ModulePermissions {
-  return { ...DEFAULT_MODULE_PERMISSIONS };
+  const all = {} as ModulePermissions;
+  for (const k of MODULE_KEYS) {
+    all[k] = true;
+  }
+  return all;
 }
 
 export function effectivePermissions(

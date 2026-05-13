@@ -138,6 +138,11 @@ export async function POST(request: NextRequest) {
       line_selling_price: lineSelling,
       use_custom_bdi: custom,
       bdi_compound: slice.use_compound_bdi,
+      company_tax_regime: companyRow?.tax_regime ?? null,
+      company_das_aliquot:
+        companyRow?.das_aliquot != null ?
+          Number(companyRow.das_aliquot)
+        : null,
       effective_tax_pct: effectiveTaxPct,
       effective_profit_pct:
         overrideProfit !== null ? overrideProfit : slice.profit_margin,

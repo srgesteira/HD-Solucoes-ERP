@@ -33,6 +33,7 @@ const MODULE_LABELS: Record<ModuleKey, string> = {
   sales: "Vendas",
   products: "Produtos",
   settings: "Configurações",
+  reports: "Relatórios",
 };
 
 export default function SettingsUsersPage() {

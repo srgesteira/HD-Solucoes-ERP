@@ -1,0 +1,122 @@
+import { NextRequest } from "next/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { apiError, apiOk } from "@/lib/http";
+import { getCurrentTenantId } from "@/lib/utils/tenant";
+import { assertReportsAccess } from "@/lib/utils/report-access";
+
+export const dynamic = "force-dynamic";
+
+function dayKey(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const s = iso.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+/**
+ * GET /api/reports/cash-flow?horizon=90
+ * Projeção simplificada: entradas (receivables pendentes/parciais por vencimento) vs
+ * saídas (pedidos de compra confirmados por data prevista de entrega ou data do pedido).
+ */
+export async function GET(request: NextRequest) {
+  const gate = await assertReportsAccess();
+  if (!gate.ok) return gate.response;
+
+  const tenantId = await getCurrentTenantId();
+  if (!tenantId) return apiError("Tenant não encontrado", 403);
+
+  const horizon = Math.min(
+    120,
+    Math.max(30, parseInt(request.nextUrl.searchParams.get("horizon") ?? "90", 10) || 90)
+  );
+
+  const admin = createSupabaseAdminClient();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(today);
+  end.setDate(end.getDate() + horizon);
+
+  const { data: receivables, error: rErr } = await admin
+    .from("receivables")
+    .select("id, due_date, current_amount, status, client_name")
+    .eq("tenant_id", tenantId)
+    .in("status", ["pending", "partial"]);
+
+  if (rErr) {
+    return apiError("Recebíveis: " + rErr.message, 500);
+  }
+
+  const { data: pos, error: pErr } = await admin
+    .from("purchase_orders")
+    .select("id, total, status, expected_delivery, order_date, po_number")
+    .eq("tenant_id", tenantId)
+    .eq("status", "confirmed");
+
+  if (pErr) {
+    return apiError("Compras: " + pErr.message, 500);
+  }
+
+  const inByDay = new Map<string, number>();
+  for (const r of receivables ?? []) {
+    const k = dayKey(r.due_date);
+    if (!k) continue;
+    const amt = Number(r.current_amount ?? 0);
+    if (!Number.isFinite(amt) || amt <= 0) continue;
+    inByDay.set(k, (inByDay.get(k) ?? 0) + amt);
+  }
+
+  const outByDay = new Map<string, number>();
+  for (const p of pos ?? []) {
+    const k =
+      dayKey(p.expected_delivery) ?? dayKey(p.order_date);
+    if (!k) continue;
+    const amt = Number(p.total ?? 0);
+    if (!Number.isFinite(amt) || amt <= 0) continue;
+    outByDay.set(k, (outByDay.get(k) ?? 0) + amt);
+  }
+
+  const series: Array<{
+    date: string;
+    inflow: number;
+    outflow: number;
+    net: number;
+    cumulative: number;
+  }> = [];
+
+  let cumulative = 0;
+  for (let i = 0; i <= horizon; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    const inf = inByDay.get(key) ?? 0;
+    const outf = outByDay.get(key) ?? 0;
+    const net = inf - outf;
+    cumulative += net;
+    series.push({
+      date: key,
+      inflow: Math.round(inf * 100) / 100,
+      outflow: Math.round(outf * 100) / 100,
+      net: Math.round(net * 100) / 100,
+      cumulative: Math.round(cumulative * 100) / 100,
+    });
+  }
+
+  const summary = {
+    horizon_days: horizon,
+    total_projected_inflow: Math.round(
+      series.reduce((s, x) => s + x.inflow, 0) * 100
+    ) / 100,
+    total_projected_outflow: Math.round(
+      series.reduce((s, x) => s + x.outflow, 0) * 100
+    ) / 100,
+    negative_days: series.filter((x) => x.cumulative < 0).length,
+  };
+
+  return apiOk({
+    series,
+    summary,
+    meta: {
+      inflow_source: "receivables (pending/partial) por due_date",
+      outflow_source: "purchase_orders (confirmed) por expected_delivery ou order_date",
+    },
+  });
+}

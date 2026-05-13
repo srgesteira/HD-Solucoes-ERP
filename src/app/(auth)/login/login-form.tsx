@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -150,15 +149,6 @@ export function LoginForm() {
       <Button type="submit" disabled={loading} className="w-full" size="lg">
         {loading ? "Entrando…" : "Entrar"}
       </Button>
-
-      <p className="text-center text-sm">
-        <Link
-          href="/reset-password"
-          className="text-brand-700 hover:underline font-medium"
-        >
-          Esqueceu sua senha?
-        </Link>
-      </p>
 
       <p className="text-xs text-slate-500 text-center pt-2">
         Use a conta criada no Supabase Auth do projeto{" "}

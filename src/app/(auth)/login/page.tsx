@@ -32,6 +32,15 @@ export default function LoginPage() {
         <LoginForm />
       </Suspense>
 
+      <p className="text-center mt-4">
+        <Link
+          href="/reset-password"
+          className="text-sm text-slate-500 hover:text-brand-700"
+        >
+          Esqueceu sua senha?
+        </Link>
+      </p>
+
       <p className="text-center text-xs text-slate-500 mt-4">
         <Link href="/privacy" className="text-brand-700 hover:underline">
           Política de privacidade (LGPD)

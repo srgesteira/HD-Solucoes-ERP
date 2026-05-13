@@ -153,6 +153,7 @@ export default function BdiSettingsPage() {
       commercial: draft.commercial_overhead,
       financial: draft.financial_overhead,
       profit: draft.profit_margin,
+      taxLabel: isSimples ? "DAS (est.)" : undefined,
     }).map((b) => {
       const pct = previewPrice > 0 ? (b.amount / previewPrice) * 100 : 0;
       return {
@@ -160,7 +161,7 @@ export default function BdiSettingsPage() {
         pct,
       };
     });
-  }, [draft, previewPrice, companyTaxRegime, companyDasAliquot]);
+  }, [draft, previewPrice, companyTaxRegime, companyDasAliquot, isSimples]);
 
   const saveMut = useMutation({
     mutationFn: saveBdi,
@@ -241,19 +242,42 @@ export default function BdiSettingsPage() {
                   Impostos sobre o preço (%)
                 </h3>
                 {isSimples ? (
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    ICMS, PIS, COFINS, IPI e ISS não são usados no cálculo automático em
-                    Simples Nacional. Utilize a alíquota DAS em{" "}
-                    <a
-                      href="/settings/company"
-                      className="text-brand-700 font-medium hover:underline"
-                    >
-                      Configurações da empresa
-                    </a>
-                    {companyDasAliquot != null ?
-                      ` (actualmente ${companyDasAliquot}%).`
-                    : " (ainda não definida)."}
-                  </p>
+                  <div className="grid sm:grid-cols-2 gap-4 max-w-xl">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="das_display">DAS (%) — valor da empresa</Label>
+                      <Input
+                        id="das_display"
+                        readOnly
+                        disabled
+                        className="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-100"
+                        value={
+                          companyDasAliquot != null &&
+                          Number.isFinite(companyDasAliquot)
+                            ? String(companyDasAliquot)
+                            : ""
+                        }
+                        placeholder="—"
+                      />
+                      <p className="text-xs text-slate-500">
+                        Defina ou altere em{" "}
+                        <a
+                          href="/settings/company"
+                          className="text-brand-700 font-medium hover:underline"
+                        >
+                          Configurações da empresa
+                        </a>
+                        . ICMS, PIS, COFINS, IPI e ISS não entram no cálculo automático
+                        em Simples Nacional.
+                      </p>
+                    </div>
+                    {companyDasAliquot == null ||
+                    !Number.isFinite(companyDasAliquot) ? (
+                      <p className="text-sm text-amber-800 dark:text-amber-200 sm:col-span-2">
+                        A alíquota DAS ainda não está definida: o preço de referência
+                        usará 0% de carga fiscal até ser configurada.
+                      </p>
+                    ) : null}
+                  </div>
                 ) : (
                   <div className="grid sm:grid-cols-3 md:grid-cols-5 gap-4">
                     {pctField(
@@ -368,6 +392,14 @@ export default function BdiSettingsPage() {
               <CardTitle className="text-lg">Impacto — custo exemplo R$ 100</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
+              {isSimples ? (
+                <p className="text-xs text-slate-600 dark:text-slate-400 border-l-2 border-brand-600 pl-3">
+                  <strong>Simples — BDI composto:</strong> preço ≈ custo ÷ (1 −
+                  (DAS%÷100 + despesas%÷100 + margem%÷100)), onde «despesas%» é a soma
+                  das percentagens administrativa, comercial e financeira sobre o preço.
+                  Com BDI simples (multiplicador), o modelo usa soma em vez de divisor.
+                </p>
+              ) : null}
               <p className="text-slate-600 dark:text-slate-400">
                 Preço estimado{" "}
                 <strong className="text-emerald-800 dark:text-emerald-400">
