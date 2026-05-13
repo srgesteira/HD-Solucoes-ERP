@@ -66,7 +66,16 @@ export interface StructureSuggestion {
 export interface OrderPdfExtraction {
   orderNumber?: string;
   clientName?: string;
-  items: Array<{ description: string; quantity: number }>;
+  /** CPF ou CNPJ apenas dígitos ou formatado */
+  clientDocument?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  items: Array<{
+    description: string;
+    quantity: number;
+    /** Unidade comercial se visível no PDF (UN, PC, KG, etc.) */
+    unit?: string;
+  }>;
 }
 
 export async function suggestNCM(
@@ -164,6 +173,39 @@ export async function suggestProductStructure(
   }
 }
 
+function normalizePdfOrderJson(raw: OrderPdfExtraction): OrderPdfExtraction {
+  const items = Array.isArray(raw.items) ? raw.items : [];
+  const normalized = items
+    .map((it) => {
+      const desc =
+        typeof it.description === "string" ? it.description.trim() : "";
+      const q = Number(it.quantity);
+      const qty = Number.isFinite(q) && q >= 0 ? q : 0;
+      const unit =
+        typeof it.unit === "string" && it.unit.trim() ?
+          it.unit.trim().slice(0, 16)
+        : undefined;
+      return { description: desc, quantity: qty, unit };
+    })
+    .filter((it) => it.description.length > 0 && it.quantity > 0);
+
+  return {
+    orderNumber:
+      typeof raw.orderNumber === "string" ? raw.orderNumber.trim() : undefined,
+    clientName:
+      typeof raw.clientName === "string" ? raw.clientName.trim() : undefined,
+    clientDocument:
+      typeof raw.clientDocument === "string" ?
+        raw.clientDocument.trim()
+      : undefined,
+    clientEmail:
+      typeof raw.clientEmail === "string" ? raw.clientEmail.trim() : undefined,
+    clientPhone:
+      typeof raw.clientPhone === "string" ? raw.clientPhone.trim() : undefined,
+    items: normalized,
+  };
+}
+
 /**
  * Extrai texto do PDF e pede à IA para estruturar pedido (OC / pedido de venda).
  * Uso futuro em importação de pedidos de produção.
@@ -197,21 +239,33 @@ export async function extractOrderFromPDF(
   const textForModel = clip(text, 12000);
 
   const prompt =
-    `Extrai informações de um pedido de compra / ordem de compra / nota de encomenda a partir do texto abaixo.\n\n` +
-    `Texto:\n---\n${textForModel}\n---\n\n` +
-    `Responde APENAS com um único objeto JSON (sem texto fora do JSON):\n` +
+    `Analisa o texto de um documento comercial (pedido de compra, ordem de compra, ` +
+    `proposta, nota de encomenda ou similar) em português.\n\n` +
+    `Tarefa:\n` +
+    `1) Identifica o número/referência do documento (se existir).\n` +
+    `2) Identifica o nome da entidade que encomenda ou compra (cliente / tomador).\n` +
+    `3) Se existir, extrai CPF ou CNPJ do cliente (com ou sem máscara).\n` +
+    `4) Se existir, extrai e-mail e telefone de contacto do cliente.\n` +
+    `5) Lista cada linha de produto/serviço com descrição, quantidade numérica (>0) e, ` +
+    `se visível no PDF, a unidade (UN, PC, KG, M, etc.).\n` +
+    `Ignora totais, impostos e rodapés que não sejam linhas de artigo.\n\n` +
+    `Texto do PDF:\n---\n${textForModel}\n---\n\n` +
+    `Responde APENAS com um único objeto JSON válido (sem markdown, sem texto extra):\n` +
     `{\n` +
-    `  "orderNumber": "número ou referência se existir",\n` +
-    `  "clientName": "nome do cliente ou fornecedor conforme o documento",\n` +
-    `  "items": [ { "description": "…", "quantity": 1 } ]\n` +
+    `  "orderNumber": "",\n` +
+    `  "clientName": "",\n` +
+    `  "clientDocument": "",\n` +
+    `  "clientEmail": "",\n` +
+    `  "clientPhone": "",\n` +
+    `  "items": [ { "description": "", "quantity": 1, "unit": "UN" } ]\n` +
     `}\n` +
-    `Se um campo não existir, usa string vazia ou lista vazia quando fizer sentido.`;
+    `Usa "" para strings desconhecidas e "items": [] se não houver linhas identificáveis.`;
 
   try {
     const message = await client.messages.create({
       model: getAnthropicModelId(),
-      max_tokens: 1200,
-      temperature: 0.2,
+      max_tokens: 4096,
+      temperature: 0.15,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -223,7 +277,13 @@ export async function extractOrderFromPDF(
     if (!Array.isArray(parsed.items)) {
       parsed.items = [];
     }
-    return parsed;
+    const out = normalizePdfOrderJson(parsed);
+    if (!out.items.length) {
+      throw new Error(
+        "Nenhuma linha de artigo reconhecida no PDF. Verifique se o ficheiro tem texto seleccionável."
+      );
+    }
+    return out;
   } catch (e) {
     console.error("extractOrderFromPDF:", e);
     throw new Error(

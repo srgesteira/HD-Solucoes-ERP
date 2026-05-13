@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -84,7 +84,10 @@ async function fetchProductPicklist(): Promise<PickRow[]> {
   return Array.isArray(json.data) ? json.data : [];
 }
 
-type WcRow = Database["public"]["Tables"]["work_centers"]["Row"];
+type WcRow = Database["public"]["Tables"]["work_centers"]["Row"] & {
+  labor_hourly_rate_this_month?: number | null;
+  labor_hourly_rate_latest?: number | null;
+};
 
 async function fetchWorkCentersList(): Promise<WcRow[]> {
   const res = await fetch("/api/work-centers", {
@@ -148,6 +151,7 @@ export default function ProductStructurePage() {
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedWorkCenterId, setSelectedWorkCenterId] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [laborHourlyRate, setLaborHourlyRate] = useState(0);
 
   const { data: product, isLoading: productLoading } = useQuery({
     queryKey: ["product", productId],
@@ -169,6 +173,19 @@ export default function ProductStructurePage() {
     () => (workCentersRaw ?? []).filter((w) => w.is_active),
     [workCentersRaw]
   );
+
+  useEffect(() => {
+    if (componentType !== "labor") return;
+    const wc = workCenters.find((w) => w.id === selectedWorkCenterId);
+    const sug = wc
+      ? Number(
+          wc.labor_hourly_rate_latest != null
+            ? wc.labor_hourly_rate_latest
+            : wc.hourly_cost ?? 0
+        )
+      : 0;
+    setLaborHourlyRate(sug);
+  }, [componentType, selectedWorkCenterId, workCenters]);
 
   const usedComponentIds = useMemo(() => {
     const set = new Set<string>();
@@ -217,6 +234,7 @@ export default function ProductStructurePage() {
     setSelectedProductId("");
     setSelectedWorkCenterId("");
     setQuantity(1);
+    setLaborHourlyRate(0);
   }
 
   async function handleAddComponent() {
@@ -245,6 +263,7 @@ export default function ProductStructurePage() {
           is_labor: true,
           work_center_id: selectedWorkCenterId,
           quantity,
+          unit_cost: laborHourlyRate,
         });
       }
     } catch {
@@ -595,10 +614,33 @@ export default function ProductStructurePage() {
                     <option value="">— Seleccionar —</option>
                     {workCenters.map((wc) => (
                       <option key={wc.id} value={wc.id}>
-                        {wc.code} — {wc.name} ({formatCurrency(wc.hourly_cost)}/h)
+                        {wc.code} — {wc.name} (
+                        {formatCurrency(
+                          wc.labor_hourly_rate_latest != null
+                            ? wc.labor_hourly_rate_latest
+                            : Number(wc.hourly_cost ?? 0)
+                        )}
+                        /h)
                       </option>
                     ))}
                   </select>
+                  <div className="space-y-2 pt-2">
+                    <Label htmlFor="bom-labor-rate">Custo por hora (R$)</Label>
+                    <Input
+                      id="bom-labor-rate"
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={laborHourlyRate}
+                      onChange={(e) =>
+                        setLaborHourlyRate(parseFloat(e.target.value) || 0)
+                      }
+                    />
+                    <p className="text-xs text-slate-500">
+                      Preenchido com o último custo/hora calculado para a linha (relatório de MO) ou,
+                      se não houver, com o custo/h cadastrado no centro. Pode alterar antes de gravar.
+                    </p>
+                  </div>
                 </div>
               )}
 

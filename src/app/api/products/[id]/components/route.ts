@@ -8,6 +8,7 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/lib/utils/tenant";
 import { productComponentSchema } from "@/lib/schemas/product.schema";
+import { getLatestLaborHourlyRateForWorkCenter } from "@/lib/labor-cost-utils";
 import type { Database } from "@/lib/types/database";
 
 export const dynamic = "force-dynamic";
@@ -143,13 +144,22 @@ export async function POST(request: NextRequest, { params }: Params) {
       .maybeSingle();
     unitCost = Number(component?.cost_price ?? 0);
   } else if (validated.work_center_id) {
-    const { data: workCenter } = await admin
-      .from("work_centers")
-      .select("hourly_cost")
-      .eq("id", validated.work_center_id)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-    unitCost = Number(workCenter?.hourly_cost ?? 0);
+    if (validated.unit_cost !== undefined) {
+      unitCost = validated.unit_cost;
+    } else {
+      const fromLabor = await getLatestLaborHourlyRateForWorkCenter(
+        admin,
+        tenantId,
+        validated.work_center_id
+      );
+      const { data: workCenter } = await admin
+        .from("work_centers")
+        .select("hourly_cost")
+        .eq("id", validated.work_center_id)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      unitCost = fromLabor ?? Number(workCenter?.hourly_cost ?? 0);
+    }
   }
 
   const { data, error } = await admin

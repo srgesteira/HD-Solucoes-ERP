@@ -13,6 +13,23 @@ export const dynamic = "force-dynamic";
 
 type CompanyRow = Database["public"]["Tables"]["company_settings"]["Row"];
 
+/** Resposta GET sem expor o token FocusNFe. */
+export type CompanySettingsSafe = Omit<CompanyRow, "focusnfe_token"> & {
+  focusnfe_token: null;
+  focusnfe_configured: boolean;
+};
+
+function stripFocusToken(row: CompanyRow | null): CompanySettingsSafe | null {
+  if (!row) return null;
+  const { focusnfe_token: _t, ...rest } = row;
+  const token = _t?.trim() ?? "";
+  return {
+    ...(rest as Omit<CompanyRow, "focusnfe_token">),
+    focusnfe_token: null,
+    focusnfe_configured: token.length > 0,
+  };
+}
+
 function normalizeEmail(v: string | null | undefined): string | null {
   if (v === undefined || v === null || v === "") return null;
   return v.trim();
@@ -47,7 +64,7 @@ export async function GET() {
     );
   }
 
-  return apiOk({ data: data as CompanyRow | null });
+  return apiOk({ data: stripFocusToken(data as CompanyRow | null) });
 }
 
 export async function POST() {
@@ -105,7 +122,7 @@ export async function POST() {
     );
   }
 
-  return apiOk({ data: data as CompanyRow }, 201);
+  return apiOk({ data: stripFocusToken(data as CompanyRow) }, 201);
 }
 
 export async function PUT(request: NextRequest) {
@@ -209,6 +226,44 @@ export async function PUT(request: NextRequest) {
   if (b.das_aliquot !== undefined) {
     updatePayload.das_aliquot = b.das_aliquot;
   }
+  if (b.focusnfe_token !== undefined) {
+    const t = b.focusnfe_token;
+    updatePayload.focusnfe_token =
+      t === null || t === undefined || String(t).trim() === ""
+        ? null
+        : String(t).trim();
+  }
+  if (b.focusnfe_environment !== undefined) {
+    updatePayload.focusnfe_environment = b.focusnfe_environment;
+  }
+  if (b.nfse_item_lista_servico !== undefined) {
+    updatePayload.nfse_item_lista_servico = b.nfse_item_lista_servico;
+  }
+  if (b.nfse_iss_aliquota !== undefined) {
+    updatePayload.nfse_iss_aliquota = b.nfse_iss_aliquota;
+  }
+  if (b.nfse_prestador_codigo_municipio !== undefined) {
+    updatePayload.nfse_prestador_codigo_municipio =
+      b.nfse_prestador_codigo_municipio;
+  }
+  if (b.nfse_codigo_nbs !== undefined) {
+    updatePayload.nfse_codigo_nbs = b.nfse_codigo_nbs;
+  }
+  if (b.nfse_codigo_indicador_operacao !== undefined) {
+    updatePayload.nfse_codigo_indicador_operacao =
+      b.nfse_codigo_indicador_operacao;
+  }
+  if (b.nfse_ibs_cbs_classificacao_tributaria !== undefined) {
+    updatePayload.nfse_ibs_cbs_classificacao_tributaria =
+      b.nfse_ibs_cbs_classificacao_tributaria;
+  }
+  if (b.nfse_use_sao_paulo_payload !== undefined) {
+    updatePayload.nfse_use_sao_paulo_payload = b.nfse_use_sao_paulo_payload;
+  }
+  if (b.nfse_codigo_tributario_municipio !== undefined) {
+    updatePayload.nfse_codigo_tributario_municipio =
+      b.nfse_codigo_tributario_municipio;
+  }
 
   const nextRegime = b.tax_regime ?? row.tax_regime;
   const nextDas =
@@ -237,5 +292,5 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  return apiOk({ data: data as CompanyRow });
+  return apiOk({ data: stripFocusToken(data as CompanyRow) });
 }

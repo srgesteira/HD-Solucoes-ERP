@@ -7,8 +7,12 @@ export type ModuleKey =
   | "purchasing"
   | "sales"
   | "products"
+  | "inventory"
+  | "mrp"
   | "settings"
-  | "reports";
+  | "reports"
+  | "finance"
+  | "hr";
 
 export type ModulePermissions = Record<ModuleKey, boolean>;
 
@@ -19,8 +23,12 @@ export const MODULE_KEYS: ModuleKey[] = [
   "purchasing",
   "sales",
   "products",
+  "inventory",
+  "mrp",
   "settings",
   "reports",
+  "finance",
+  "hr",
 ];
 
 export const DEFAULT_MODULE_PERMISSIONS: ModulePermissions = {
@@ -30,8 +38,12 @@ export const DEFAULT_MODULE_PERMISSIONS: ModulePermissions = {
   purchasing: true,
   sales: true,
   products: true,
+  inventory: false,
+  mrp: false,
   settings: true,
   reports: true,
+  finance: false,
+  hr: false,
 };
 
 function isModuleKey(k: string): k is ModuleKey {

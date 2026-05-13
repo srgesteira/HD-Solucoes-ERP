@@ -47,12 +47,14 @@ export default function TopProductsReportPage() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
 
+  const access = can("sales") || can("reports");
+
   useEffect(() => {
-    if (!permLoading && !can("reports")) {
-      toast.error("Sem acesso a relatórios.");
+    if (!permLoading && !access) {
+      toast.error("Sem acesso a relatórios de vendas.");
       router.replace("/dashboard");
     }
-  }, [permLoading, can, router]);
+  }, [permLoading, access, router]);
 
   const load = useCallback(async (d: number) => {
     setLoading(true);
@@ -76,9 +78,9 @@ export default function TopProductsReportPage() {
   }, []);
 
   useEffect(() => {
-    if (permLoading || !can("reports")) return;
+    if (permLoading || !access) return;
     void load(days);
-  }, [permLoading, can, load, days]);
+  }, [permLoading, access, load, days]);
 
   const chartData = useMemo(
     () =>
@@ -104,7 +106,7 @@ export default function TopProductsReportPage() {
     [rows]
   );
 
-  if (permLoading || (!permLoading && !can("reports"))) {
+  if (permLoading || (!permLoading && !access)) {
     return (
       <div className="flex justify-center items-center gap-2 py-20 text-slate-500">
         <Loader2 className="h-5 w-5 animate-spin" />

@@ -32,8 +32,12 @@ const MODULE_LABELS: Record<ModuleKey, string> = {
   purchasing: "Compras",
   sales: "Vendas",
   products: "Produtos",
+  inventory: "Estoque",
+  mrp: "MRP",
   settings: "Configurações",
   reports: "Relatórios",
+  finance: "Financeiro",
+  hr: "RH",
 };
 
 export default function SettingsUsersPage() {

@@ -15,7 +15,9 @@ import { cn } from "@/lib/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import type { Tables } from "@/lib/types/database";
 
-type CompanyRow = Tables<"company_settings">;
+type CompanyRow = Tables<"company_settings"> & {
+  focusnfe_configured?: boolean;
+};
 
 type TabKey = "info" | "address" | "documents";
 
@@ -88,8 +90,18 @@ function emptyDraft(): Partial<CompanyRow> {
     default_ncm: "84213990",
     default_payment_terms: "30 dias",
     default_delivery_days: 30,
-    das_aliquot: null,
-  };
+      das_aliquot: null,
+      focusnfe_token: "",
+      focusnfe_environment: "homologacao",
+      nfse_item_lista_servico: null,
+      nfse_iss_aliquota: null,
+      nfse_prestador_codigo_municipio: "3550308",
+      nfse_codigo_nbs: "000000000",
+      nfse_codigo_indicador_operacao: "000000",
+      nfse_ibs_cbs_classificacao_tributaria: "000001",
+      nfse_use_sao_paulo_payload: false,
+      nfse_codigo_tributario_municipio: null,
+    };
 }
 
 export default function CompanySettingsPage() {
@@ -121,6 +133,7 @@ export default function CompanySettingsPage() {
     if (!row) return;
     setDraft({
       ...row,
+      focusnfe_token: "",
       default_delivery_days:
         row.default_delivery_days != null ?
           Number(row.default_delivery_days)
@@ -211,6 +224,27 @@ export default function CompanySettingsPage() {
         Number.isFinite(Number(d.das_aliquot))
           ? Math.min(100, Math.max(0, Number(d.das_aliquot)))
           : null,
+      ...(typeof d.focusnfe_token === "string" && d.focusnfe_token.trim()
+        ? { focusnfe_token: d.focusnfe_token.trim() }
+        : {}),
+      ...(d.focusnfe_environment === "homologacao" ||
+      d.focusnfe_environment === "producao"
+        ? { focusnfe_environment: d.focusnfe_environment }
+        : {}),
+      nfse_item_lista_servico: d.nfse_item_lista_servico ?? null,
+      nfse_iss_aliquota:
+        d.nfse_iss_aliquota != null && Number.isFinite(Number(d.nfse_iss_aliquota))
+          ? Number(d.nfse_iss_aliquota)
+          : null,
+      nfse_prestador_codigo_municipio:
+        d.nfse_prestador_codigo_municipio?.trim() || "3550308",
+      nfse_codigo_nbs: d.nfse_codigo_nbs?.trim() || "000000000",
+      nfse_codigo_indicador_operacao:
+        d.nfse_codigo_indicador_operacao?.trim() || "000000",
+      nfse_ibs_cbs_classificacao_tributaria:
+        d.nfse_ibs_cbs_classificacao_tributaria?.trim() || "000001",
+      nfse_use_sao_paulo_payload: Boolean(d.nfse_use_sao_paulo_payload),
+      nfse_codigo_tributario_municipio: d.nfse_codigo_tributario_municipio ?? null,
     };
   }, [draft]);
 
@@ -532,6 +566,227 @@ export default function CompanySettingsPage() {
                           }))
                         }
                         placeholder="https://"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-6 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      NF-e (FocusNFe)
+                    </h3>
+                    {companyQuery.data?.focusnfe_configured ? (
+                      <span className="text-xs rounded-md bg-emerald-100 px-2 py-0.5 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100">
+                        Token configurado
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-500">
+                        Token não configurado
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    O token não é mostrado depois de gravado. Preencha apenas para
+                    alterar ou definir pela primeira vez.
+                  </p>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label htmlFor="focusnfe_token">Token API FocusNFe</Label>
+                      <Input
+                        id="focusnfe_token"
+                        type="password"
+                        autoComplete="off"
+                        value={
+                          typeof draft.focusnfe_token === "string"
+                            ? draft.focusnfe_token
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            focusnfe_token: e.target.value,
+                          }))
+                        }
+                        placeholder="••••••••"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="focusnfe_environment">Ambiente</Label>
+                      <select
+                        id="focusnfe_environment"
+                        className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm dark:bg-slate-950 dark:border-slate-600"
+                        value={
+                          draft.focusnfe_environment === "producao" ?
+                            "producao"
+                          : "homologacao"
+                        }
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            focusnfe_environment:
+                              e.target.value === "producao" ?
+                                "producao"
+                              : "homologacao",
+                          }))
+                        }
+                      >
+                        <option value="homologacao">Homologação</option>
+                        <option value="producao">Produção</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-200/80 bg-amber-50/60 p-3 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                    <p className="font-medium">NFS-e São Paulo (Focus — reforma)</p>
+                    <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
+                      Active apenas se o token Focus estiver ligado à cidade de São
+                      Paulo. O pedido de venda deve incluir o CEP no endereço do
+                      cliente. Consulte o código de serviço na lista da prefeitura.
+                    </p>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5 sm:col-span-2 flex items-center gap-2">
+                      <input
+                        id="nfse_use_sao_paulo_payload"
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300"
+                        checked={Boolean(draft.nfse_use_sao_paulo_payload)}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            nfse_use_sao_paulo_payload: e.target.checked,
+                          }))
+                        }
+                      />
+                      <Label htmlFor="nfse_use_sao_paulo_payload" className="font-normal">
+                        Usar payload São Paulo (reforma) na emissão
+                      </Label>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="nfse_item_lista_servico">
+                        Item lista de serviço (SP)
+                      </Label>
+                      <Input
+                        id="nfse_item_lista_servico"
+                        value={draft.nfse_item_lista_servico ?? ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            nfse_item_lista_servico: e.target.value || null,
+                          }))
+                        }
+                        placeholder="ex.: 07498"
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="nfse_iss_aliquota">Alíquota ISS (%)</Label>
+                      <Input
+                        id="nfse_iss_aliquota"
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        max={100}
+                        value={
+                          draft.nfse_iss_aliquota != null
+                            ? String(draft.nfse_iss_aliquota)
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            nfse_iss_aliquota:
+                              e.target.value === "" ? null : (
+                                parseFloat(e.target.value)
+                              ),
+                          }))
+                        }
+                        placeholder="ex.: 5"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="nfse_prestador_codigo_municipio">
+                        IBGE município prestador
+                      </Label>
+                      <Input
+                        id="nfse_prestador_codigo_municipio"
+                        value={draft.nfse_prestador_codigo_municipio ?? ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            nfse_prestador_codigo_municipio:
+                              e.target.value || "3550308",
+                          }))
+                        }
+                        placeholder="3550308"
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="nfse_codigo_tributario_municipio">
+                        Cód. trib. município (outros municípios)
+                      </Label>
+                      <Input
+                        id="nfse_codigo_tributario_municipio"
+                        value={draft.nfse_codigo_tributario_municipio ?? ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            nfse_codigo_tributario_municipio:
+                              e.target.value || null,
+                          }))
+                        }
+                        placeholder="Quando não usar perfil SP"
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="nfse_codigo_nbs">Código NBS</Label>
+                      <Input
+                        id="nfse_codigo_nbs"
+                        value={draft.nfse_codigo_nbs ?? ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            nfse_codigo_nbs: e.target.value || "000000000",
+                          }))
+                        }
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="nfse_codigo_indicador_operacao">
+                        Cód. indicador operação
+                      </Label>
+                      <Input
+                        id="nfse_codigo_indicador_operacao"
+                        value={draft.nfse_codigo_indicador_operacao ?? ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            nfse_codigo_indicador_operacao:
+                              e.target.value || "000000",
+                          }))
+                        }
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label htmlFor="nfse_ibs_cbs_classificacao_tributaria">
+                        Classificação tributária IBS/CBS
+                      </Label>
+                      <Input
+                        id="nfse_ibs_cbs_classificacao_tributaria"
+                        value={draft.nfse_ibs_cbs_classificacao_tributaria ?? ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            nfse_ibs_cbs_classificacao_tributaria:
+                              e.target.value || "000001",
+                          }))
+                        }
+                        className="font-mono text-xs"
                       />
                     </div>
                   </div>

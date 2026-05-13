@@ -1,7 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { apiError, apiOk } from "@/lib/http";
 import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { assertReportsAccess } from "@/lib/utils/report-access";
+import { assertFinanceOrReportsAccess } from "@/lib/utils/module-access";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ function daysLate(todayMs: number, dueIso: string): number {
  * Títulos pendentes/parciais com vencimento anterior a hoje, agrupados por cliente e faixas de atraso.
  */
 export async function GET() {
-  const gate = await assertReportsAccess();
+  const gate = await assertFinanceOrReportsAccess();
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();

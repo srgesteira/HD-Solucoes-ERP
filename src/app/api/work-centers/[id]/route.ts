@@ -45,6 +45,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (v.code !== undefined) updateRow.code = v.code.trim().toUpperCase();
   if (v.name !== undefined) updateRow.name = v.name.trim();
   if (v.hourly_cost !== undefined) updateRow.hourly_cost = v.hourly_cost;
+  if (v.default_monthly_hours !== undefined) {
+    updateRow.default_monthly_hours = v.default_monthly_hours;
+  }
   if (v.efficiency !== undefined) updateRow.efficiency = v.efficiency;
   if (v.description !== undefined) {
     updateRow.description = v.description ?? null;

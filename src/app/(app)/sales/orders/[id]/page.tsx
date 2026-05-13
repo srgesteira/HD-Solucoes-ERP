@@ -7,10 +7,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Ban,
+  Boxes,
   ClipboardList,
   FileText,
   Loader2,
   Pencil,
+  Receipt,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,6 +25,7 @@ import { useMe } from "@/hooks/use-me";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
 import type { Tables } from "@/lib/types/database";
 import type { ReceivableStatus } from "@/lib/types/finance.types";
+import type { MaterialRequirement } from "@/lib/mrp-service";
 import type { SalesOrderStatus } from "@/lib/types/sales.types";
 
 /** Progressão permitida pelo UI (exclude cancelled via acção separada). */
@@ -79,6 +83,7 @@ type SalesOrderDetail = {
   production_order?: unknown;
   production_order_id: string | null;
   items?: SaleItemLine[] | null;
+  nfes?: unknown;
 };
 
 type ReceivableRow = {
@@ -125,6 +130,40 @@ function unwrapProduction(raw: unknown): ProductionBrief {
   const status = typeof rec.status === "string" ? rec.status : null;
   if (!id) return null;
   return { id, order_number, status };
+}
+
+type NfeLineBrief = {
+  id: string;
+  status: string;
+  nfe_number: string | null;
+  nfe_key: string | null;
+  xml_url: string | null;
+  pdf_url: string | null;
+  error_message: string | null;
+};
+
+function unwrapNfes(raw: unknown): NfeLineBrief[] {
+  if (!raw) return [];
+  const arr = Array.isArray(raw) ? raw : [];
+  const out: NfeLineBrief[] = [];
+  for (const x of arr) {
+    if (!x || typeof x !== "object") continue;
+    const r = x as Record<string, unknown>;
+    const id = typeof r.id === "string" ? r.id : "";
+    if (!id) continue;
+    out.push({
+      id,
+      status: typeof r.status === "string" ? r.status : "",
+      nfe_number:
+        typeof r.nfe_number === "string" ? r.nfe_number : null,
+      nfe_key: typeof r.nfe_key === "string" ? r.nfe_key : null,
+      xml_url: typeof r.xml_url === "string" ? r.xml_url : null,
+      pdf_url: typeof r.pdf_url === "string" ? r.pdf_url : null,
+      error_message:
+        typeof r.error_message === "string" ? r.error_message : null,
+    });
+  }
+  return out;
 }
 
 function fmtBRL(n: number): string {
@@ -258,13 +297,98 @@ async function fetchReceivablesForOrder(
   return json.data;
 }
 
-async function fetchCompanyBranding(): Promise<Tables<"company_settings"> | null> {
+async function postPlanSalesOrder(
+  salesOrderId: string,
+  confirm: boolean
+): Promise<{
+  requirements?: MaterialRequirement[];
+  purchase_orders?: Array<{
+    id: string;
+    po_number: string;
+    supplier_id: string;
+  }>;
+  production_order_id?: string;
+  production_error?: string;
+  summary?: { has_shortage: boolean; lines: number };
+}> {
+  const res = await fetch("/api/mrp/plan-sales-order", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sales_order_id: salesOrderId, confirm }),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    requirements?: MaterialRequirement[];
+    purchase_orders?: Array<{
+      id: string;
+      po_number: string;
+      supplier_id: string;
+    }>;
+    production_order_id?: string;
+    production_error?: string;
+    summary?: { has_shortage: boolean; lines: number };
+  };
+  if (!res.ok) {
+    throw new Error(
+      typeof json.error === "string" ? json.error : "Erro no MRP"
+    );
+  }
+  return json;
+}
+
+async function postEmitNfseApi(
+  salesOrderId: string
+): Promise<{ nfe_id: string }> {
+  const res = await fetch("/api/nfe/emitir", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sales_order_id: salesOrderId }),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    nfe_id?: string;
+  };
+  if (!res.ok) {
+    throw new Error(
+      typeof json.error === "string" ? json.error : "Erro ao emitir NFS-e"
+    );
+  }
+  if (!json.nfe_id) throw new Error("Resposta inválida da API.");
+  return { nfe_id: json.nfe_id };
+}
+
+async function getConsultNfeApi(
+  nfeId: string
+): Promise<Record<string, unknown> | null> {
+  const res = await fetch(
+    `/api/nfe/consultar?nfe_id=${encodeURIComponent(nfeId)}`,
+    { credentials: "include", cache: "no-store" }
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    data?: Record<string, unknown> | null;
+  };
+  if (!res.ok) {
+    throw new Error(
+      typeof json.error === "string" ? json.error : "Erro ao consultar NFS-e"
+    );
+  }
+  return json.data ?? null;
+}
+
+type CompanyBrandingRow = Tables<"company_settings"> & {
+  focusnfe_configured?: boolean;
+};
+
+async function fetchCompanyBranding(): Promise<CompanyBrandingRow | null> {
   const res = await fetch("/api/company/settings", {
     credentials: "include",
     cache: "no-store",
   });
   const json = (await res.json().catch(() => ({}))) as {
-    data?: Tables<"company_settings"> | null;
+    data?: CompanyBrandingRow | null;
   };
   if (!res.ok) return null;
   return json.data ?? null;
@@ -315,6 +439,18 @@ function installmentLabel(
   return `Parcela ${index + 1}/${rows.length}`;
 }
 
+function nfeStatusLabelPt(s: string): string {
+  const map: Record<string, string> = {
+    pending: "Pendente",
+    processing: "Em processamento",
+    authorized: "Autorizada",
+    rejected: "Rejeitada",
+    cancelled: "Cancelada",
+    error: "Erro",
+  };
+  return map[s] ?? s;
+}
+
 /** Próximo passo possível (uma transição de cada vez). */
 function nextStatusOptions(current: SalesOrderStatus): SalesOrderStatus[] {
   const i = SALES_FLOW.indexOf(current);
@@ -357,12 +493,37 @@ export default function SalesOrderDetailPage() {
   const productionLinkId =
     prodOrder?.id ?? (q?.production_order_id ? q.production_order_id : null);
   const st = (q?.status ?? "pending") as SalesOrderStatus;
+  const nfeList = useMemo(() => unwrapNfes(q?.nfes), [q?.nfes]);
+  const hasBlockingNfe = useMemo(
+    () =>
+      nfeList.some((n) =>
+        ["pending", "processing", "authorized"].includes(n.status)
+      ),
+    [nfeList]
+  );
+  const canEmitNfe =
+    isAdmin &&
+    st === "confirmed" &&
+    !hasBlockingNfe &&
+    Boolean(companyBrandingQuery.data?.focusnfe_configured);
   const canCancelAdmin =
     isAdmin && st !== "delivered" && st !== "cancelled";
   const showStatusControl =
     isAdmin && SALES_FLOW.includes(st) && st !== "delivered";
 
   const [cancelOpen, setCancelOpen] = useState(false);
+
+  const [mrpOpen, setMrpOpen] = useState(false);
+  const [mrpReqs, setMrpReqs] = useState<MaterialRequirement[]>([]);
+  const [mrpBusy, setMrpBusy] = useState(false);
+  const [mrpLastPo, setMrpLastPo] = useState<
+    Array<{ id: string; po_number: string; supplier_id: string }>
+  >([]);
+
+  const [nfeOpen, setNfeOpen] = useState(false);
+  const [nfeBusy, setNfeBusy] = useState(false);
+  const [nfeSyncId, setNfeSyncId] = useState<string | null>(null);
+  const [nfeProgress, setNfeProgress] = useState("");
 
   const statusOptions = useMemo(
     () =>
@@ -434,6 +595,109 @@ export default function SalesOrderDetailPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const openMrpModal = async () => {
+    if (!id) return;
+    setMrpOpen(true);
+    setMrpBusy(true);
+    setMrpLastPo([]);
+    try {
+      const json = await postPlanSalesOrder(id, false);
+      setMrpReqs(json.requirements ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+      setMrpOpen(false);
+    } finally {
+      setMrpBusy(false);
+    }
+  };
+
+  const runMrpConfirm = async () => {
+    if (!id) return;
+    setMrpBusy(true);
+    try {
+      const json = await postPlanSalesOrder(id, true);
+      setMrpReqs(json.requirements ?? []);
+      setMrpLastPo(json.purchase_orders ?? []);
+      if (json.production_order_id) {
+        toast.success("Pedidos de compra e ordem de produção criados.");
+        setMrpOpen(false);
+        invalidate();
+      } else {
+        if (json.production_error) {
+          toast.error(json.production_error);
+        } else {
+          toast.success(
+            (json.purchase_orders?.length ?? 0) > 0
+              ? "Pedidos de compra criados (sem OP — verifique stock ou erros)."
+              : "Nenhuma acção aplicada."
+          );
+        }
+        invalidate();
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setMrpBusy(false);
+    }
+  };
+
+  const runEmitNfseFlow = async () => {
+    if (!id) return;
+    setNfeBusy(true);
+    setNfeProgress("A enviar à FocusNFe…");
+    try {
+      const { nfe_id } = await postEmitNfseApi(id);
+      for (let i = 0; i < 24; i++) {
+        setNfeProgress(`A consultar estado… (${i + 1}/24)`);
+        const row = await getConsultNfeApi(nfe_id);
+        void queryClient.invalidateQueries({ queryKey: ["sales-order", id] });
+        const st = typeof row?.status === "string" ? row.status : "";
+        if (
+          st === "authorized" ||
+          st === "error" ||
+          st === "cancelled"
+        ) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      toast.success("Processamento da NFS-e concluído (ver estado abaixo).");
+      setNfeOpen(false);
+      invalidate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setNfeBusy(false);
+      setNfeProgress("");
+    }
+  };
+
+  const syncOneNfe = async (nfeId: string) => {
+    setNfeSyncId(nfeId);
+    try {
+      await getConsultNfeApi(nfeId);
+      toast.success("Estado da NFS-e actualizado.");
+      invalidate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setNfeSyncId(null);
+    }
+  };
+
+  const refreshMrpTable = async () => {
+    if (!id) return;
+    setMrpBusy(true);
+    try {
+      const json = await postPlanSalesOrder(id, false);
+      setMrpReqs(json.requirements ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setMrpBusy(false);
+    }
+  };
 
   const receivableSorted = useMemo(() => {
     const list = [...(receivablesQuery.data ?? [])];
@@ -719,6 +983,166 @@ export default function SalesOrderDetailPage() {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Planeamento e NFS-e</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div className="flex flex-wrap gap-2">
+                {isAdmin ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={mrpBusy}
+                    onClick={() => void openMrpModal()}
+                  >
+                    {mrpBusy && mrpOpen ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Boxes className="h-4 w-4" />
+                    )}
+                    Planejar pelo MRP
+                  </Button>
+                ) : null}
+                {canEmitNfe ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      setNfeOpen(true);
+                    }}
+                  >
+                    <Receipt className="h-4 w-4" />
+                    Emitir NFS-e
+                  </Button>
+                ) : null}
+              </div>
+              {isAdmin &&
+              st === "confirmed" &&
+              !companyBrandingQuery.data?.focusnfe_configured ? (
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  Para emitir NF-e, configure o token FocusNFe em{" "}
+                  <Link
+                    href="/settings/company"
+                    className="underline font-medium"
+                  >
+                    Empresa
+                  </Link>
+                  .
+                </p>
+              ) : null}
+              {isAdmin && st === "confirmed" && hasBlockingNfe ? (
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Já existe NF-e em curso ou autorizada para este pedido.
+                  Sincronize na Focus antes de nova emissão.
+                </p>
+              ) : null}
+
+              {nfeList.length > 0 ? (
+                <div className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
+                  <table className="w-full text-sm min-w-[640px]">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
+                        <th className="px-3 py-2 text-left font-medium">
+                          N.º / ref.
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium">
+                          Estado
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium">
+                          Chave
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium">
+                          Documentos
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium w-[5.5rem]">
+                          Acções
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nfeList.map((n) => (
+                        <tr
+                          key={n.id}
+                          className="border-b border-slate-100 dark:border-slate-800"
+                        >
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {n.nfe_number ?? n.id.slice(0, 8)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-800">
+                              {nfeStatusLabelPt(n.status)}
+                            </span>
+                            {n.error_message ? (
+                              <span className="block text-xs text-red-600 mt-1 line-clamp-2">
+                                {n.error_message}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td
+                            className="px-3 py-2 font-mono text-xs max-w-[12rem] truncate"
+                            title={n.nfe_key ?? undefined}
+                          >
+                            {n.nfe_key ?? "—"}
+                          </td>
+                          <td className="px-3 py-2 text-xs space-y-1">
+                            {n.pdf_url ? (
+                              <a
+                                href={n.pdf_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block text-brand-700 underline dark:text-brand-400"
+                              >
+                                PDF
+                              </a>
+                            ) : null}
+                            {n.xml_url ? (
+                              <a
+                                href={n.xml_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block text-brand-700 underline dark:text-brand-400"
+                              >
+                                XML
+                              </a>
+                            ) : null}
+                            {!n.pdf_url && !n.xml_url ? "—" : null}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {isAdmin ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1"
+                                disabled={nfeSyncId === n.id}
+                                onClick={() => void syncOneNfe(n.id)}
+                              >
+                                {nfeSyncId === n.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-3 w-3" />
+                                )}
+                                Sync
+                              </Button>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-slate-500">
+                  Sem NF-e registadas para este pedido.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader className="pb-3">
@@ -881,6 +1305,229 @@ export default function SalesOrderDetailPage() {
             </CardContent>
           </Card>
         </>
+      ) : null}
+
+      {mrpOpen && isAdmin ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mrp-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !mrpBusy) setMrpOpen(false);
+          }}
+        >
+          <div
+            className="relative z-10 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-950 dark:border-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="mrp-modal-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              MRP — necessidades de materiais
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Com base na BOM (componentes) e no stock actual. Use
+              &quot;Confirmar plano&quot; para criar pedidos de compra em rascunho
+              e, se não houver falta de material, a ordem de produção.
+            </p>
+
+            {mrpBusy && mrpReqs.length === 0 ? (
+              <div className="flex items-center gap-2 py-12 justify-center text-slate-600">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                A calcular…
+              </div>
+            ) : mrpReqs.length === 0 ? (
+              <p className="py-8 text-sm text-slate-500 text-center">
+                Sem necessidades de material (itens sem produto ou sem BOM).
+              </p>
+            ) : (
+              <div className="mt-4 rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
+                <table className="w-full text-sm min-w-[720px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
+                      <th className="px-3 py-2 text-left font-medium">
+                        Material
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Necessário
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Stock
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Reservado
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Disponível
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Falta
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mrpReqs.map((r) => (
+                      <tr
+                        key={r.product_id}
+                        className={cn(
+                          "border-b border-slate-100 dark:border-slate-800",
+                          r.shortage > 0.0001 ?
+                            "bg-red-50/60 dark:bg-red-950/20"
+                          : ""
+                        )}
+                      >
+                        <td className="px-3 py-2 max-w-[18rem]">
+                          <span className="line-clamp-2">{r.description}</span>
+                          <span className="block text-xs text-slate-500">
+                            {r.unit}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {r.needed}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {r.quantity_on_hand}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {r.reserved_quantity}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {r.available}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium">
+                          {r.shortage}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {mrpLastPo.length > 0 ? (
+              <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+                <span className="font-medium">Últimos PCs gerados:</span>{" "}
+                {mrpLastPo.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/purchasing/orders/${p.id}`}
+                    className="ml-2 inline-block text-brand-700 underline dark:text-brand-400"
+                  >
+                    {p.po_number}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex flex-wrap gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={mrpBusy}
+                onClick={() => setMrpOpen(false)}
+              >
+                Fechar
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={mrpBusy || !mrpReqs.length}
+                onClick={() => void refreshMrpTable()}
+              >
+                {mrpBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Actualizar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={mrpBusy}
+                onClick={() => void runMrpConfirm()}
+              >
+                Confirmar plano (PCs + OP)
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {nfeOpen && isAdmin ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="nfe-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !nfeBusy) setNfeOpen(false);
+          }}
+        >
+          <div
+            className="relative z-10 w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-950 dark:border-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="nfe-modal-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              Emitir NFS-e (FocusNFe)
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Será montado automaticamente um pedido de NFS-e a partir do
+              pedido de venda (prestador = dados da empresa, tomador = cliente,
+              serviço = total do pedido). O município pode exigir campos
+              adicionais — consulte a{" "}
+              <a
+                href="https://doc.focusnfe.com.br/reference/emitir_nfse"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand-700 underline dark:text-brand-400"
+              >
+                documentação FocusNFe
+              </a>
+              .
+            </p>
+            {nfeProgress ? (
+              <p className="mt-4 text-sm text-slate-600 flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                {nfeProgress}
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-wrap gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={nfeBusy}
+                onClick={() => setNfeOpen(false)}
+              >
+                Fechar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={nfeBusy}
+                onClick={() => void runEmitNfseFlow()}
+              >
+                {nfeBusy ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    A processar…
+                  </>
+                ) : (
+                  "Emitir e acompanhar"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {cancelOpen && isAdmin ? (

@@ -47,6 +47,7 @@ export const productComponentSchema = z
     quantity: z.number().min(0.000001, "Quantidade deve ser maior que zero"),
     is_labor: z.boolean().default(false),
     work_center_id: z.string().uuid().nullable().optional(),
+    unit_cost: z.number().min(0).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.is_labor) {
@@ -80,4 +81,5 @@ export const workCenterSchema = z.object({
   efficiency: z.number().min(0).max(2).default(1),
   description: z.string().optional().nullable(),
   is_active: z.boolean().default(true),
+  default_monthly_hours: z.coerce.number().int().min(1).max(400).default(220),
 });

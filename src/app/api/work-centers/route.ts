@@ -24,7 +24,7 @@ export async function GET() {
   const { data, error } = await admin
     .from("work_centers")
     .select(
-      "id, tenant_id, code, name, hourly_cost, efficiency, description, is_active, created_at, updated_at"
+      "id, tenant_id, code, name, hourly_cost, efficiency, description, is_active, default_monthly_hours, created_at, updated_at"
     )
     .eq("tenant_id", tenantId)
     .order("code", { ascending: true });
@@ -36,7 +36,62 @@ export async function GET() {
     );
   }
 
-  return apiOk({ data: (data ?? []) as WorkCenterRow[] });
+  const rows = (data ?? []) as WorkCenterRow[];
+  const ids = rows.map((r) => r.id);
+  const now = new Date();
+  const cy = now.getFullYear();
+  const cm = now.getMonth() + 1;
+
+  const thisMonth = new Map<string, number>();
+  const latest = new Map<string, number>();
+
+  if (ids.length) {
+    const { data: lcRows, error: lcErr } = await admin
+      .from("labor_costs")
+      .select("work_center_id, hourly_rate, year, month")
+      .eq("tenant_id", tenantId)
+      .in("work_center_id", ids);
+
+    if (lcErr) {
+      return apiError(
+        "Erro ao carregar custos de mão de obra: " + lcErr.message,
+        supabaseErrorToHttp(lcErr.code)
+      );
+    }
+
+    const byCenter = new Map<string, { y: number; m: number; rate: number }>();
+    for (const row of lcRows ?? []) {
+      const wid = row.work_center_id;
+      const s = row.year * 100 + row.month;
+      const cur = byCenter.get(wid);
+      if (!cur || s > cur.y * 100 + cur.m) {
+        byCenter.set(wid, {
+          y: row.year,
+          m: row.month,
+          rate: Number(row.hourly_rate),
+        });
+      }
+      if (row.year === cy && row.month === cm) {
+        thisMonth.set(wid, Number(row.hourly_rate));
+      }
+    }
+    for (const [wid, v] of byCenter) {
+      latest.set(wid, v.rate);
+    }
+  }
+
+  type RowExt = WorkCenterRow & {
+    labor_hourly_rate_this_month: number | null;
+    labor_hourly_rate_latest: number | null;
+  };
+
+  const enriched: RowExt[] = rows.map((r) => ({
+    ...r,
+    labor_hourly_rate_this_month: thisMonth.get(r.id) ?? null,
+    labor_hourly_rate_latest: latest.get(r.id) ?? null,
+  }));
+
+  return apiOk({ data: enriched });
 }
 
 export async function POST(request: NextRequest) {
@@ -78,6 +133,7 @@ export async function POST(request: NextRequest) {
       efficiency: v.efficiency,
       description: v.description ?? null,
       is_active: v.is_active,
+      default_monthly_hours: v.default_monthly_hours,
     })
     .select()
     .single();

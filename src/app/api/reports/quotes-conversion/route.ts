@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { apiError, apiOk } from "@/lib/http";
 import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { assertReportsAccess } from "@/lib/utils/report-access";
+import { assertSalesOrReportsAccess } from "@/lib/utils/module-access";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ function isWon(q: { status: string; converted_to_sale_id: string | null }): bool
  * GET /api/reports/quotes-conversion?days=365
  */
 export async function GET(request: NextRequest) {
-  const gate = await assertReportsAccess();
+  const gate = await assertSalesOrReportsAccess();
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();

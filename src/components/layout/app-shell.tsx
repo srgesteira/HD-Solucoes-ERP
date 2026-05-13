@@ -6,15 +6,20 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
+  AlertTriangle,
   KanbanSquare,
   BarChart2,
+  Boxes,
   Building2,
   ChevronDown,
   ChevronRight,
   Clock,
+  Calculator,
   DollarSign,
   Factory,
   FileText,
+  FileUp,
   LayoutDashboard,
   Layers,
   LineChart,
@@ -31,6 +36,7 @@ import {
   User,
   Users,
   Wallet,
+  Warehouse,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -46,6 +52,8 @@ type NavLeaf = {
   href: string;
   icon: LucideIcon;
   module: ModuleKey;
+  /** Se definido, basta um dos módulos para mostrar o item. */
+  anyOf?: ModuleKey[];
 };
 
 type NavGroup = {
@@ -83,6 +91,60 @@ const MENU_STRUCTURE: NavEntry[] = [
   },
   {
     type: "group",
+    title: "Financeiro",
+    icon: DollarSign,
+    module: "finance",
+    children: [
+      {
+        title: "Contas a Receber",
+        href: "/finance/receivables",
+        icon: DollarSign,
+        module: "finance",
+      },
+      {
+        title: "Contas a Pagar",
+        href: "/finance/payables",
+        icon: Wallet,
+        module: "finance",
+      },
+      {
+        title: "Fluxo de Caixa",
+        href: "/finance/cash-flow",
+        icon: Activity,
+        module: "finance",
+      },
+      {
+        title: "Projeção de fluxo",
+        href: "/reports/cash-flow",
+        icon: BarChart2,
+        module: "finance",
+        anyOf: ["finance", "reports"],
+      },
+      {
+        title: "Contas vencidas",
+        href: "/reports/overdue-receivables",
+        icon: AlertTriangle,
+        module: "finance",
+        anyOf: ["finance", "reports"],
+      },
+    ],
+  },
+  {
+    type: "group",
+    title: "RH",
+    icon: Users,
+    module: "hr",
+    children: [
+      {
+        title: "Colaboradores",
+        href: "/hr/employees",
+        icon: Users,
+        module: "hr",
+      },
+    ],
+  },
+  {
+    type: "group",
     title: "Produção",
     icon: Factory,
     module: "production",
@@ -98,6 +160,26 @@ const MENU_STRUCTURE: NavEntry[] = [
         href: "/production/orders",
         icon: Package,
         module: "production",
+      },
+      {
+        title: "MRP",
+        href: "/mrp",
+        icon: Boxes,
+        module: "mrp",
+      },
+      {
+        title: "Custo de mão de obra",
+        href: "/reports/labor-cost",
+        icon: Calculator,
+        module: "production",
+        anyOf: ["production", "reports"],
+      },
+      {
+        title: "Atraso na produção",
+        href: "/reports/production-delay",
+        icon: Clock,
+        module: "production",
+        anyOf: ["production", "reports"],
       },
     ],
   },
@@ -139,43 +221,25 @@ const MENU_STRUCTURE: NavEntry[] = [
         icon: ShoppingBag,
         module: "sales",
       },
-    ],
-  },
-  {
-    type: "group",
-    title: "Relatórios",
-    icon: BarChart2,
-    module: "reports",
-    children: [
       {
-        title: "Fluxo de caixa",
-        href: "/reports/cash-flow",
-        icon: Wallet,
-        module: "reports",
+        title: "Importar PDF (orçamento)",
+        href: "/sales/upload-pdf",
+        icon: FileUp,
+        module: "sales",
       },
       {
         title: "Produtos mais vendidos",
         href: "/reports/top-products",
         icon: LineChart,
-        module: "reports",
-      },
-      {
-        title: "Atraso na produção",
-        href: "/reports/production-delay",
-        icon: Clock,
-        module: "reports",
-      },
-      {
-        title: "Contas vencidas",
-        href: "/reports/overdue-receivables",
-        icon: DollarSign,
-        module: "reports",
+        module: "sales",
+        anyOf: ["sales", "reports"],
       },
       {
         title: "Conversão de orçamentos",
         href: "/reports/quotes-conversion",
         icon: PieChart,
-        module: "reports",
+        module: "sales",
+        anyOf: ["sales", "reports"],
       },
     ],
   },
@@ -190,6 +254,12 @@ const MENU_STRUCTURE: NavEntry[] = [
         href: "/products",
         icon: Package,
         module: "products",
+      },
+      {
+        title: "Estoque",
+        href: "/inventory",
+        icon: Warehouse,
+        module: "inventory",
       },
       {
         title: "Classificação técnica",
@@ -255,6 +325,14 @@ type AppShellProps = {
   } | null;
 };
 
+function navItemVisible(
+  leaf: { module: ModuleKey; anyOf?: ModuleKey[] },
+  can: (m: ModuleKey) => boolean
+): boolean {
+  if (leaf.anyOf?.length) return leaf.anyOf.some((m) => can(m));
+  return can(leaf.module);
+}
+
 function pathActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -277,12 +355,11 @@ export function AppShell({ children, user }: AppShellProps) {
     const out: NavEntry[] = [];
     for (const e of MENU_STRUCTURE) {
       if (e.type === "link") {
-        if (can(e.module)) out.push(e);
+        if (navItemVisible(e, can)) out.push(e);
         continue;
       }
-      const children = e.children.filter((c) => can(c.module));
+      const children = e.children.filter((c) => navItemVisible(c, can));
       if (children.length === 0) continue;
-      if (!can(e.module)) continue;
       out.push({ ...e, children });
     }
     return out;

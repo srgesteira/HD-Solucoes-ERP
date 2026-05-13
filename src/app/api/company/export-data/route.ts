@@ -70,6 +70,9 @@ export async function GET() {
       production_orders,
       boards,
       privacy_consents,
+      accounts_payable,
+      cash_flow_entries,
+      employees,
     ] = await Promise.all([
       allRows("company_settings"),
       allRows("bdi_settings"),
@@ -88,6 +91,9 @@ export async function GET() {
       allRows("production_orders"),
       allRows("boards"),
       allRows("privacy_consents").catch(() => []),
+      allRows("accounts_payable"),
+      allRows("cash_flow_entries"),
+      allRows("employees"),
     ]);
 
     const purchaseIds = (purchase_orders as { id: string }[]).map((p) => p.id);
@@ -140,6 +146,9 @@ export async function GET() {
       boards,
       tasks: tasksRes.data ?? [],
       privacy_consents,
+      accounts_payable,
+      cash_flow_entries,
+      employees,
     };
 
     const body = JSON.stringify(payload, null, 2);

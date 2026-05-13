@@ -39,6 +39,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounts_payable: {
+        Row: {
+          category: string
+          created_at: string
+          current_amount: number
+          description: string
+          due_date: string
+          id: string
+          notes: string | null
+          original_amount: number
+          payment_date: string | null
+          status: string
+          supplier_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          current_amount: number
+          description: string
+          due_date: string
+          id?: string
+          notes?: string | null
+          original_amount: number
+          payment_date?: string | null
+          status?: string
+          supplier_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          current_amount?: number
+          description?: string
+          due_date?: string
+          id?: string
+          notes?: string | null
+          original_amount?: number
+          payment_date?: string | null
+          status?: string
+          supplier_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounts_payable_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_payable_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bdi_settings: {
         Row: {
           admin_overhead: number | null
@@ -335,6 +398,50 @@ export type Database = {
           },
         ]
       }
+      cash_flow_entries: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string
+          date: string
+          description: string
+          id: string
+          reference_id: string | null
+          tenant_id: string
+          type: string
+        }
+        Insert: {
+          amount: number
+          category?: string | null
+          created_at?: string
+          date: string
+          description: string
+          id?: string
+          reference_id?: string | null
+          tenant_id: string
+          type: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          date?: string
+          description?: string
+          id?: string
+          reference_id?: string | null
+          tenant_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_flow_entries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_kpis: {
         Row: {
           created_at: string | null
@@ -404,9 +511,19 @@ export type Database = {
           document_footer: string | null
           document_header: string | null
           email: string | null
+          focusnfe_environment: string | null
+          focusnfe_token: string | null
           id: string
           logo_url: string | null
           municipal_registration: string | null
+          nfse_codigo_indicador_operacao: string | null
+          nfse_codigo_nbs: string | null
+          nfse_codigo_tributario_municipio: string | null
+          nfse_ibs_cbs_classificacao_tributaria: string | null
+          nfse_iss_aliquota: number | null
+          nfse_item_lista_servico: string | null
+          nfse_prestador_codigo_municipio: string | null
+          nfse_use_sao_paulo_payload: boolean
           phone: string | null
           state_registration: string | null
           tax_regime: string | null
@@ -433,9 +550,19 @@ export type Database = {
           document_footer?: string | null
           document_header?: string | null
           email?: string | null
+          focusnfe_environment?: string | null
+          focusnfe_token?: string | null
           id?: string
           logo_url?: string | null
           municipal_registration?: string | null
+          nfse_codigo_indicador_operacao?: string | null
+          nfse_codigo_nbs?: string | null
+          nfse_codigo_tributario_municipio?: string | null
+          nfse_ibs_cbs_classificacao_tributaria?: string | null
+          nfse_iss_aliquota?: number | null
+          nfse_item_lista_servico?: string | null
+          nfse_prestador_codigo_municipio?: string | null
+          nfse_use_sao_paulo_payload?: boolean
           phone?: string | null
           state_registration?: string | null
           tax_regime?: string | null
@@ -462,9 +589,19 @@ export type Database = {
           document_footer?: string | null
           document_header?: string | null
           email?: string | null
+          focusnfe_environment?: string | null
+          focusnfe_token?: string | null
           id?: string
           logo_url?: string | null
           municipal_registration?: string | null
+          nfse_codigo_indicador_operacao?: string | null
+          nfse_codigo_nbs?: string | null
+          nfse_codigo_tributario_municipio?: string | null
+          nfse_ibs_cbs_classificacao_tributaria?: string | null
+          nfse_iss_aliquota?: number | null
+          nfse_item_lista_servico?: string | null
+          nfse_prestador_codigo_municipio?: string | null
+          nfse_use_sao_paulo_payload?: boolean
           phone?: string | null
           state_registration?: string | null
           tax_regime?: string | null
@@ -479,6 +616,72 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: true
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employees: {
+        Row: {
+          admission_date: string | null
+          created_at: string
+          document: string | null
+          email: string | null
+          id: string
+          monthly_salary: number | null
+          name: string
+          notes: string | null
+          phone: string | null
+          position: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          work_center_id: string | null
+        }
+        Insert: {
+          admission_date?: string | null
+          created_at?: string
+          document?: string | null
+          email?: string | null
+          id?: string
+          monthly_salary?: number | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          position?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          work_center_id?: string | null
+        }
+        Update: {
+          admission_date?: string | null
+          created_at?: string
+          document?: string | null
+          email?: string | null
+          id?: string
+          monthly_salary?: number | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          position?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          work_center_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employees_work_center_id_fkey"
+            columns: ["work_center_id"]
+            isOneToOne: false
+            referencedRelation: "work_centers"
             referencedColumns: ["id"]
           },
         ]
@@ -637,6 +840,60 @@ export type Database = {
           },
         ]
       }
+      inventory: {
+        Row: {
+          created_at: string
+          id: string
+          last_counted_at: string | null
+          product_id: string
+          quantity_on_hand: number
+          reorder_point: number | null
+          reorder_quantity: number | null
+          reserved_quantity: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_counted_at?: string | null
+          product_id: string
+          quantity_on_hand?: number
+          reorder_point?: number | null
+          reorder_quantity?: number | null
+          reserved_quantity?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_counted_at?: string | null
+          product_id?: string
+          quantity_on_hand?: number
+          reorder_point?: number | null
+          reorder_quantity?: number | null
+          reserved_quantity?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labels: {
         Row: {
           board_id: string
@@ -665,6 +922,57 @@ export type Database = {
             columns: ["board_id"]
             isOneToOne: false
             referencedRelation: "boards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      labor_costs: {
+        Row: {
+          calculated_at: string
+          hourly_rate: number
+          id: string
+          month: number
+          tenant_id: string
+          total_hours_base: number
+          total_salary_base: number
+          work_center_id: string
+          year: number
+        }
+        Insert: {
+          calculated_at?: string
+          hourly_rate: number
+          id?: string
+          month: number
+          tenant_id: string
+          total_hours_base: number
+          total_salary_base: number
+          work_center_id: string
+          year: number
+        }
+        Update: {
+          calculated_at?: string
+          hourly_rate?: number
+          id?: string
+          month?: number
+          tenant_id?: string
+          total_hours_base?: number
+          total_salary_base?: number
+          work_center_id?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labor_costs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_costs_work_center_id_fkey"
+            columns: ["work_center_id"]
+            isOneToOne: false
+            referencedRelation: "work_centers"
             referencedColumns: ["id"]
           },
         ]
@@ -712,6 +1020,63 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "ncm_tax_benefits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nfes: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          nfe_key: string | null
+          nfe_number: string | null
+          pdf_url: string | null
+          sales_order_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          xml_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          nfe_key?: string | null
+          nfe_number?: string | null
+          pdf_url?: string | null
+          sales_order_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          xml_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          nfe_key?: string | null
+          nfe_number?: string | null
+          pdf_url?: string | null
+          sales_order_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          xml_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nfes_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nfes_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1355,6 +1720,7 @@ export type Database = {
           material_id: string | null
           name: string
           ncm: string | null
+          preferred_supplier_id: string | null
           prefix_id: string | null
           selling_price: number
           subfamily_id: string | null
@@ -1381,6 +1747,7 @@ export type Database = {
           material_id?: string | null
           name: string
           ncm?: string | null
+          preferred_supplier_id?: string | null
           prefix_id?: string | null
           selling_price?: number
           subfamily_id?: string | null
@@ -1407,6 +1774,7 @@ export type Database = {
           material_id?: string | null
           name?: string
           ncm?: string | null
+          preferred_supplier_id?: string | null
           prefix_id?: string | null
           selling_price?: number
           subfamily_id?: string | null
@@ -1438,6 +1806,13 @@ export type Database = {
             columns: ["material_id"]
             isOneToOne: false
             referencedRelation: "product_materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_preferred_supplier_id_fkey"
+            columns: ["preferred_supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
           {
@@ -2706,6 +3081,7 @@ export type Database = {
         Row: {
           code: string
           created_at: string
+          default_monthly_hours: number
           description: string | null
           efficiency: number
           hourly_cost: number
@@ -2718,6 +3094,7 @@ export type Database = {
         Insert: {
           code: string
           created_at?: string
+          default_monthly_hours?: number
           description?: string | null
           efficiency?: number
           hourly_cost?: number
@@ -2730,6 +3107,7 @@ export type Database = {
         Update: {
           code?: string
           created_at?: string
+          default_monthly_hours?: number
           description?: string | null
           efficiency?: number
           hourly_cost?: number

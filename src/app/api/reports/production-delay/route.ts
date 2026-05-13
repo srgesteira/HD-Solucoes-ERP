@@ -1,7 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { apiError, apiOk } from "@/lib/http";
 import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { assertReportsAccess } from "@/lib/utils/report-access";
+import { assertProductionOrReportsAccess } from "@/lib/utils/module-access";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +28,7 @@ type OverdueRow = {
  * GET /api/reports/production-delay
  */
 export async function GET() {
-  const gate = await assertReportsAccess();
+  const gate = await assertProductionOrReportsAccess();
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();

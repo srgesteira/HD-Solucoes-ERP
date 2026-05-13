@@ -6,6 +6,8 @@ export const taxRegimeEnum = z.enum([
   "lucro_real",
 ]);
 
+export const focusNFeEnvironmentEnum = z.enum(["homologacao", "producao"]);
+
 export const companySettingsUpdateSchema = z.object({
   cnpj: z.string().max(32).nullable().optional(),
   company_name: z.string().min(1).max(500).optional(),
@@ -36,6 +38,16 @@ export const companySettingsUpdateSchema = z.object({
   default_payment_terms: z.string().max(200).nullable().optional(),
   default_delivery_days: z.coerce.number().int().min(0).max(3650).nullable().optional(),
   das_aliquot: z.coerce.number().min(0).max(100).nullable().optional(),
+  focusnfe_token: z.string().max(2000).nullable().optional(),
+  focusnfe_environment: focusNFeEnvironmentEnum.optional(),
+  nfse_item_lista_servico: z.string().max(32).nullable().optional(),
+  nfse_iss_aliquota: z.coerce.number().min(0).max(100).nullable().optional(),
+  nfse_prestador_codigo_municipio: z.string().max(16).nullable().optional(),
+  nfse_codigo_nbs: z.string().max(32).nullable().optional(),
+  nfse_codigo_indicador_operacao: z.string().max(32).nullable().optional(),
+  nfse_ibs_cbs_classificacao_tributaria: z.string().max(32).nullable().optional(),
+  nfse_use_sao_paulo_payload: z.boolean().optional(),
+  nfse_codigo_tributario_municipio: z.string().max(32).nullable().optional(),
 });
 
 export type CompanySettingsUpdateInput = z.infer<

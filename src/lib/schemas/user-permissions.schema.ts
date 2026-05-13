@@ -10,6 +10,8 @@ const boolFlags = z
     products: z.boolean().optional(),
     settings: z.boolean().optional(),
     reports: z.boolean().optional(),
+    finance: z.boolean().optional(),
+    hr: z.boolean().optional(),
   })
   .strict();
 

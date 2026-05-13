@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { apiError, apiOk } from "@/lib/http";
 import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { assertReportsAccess } from "@/lib/utils/report-access";
+import { assertFinanceOrReportsAccess } from "@/lib/utils/module-access";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ function dayKey(iso: string | null | undefined): string | null {
  * saídas (pedidos de compra confirmados por data prevista de entrega ou data do pedido).
  */
 export async function GET(request: NextRequest) {
-  const gate = await assertReportsAccess();
+  const gate = await assertFinanceOrReportsAccess();
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();

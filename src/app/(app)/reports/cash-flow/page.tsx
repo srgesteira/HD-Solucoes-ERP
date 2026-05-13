@@ -76,12 +76,14 @@ export default function CashFlowReportPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<CashFlowPayload | null>(null);
 
+  const access = can("finance") || can("reports");
+
   useEffect(() => {
-    if (!permLoading && !can("reports")) {
-      toast.error("Sem acesso a relatórios.");
+    if (!permLoading && !access) {
+      toast.error("Sem acesso a relatórios financeiros.");
       router.replace("/dashboard");
     }
-  }, [permLoading, can, router]);
+  }, [permLoading, access, router]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -107,9 +109,9 @@ export default function CashFlowReportPage() {
   }, [horizon]);
 
   useEffect(() => {
-    if (permLoading || !can("reports")) return;
+    if (permLoading || !access) return;
     void load();
-  }, [permLoading, can, load]);
+  }, [permLoading, access, load]);
 
   const chartData = useMemo(() => {
     if (!data?.series.length) return [];
@@ -140,7 +142,7 @@ export default function CashFlowReportPage() {
     };
   }, [data]);
 
-  if (permLoading || (!permLoading && !can("reports"))) {
+  if (permLoading || (!permLoading && !access)) {
     return (
       <div className="flex justify-center items-center gap-2 py-20 text-slate-500">
         <Loader2 className="h-5 w-5 animate-spin" />

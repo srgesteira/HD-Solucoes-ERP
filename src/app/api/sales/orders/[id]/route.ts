@@ -18,7 +18,8 @@ const ORDER_DETAIL_SELECT = `
     product:products!sales_order_items_product_id_fkey(*)
   ),
   quote:quotes!sales_orders_quote_id_fkey(*),
-  production_order:production_orders!sales_orders_production_order_id_fkey(*)
+  production_order:production_orders!sales_orders_production_order_id_fkey(*),
+  nfes(*)
 `.trim();
 
 export async function GET(_request: NextRequest, { params }: Params) {

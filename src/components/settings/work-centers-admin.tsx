@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Edit, Factory, Loader2, Plus, Trash2 } from "lucide-react";
+import { Edit, Factory, Loader2, Plus, Trash2, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,9 @@ interface WorkCenter {
   efficiency: number;
   description: string | null;
   is_active: boolean;
+  default_monthly_hours: number;
+  labor_hourly_rate_this_month?: number | null;
+  labor_hourly_rate_latest?: number | null;
 }
 
 async function fetchWorkCenters(): Promise<WorkCenter[]> {
@@ -46,6 +49,7 @@ type CenterPayload = {
   efficiency: number;
   description: string | null;
   is_active: boolean;
+  default_monthly_hours: number;
 };
 
 async function createWorkCenter(data: CenterPayload) {
@@ -92,7 +96,10 @@ export function WorkCentersAdmin() {
     hourly_cost: 0,
     efficiency: 1,
     description: "",
+    default_monthly_hours: 220,
   });
+
+  const [recalculatingId, setRecalculatingId] = useState<string | null>(null);
 
   const {
     data: centers,
@@ -124,7 +131,7 @@ export function WorkCentersAdmin() {
       data: Partial<CenterPayload>;
     }) => updateWorkCenter(id, data),
     onSuccess: async () => {
-      toast.success("Centro de trabalho actualizado.");
+      toast.success("Centro de trabalho atualizado.");
       await queryClient.invalidateQueries({ queryKey: workCentersQueryKey });
       resetForm();
       setDialogOpen(false);
@@ -136,7 +143,7 @@ export function WorkCentersAdmin() {
   const deleteMutation = useMutation({
     mutationFn: deleteWorkCenter,
     onSuccess: async () => {
-      toast.success("Centro desactivado.");
+      toast.success("Centro desativado.");
       await queryClient.invalidateQueries({ queryKey: workCentersQueryKey });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -149,6 +156,7 @@ export function WorkCentersAdmin() {
       hourly_cost: 0,
       efficiency: 1,
       description: "",
+      default_monthly_hours: 220,
     });
     setEditingCenter(null);
   }
@@ -158,6 +166,11 @@ export function WorkCentersAdmin() {
       code: formData.code.trim().toUpperCase(),
       name: formData.name.trim(),
       hourly_cost: Number(formData.hourly_cost) || 0,
+      default_monthly_hours:
+        Number.isFinite(formData.default_monthly_hours) &&
+        formData.default_monthly_hours >= 1
+          ? Math.round(formData.default_monthly_hours)
+          : 220,
       efficiency:
         typeof formData.efficiency === "number" &&
         Number.isFinite(formData.efficiency)
@@ -194,6 +207,10 @@ export function WorkCentersAdmin() {
       hourly_cost: Number(center.hourly_cost ?? 0),
       efficiency: Number(center.efficiency ?? 1),
       description: center.description ?? "",
+      default_monthly_hours:
+        center.default_monthly_hours != null && center.default_monthly_hours > 0
+          ? center.default_monthly_hours
+          : 220,
     });
     setDialogOpen(true);
   }
@@ -203,6 +220,43 @@ export function WorkCentersAdmin() {
       style: "currency",
       currency: "BRL",
     }).format(Number(value ?? 0));
+  }
+
+  async function recalculateLabor(id: string) {
+    setRecalculatingId(id);
+    try {
+      const res = await fetch(
+        `/api/work-centers/${id}/recalculate-labor-cost`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
+      );
+      const j = (await res.json().catch(() => ({}))) as {
+        saved?: boolean;
+        hourly_rate?: number;
+        total_salary_base?: number;
+        total_hours_base?: number;
+        message?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        toast.error(j.error ?? "Erro ao recalcular");
+        return;
+      }
+      if (j.saved) {
+        toast.success(
+          `Custo/hora gravado: ${formatCurrency(j.hourly_rate ?? 0)} (${j.total_hours_base ?? 0} h, salários ${formatCurrency(j.total_salary_base ?? 0)})`
+        );
+      } else {
+        toast.info(j.message ?? "Sem dados para calcular.");
+      }
+      await queryClient.invalidateQueries({ queryKey: workCentersQueryKey });
+    } finally {
+      setRecalculatingId(null);
+    }
   }
 
   return (
@@ -267,17 +321,24 @@ export function WorkCentersAdmin() {
                       <span className="font-medium text-slate-900">{center.name}</span>
                       {!center.is_active ? (
                         <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                          Inactivo
+                          Inativo
                         </span>
                       ) : null}
                     </div>
-                    <div className="text-sm text-slate-500 mt-1">
-                      <span>Custo/h: {formatCurrency(center.hourly_cost)}</span>
-                      <span className="mx-2">·</span>
-                      <span>
-                        Eficiência: {(Number(center.efficiency) * 100).toFixed(0)}
-                        %
-                      </span>
+                    <div className="text-sm text-slate-500 mt-1 space-y-0.5">
+                      <div>
+                        <span>Custo/h cadastrado: {formatCurrency(center.hourly_cost)}</span>
+                        <span className="mx-2">·</span>
+                        <span>
+                          Eficiência: {(Number(center.efficiency) * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <div>
+                        Custo/h calculado (mês atual):{" "}
+                        {center.labor_hourly_rate_this_month != null
+                          ? formatCurrency(center.labor_hourly_rate_this_month)
+                          : "—"}
+                      </div>
                     </div>
                     {center.description ? (
                       <p className="text-sm text-slate-600 mt-1 line-clamp-2">
@@ -285,7 +346,22 @@ export function WorkCentersAdmin() {
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 flex-wrap">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      title="Recalcular custo/hora com base nos colaboradores ativos desta linha"
+                      disabled={recalculatingId === center.id}
+                      onClick={() => void recalculateLabor(center.id)}
+                    >
+                      {recalculatingId === center.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      ) : (
+                        <Calculator className="h-4 w-4" aria-hidden />
+                      )}
+                      <span className="ml-1 hidden sm:inline">Recalcular MO</span>
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -307,9 +383,9 @@ export function WorkCentersAdmin() {
                         deleteMutation.isPending || !center.is_active
                       }
                       title={
-                        !center.is_active
-                          ? "Já está inactivo."
-                          : "Desactivar centro"
+                          !center.is_active
+                          ? "Já está inativo."
+                          : "Desativar centro"
                       }
                       onClick={() => {
                         if (!center.is_active) return;
@@ -418,6 +494,30 @@ export function WorkCentersAdmin() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="wc-monthly-h">Horas padrão por mês (por colaborador)</Label>
+                <Input
+                  id="wc-monthly-h"
+                  type="number"
+                  min={1}
+                  max={400}
+                  value={
+                    Number.isFinite(formData.default_monthly_hours)
+                      ? formData.default_monthly_hours
+                      : 220
+                  }
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      default_monthly_hours: parseInt(e.target.value, 10) || 220,
+                    }))
+                  }
+                />
+                <p className="text-xs text-slate-500">
+                  Usado no cálculo de custo/hora (soma de salários ÷ soma destas horas × nº de
+                  colaboradores ativos na linha).
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="wc-eff">Eficiência (0 a 2)</Label>
                 <Input
                   id="wc-eff"
@@ -481,7 +581,7 @@ export function WorkCentersAdmin() {
                       A gravar…
                     </>
                   ) : editingCenter ? (
-                    "Guardar"
+                    "Salvar"
                   ) : (
                     "Criar"
                   )}
