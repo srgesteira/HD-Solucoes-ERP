@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -214,6 +215,30 @@ export function ProductFormFields({
           {classBusy ? (
             <Loader2 className="h-4 w-4 animate-spin text-slate-400" aria-hidden />
           ) : null}
+        </div>
+        <div
+          role="note"
+          className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700 leading-relaxed"
+        >
+          <p className="font-medium text-slate-800">
+            Onde está o «sufixo» do código técnico?
+          </p>
+          <p className="mt-1">
+            No exemplo <span className="font-mono text-slate-900">HD1-A10A10-001</span>, a parte final{' '}
+            <span className="font-mono text-slate-900">-001</span> é o{' '}
+            <strong>sufixo numérico</strong> (sequência). Ele{" "}
+            <strong>não aparece como campo</strong>: a base de dados atribui automaticamente o próximo
+            número (001, 002…) quando grava o produto, depois de escolher prefixo, família, sub-família,
+            material e acabamento. Comece por <strong>Prefixo</strong> e <strong>Família</strong>. Se as
+            listas estiverem vazias, cadastre os dados em{" "}
+            <Link
+              href="/settings/product-families"
+              className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+            >
+              Definições → Famílias e classificação de produto
+            </Link>
+            .
+          </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
