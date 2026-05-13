@@ -113,9 +113,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!compOk) return apiError("Produto componente não encontrado", 404);
   }
 
-  if (validated.is_labor) {
+  const externalLabor = validated.is_labor && validated.is_external_labor === true;
+
+  if (validated.is_labor && !externalLabor) {
     if (!validated.work_center_id) {
-      return apiError("Centro de trabalho é obrigatório para mão de obra", 400);
+      return apiError("Centro de trabalho é obrigatório para mão de obra interna", 400);
     }
     const { count: wcOk } = await admin
       .from("work_centers")
@@ -123,6 +125,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       .eq("id", validated.work_center_id)
       .eq("tenant_id", tenantId);
     if (!wcOk) return apiError("Centro de trabalho inválido", 400);
+  }
+
+  if (externalLabor && validated.work_center_id) {
+    return apiError("Mão de obra externa não deve incluir centro de trabalho", 400);
   }
 
   if (validated.work_center_id && !validated.is_labor) {
@@ -143,8 +149,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       .eq("tenant_id", tenantId)
       .maybeSingle();
     unitCost = Number(component?.cost_price ?? 0);
+  } else if (externalLabor) {
+    unitCost = Number(validated.unit_cost ?? 0);
   } else if (validated.work_center_id) {
-    if (validated.unit_cost !== undefined) {
+    if (validated.unit_cost !== undefined && validated.unit_cost !== null) {
       unitCost = validated.unit_cost;
     } else {
       const fromLabor = await getLatestLaborHourlyRateForWorkCenter(
@@ -173,7 +181,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       quantity: validated.quantity,
       unit_cost: unitCost,
       is_labor: validated.is_labor,
-      work_center_id: validated.work_center_id ?? null,
+      work_center_id: externalLabor ? null : (validated.work_center_id ?? null),
+      is_external_labor:
+        validated.is_labor === true && validated.is_external_labor === true,
     })
     .select()
     .single();

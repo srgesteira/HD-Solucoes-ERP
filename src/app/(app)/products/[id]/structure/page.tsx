@@ -148,10 +148,14 @@ export default function ProductStructurePage() {
   const [componentType, setComponentType] = useState<"material" | "labor">(
     "material"
   );
+  const [laborSource, setLaborSource] = useState<"internal" | "external">(
+    "internal"
+  );
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedWorkCenterId, setSelectedWorkCenterId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [laborHourlyRate, setLaborHourlyRate] = useState(0);
+  const [externalUnitCost, setExternalUnitCost] = useState(0);
 
   const { data: product, isLoading: productLoading } = useQuery({
     queryKey: ["product", productId],
@@ -175,7 +179,7 @@ export default function ProductStructurePage() {
   );
 
   useEffect(() => {
-    if (componentType !== "labor") return;
+    if (componentType !== "labor" || laborSource !== "internal") return;
     const wc = workCenters.find((w) => w.id === selectedWorkCenterId);
     const sug = wc
       ? Number(
@@ -185,7 +189,7 @@ export default function ProductStructurePage() {
         )
       : 0;
     setLaborHourlyRate(sug);
-  }, [componentType, selectedWorkCenterId, workCenters]);
+  }, [componentType, laborSource, selectedWorkCenterId, workCenters]);
 
   const usedComponentIds = useMemo(() => {
     const set = new Set<string>();
@@ -231,10 +235,12 @@ export default function ProductStructurePage() {
 
   function resetDialog() {
     setComponentType("material");
+    setLaborSource("internal");
     setSelectedProductId("");
     setSelectedWorkCenterId("");
     setQuantity(1);
     setLaborHourlyRate(0);
+    setExternalUnitCost(0);
   }
 
   async function handleAddComponent() {
@@ -242,8 +248,16 @@ export default function ProductStructurePage() {
       toast.error("Seleccione um produto.");
       return;
     }
-    if (componentType === "labor" && !selectedWorkCenterId) {
+    if (componentType === "labor" && laborSource === "internal" && !selectedWorkCenterId) {
       toast.error("Seleccione um centro de trabalho.");
+      return;
+    }
+    if (
+      componentType === "labor" &&
+      laborSource === "external" &&
+      (!Number.isFinite(externalUnitCost) || externalUnitCost < 0)
+    ) {
+      toast.error("Informe o custo unitário (R$) da mão de obra externa.");
       return;
     }
     if (quantity <= 0 || !Number.isFinite(quantity)) {
@@ -258,12 +272,20 @@ export default function ProductStructurePage() {
           is_labor: false,
           quantity,
         });
-      } else {
+      } else if (laborSource === "internal") {
         await addMutation.mutateAsync({
           is_labor: true,
+          is_external_labor: false,
           work_center_id: selectedWorkCenterId,
           quantity,
           unit_cost: laborHourlyRate,
+        });
+      } else {
+        await addMutation.mutateAsync({
+          is_labor: true,
+          is_external_labor: true,
+          quantity,
+          unit_cost: externalUnitCost,
         });
       }
     } catch {
@@ -427,6 +449,8 @@ export default function ProductStructurePage() {
               {components.map((comp) => {
                 const subtotal =
                   Number(comp.quantity ?? 0) * Number(comp.unit_cost ?? 0);
+                const extLabor =
+                  comp.is_labor === true && comp.is_external_labor === true;
                 return (
                   <div
                     key={comp.id}
@@ -434,17 +458,37 @@ export default function ProductStructurePage() {
                   >
                     <div className="col-span-4 min-w-0">
                       {comp.is_labor ? (
-                        <div className="flex items-start gap-2">
+                        <div className="flex items-start gap-2 flex-wrap">
                           <Factory
                             className="h-4 w-4 text-blue-600 shrink-0 mt-0.5"
                             aria-hidden
                           />
-                          <span className="text-slate-900">
-                            {comp.work_center?.name ?? "Mão-de-obra"}{" "}
-                            <span className="text-xs text-slate-500 whitespace-nowrap">
-                              ({comp.work_center?.code})
-                            </span>
-                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-slate-900">
+                                {extLabor ? (
+                                  <>Mão-de-obra externa (terceiros)</>
+                                ) : (
+                                  <>
+                                    {comp.work_center?.name ?? "Mão-de-obra"}{" "}
+                                    <span className="text-xs text-slate-500 whitespace-nowrap">
+                                      ({comp.work_center?.code})
+                                    </span>
+                                  </>
+                                )}
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold",
+                                  extLabor
+                                    ? "bg-amber-50 text-amber-900 ring-1 ring-amber-200"
+                                    : "bg-sky-50 text-sky-900 ring-1 ring-sky-200"
+                                )}
+                              >
+                                {extLabor ? "Externa" : "Interna"}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <div className="flex items-start gap-2">
@@ -474,11 +518,17 @@ export default function ProductStructurePage() {
                       </span>
                     </div>
                     <div className="col-span-2 tabular-nums text-slate-800">
-                      {comp.quantity}{" "}
-                      {comp.is_labor ? "h" : comp.component_product?.unit?.trim() || "—"}
+                      {comp.quantity}
+                      {comp.is_labor && !extLabor ? " h" : null}
+                      {!comp.is_labor ?
+                        ` ${comp.component_product?.unit?.trim() || "—"}`
+                      : null}
                     </div>
                     <div className="col-span-2 text-right tabular-nums text-slate-800">
                       {formatCurrency(Number(comp.unit_cost ?? 0))}
+                      {comp.is_labor && !extLabor ? (
+                        <span className="block text-[10px] text-slate-500 font-normal">/h</span>
+                      ) : null}
                     </div>
                     <div className="col-span-1 text-right tabular-nums font-medium text-slate-900">
                       {formatCurrency(subtotal)}
@@ -553,8 +603,8 @@ export default function ProductStructurePage() {
               Nova linha na estrutura
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              Material usa o custo de lista do produto escolhido; mão-de-obra usa custo por hora
-              do centro de trabalho.
+              Material usa o custo de lista do produto escolhido. Mão-de-obra interna usa o custo/hora
+              do centro; externa (terceiros) usa um custo unitário fixo à sua escolha.
             </p>
             <div className="mt-5 space-y-4">
               <div className="space-y-2">
@@ -564,7 +614,10 @@ export default function ProductStructurePage() {
                     type="button"
                     variant={componentType === "material" ? "primary" : "outline"}
                     className="flex-1 text-sm"
-                    onClick={() => setComponentType("material")}
+                    onClick={() => {
+                      setComponentType("material");
+                      setLaborSource("internal");
+                    }}
                   >
                     <Package className="h-4 w-4" aria-hidden /> Material
                   </Button>
@@ -572,7 +625,10 @@ export default function ProductStructurePage() {
                     type="button"
                     variant={componentType === "labor" ? "primary" : "outline"}
                     className="flex-1 text-sm"
-                    onClick={() => setComponentType("labor")}
+                    onClick={() => {
+                      setComponentType("labor");
+                      setLaborSource("internal");
+                    }}
                   >
                     <Factory className="h-4 w-4" aria-hidden /> Mão-de-obra
                   </Button>
@@ -603,44 +659,98 @@ export default function ProductStructurePage() {
                   ) : null}
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="bom-wc">Centro de trabalho</Label>
-                  <select
-                    id="bom-wc"
-                    className={SELECT_CLASS}
-                    value={selectedWorkCenterId}
-                    onChange={(e) => setSelectedWorkCenterId(e.target.value)}
-                  >
-                    <option value="">— Seleccionar —</option>
-                    {workCenters.map((wc) => (
-                      <option key={wc.id} value={wc.id}>
-                        {wc.code} — {wc.name} (
-                        {formatCurrency(
-                          wc.labor_hourly_rate_latest != null
-                            ? wc.labor_hourly_rate_latest
-                            : Number(wc.hourly_cost ?? 0)
-                        )}
-                        /h)
-                      </option>
-                    ))}
-                  </select>
-                  <div className="space-y-2 pt-2">
-                    <Label htmlFor="bom-labor-rate">Custo por hora (R$)</Label>
-                    <Input
-                      id="bom-labor-rate"
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      value={laborHourlyRate}
-                      onChange={(e) =>
-                        setLaborHourlyRate(parseFloat(e.target.value) || 0)
-                      }
-                    />
-                    <p className="text-xs text-slate-500">
-                      Preenchido com o último custo/hora calculado para a linha (relatório de MO) ou,
-                      se não houver, com o custo/h cadastrado no centro. Pode alterar antes de gravar.
-                    </p>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium text-slate-700">Origem da mão-de-obra</span>
+                    <div className="flex flex-col gap-2">
+                      <label className="flex items-start gap-2 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name="labor-source"
+                          className="mt-1"
+                          checked={laborSource === "internal"}
+                          onChange={() => setLaborSource("internal")}
+                        />
+                        <span>
+                          <strong>Interna</strong> — centro de trabalho da empresa; custo/hora sugerido
+                          pelo centro (editável).
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name="labor-source"
+                          className="mt-1"
+                          checked={laborSource === "external"}
+                          onChange={() => setLaborSource("external")}
+                        />
+                        <span>
+                          <strong>Externa</strong> — terceiros; custo unitário fixo (R$), sem centro de
+                          trabalho.
+                        </span>
+                      </label>
+                    </div>
                   </div>
+
+                  {laborSource === "internal" ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="bom-wc">Centro de trabalho</Label>
+                      <select
+                        id="bom-wc"
+                        className={SELECT_CLASS}
+                        value={selectedWorkCenterId}
+                        onChange={(e) => setSelectedWorkCenterId(e.target.value)}
+                      >
+                        <option value="">— Seleccionar —</option>
+                        {workCenters.map((wc) => (
+                          <option key={wc.id} value={wc.id}>
+                            {wc.code} — {wc.name} (
+                            {formatCurrency(
+                              wc.labor_hourly_rate_latest != null
+                                ? wc.labor_hourly_rate_latest
+                                : Number(wc.hourly_cost ?? 0)
+                            )}
+                            /h)
+                          </option>
+                        ))}
+                      </select>
+                      <div className="space-y-2 pt-2">
+                        <Label htmlFor="bom-labor-rate">Custo por hora (R$)</Label>
+                        <Input
+                          id="bom-labor-rate"
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={laborHourlyRate}
+                          onChange={(e) =>
+                            setLaborHourlyRate(parseFloat(e.target.value) || 0)
+                          }
+                        />
+                        <p className="text-xs text-slate-500">
+                          Preenchido com o último custo/hora calculado para a linha ou com o custo/h do
+                          centro. Pode alterar antes de gravar.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="bom-ext-cost">Custo unitário (R$)</Label>
+                      <Input
+                        id="bom-ext-cost"
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={externalUnitCost}
+                        onChange={(e) =>
+                          setExternalUnitCost(parseFloat(e.target.value) || 0)
+                        }
+                      />
+                      <p className="text-xs text-slate-500">
+                        Valor por unidade de medida usada na quantidade (ex.: R$/hora ou R$/serviço),
+                        conforme interpretar a quantidade abaixo.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -656,13 +766,19 @@ export default function ProductStructurePage() {
                     setQuantity(parseFloat(e.target.value) || 0)
                   }
                   placeholder={
-                    componentType === "labor" ? "Horas" : "Quantidade por unidade pai"
+                    componentType === "labor" && laborSource === "internal"
+                      ? "Horas"
+                      : componentType === "labor"
+                        ? "Quantidade"
+                        : "Quantidade por unidade pai"
                   }
                 />
                 <p className="text-xs text-slate-500">
-                  {componentType === "labor"
+                  {componentType === "labor" && laborSource === "internal"
                     ? "Horas necessárias no centro escolhido."
-                    : "Quantidade consumida por unidade do produto pai."}
+                    : componentType === "labor" && laborSource === "external"
+                      ? "Quantidade (ex.: horas, dias ou unidades de serviço) × custo unitário acima."
+                      : "Quantidade consumida por unidade do produto pai."}
                 </p>
               </div>
             </div>

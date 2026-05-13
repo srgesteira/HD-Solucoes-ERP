@@ -54,23 +54,45 @@ export const productComponentSchema = z
     component_product_id: z.string().uuid().nullable().optional(),
     quantity: z.number().min(0.000001, "Quantidade deve ser maior que zero"),
     is_labor: z.boolean().default(false),
+    /** Mão-de-obra externa: sem centro; custo unitário obrigatório no body. */
+    is_external_labor: z.boolean().optional().default(false),
     work_center_id: z.string().uuid().nullable().optional(),
     unit_cost: z.number().min(0).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.is_labor) {
-      if (!data.work_center_id) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Centro de trabalho é obrigatório para mão de obra",
-          path: ["work_center_id"],
-        });
-      }
+      const external = data.is_external_labor === true;
       if (data.component_product_id) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: "Linha de mão de obra não deve referenciar produto componente",
           path: ["component_product_id"],
+        });
+      }
+      if (external) {
+        if (data.work_center_id) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Mão de obra externa não deve ter centro de trabalho",
+            path: ["work_center_id"],
+          });
+        }
+        if (
+          data.unit_cost === undefined ||
+          data.unit_cost === null ||
+          Number.isNaN(data.unit_cost)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Custo unitário (R$) é obrigatório para mão de obra externa",
+            path: ["unit_cost"],
+          });
+        }
+      } else if (!data.work_center_id) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Centro de trabalho é obrigatório para mão de obra interna",
+          path: ["work_center_id"],
         });
       }
     } else if (!data.component_product_id) {

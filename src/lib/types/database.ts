@@ -1295,6 +1295,7 @@ export type Database = {
           component_product_id: string | null
           created_at: string
           id: string
+          is_external_labor: boolean
           is_labor: boolean
           parent_product_id: string
           quantity: number
@@ -1307,6 +1308,7 @@ export type Database = {
           component_product_id?: string | null
           created_at?: string
           id?: string
+          is_external_labor?: boolean
           is_labor?: boolean
           parent_product_id: string
           quantity: number
@@ -1319,6 +1321,7 @@ export type Database = {
           component_product_id?: string | null
           created_at?: string
           id?: string
+          is_external_labor?: boolean
           is_labor?: boolean
           parent_product_id?: string
           quantity?: number
