@@ -7,7 +7,6 @@ import {
   insertSalesOrderItemsFromLines,
   nextSalesOrderNumber,
   generateReceivablesForSalesOrder,
-  ensureProductionOrderForSales,
   rollbackSalesOrderCreation,
   type SaleLineInput,
 } from "@/lib/sales/sales-flow";
@@ -177,22 +176,6 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (ins.error) {
     await admin.from("sales_orders").delete().eq("id", so.id).eq("tenant_id", tenantId);
     return apiError("Erro ao copiar itens: " + ins.error, 500);
-  }
-
-  const { error: ePrd } = await ensureProductionOrderForSales(
-    admin,
-    { tenantId, userId: user.id },
-    {
-      id: so.id,
-      order_number: so.order_number,
-      client_name: so.client_name,
-      client_document: so.client_document,
-      expected_delivery: so.expected_delivery,
-    }
-  );
-  if (ePrd) {
-    await rollbackSalesOrderCreation(admin, tenantId, so.id);
-    return apiError("Erro ao gerar produção: " + ePrd, 500);
   }
 
   const { data: fresh, error: fErr } = await admin

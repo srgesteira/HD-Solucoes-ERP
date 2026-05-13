@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
       subfamily_id: validated.subfamily_id,
       material_id: validated.material_id,
       finish_id: validated.finish_id,
+      product_nature: validated.product_nature,
     })
     .select()
     .single();

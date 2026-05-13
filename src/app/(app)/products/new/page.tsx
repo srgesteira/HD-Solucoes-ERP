@@ -16,6 +16,7 @@ import {
 } from "@/components/products/product-form-fields";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
+import { PRODUCT_NATURE_CODES } from "@/lib/products/mrp-product-nature";
 import type { StructureSuggestion } from "@/lib/services/ai.service";
 
 function buildPayload(f: ProductFormShape) {
@@ -38,6 +39,7 @@ function buildPayload(f: ProductFormShape) {
     subfamily_id: f.subfamily_id.trim(),
     material_id: f.material_id.trim(),
     finish_id: f.finish_id.trim(),
+    product_nature: f.product_nature,
   };
 }
 
@@ -85,6 +87,7 @@ export default function NewProductPage() {
     subfamily_id: "",
     material_id: "",
     finish_id: "",
+    product_nature: "",
     technical_code: null,
   });
 
@@ -143,6 +146,15 @@ export default function NewProductPage() {
       );
       return;
     }
+    if (
+      !formData.product_nature ||
+      !(PRODUCT_NATURE_CODES as readonly string[]).includes(
+        formData.product_nature
+      )
+    ) {
+      toast.error("Selecione a natureza do produto (MP, SE, EB, …).");
+      return;
+    }
 
     try {
       await mutation.mutateAsync(buildPayload(formData));
@@ -161,6 +173,7 @@ export default function NewProductPage() {
       const next = { ...prev, [field]: value };
       if (field === "family_id") {
         next.subfamily_id = "";
+        next.finish_id = "";
       }
       if (field === "material_id") {
         next.finish_id = "";

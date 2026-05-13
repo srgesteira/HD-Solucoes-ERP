@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+const productNatureEnum = z.enum(["MP", "SE", "EB", "MC", "RV", "AC"], {
+  message: "Natureza do produto é obrigatória",
+});
+
 /** Classificação técnica (código tipo HD1-A10A10-001): FKs obrigatórias na criação. */
 export const technicalClassificationSchema = z.object({
   prefix_id: z.uuid({ message: "Prefixo é obrigatório" }),
@@ -32,11 +36,15 @@ const productSharedFields = {
 /** Criação: sem campo `code` manual; identificador = technical_code gerado na BD. */
 export const productCreateSchema = z
   .object(productSharedFields)
-  .merge(technicalClassificationSchema);
+  .merge(technicalClassificationSchema)
+  .extend({
+    product_nature: productNatureEnum,
+  });
 
 /** Actualização parcial; `code` legado opcional (não usar na UI). */
 export const productSchema = z.object({
   ...productSharedFields,
+  product_nature: productNatureEnum.optional().nullable(),
   code: z.string().max(50).optional().nullable(),
 });
 

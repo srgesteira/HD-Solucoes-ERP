@@ -119,6 +119,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
         ? null
         : String(b.expected_delivery).slice(0, 10);
   }
+  if (b.pcp_deadline !== undefined) {
+    updateData.pcp_deadline =
+      b.pcp_deadline === null
+        ? null
+        : String(b.pcp_deadline).slice(0, 10);
+  }
   if (b.actual_delivery !== undefined) {
     updateData.actual_delivery =
       b.actual_delivery === null

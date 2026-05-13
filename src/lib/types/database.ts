@@ -1148,6 +1148,7 @@ export type Database = {
           production_end: string | null
           production_start: string | null
           quantity: number
+          sales_order_item_id: string | null
           status: string
           tenant_id: string
           unit: string | null
@@ -1170,6 +1171,7 @@ export type Database = {
           production_end?: string | null
           production_start?: string | null
           quantity?: number
+          sales_order_item_id?: string | null
           status?: string
           tenant_id: string
           unit?: string | null
@@ -1192,6 +1194,7 @@ export type Database = {
           production_end?: string | null
           production_start?: string | null
           quantity?: number
+          sales_order_item_id?: string | null
           status?: string
           tenant_id?: string
           unit?: string | null
@@ -1224,6 +1227,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_sales_order_item_id_fkey"
+            columns: ["sales_order_item_id"]
+            isOneToOne: false
+            referencedRelation: "sales_order_items"
             referencedColumns: ["id"]
           },
           {
@@ -1722,6 +1732,7 @@ export type Database = {
           ncm: string | null
           preferred_supplier_id: string | null
           prefix_id: string | null
+          product_nature: string | null
           selling_price: number
           subfamily_id: string | null
           technical_code: string
@@ -1749,6 +1760,7 @@ export type Database = {
           ncm?: string | null
           preferred_supplier_id?: string | null
           prefix_id?: string | null
+          product_nature?: string | null
           selling_price?: number
           subfamily_id?: string | null
           technical_code: string
@@ -1776,6 +1788,7 @@ export type Database = {
           ncm?: string | null
           preferred_supplier_id?: string | null
           prefix_id?: string | null
+          product_nature?: string | null
           selling_price?: number
           subfamily_id?: string | null
           technical_code?: string
@@ -1851,6 +1864,7 @@ export type Database = {
           received_quantity: number
           tenant_id: string
           total_price: number
+          trace_key: string | null
           unit: string
           unit_price: number
           updated_at: string
@@ -1867,6 +1881,7 @@ export type Database = {
           received_quantity?: number
           tenant_id: string
           total_price?: number
+          trace_key?: string | null
           unit?: string
           unit_price?: number
           updated_at?: string
@@ -1883,6 +1898,7 @@ export type Database = {
           received_quantity?: number
           tenant_id?: string
           total_price?: number
+          trace_key?: string | null
           unit?: string
           unit_price?: number
           updated_at?: string
@@ -2321,7 +2337,9 @@ export type Database = {
           created_at: string
           description: string
           id: string
+          line_number: number
           product_id: string | null
+          production_order_id: string | null
           profit: number | null
           quantity: number
           sales_order_id: string
@@ -2337,7 +2355,9 @@ export type Database = {
           created_at?: string
           description: string
           id?: string
+          line_number?: number
           product_id?: string | null
+          production_order_id?: string | null
           profit?: number | null
           quantity?: number
           sales_order_id: string
@@ -2353,7 +2373,9 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          line_number?: number
           product_id?: string | null
+          production_order_id?: string | null
           profit?: number | null
           quantity?: number
           sales_order_id?: string
@@ -2371,6 +2393,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_items_production_order_id_fkey"
+            columns: ["production_order_id"]
+            isOneToOne: false
+            referencedRelation: "production_orders"
             referencedColumns: ["id"]
           },
           {
@@ -2408,6 +2437,7 @@ export type Database = {
           payment_days_between_installments: number
           payment_days_to_first_due: number
           payment_installments: number
+          pcp_deadline: string | null
           production_order_id: string | null
           quote_id: string | null
           status: string
@@ -2435,6 +2465,7 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          pcp_deadline?: string | null
           production_order_id?: string | null
           quote_id?: string | null
           status?: string
@@ -2462,6 +2493,7 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          pcp_deadline?: string | null
           production_order_id?: string | null
           quote_id?: string | null
           status?: string

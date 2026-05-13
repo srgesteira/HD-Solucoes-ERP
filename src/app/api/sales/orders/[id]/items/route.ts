@@ -63,6 +63,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     .select(ITEM_SELECT)
     .eq("sales_order_id", orderId)
     .eq("tenant_id", tenantId)
+    .order("line_number", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -149,6 +150,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
   if (!order) return apiError("Pedido não encontrado", 404);
 
+  const { data: lastLine } = await admin
+    .from("sales_order_items")
+    .select("line_number")
+    .eq("tenant_id", tenantId)
+    .eq("sales_order_id", orderId)
+    .order("line_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const nextLineNumber = (lastLine?.line_number ?? 0) + 1;
+
   let unit_cost: number | null = null;
 
   if (product_id) {
@@ -167,6 +179,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .insert({
       tenant_id: tenantId,
       sales_order_id: orderId,
+      line_number: nextLineNumber,
       product_id,
       description,
       quantity,

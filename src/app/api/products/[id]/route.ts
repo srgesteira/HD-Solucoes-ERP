@@ -166,6 +166,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (validated.finish_id !== undefined) {
     updateRow.finish_id = validated.finish_id;
   }
+  if (validated.product_nature !== undefined) {
+    updateRow.product_nature = validated.product_nature;
+  }
 
   const mergedPrefix =
     validated.prefix_id !== undefined

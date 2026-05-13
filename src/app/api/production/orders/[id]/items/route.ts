@@ -286,7 +286,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const { data: existingItem, error: loadItemErr } = await admin
     .from("order_items")
-    .select("production_start, production_end, status")
+    .select("production_start, production_end, status, sales_order_item_id")
     .eq("id", itemId.trim())
     .eq("order_id", orderId)
     .eq("tenant_id", tenantId)
@@ -425,6 +425,46 @@ export async function PUT(request: NextRequest, { params }: Params) {
       "Data de fim de produção não pode ser anterior à de início.",
       400
     );
+  }
+
+  const soiId = existingItem.sales_order_item_id;
+  if (mergedStart && soiId) {
+    const { data: linkRow, error: linkErr } = await admin
+      .from("sales_order_items")
+      .select("sales_order_id")
+      .eq("id", soiId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (linkErr) {
+      return apiError(
+        "Erro ao validar linha de venda: " + linkErr.message,
+        supabaseErrorToHttp(linkErr.code)
+      );
+    }
+    if (linkRow?.sales_order_id) {
+      const { data: soRow, error: soErr } = await admin
+        .from("sales_orders")
+        .select("order_date")
+        .eq("id", linkRow.sales_order_id)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (soErr) {
+        return apiError(
+          "Erro ao validar pedido de venda: " + soErr.message,
+          supabaseErrorToHttp(soErr.code)
+        );
+      }
+      const od = soRow?.order_date?.slice(0, 10);
+      const st = mergedStart.slice(0, 10);
+      if (od && st < od) {
+        return apiError(
+          "Data de início de produção não pode ser anterior à data do pedido de venda (" +
+            od +
+            ").",
+          400
+        );
+      }
+    }
   }
 
   if (

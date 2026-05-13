@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils/cn";
 import type { ProductType } from "@/lib/types/product.types";
+import type { ProductNatureCode } from "@/lib/products/mrp-product-nature";
+import { PRODUCT_NATURE_LABELS } from "@/lib/products/mrp-product-nature";
 
 const SELECT_CLASS =
   "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm " +
@@ -43,6 +45,8 @@ export type ProductFormShape = {
   subfamily_id: string;
   material_id: string;
   finish_id: string;
+  /** Código MRP (MP, SE, …) ou vazio até o utilizador escolher */
+  product_nature: ProductNatureCode | "";
   /** Preenchido pelo servidor após INSERT (identificador principal) */
   technical_code: string | null;
 };
@@ -95,17 +99,34 @@ export function ProductFormFields({
     let cancelled = false;
     (async () => {
       setBaseLoading(true);
+      const fetchOpts: RequestInit = {
+        credentials: "include",
+        cache: "no-store",
+      };
       try {
         const [pr, fa, ma] = await Promise.all([
-          fetch("/api/products/prefixes", { credentials: "include" }),
-          fetch("/api/products/families", { credentials: "include" }),
-          fetch("/api/products/materials", { credentials: "include" }),
+          fetch("/api/products/prefixes", fetchOpts),
+          fetch("/api/products/families", fetchOpts),
+          fetch("/api/products/materials", fetchOpts),
         ]);
-        const [jpr, jfa, jma] = await Promise.all([
-          pr.json() as Promise<{ data?: ClassListRow[] }>,
-          fa.json() as Promise<{ data?: ClassListRow[] }>,
-          ma.json() as Promise<{ data?: ClassListRow[] }>,
-        ]);
+        let jpr: { data?: ClassListRow[] } = {};
+        let jfa: { data?: ClassListRow[] } = {};
+        let jma: { data?: ClassListRow[] } = {};
+        try {
+          jpr = (await pr.json()) as { data?: ClassListRow[] };
+        } catch {
+          /* ignore */
+        }
+        try {
+          jfa = (await fa.json()) as { data?: ClassListRow[] };
+        } catch {
+          /* ignore */
+        }
+        try {
+          jma = (await ma.json()) as { data?: ClassListRow[] };
+        } catch {
+          /* ignore */
+        }
         if (cancelled) return;
         if (pr.ok) setPrefixes(jpr.data ?? []);
         if (fa.ok) setFamilies(jfa.data ?? []);
@@ -123,6 +144,7 @@ export function ProductFormFields({
     const fid = formData.family_id?.trim();
     if (!fid) {
       setSubfamilies([]);
+      setSubLoading(false);
       return;
     }
     let cancelled = false;
@@ -131,9 +153,14 @@ export function ProductFormFields({
       try {
         const res = await fetch(
           `/api/products/subfamilies?family_id=${encodeURIComponent(fid)}`,
-          { credentials: "include" }
+          { credentials: "include", cache: "no-store" }
         );
-        const json = (await res.json()) as { data?: ClassListRow[] };
+        let json: { data?: ClassListRow[] } = {};
+        try {
+          json = (await res.json()) as { data?: ClassListRow[] };
+        } catch {
+          /* ignore */
+        }
         if (!cancelled && res.ok) setSubfamilies(json.data ?? []);
       } finally {
         if (!cancelled) setSubLoading(false);
@@ -148,6 +175,7 @@ export function ProductFormFields({
     const mid = formData.material_id?.trim();
     if (!mid) {
       setFinishes([]);
+      setFinLoading(false);
       return;
     }
     let cancelled = false;
@@ -156,9 +184,14 @@ export function ProductFormFields({
       try {
         const res = await fetch(
           `/api/products/finishes?material_id=${encodeURIComponent(mid)}`,
-          { credentials: "include" }
+          { credentials: "include", cache: "no-store" }
         );
-        const json = (await res.json()) as { data?: ClassListRow[] };
+        let json: { data?: ClassListRow[] } = {};
+        try {
+          json = (await res.json()) as { data?: ClassListRow[] };
+        } catch {
+          /* ignore */
+        }
         if (!cancelled && res.ok) setFinishes(json.data ?? []);
       } finally {
         if (!cancelled) setFinLoading(false);
@@ -302,6 +335,35 @@ export function ProductFormFields({
             <p className="text-xs text-slate-500">
               Identificador único do produto. Gerado na base de dados a partir da
               classificação (ex.: HD1-A10A10-001). Não é editável.
+            </p>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="product_nature">Natureza *</Label>
+            <select
+              id="product_nature"
+              className={SELECT_CLASS}
+              required
+              disabled={classBusy}
+              value={formData.product_nature}
+              onChange={(e) =>
+                onChange(
+                  "product_nature",
+                  e.target.value as ProductFormShape["product_nature"]
+                )
+              }
+            >
+              <option value="">Selecionar…</option>
+              {(Object.keys(PRODUCT_NATURE_LABELS) as ProductNatureCode[]).map(
+                (code) => (
+                  <option key={code} value={code}>
+                    {PRODUCT_NATURE_LABELS[code]}
+                  </option>
+                )
+              )}
+            </select>
+            <p className="text-xs text-slate-500">
+              Define se o MRP trata o item como compra, produção ou semi-elaborado
+              (com composição).
             </p>
           </div>
         </div>

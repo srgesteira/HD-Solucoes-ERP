@@ -12,7 +12,6 @@ import {
   nextSalesOrderNumber,
   parseSaleLines,
   generateReceivablesForSalesOrder,
-  ensureProductionOrderForSales,
   rollbackSalesOrderCreation,
 } from "@/lib/sales/sales-flow";
 
@@ -218,6 +217,11 @@ export async function POST(request: NextRequest) {
       ? null
       : String(b.expected_delivery).slice(0, 10);
 
+  const pcp_deadline =
+    b.pcp_deadline === undefined || b.pcp_deadline === null
+      ? null
+      : String(b.pcp_deadline).slice(0, 10);
+
   const discount =
     b.discount === undefined || b.discount === null
       ? 0
@@ -272,6 +276,7 @@ export async function POST(request: NextRequest) {
           : String(b.client_address).trim() || null,
       order_date,
       expected_delivery,
+      pcp_deadline,
       discount,
       tax,
       notes,
@@ -303,22 +308,6 @@ export async function POST(request: NextRequest) {
   if (itemErr.error) {
     await admin.from("sales_orders").delete().eq("id", row.id).eq("tenant_id", tenantId);
     return apiError("Erro ao gravar itens: " + itemErr.error, 500);
-  }
-
-  const { error: ePrd } = await ensureProductionOrderForSales(
-    admin,
-    { tenantId, userId: user.id },
-    {
-      id: row.id,
-      order_number: row.order_number,
-      client_name: row.client_name,
-      client_document: row.client_document,
-      expected_delivery,
-    }
-  );
-  if (ePrd) {
-    await rollbackSalesOrderCreation(admin, tenantId, row.id);
-    return apiError("Erro ao gerar ordem de produção: " + ePrd, 500);
   }
 
   const { data: fresh, error: frErr } = await admin

@@ -7,13 +7,14 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/lib/utils/tenant";
 import {
-  calculateNeededMaterials,
-  createProductionOrderIfFeasible,
+  calculateMaterialRequirements,
   generatePurchaseOrders,
-  getNetRequirements,
+  processMrpForSalesOrder,
 } from "@/lib/mrp-service";
 
 export const dynamic = "force-dynamic";
+
+type PlanAction = "requirements" | "purchase_orders" | "production";
 
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -41,53 +42,162 @@ export async function POST(request: NextRequest) {
     typeof b.sales_order_id === "string" ? b.sales_order_id.trim() : "";
   if (!sales_order_id) return apiError("sales_order_id é obrigatório.", 400);
 
+  const actionRaw =
+    typeof b.action === "string" ? b.action.trim().toLowerCase() : "";
+  const action = (
+    ["requirements", "purchase_orders", "production"] as const
+  ).includes(actionRaw as PlanAction)
+    ? (actionRaw as PlanAction)
+    : null;
+
   const confirm = b.confirm === true;
 
   const admin = createSupabaseAdminClient();
 
   try {
-    const gross = await calculateNeededMaterials(
+    const requirements = await calculateMaterialRequirements(
       admin,
       tenantId,
       sales_order_id
     );
-    const requirements = await getNetRequirements(admin, tenantId, gross);
     const has_shortage = requirements.some((r) => r.shortage > 0.0001);
 
-    if (!confirm) {
+    if (action === "requirements") {
       return apiOk({
         requirements,
-        summary: { has_shortage, lines: requirements.length },
+        summary: {
+          has_shortage,
+          lines: requirements.length,
+          production_lines: 0,
+        },
+        process: {
+          sales_order_id,
+          order_number: "",
+          lines: [],
+        },
+        purchase_orders: [],
+        production_order_ids: [],
       });
     }
 
-    const poResult = await generatePurchaseOrders(
+    if (action === "purchase_orders") {
+      const poResult = await generatePurchaseOrders(
+        admin,
+        tenantId,
+        user.id,
+        requirements
+      );
+      return apiOk({
+        requirements,
+        summary: {
+          has_shortage,
+          lines: requirements.length,
+          production_lines: 0,
+        },
+        process: {
+          sales_order_id,
+          order_number: "",
+          lines: [],
+        },
+        purchase_orders: poResult.purchase_orders,
+        production_order_ids: [],
+      });
+    }
+
+    if (action === "production") {
+      const processResult = await processMrpForSalesOrder(
+        admin,
+        tenantId,
+        user.id,
+        sales_order_id,
+        true,
+        { createTracePurchaseOrders: false }
+      );
+
+      const poById = new Map<
+        string,
+        { id: string; po_number: string; supplier_id: string | null }
+      >();
+      for (const line of processResult.lines) {
+        for (const po of line.purchase_orders) {
+          poById.set(po.id, po);
+        }
+      }
+      const purchase_orders = [...poById.values()];
+
+      const production_order_ids = [
+        ...new Set(
+          processResult.lines
+            .map((l) => l.production_order_id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+        ),
+      ];
+
+      const opsCreatedOrLinked = processResult.lines.filter(
+        (l) =>
+          l.production_order_id != null &&
+          l.skipped_reason !== "Já possui ordem de produção."
+      );
+
+      return apiOk({
+        requirements,
+        summary: {
+          has_shortage,
+          lines: requirements.length,
+          production_lines: opsCreatedOrLinked.length,
+        },
+        process: processResult,
+        purchase_orders,
+        production_order_ids,
+        production_order_id: production_order_ids[0],
+      });
+    }
+
+    const processResult = await processMrpForSalesOrder(
       admin,
       tenantId,
       user.id,
-      requirements
+      sales_order_id,
+      confirm,
+      confirm ? { createTracePurchaseOrders: true } : undefined
     );
 
-    let production_order_id: string | undefined;
-    let production_error: string | undefined;
-    try {
-      const out = await createProductionOrderIfFeasible(
-        admin,
-        tenantId,
-        sales_order_id,
-        user.id
-      );
-      production_order_id = out.production_order_id;
-    } catch (e) {
-      production_error =
-        e instanceof Error ? e.message : "Falha ao criar ordem de produção.";
+    const poById = new Map<
+      string,
+      { id: string; po_number: string; supplier_id: string | null }
+    >();
+    for (const line of processResult.lines) {
+      for (const po of line.purchase_orders) {
+        poById.set(po.id, po);
+      }
     }
+    const purchase_orders = [...poById.values()];
+
+    const production_order_ids = [
+      ...new Set(
+        processResult.lines
+          .map((l) => l.production_order_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      ),
+    ];
+
+    const opsCreatedOrLinked = processResult.lines.filter(
+      (l) =>
+        l.production_order_id != null &&
+        l.skipped_reason !== "Já possui ordem de produção."
+    );
 
     return apiOk({
       requirements,
-      purchase_orders: poResult.purchase_orders,
-      production_order_id,
-      production_error,
+      summary: {
+        has_shortage,
+        lines: requirements.length,
+        production_lines: opsCreatedOrLinked.length,
+      },
+      process: processResult,
+      purchase_orders,
+      production_order_ids,
+      production_order_id: production_order_ids[0],
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro no MRP.";

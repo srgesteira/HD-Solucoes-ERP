@@ -188,14 +188,26 @@ export async function insertSalesOrderItemsFromLines(
 ): Promise<{ error?: string }> {
   if (!lines.length) return {};
 
+  const { data: lastLine } = await admin
+    .from("sales_order_items")
+    .select("line_number")
+    .eq("tenant_id", tenantId)
+    .eq("sales_order_id", salesOrderId)
+    .order("line_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const startLine = (lastLine?.line_number ?? 0) + 1;
+
   const costs = await fetchProductCosts(admin, tenantId, lines);
 
-  const rows = lines.map((it) => {
+  const rows = lines.map((it, idx) => {
     const pid = it.product_id;
     const uc = pid != null ? (costs.get(pid) ?? null) : null;
     return {
       tenant_id: tenantId,
       sales_order_id: salesOrderId,
+      line_number: startLine + idx,
       product_id: it.product_id,
       description: it.description,
       quantity: it.quantity,
@@ -293,18 +305,14 @@ export async function generateReceivablesForSalesOrder(
   return {};
 }
 
-type FinishedLine = {
-  description: string;
-  quantity: number;
-  product_id: string;
-  productName: string;
-};
-
-/** Cria pedido de produção e itens para linhas cujo produto é `finished`. */
+/**
+ * A criação automática de OP única no pedido foi descontinuada.
+ * Use o MRP por linha (`processMrpForSalesOrder` / API MRP).
+ */
 export async function ensureProductionOrderForSales(
-  admin: AdminClient,
-  ctx: { tenantId: string; userId: string },
-  salesOrder: {
+  _admin: AdminClient,
+  _ctx: { tenantId: string; userId: string },
+  _salesOrder: {
     id: string;
     order_number: string;
     client_name: string;
@@ -312,109 +320,13 @@ export async function ensureProductionOrderForSales(
     expected_delivery: string | null;
   }
 ): Promise<{ productionOrderId: string | null; error?: string }> {
-  const { data: lines, error: lErr } = await admin
-    .from("sales_order_items")
-    .select(
-      "description, quantity, product_id, product:products!sales_order_items_product_id_fkey(type, name)"
-    )
-    .eq("tenant_id", ctx.tenantId)
-    .eq("sales_order_id", salesOrder.id);
-
-  if (lErr) return { productionOrderId: null, error: lErr.message };
-
-  const { data: headerRow } = await admin
-    .from("sales_orders")
-    .select("production_order_id")
-    .eq("id", salesOrder.id)
-    .eq("tenant_id", ctx.tenantId)
-    .maybeSingle();
-
-  if (headerRow?.production_order_id) {
-    return { productionOrderId: headerRow.production_order_id };
-  }
-
-  const finished: FinishedLine[] = [];
-
-  for (const row of lines ?? []) {
-    const pid = row.product_id;
-    if (!pid) continue;
-    const prod = row.product as
-      | { type: string; name: string }
-      | { type: string; name: string }[]
-      | null;
-    const p = Array.isArray(prod) ? prod[0] : prod;
-    if (!p || p.type !== "finished") continue;
-    finished.push({
-      product_id: pid,
-      description: row.description,
-      quantity: row.quantity,
-      productName: p.name,
-    });
-  }
-
-  if (finished.length === 0) {
-    return { productionOrderId: null };
-  }
-
-  const suffix = salesOrder.id.replace(/-/g, "").slice(0, 8);
-  const orderNumber = `PRD-${salesOrder.order_number}-${suffix}`;
-
-  const descLines = finished
-    .map((f) => `${f.productName} × ${f.quantity}`)
-    .join("; ")
-    .slice(0, 2000);
-
-  const { data: po, error: poErr } = await admin
-    .from("production_orders")
-    .insert({
-      tenant_id: ctx.tenantId,
-      order_number: orderNumber,
-      client_name: salesOrder.client_name,
-      client_document: salesOrder.client_document,
-      delivery_deadline: salesOrder.expected_delivery,
-      description: `Venda ${salesOrder.order_number}: ${descLines}`,
-      status: "imported",
-      created_by: ctx.userId,
-    })
-    .select("id")
-    .single();
-
-  if (poErr) {
-    return { productionOrderId: null, error: poErr.message };
-  }
-
-  const itemRows = finished.map((f, idx) => ({
-    tenant_id: ctx.tenantId,
-    order_id: po.id,
-    product_id: f.product_id,
-    description: f.description,
-    quantity: f.quantity,
-    unit: "UN",
-    item_number: idx + 1,
-    status: "waiting" as const,
-  }));
-
-  const { error: oiErr } = await admin.from("order_items").insert(itemRows);
-  if (oiErr) {
-    await admin.from("production_orders").delete().eq("id", po.id);
-    return { productionOrderId: null, error: oiErr.message };
-  }
-
-  const { error: linkErr } = await admin
-    .from("sales_orders")
-    .update({ production_order_id: po.id })
-    .eq("id", salesOrder.id)
-    .eq("tenant_id", ctx.tenantId);
-
-  if (linkErr) {
-    await admin.from("production_orders").delete().eq("id", po.id);
-    return { productionOrderId: null, error: linkErr.message };
-  }
-
-  return { productionOrderId: po.id };
+  return { productionOrderId: null };
 }
 
-/** Remove pedido de venda recém-criado, títulos e OPC vinculado (best-effort rollback). */
+/**
+ * Rollback best-effort: recebíveis, PCs em rascunho ligados às OPs deste pedido,
+ * OPs (cabeçalho e por linha de venda) e o pedido de venda.
+ */
 export async function rollbackSalesOrderCreation(
   admin: AdminClient,
   tenantId: string,
@@ -433,13 +345,49 @@ export async function rollbackSalesOrderCreation(
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
-  const prdId = so?.production_order_id;
-  if (prdId) {
-    await admin
-      .from("sales_orders")
-      .update({ production_order_id: null })
-      .eq("id", salesOrderId)
-      .eq("tenant_id", tenantId);
+  const { data: lineRows } = await admin
+    .from("sales_order_items")
+    .select("production_order_id")
+    .eq("sales_order_id", salesOrderId)
+    .eq("tenant_id", tenantId);
+
+  const productionIds = new Set<string>();
+  if (so?.production_order_id) productionIds.add(so.production_order_id);
+  for (const row of lineRows ?? []) {
+    if (row.production_order_id) productionIds.add(row.production_order_id);
+  }
+
+  for (const prdId of productionIds) {
+    const { data: poiRows } = await admin
+      .from("purchase_order_items")
+      .select("purchase_order_id")
+      .eq("tenant_id", tenantId)
+      .eq("production_order_id", prdId);
+
+    const purchaseOrderIds = [
+      ...new Set(
+        (poiRows ?? [])
+          .map((r) => r.purchase_order_id)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+
+    for (const poid of purchaseOrderIds) {
+      const { data: poHdr } = await admin
+        .from("purchase_orders")
+        .select("id, status")
+        .eq("id", poid)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (poHdr?.status === "draft") {
+        await admin
+          .from("purchase_orders")
+          .delete()
+          .eq("id", poid)
+          .eq("tenant_id", tenantId);
+      }
+    }
+
     await admin
       .from("production_orders")
       .delete()

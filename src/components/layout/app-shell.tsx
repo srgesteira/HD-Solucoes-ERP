@@ -12,6 +12,7 @@ import {
   BarChart2,
   Boxes,
   Building2,
+  CalendarDays,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -166,6 +167,13 @@ const MENU_STRUCTURE: NavEntry[] = [
         href: "/mrp",
         icon: Boxes,
         module: "mrp",
+      },
+      {
+        title: "Planeamento PCP",
+        href: "/pcp/planning",
+        icon: CalendarDays,
+        module: "production",
+        anyOf: ["production", "mrp"],
       },
       {
         title: "Custo de mão de obra",

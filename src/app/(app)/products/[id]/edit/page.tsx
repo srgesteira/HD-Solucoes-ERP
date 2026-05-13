@@ -22,6 +22,10 @@ import type { StructureSuggestion } from "@/lib/services/ai.service";
 import type { TaxAnalysis } from "@/lib/services/tax-ai.service";
 import type { Database } from "@/lib/types/database";
 import type { ProductType } from "@/lib/types/product.types";
+import {
+  PRODUCT_NATURE_CODES,
+  type ProductNatureCode,
+} from "@/lib/products/mrp-product-nature";
 
 function isProductType(t: string): t is ProductType {
   return t === "finished" || t === "raw" || t === "component";
@@ -47,6 +51,7 @@ function buildPayload(f: ProductFormShape) {
     subfamily_id: f.subfamily_id.trim(),
     material_id: f.material_id.trim(),
     finish_id: f.finish_id.trim(),
+    product_nature: f.product_nature || null,
   };
 }
 
@@ -124,6 +129,16 @@ function rowToForm(data: ProductLoaded): ProductFormShape {
     subfamily_id: data.subfamily_id ?? "",
     material_id: data.material_id ?? "",
     finish_id: data.finish_id ?? "",
+    product_nature: (() => {
+      const n = data.product_nature;
+      if (
+        typeof n === "string" &&
+        (PRODUCT_NATURE_CODES as readonly string[]).includes(n)
+      ) {
+        return n as ProductNatureCode;
+      }
+      return "";
+    })(),
     technical_code:
       data.technical_code != null && String(data.technical_code).trim()
         ? String(data.technical_code)
@@ -232,6 +247,15 @@ export default function EditProductPage() {
       );
       return;
     }
+    if (
+      !formData.product_nature ||
+      !(PRODUCT_NATURE_CODES as readonly string[]).includes(
+        formData.product_nature
+      )
+    ) {
+      toast.error("Selecione a natureza do produto (MP, SE, EB, …).");
+      return;
+    }
 
     try {
       await mutation.mutateAsync(buildPayload(formData));
@@ -251,6 +275,7 @@ export default function EditProductPage() {
       const next = { ...prev, [field]: value };
       if (field === "family_id") {
         next.subfamily_id = "";
+        next.finish_id = "";
       }
       if (field === "material_id") {
         next.finish_id = "";

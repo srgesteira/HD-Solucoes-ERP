@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils/cn";
 import { useMe } from "@/hooks/use-me";
+import { usePermissions } from "@/hooks/use-permissions";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
 import type { Tables } from "@/lib/types/database";
 import type { ReceivableStatus } from "@/lib/types/finance.types";
@@ -64,6 +65,7 @@ type SalesOrderDetail = {
   created_at: string;
   order_date: string;
   expected_delivery: string | null;
+  pcp_deadline: string | null;
   actual_delivery: string | null;
   client_name: string;
   client_document: string | null;
@@ -305,17 +307,26 @@ async function postPlanSalesOrder(
   purchase_orders?: Array<{
     id: string;
     po_number: string;
-    supplier_id: string;
+    supplier_id: string | null;
   }>;
   production_order_id?: string;
+  production_order_ids?: string[];
   production_error?: string;
-  summary?: { has_shortage: boolean; lines: number };
+  summary?: {
+    has_shortage: boolean;
+    lines: number;
+    production_lines?: number;
+  };
 }> {
   const res = await fetch("/api/mrp/plan-sales-order", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sales_order_id: salesOrderId, confirm }),
+    body: JSON.stringify(
+      confirm
+        ? { sales_order_id: salesOrderId, confirm: true }
+        : { sales_order_id: salesOrderId, action: "requirements" }
+    ),
   });
   const json = (await res.json().catch(() => ({}))) as {
     error?: string;
@@ -323,11 +334,16 @@ async function postPlanSalesOrder(
     purchase_orders?: Array<{
       id: string;
       po_number: string;
-      supplier_id: string;
+      supplier_id: string | null;
     }>;
     production_order_id?: string;
+    production_order_ids?: string[];
     production_error?: string;
-    summary?: { has_shortage: boolean; lines: number };
+    summary?: {
+      has_shortage: boolean;
+      lines: number;
+      production_lines?: number;
+    };
   };
   if (!res.ok) {
     throw new Error(
@@ -465,7 +481,9 @@ export default function SalesOrderDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: me } = useMe();
+  const { can } = usePermissions();
   const isAdmin = me?.role === "admin";
+  const canEditPcpDeadline = isAdmin || can("sales") || can("mrp");
 
   const orderQuery = useQuery({
     queryKey: ["sales-order", id],
@@ -485,6 +503,17 @@ export default function SalesOrderDetailPage() {
     queryFn: () => fetchReceivablesForOrder(id),
     enabled: Boolean(id),
   });
+
+  const [pcpDeadlineDraft, setPcpDeadlineDraft] = useState("");
+
+  useEffect(() => {
+    const cur = orderQuery.data?.pcp_deadline;
+    if (!cur) {
+      setPcpDeadlineDraft("");
+      return;
+    }
+    setPcpDeadlineDraft(String(cur).slice(0, 10));
+  }, [orderQuery.data?.id, orderQuery.data?.pcp_deadline]);
 
   const q = orderQuery.data;
   const quoteInfo = unwrapQuote(q?.quote);
@@ -517,7 +546,7 @@ export default function SalesOrderDetailPage() {
   const [mrpReqs, setMrpReqs] = useState<MaterialRequirement[]>([]);
   const [mrpBusy, setMrpBusy] = useState(false);
   const [mrpLastPo, setMrpLastPo] = useState<
-    Array<{ id: string; po_number: string; supplier_id: string }>
+    Array<{ id: string; po_number: string; supplier_id: string | null }>
   >([]);
 
   const [nfeOpen, setNfeOpen] = useState(false);
@@ -619,22 +648,25 @@ export default function SalesOrderDetailPage() {
       const json = await postPlanSalesOrder(id, true);
       setMrpReqs(json.requirements ?? []);
       setMrpLastPo(json.purchase_orders ?? []);
-      if (json.production_order_id) {
-        toast.success("Pedidos de compra e ordem de produção criados.");
+      const opCount =
+        json.production_order_ids?.length ??
+        (json.production_order_id ? 1 : 0);
+      const pcCount = json.purchase_orders?.length ?? 0;
+      if (json.production_error) {
+        toast.error(json.production_error);
+      } else if (opCount > 0 || pcCount > 0) {
+        toast.success(
+          opCount > 0 && pcCount > 0
+            ? `${pcCount} pedido(s) de compra e ${opCount} ordem(ns) de produção (por linha).`
+            : opCount > 0
+              ? `${opCount} ordem(ns) de produção criada(s) ou vinculada(s).`
+              : `${pcCount} pedido(s) de compra em rascunho.`
+        );
         setMrpOpen(false);
-        invalidate();
       } else {
-        if (json.production_error) {
-          toast.error(json.production_error);
-        } else {
-          toast.success(
-            (json.purchase_orders?.length ?? 0) > 0
-              ? "Pedidos de compra criados (sem OP — verifique stock ou erros)."
-              : "Nenhuma acção aplicada."
-          );
-        }
-        invalidate();
+        toast.success("Nenhuma acção necessária (linhas já planeadas ou sem itens elegíveis).");
       }
+      invalidate();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -834,7 +866,56 @@ export default function SalesOrderDetailPage() {
                         {fmtDay(q.actual_delivery)}
                       </span>
                     </span>
+                    {!canEditPcpDeadline && q.pcp_deadline ? (
+                      <span>
+                        <span className="text-slate-500">Prazo PCP:</span>{" "}
+                        <span className="tabular-nums font-medium text-slate-800 dark:text-slate-200">
+                          {fmtDay(q.pcp_deadline)}
+                        </span>
+                      </span>
+                    ) : null}
                   </div>
+                  {canEditPcpDeadline ? (
+                    <div className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 max-w-md">
+                      <Label
+                        htmlFor="so-pcp-dl"
+                        className="text-sm text-slate-500 shrink-0"
+                      >
+                        Prazo PCP (interno)
+                      </Label>
+                      <Input
+                        id="so-pcp-dl"
+                        type="date"
+                        className="sm:max-w-[11rem]"
+                        value={pcpDeadlineDraft}
+                        onChange={(e) => setPcpDeadlineDraft(e.target.value)}
+                        onBlur={() => {
+                          if (!id || !q) return;
+                          const next = pcpDeadlineDraft.trim();
+                          const cur = q.pcp_deadline
+                            ? String(q.pcp_deadline).slice(0, 10)
+                            : "";
+                          if (next === cur) return;
+                          void (async () => {
+                            try {
+                              await putOrder(id, {
+                                pcp_deadline: next === "" ? null : next,
+                              });
+                              await queryClient.invalidateQueries({
+                                queryKey: ["sales-order", id],
+                              });
+                              toast.success("Prazo PCP actualizado.");
+                            } catch (e) {
+                              toast.error(
+                                e instanceof Error ? e.message : "Erro"
+                              );
+                              setPcpDeadlineDraft(cur);
+                            }
+                          })();
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex flex-col gap-2 text-sm">
                   {quoteLinkId ? (
@@ -1328,9 +1409,9 @@ export default function SalesOrderDetailPage() {
               MRP — necessidades de materiais
             </h3>
             <p className="mt-1 text-xs text-slate-500">
-              Com base na BOM (componentes) e no stock actual. Use
-              &quot;Confirmar plano&quot; para criar pedidos de compra em rascunho
-              e, se não houver falta de material, a ordem de produção.
+              Com base na BOM e no stock actual. Ao confirmar, gera-se uma ordem
+              de produção por linha de venda (produto acabado) e pedidos de
+              compra em rascunho com rastreio por linha e componente.
             </p>
 
             {mrpBusy && mrpReqs.length === 0 ? (
@@ -1344,60 +1425,32 @@ export default function SalesOrderDetailPage() {
               </p>
             ) : (
               <div className="mt-4 rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
-                <table className="w-full text-sm min-w-[720px]">
+                <table className="w-full text-sm min-w-[480px]">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
                       <th className="px-3 py-2 text-left font-medium">
-                        Material
+                        Produto
                       </th>
                       <th className="px-3 py-2 text-right font-medium">
-                        Necessário
+                        Quantidade necessária (bruta)
                       </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Stock
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Reservado
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Disponível
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Falta
-                      </th>
+                      <th className="px-3 py-2 text-left font-medium">Unidade</th>
                     </tr>
                   </thead>
                   <tbody>
                     {mrpReqs.map((r) => (
                       <tr
                         key={r.product_id}
-                        className={cn(
-                          "border-b border-slate-100 dark:border-slate-800",
-                          r.shortage > 0.0001 ?
-                            "bg-red-50/60 dark:bg-red-950/20"
-                          : ""
-                        )}
+                        className="border-b border-slate-100 dark:border-slate-800"
                       >
                         <td className="px-3 py-2 max-w-[18rem]">
                           <span className="line-clamp-2">{r.description}</span>
-                          <span className="block text-xs text-slate-500">
-                            {r.unit}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {r.needed}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {r.quantity_on_hand}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {r.reserved_quantity}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {r.available}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums font-medium">
-                          {r.shortage}
+                          {r.needed}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                          {r.unit}
                         </td>
                       </tr>
                     ))}
@@ -1452,7 +1505,7 @@ export default function SalesOrderDetailPage() {
                 disabled={mrpBusy}
                 onClick={() => void runMrpConfirm()}
               >
-                Confirmar plano (PCs + OP)
+                Confirmar plano (PCs + OP por linha)
               </Button>
             </div>
           </div>
