@@ -2,8 +2,10 @@ import { NextRequest } from "next/server";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
-import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import {
+  currentUserCanMenuModule,
+  getCurrentTenantId,
+} from "@/modules/core/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +18,11 @@ function escapeIlike(pattern: string): string {
  * Lista pedidos de compra e itens para vincular ao item de venda (MRP).
  */
 export async function GET(request: NextRequest) {
-  const gate = await assertModuleAccess("logistics");
-  if (!gate.ok) {
-    const prod = await assertModuleAccess("production");
-    if (!prod.ok) return gate.response;
+  const canPcp = await currentUserCanMenuModule("pcp");
+  const canCompras = await currentUserCanMenuModule("compras");
+  const canProducao = await currentUserCanMenuModule("producao");
+  if (!canPcp && !canCompras && !canProducao) {
+    return apiError("Sem permissão", 403);
   }
 
   const supabase = await createServerSupabaseClient();

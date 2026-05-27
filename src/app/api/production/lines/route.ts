@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
+import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import type { Database } from "@/modules/core/types/database";
 
@@ -16,6 +17,8 @@ export async function GET() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
+  const moduleDenied = await requireMenuModule("producao");
+  if (moduleDenied) return moduleDenied;
 
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
@@ -45,6 +48,8 @@ export async function POST(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
+  const moduleDenied = await requireMenuModule("producao");
+  if (moduleDenied) return moduleDenied;
 
   if (!(await isCurrentUserTenantAdmin())) {
     return apiError("Acesso negado", 403);

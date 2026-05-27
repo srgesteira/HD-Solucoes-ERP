@@ -1,10 +1,11 @@
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { apiError } from "@/modules/core/lib/http";
-import { mergeModulePermissions, type ModuleKey } from "@/shared/auth/permissions";
+import type { ModuleKey } from "@/shared/auth/permissions";
 import type { NextResponse } from "next/server";
+import { currentUserCanModule } from "@/modules/core/lib/tenant";
 
 /**
- * Acesso a um módulo (admin ou flag em `user_profiles.permissions`).
+ * Acesso a um módulo (admin, enabled_modules ou JSON legado `permissions`).
  */
 export async function assertModuleAccess(
   module: ModuleKey
@@ -17,24 +18,7 @@ export async function assertModuleAccess(
     return { ok: false, response: apiError("Não autenticado", 401) };
   }
 
-  const { data: profile, error } = await supabase
-    .from("user_profiles")
-    .select("role, permissions")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    return { ok: false, response: apiError("Perfil: " + error.message, 500) };
-  }
-  if (!profile) {
-    return { ok: false, response: apiError("Perfil não encontrado", 403) };
-  }
-  if (profile.role === "admin") {
-    return { ok: true };
-  }
-
-  const p = mergeModulePermissions(profile.permissions);
-  if (!p[module]) {
+  if (!(await currentUserCanModule(module))) {
     return { ok: false, response: apiError("Sem acesso a este módulo", 403) };
   }
 
@@ -53,24 +37,10 @@ export async function assertFinanceOrReportsAccess(): Promise<
     return { ok: false, response: apiError("Não autenticado", 401) };
   }
 
-  const { data: profile, error } = await supabase
-    .from("user_profiles")
-    .select("role, permissions")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    return { ok: false, response: apiError("Perfil: " + error.message, 500) };
-  }
-  if (!profile) {
-    return { ok: false, response: apiError("Perfil não encontrado", 403) };
-  }
-  if (profile.role === "admin") {
-    return { ok: true };
-  }
-
-  const p = mergeModulePermissions(profile.permissions);
-  if (p.finance || p.reports) {
+  if (
+    (await currentUserCanModule("finance")) ||
+    (await currentUserCanModule("reports"))
+  ) {
     return { ok: true };
   }
 
@@ -92,24 +62,10 @@ export async function assertProductionOrReportsAccess(): Promise<
     return { ok: false, response: apiError("Não autenticado", 401) };
   }
 
-  const { data: profile, error } = await supabase
-    .from("user_profiles")
-    .select("role, permissions")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    return { ok: false, response: apiError("Perfil: " + error.message, 500) };
-  }
-  if (!profile) {
-    return { ok: false, response: apiError("Perfil não encontrado", 403) };
-  }
-  if (profile.role === "admin") {
-    return { ok: true };
-  }
-
-  const p = mergeModulePermissions(profile.permissions);
-  if (p.production || p.reports) {
+  if (
+    (await currentUserCanModule("production")) ||
+    (await currentUserCanModule("reports"))
+  ) {
     return { ok: true };
   }
 
@@ -128,24 +84,10 @@ export async function assertSalesOrReportsAccess(): Promise<
     return { ok: false, response: apiError("Não autenticado", 401) };
   }
 
-  const { data: profile, error } = await supabase
-    .from("user_profiles")
-    .select("role, permissions")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    return { ok: false, response: apiError("Perfil: " + error.message, 500) };
-  }
-  if (!profile) {
-    return { ok: false, response: apiError("Perfil não encontrado", 403) };
-  }
-  if (profile.role === "admin") {
-    return { ok: true };
-  }
-
-  const p = mergeModulePermissions(profile.permissions);
-  if (p.sales || p.reports) {
+  if (
+    (await currentUserCanModule("sales")) ||
+    (await currentUserCanModule("reports"))
+  ) {
     return { ok: true };
   }
 
