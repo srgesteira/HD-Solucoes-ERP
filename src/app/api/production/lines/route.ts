@@ -23,8 +23,9 @@ export async function GET() {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("production_lines")
-    .select("*")
+    .select("id, code, name, sort_order, is_active, description, work_center_id")
     .eq("tenant_id", tenantId)
+    .eq("is_active", true)
     .order("sort_order", { ascending: true })
     .order("code", { ascending: true });
 

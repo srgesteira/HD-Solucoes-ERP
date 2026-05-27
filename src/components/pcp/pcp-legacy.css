@@ -1,0 +1,24 @@
+/* Estilo PCP Control legado — variáveis e utilitários */
+.pcp-legacy-shell {
+  --pcp-primary: #1b4f72;
+  --pcp-secondary: #2e86c1;
+  --pcp-accent: #27ae60;
+  --pcp-warning: #f39c12;
+  --pcp-danger: #e74c3c;
+  --pcp-background: #f8f9fa;
+}
+
+.pcp-tab-active {
+  border-color: var(--pcp-primary) !important;
+  color: var(--pcp-primary) !important;
+  font-weight: 600;
+}
+
+.pcp-btn-primary {
+  background-color: var(--pcp-primary);
+  color: #fff;
+}
+
+.pcp-btn-primary:hover {
+  background-color: #163d57;
+}

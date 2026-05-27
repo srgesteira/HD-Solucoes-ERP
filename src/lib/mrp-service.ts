@@ -1,10 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/types/database";
 import {
-  mrSalesLineEligibleForProductionOrder,
-  mrShouldExpandBomInExplosion,
-  type MrpProductNatureMeta,
-} from "@/lib/products/mrp-product-nature";
+  computePurchaseNeedDate,
+} from "@/lib/purchasing/purchase-schedule-conflicts";
+import type { Database } from "@/lib/types/database";
 
 type Admin = SupabaseClient<Database>;
 
@@ -54,31 +52,32 @@ function round4(n: number): number {
   return Math.round((n + Number.EPSILON) * 10000) / 10000;
 }
 
-async function fetchMrpProductMeta(
+/** Verifica se o produto tem pelo menos uma linha em `product_components` (BOM). */
+async function productHasBom(
   admin: Admin,
   tenantId: string,
   productId: string,
-  cache: Map<string, MrpProductNatureMeta>
-): Promise<MrpProductNatureMeta> {
+  cache: Map<string, boolean>
+): Promise<boolean> {
   const hit = cache.get(productId);
-  if (hit) return hit;
-  const { data, error } = await admin
-    .from("products")
-    .select("product_nature, has_composition, type")
+  if (hit !== undefined) return hit;
+
+  const { count, error } = await admin
+    .from("product_components")
+    .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
-    .eq("id", productId)
-    .maybeSingle();
+    .eq("parent_product_id", productId);
+
   if (error) throw new Error(error.message);
-  const meta: MrpProductNatureMeta = {
-    product_nature: (data?.product_nature as string | null) ?? null,
-    has_composition: Boolean(data?.has_composition),
-    type: (data?.type ?? "component") as MrpProductNatureMeta["type"],
-  };
-  cache.set(productId, meta);
-  return meta;
+  const has = (count ?? 0) > 0;
+  cache.set(productId, has);
+  return has;
 }
 
-/** Acumula necessidade de materiais (sem mão-de-obra) a partir da BOM, recursivo. */
+/**
+ * Explosão BOM: componente **com** BOM → desce um nível; **sem** BOM → necessidade de compra.
+ * Produto sem BOM na raiz → compra do próprio produto.
+ */
 async function collectMaterialNeeds(
   admin: Admin,
   tenantId: string,
@@ -86,46 +85,41 @@ async function collectMaterialNeeds(
   multiplier: number,
   acc: Map<string, number>,
   stack: Set<string>,
-  metaCache: Map<string, MrpProductNatureMeta>
+  bomCache: Map<string, boolean>
 ): Promise<void> {
   if (stack.has(productId)) return;
   stack.add(productId);
 
-  const meta = await fetchMrpProductMeta(admin, tenantId, productId, metaCache);
-  if (!mrShouldExpandBomInExplosion(meta)) {
+  const hasBom = await productHasBom(admin, tenantId, productId, bomCache);
+
+  if (!hasBom) {
     const cur = acc.get(productId) ?? 0;
-    acc.set(productId, cur + multiplier);
+    acc.set(productId, round4(cur + multiplier));
     stack.delete(productId);
     return;
   }
 
   const { data: lines, error } = await admin
     .from("product_components")
-    .select("component_product_id, quantity, is_labor")
+    .select("component_product_id, quantity")
     .eq("tenant_id", tenantId)
     .eq("parent_product_id", productId);
 
   if (error) throw new Error(error.message);
 
-  const rows = lines ?? [];
-  const materials = rows.filter((r) => !r.is_labor && r.component_product_id);
-
-  if (!rows.length) {
-    const cur = acc.get(productId) ?? 0;
-    acc.set(productId, cur + multiplier);
-    stack.delete(productId);
-    return;
-  }
-
-  if (!materials.length) {
-    stack.delete(productId);
-    return;
-  }
-
-  for (const row of materials) {
-    const cid = row.component_product_id as string;
+  for (const row of lines ?? []) {
+    if (!row.component_product_id) continue;
+    const cid = row.component_product_id;
     const q = Number(row.quantity ?? 0) * multiplier;
-    await collectMaterialNeeds(admin, tenantId, cid, q, acc, stack, metaCache);
+    if (!Number.isFinite(q) || q <= 0) continue;
+
+    const childHasBom = await productHasBom(admin, tenantId, cid, bomCache);
+    if (childHasBom) {
+      await collectMaterialNeeds(admin, tenantId, cid, q, acc, stack, bomCache);
+    } else {
+      const cur = acc.get(cid) ?? 0;
+      acc.set(cid, round4(cur + q));
+    }
   }
 
   stack.delete(productId);
@@ -141,7 +135,7 @@ export async function calculateNeededMaterialsForProductQty(
   const qty = Number(quantity ?? 0);
   if (!Number.isFinite(qty) || qty <= 0) return [];
   const needs = new Map<string, number>();
-  const metaCache = new Map<string, MrpProductNatureMeta>();
+  const bomCache = new Map<string, boolean>();
   await collectMaterialNeeds(
     admin,
     tenantId,
@@ -149,7 +143,7 @@ export async function calculateNeededMaterialsForProductQty(
     qty,
     needs,
     new Set(),
-    metaCache
+    bomCache
   );
   return [...needs.entries()].map(([product_id, gross_qty]) => ({
     product_id,
@@ -180,7 +174,7 @@ export async function calculateNeededMaterials(
   if (itErr) throw new Error(itErr.message);
 
   const needs = new Map<string, number>();
-  const metaCache = new Map<string, MrpProductNatureMeta>();
+  const bomCache = new Map<string, boolean>();
   for (const it of items ?? []) {
     const pid = it.product_id;
     if (!pid) continue;
@@ -193,7 +187,7 @@ export async function calculateNeededMaterials(
       qty,
       needs,
       new Set(),
-      metaCache
+      bomCache
     );
   }
 
@@ -436,6 +430,28 @@ function traceSegment(s: string): string {
     .slice(0, 48);
 }
 
+function padLineNumber(n: number): string {
+  return String(Math.max(1, Math.floor(n))).padStart(3, "0");
+}
+
+function opNumberForSalesLine(orderNumber: string, lineNumber: number): string {
+  return `${traceSegment(orderNumber)}-${padLineNumber(lineNumber)}`;
+}
+
+async function getStockOnHand(
+  admin: Admin,
+  tenantId: string,
+  productId: string
+): Promise<number> {
+  const { data } = await admin
+    .from("inventory")
+    .select("quantity_on_hand")
+    .eq("tenant_id", tenantId)
+    .eq("product_id", productId)
+    .maybeSingle();
+  return Number(data?.quantity_on_hand ?? 0);
+}
+
 function buildTraceKey(
   orderNumber: string,
   lineNumber: number,
@@ -444,11 +460,60 @@ function buildTraceKey(
   return `${traceSegment(orderNumber)}-${lineNumber}-${traceSegment(componentTechnicalCode)}`;
 }
 
-/** Um PC em rascunho por falta, com `po_number` = `trace_key` (rastreio). */
-async function createTracePurchaseOrder(
+async function followUpDateForSalesOrderItem(
   admin: Admin,
   tenantId: string,
-  userId: string,
+  salesOrderItemId: string,
+  hint?: string | null
+): Promise<string | null> {
+  if (hint) return String(hint).slice(0, 10);
+  const { data: soi } = await admin
+    .from("sales_order_items")
+    .select(
+      "pcp_deadline, sales_order:sales_orders!sales_order_items_sales_order_id_fkey(expected_delivery)"
+    )
+    .eq("id", salesOrderItemId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!soi) return null;
+  const so = Array.isArray(soi.sales_order)
+    ? soi.sales_order[0]
+    : soi.sales_order;
+  const d =
+    (soi.pcp_deadline ? String(soi.pcp_deadline).slice(0, 10) : null) ??
+    (so?.expected_delivery ? String(so.expected_delivery).slice(0, 10) : null);
+  return d;
+}
+
+async function resolvePreferredSupplierId(
+  admin: Admin,
+  tenantId: string,
+  productId: string
+): Promise<string | null> {
+  const { data: pref } = await admin
+    .from("products")
+    .select("preferred_supplier_id")
+    .eq("id", productId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!pref?.preferred_supplier_id) return null;
+  const { data: ok } = await admin
+    .from("suppliers")
+    .select("id")
+    .eq("id", pref.preferred_supplier_id)
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .maybeSingle();
+  return ok?.id ?? null;
+}
+
+/**
+ * Requisição de compra (item MRP) — não exige fornecedor; o PC é emitido depois em Compras.
+ * Upsert por (`sales_order_item_id`, `product_id`) em rascunho sem PC.
+ */
+async function upsertPurchaseRequisition(
+  admin: Admin,
+  tenantId: string,
   args: {
     traceKey: string;
     productId: string;
@@ -456,92 +521,133 @@ async function createTracePurchaseOrder(
     unit: string;
     unitPrice: number;
     description: string;
-    productionOrderId: string;
-    productionItemId: string;
+    productionOrderId?: string | null;
+    /** order_items.id do produto acabado na OP (null se revenda sem OP) */
+    productionOrderItemId?: string | null;
+    salesOrderItemId: string;
+    pcpDeadline?: string | null;
   }
-): Promise<{ id: string; po_number: string; supplier_id: string | null }> {
-  const { data: existing } = await admin
-    .from("purchase_orders")
-    .select("id, po_number")
-    .eq("tenant_id", tenantId)
-    .eq("po_number", args.traceKey)
-    .maybeSingle();
-  if (existing?.id) {
-    return {
-      id: existing.id,
-      po_number: existing.po_number,
-      supplier_id: null,
-    };
-  }
+): Promise<{
+  id: string;
+  po_number: string;
+  supplier_id: string | null;
+  requisition: boolean;
+}> {
+  const preferredSupplierId = await resolvePreferredSupplierId(
+    admin,
+    tenantId,
+    args.productId
+  );
 
-  const { data: suppliers, error: sErr } = await admin
-    .from("suppliers")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .order("code", { ascending: true })
-    .limit(1);
-  if (sErr) throw new Error(sErr.message);
-  const fallbackSupplierId = suppliers?.[0]?.id ?? null;
-  if (!fallbackSupplierId) {
-    throw new Error("Cadastre pelo menos um fornecedor ativo para gerar compras.");
-  }
-
-  let sid: string | null = null;
-  const { data: pref } = await admin
+  const { data: productLead } = await admin
     .from("products")
-    .select("preferred_supplier_id")
+    .select("purchase_lead_time_days")
     .eq("id", args.productId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
-  if (pref?.preferred_supplier_id) {
-    const { data: ok } = await admin
-      .from("suppliers")
-      .select("id")
-      .eq("id", pref.preferred_supplier_id)
+
+  const needDate = computePurchaseNeedDate(
+    args.pcpDeadline ??
+      (await followUpDateForSalesOrderItem(
+        admin,
+        tenantId,
+        args.salesOrderItemId
+      )),
+    productLead?.purchase_lead_time_days
+  );
+
+  if (args.salesOrderItemId && args.productId) {
+    const { data: existingRows } = await admin
+      .from("purchase_order_items")
+      .select(
+        "id, quantity, unit_price, status, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id)"
+      )
       .eq("tenant_id", tenantId)
-      .maybeSingle();
-    if (ok) sid = pref.preferred_supplier_id;
+      .eq("sales_order_item_id", args.salesOrderItemId)
+      .eq("product_id", args.productId)
+      .order("created_at", { ascending: false });
+
+    const draftRequisition = (existingRows ?? []).find(
+      (r) => r.purchase_order_id == null && r.status === "draft"
+    );
+    const linkedPo = (existingRows ?? []).find((r) => r.purchase_order_id != null);
+
+    if (draftRequisition?.id) {
+      const newQty = round4(args.quantity);
+      const unitPrice = round4(
+        Math.max(Number(draftRequisition.unit_price ?? 0), args.unitPrice)
+      );
+
+      await admin
+        .from("purchase_order_items")
+        .update({
+          quantity: newQty,
+          unit_price: unitPrice,
+          total_price: round4(newQty * unitPrice),
+          trace_key: args.traceKey,
+          production_order_id: args.productionOrderId ?? null,
+          production_item_id: args.productionOrderItemId ?? null,
+          production_order_item_id: args.productionOrderItemId ?? null,
+          need_date: needDate,
+        })
+        .eq("id", draftRequisition.id)
+        .eq("tenant_id", tenantId);
+
+      return {
+        id: draftRequisition.id,
+        po_number: args.traceKey,
+        supplier_id: preferredSupplierId,
+        requisition: true,
+      };
+    }
+
+    if (linkedPo?.id) {
+      const po = Array.isArray(linkedPo.purchase_order)
+        ? linkedPo.purchase_order[0]
+        : linkedPo.purchase_order;
+      if (po) {
+        return {
+          id: po.id,
+          po_number: po.po_number,
+          supplier_id: po.supplier_id,
+          requisition: false,
+        };
+      }
+    }
   }
-  if (!sid) sid = fallbackSupplierId;
 
-  const { data: profile } = await admin
-    .from("user_profiles")
-    .select("id")
-    .eq("id", userId)
-    .maybeSingle();
+  const unitPrice = round4(Math.max(0, args.unitPrice));
+  const lineTotal = round4(args.quantity * unitPrice);
 
-  const { data: po, error: poErr } = await admin
-    .from("purchase_orders")
+  const { data: inserted, error: liErr } = await admin
+    .from("purchase_order_items")
     .insert({
       tenant_id: tenantId,
-      po_number: args.traceKey,
-      supplier_id: sid,
+      purchase_order_id: null,
       status: "draft",
-      requested_by: profile?.id ?? null,
+      product_id: args.productId,
+      description: args.description,
+      quantity: args.quantity,
+      unit: args.unit,
+      unit_price: unitPrice,
+      total_price: lineTotal,
+      production_order_id: args.productionOrderId ?? null,
+      production_item_id: args.productionOrderItemId ?? null,
+      production_order_item_id: args.productionOrderItemId ?? null,
+      sales_order_item_id: args.salesOrderItemId,
+      trace_key: args.traceKey,
+      follow_up_date: needDate,
+      need_date: needDate,
     })
-    .select("id, po_number, supplier_id")
+    .select("id")
     .single();
-  if (poErr) throw new Error(poErr.message);
-
-  const { error: liErr } = await admin.from("purchase_order_items").insert({
-    tenant_id: tenantId,
-    purchase_order_id: po.id,
-    product_id: args.productId,
-    description: args.description,
-    quantity: args.quantity,
-    unit: args.unit,
-    unit_price: args.unitPrice,
-    production_order_id: args.productionOrderId,
-    production_item_id: args.productionItemId,
-    trace_key: args.traceKey,
-  });
   if (liErr) throw new Error(liErr.message);
 
   return {
-    id: po.id,
-    po_number: po.po_number,
-    supplier_id: po.supplier_id,
+    id: inserted.id,
+    po_number: args.traceKey,
+    supplier_id: preferredSupplierId,
+    requisition: true,
   };
 }
 
@@ -576,7 +682,7 @@ export async function processMrpForSalesOrder(
   const { data: lines, error: liErr } = await admin
     .from("sales_order_items")
     .select(
-      "id, line_number, product_id, quantity, description, unit, production_order_id"
+      "id, line_number, product_id, quantity, description, unit, production_order_id, pcp_deadline"
     )
     .eq("sales_order_id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -600,12 +706,15 @@ export async function processMrpForSalesOrder(
       name: string;
       product_nature: string | null;
       has_composition: boolean;
+      default_production_line_id: string | null;
     }
   >();
   if (productIds.length) {
     const { data: prodRows, error: prErr } = await admin
       .from("products")
-      .select("id, type, technical_code, name, product_nature, has_composition")
+      .select(
+        "id, type, technical_code, name, product_nature, has_composition, default_production_line_id"
+      )
       .eq("tenant_id", tenantId)
       .in("id", productIds);
     if (prErr) throw new Error(prErr.message);
@@ -617,13 +726,15 @@ export async function processMrpForSalesOrder(
         name: p.name,
         product_nature: p.product_nature ?? null,
         has_composition: Boolean(p.has_composition),
+        default_production_line_id: p.default_production_line_id ?? null,
       });
     }
   }
 
   const results: MrpLineResult[] = [];
+  const bomCache = new Map<string, boolean>();
   const orderNumber = String(so.order_number ?? "");
-  const pcpDate =
+  const orderPcpDate =
     so.pcp_deadline != null
       ? String(so.pcp_deadline).slice(0, 10)
       : so.expected_delivery != null
@@ -643,12 +754,6 @@ export async function processMrpForSalesOrder(
       production_order_id: null,
     };
 
-    if (row.production_order_id) {
-      lineRes.skipped_reason = "Já possui ordem de produção.";
-      lineRes.production_order_id = row.production_order_id as string;
-      results.push(lineRes);
-      continue;
-    }
     if (!row.product_id) {
       lineRes.skipped_reason = "Linha sem produto.";
       results.push(lineRes);
@@ -656,16 +761,8 @@ export async function processMrpForSalesOrder(
     }
 
     const p = row.product_id ? prodById.get(row.product_id) : undefined;
-    const meta: MrpProductNatureMeta | null = p
-      ? {
-          product_nature: p.product_nature,
-          has_composition: p.has_composition,
-          type: p.type as MrpProductNatureMeta["type"],
-        }
-      : null;
-    if (!p || !meta || !mrSalesLineEligibleForProductionOrder(meta)) {
-      lineRes.skipped_reason =
-        "Natureza do produto não exige ordem de produção (use compra / MRP de materiais).";
+    if (!p) {
+      lineRes.skipped_reason = "Produto não encontrado.";
       results.push(lineRes);
       continue;
     }
@@ -673,6 +770,79 @@ export async function processMrpForSalesOrder(
     const qty = Number(row.quantity ?? 0);
     if (!Number.isFinite(qty) || qty <= 0) {
       lineRes.skipped_reason = "Quantidade inválida.";
+      results.push(lineRes);
+      continue;
+    }
+
+    const hasBom = await productHasBom(
+      admin,
+      tenantId,
+      row.product_id,
+      bomCache
+    );
+
+    const linePcpDate =
+      row.pcp_deadline != null
+        ? String(row.pcp_deadline).slice(0, 10)
+        : orderPcpDate;
+    const pcpDate = linePcpDate;
+
+    if (!hasBom) {
+      const grossNoBom: GrossMaterialNeed[] = [
+        { product_id: row.product_id, gross_qty: qty },
+      ];
+      const requirements = await getNetRequirements(
+        admin,
+        tenantId,
+        grossNoBom
+      );
+      lineRes.requirements = requirements;
+
+      if (!confirm) {
+        results.push(lineRes);
+        continue;
+      }
+
+      const shortages = requirements.filter((m) => m.shortage > 0.0001);
+      const createTracePOs = options?.createTracePurchaseOrders !== false;
+
+      if (createTracePOs && shortages.length > 0) {
+        const traceKey = buildTraceKey(
+          orderNumber,
+          lineRes.line_number,
+          p.technical_code
+        );
+        const { data: priceRow } = await admin
+          .from("products")
+          .select("cost_price, default_labor_cost, name, unit")
+          .eq("id", row.product_id)
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        const unitPrice = Number(
+          priceRow?.default_labor_cost ?? priceRow?.cost_price ?? 0
+        );
+        try {
+          const req = await upsertPurchaseRequisition(admin, tenantId, {
+            traceKey,
+            productId: row.product_id,
+            quantity: shortages[0]!.shortage,
+            unit: shortages[0]!.unit,
+            unitPrice,
+            description: priceRow?.name ?? row.description ?? p.name,
+            salesOrderItemId: row.id,
+            pcpDeadline: pcpDate,
+          });
+          lineRes.purchase_orders.push(req);
+          lineRes.skipped_reason = "Produto sem BOM — requisição de compra.";
+        } catch (reqErr) {
+          const msg =
+            reqErr instanceof Error ? reqErr.message : "Erro na requisição";
+          lineRes.skipped_reason = msg;
+        }
+      } else if (shortages.length === 0) {
+        lineRes.skipped_reason = "Produto sem BOM — sem falta de stock.";
+      }
+
       results.push(lineRes);
       continue;
     }
@@ -691,121 +861,213 @@ export async function processMrpForSalesOrder(
       continue;
     }
 
-    const opNumber = `${traceSegment(orderNumber)}-${lineRes.line_number}`;
+    const shortages = requirements.filter((m) => m.shortage > 0.0001);
 
-    const { data: existingOp } = await admin
-      .from("production_orders")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("order_number", opNumber)
-      .maybeSingle();
-    if (existingOp?.id) {
-      await admin
-        .from("sales_order_items")
-        .update({ production_order_id: existingOp.id })
-        .eq("id", row.id)
-        .eq("tenant_id", tenantId);
-      lineRes.production_order_id = existingOp.id;
-      lineRes.skipped_reason =
-        "OP com este número já existia; vinculada à linha.";
+    const stockOnHand = await getStockOnHand(admin, tenantId, row.product_id);
+    if (!row.production_order_id && stockOnHand >= qty - 0.0001) {
+      const { error: pickErr } = await admin.from("picking_suggestions").insert({
+        tenant_id: tenantId,
+        sales_order_id: salesOrderId,
+        product_id: row.product_id,
+        quantity: qty,
+        status: "pending",
+      });
+      if (pickErr) throw new Error(pickErr.message);
+      lineRes.skipped_reason = "Stock disponível — sugestão de separação criada.";
       results.push(lineRes);
       continue;
     }
 
-    const { data: poRow, error: poErr } = await admin
-      .from("production_orders")
-      .insert({
-        tenant_id: tenantId,
-        order_number: opNumber,
-        client_name: so.client_name,
-        client_document: so.client_document,
-        delivery_deadline: deliveryDate,
-        pcp_deadline: pcpDate,
-        status: "planning",
-        description: `Pedido ${orderNumber} · linha ${lineRes.line_number}`,
-        created_by: userId,
-      })
-      .select("id")
-      .single();
-    if (poErr) throw new Error(poErr.message);
+    const opNumber = opNumberForSalesLine(orderNumber, lineRes.line_number);
+    const defaultLineId = p.default_production_line_id ?? null;
 
-    const { data: oiRow, error: oiErr } = await admin
-      .from("order_items")
-      .insert({
-        tenant_id: tenantId,
-        order_id: poRow.id,
-        item_number: 1,
-        description: row.description || p.name || "Item",
-        quantity: qty,
-        unit: row.unit?.trim() || "UN",
-        product_id: row.product_id,
-        status: "waiting",
-        pcp_deadline: pcpDate,
-        sales_order_item_id: row.id,
-      })
-      .select("id")
-      .single();
-    if (oiErr) throw new Error(oiErr.message);
+    let productionOrderId = row.production_order_id as string | null;
+    let productionItemId: string | null = null;
+    let opWasExisting = Boolean(row.production_order_id);
 
-    const shortages = requirements.filter((m) => m.shortage > 0.0001);
+    if (productionOrderId) {
+      const { data: oiExisting } = await admin
+        .from("order_items")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("order_id", productionOrderId)
+        .eq("sales_order_item_id", row.id)
+        .maybeSingle();
+      productionItemId = oiExisting?.id ?? null;
+    } else {
+      const { data: existingOp } = await admin
+        .from("production_orders")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("order_number", opNumber)
+        .maybeSingle();
+      if (existingOp?.id) {
+        productionOrderId = existingOp.id;
+        opWasExisting = true;
+        await admin
+          .from("sales_order_items")
+          .update({ production_order_id: existingOp.id })
+          .eq("id", row.id)
+          .eq("tenant_id", tenantId);
+        lineRes.skipped_reason =
+          "OP com este número já existia; vinculada à linha.";
+      }
+    }
+
+    if (!productionOrderId) {
+      const { data: poRow, error: poErr } = await admin
+        .from("production_orders")
+        .insert({
+          tenant_id: tenantId,
+          order_number: opNumber,
+          client_name: so.client_name,
+          client_document: so.client_document,
+          delivery_deadline: deliveryDate,
+          pcp_deadline: pcpDate,
+          status: "planning",
+          description: `Pedido ${orderNumber} · linha ${lineRes.line_number}`,
+          created_by: userId,
+        })
+        .select("id")
+        .single();
+      if (poErr) throw new Error(poErr.message);
+      productionOrderId = poRow.id;
+      opWasExisting = false;
+    }
+
+    if (!productionItemId && productionOrderId) {
+      const { data: oiExisting } = await admin
+        .from("order_items")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("order_id", productionOrderId)
+        .eq("sales_order_item_id", row.id)
+        .maybeSingle();
+      productionItemId = oiExisting?.id ?? null;
+    }
+
+    if (!productionItemId && productionOrderId) {
+      const { data: oiRow, error: oiErr } = await admin
+        .from("order_items")
+        .insert({
+          tenant_id: tenantId,
+          order_id: productionOrderId,
+          item_number: 1,
+          description: row.description || p.name || "Item",
+          quantity: qty,
+          unit: row.unit?.trim() || "UN",
+          product_id: row.product_id,
+          status: "waiting",
+          pcp_deadline: pcpDate,
+          sales_order_item_id: row.id,
+          line_id: defaultLineId,
+        })
+        .select("id")
+        .single();
+      if (oiErr) throw new Error(oiErr.message);
+      productionItemId = oiRow.id;
+    }
+
     const matIds = [...new Set(shortages.map((s) => s.product_id))];
     let matProds: {
       id: string;
       technical_code: string;
       cost_price: number | null;
+      default_labor_cost: number | null;
       name: string;
       unit: string | null;
     }[] = [];
     if (matIds.length) {
       const { data: mpRows, error: mpErr } = await admin
         .from("products")
-        .select("id, technical_code, cost_price, name, unit")
+        .select("id, technical_code, cost_price, default_labor_cost, name, unit")
         .eq("tenant_id", tenantId)
         .in("id", matIds);
       if (mpErr) throw new Error(mpErr.message);
       matProds = (mpRows ?? []) as typeof matProds;
     }
-
     const matMap = new Map(matProds.map((m) => [m.id, m]));
 
     const createTracePOs = options?.createTracePurchaseOrders !== false;
-    if (createTracePOs) {
+    if (
+      createTracePOs &&
+      shortages.length > 0 &&
+      productionOrderId &&
+      productionItemId
+    ) {
       for (const m of shortages) {
-        const mp = matMap.get(m.product_id);
-        const code = mp?.technical_code ?? m.product_id.slice(0, 8);
-        const traceKey = buildTraceKey(orderNumber, lineRes.line_number, code);
-        const po = await createTracePurchaseOrder(admin, tenantId, userId, {
-          traceKey,
-          productId: m.product_id,
-          quantity: m.shortage,
-          unit: m.unit,
-          unitPrice: mp ? Number(mp.cost_price ?? 0) : 0,
-          description: mp?.name ?? m.description,
-          productionOrderId: poRow.id,
-          productionItemId: oiRow.id,
-        });
-        lineRes.purchase_orders.push(po);
+        try {
+          const mp = matMap.get(m.product_id);
+          const code = mp?.technical_code ?? m.product_id.slice(0, 8);
+          const traceKey = buildTraceKey(orderNumber, lineRes.line_number, code);
+          const unitPrice = mp
+            ? Number(mp.default_labor_cost ?? mp.cost_price ?? 0)
+            : 0;
+          const req = await upsertPurchaseRequisition(admin, tenantId, {
+            traceKey,
+            productId: m.product_id,
+            quantity: m.shortage,
+            unit: m.unit,
+            unitPrice,
+            description: mp?.name ?? m.description,
+            productionOrderId,
+            productionOrderItemId: productionItemId,
+            salesOrderItemId: row.id,
+            pcpDeadline: pcpDate,
+          });
+          lineRes.purchase_orders.push(req);
+        } catch (reqErr) {
+          const msg =
+            reqErr instanceof Error ? reqErr.message : "Erro na requisição";
+          lineRes.skipped_reason = lineRes.skipped_reason
+            ? `${lineRes.skipped_reason}; ${msg}`
+            : msg;
+        }
       }
+      if (opWasExisting && !lineRes.skipped_reason) {
+        lineRes.skipped_reason =
+          shortages.length > 0
+            ? "OP existente — requisições de compra actualizadas."
+            : undefined;
+      }
+    } else if (shortages.length === 0 && opWasExisting) {
+      lineRes.skipped_reason =
+        lineRes.skipped_reason ?? "OP existente — sem falta de material.";
     }
 
-    const { error: linkErr } = await admin
-      .from("sales_order_items")
-      .update({ production_order_id: poRow.id })
-      .eq("id", row.id)
-      .eq("tenant_id", tenantId);
-    if (linkErr) throw new Error(linkErr.message);
+    if (productionOrderId && !row.production_order_id) {
+      const { error: linkErr } = await admin
+        .from("sales_order_items")
+        .update({ production_order_id: productionOrderId })
+        .eq("id", row.id)
+        .eq("tenant_id", tenantId);
+      if (linkErr) throw new Error(linkErr.message);
+    }
 
-    lineRes.production_order_id = poRow.id;
+    lineRes.production_order_id = productionOrderId;
     results.push(lineRes);
   }
 
   if (confirm) {
     const progressed = results.some(
       (r) =>
+        r.production_order_id != null ||
+        (r.purchase_orders?.length ?? 0) > 0 ||
+        r.skipped_reason === "Stock disponível — sugestão de separação criada."
+    );
+    if (progressed) {
+      await admin
+        .from("sales_orders")
+        .update({ mrp_processed: true })
+        .eq("id", salesOrderId)
+        .eq("tenant_id", tenantId);
+    }
+    const hasNewOp = results.some(
+      (r) =>
         r.production_order_id != null &&
         r.skipped_reason !== "Já possui ordem de produção."
     );
-    if (progressed && so.status === "confirmed") {
+    if (hasNewOp && so.status === "confirmed") {
       await admin
         .from("sales_orders")
         .update({ status: "in_production" })
@@ -822,6 +1084,31 @@ export async function processMrpForSalesOrder(
   };
 }
 
+/** MRP em lote: pedidos confirmados ainda não processados pelo MRP. */
+export async function processMrpForPendingOrders(
+  admin: Admin,
+  tenantId: string,
+  userId: string,
+  confirm: boolean
+): Promise<MrpBatchSummary> {
+  return runMrpForOpenSalesOrders(admin, tenantId, userId, confirm);
+}
+
+/** Reprocessa MRP de um pedido (redefine flag e executa de novo). */
+export async function regenerateMrpForOrder(
+  admin: Admin,
+  tenantId: string,
+  userId: string,
+  salesOrderId: string
+): Promise<MrpProcessResult> {
+  await admin
+    .from("sales_orders")
+    .update({ mrp_processed: false })
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId);
+  return processMrpForSalesOrder(admin, tenantId, userId, salesOrderId, true);
+}
+
 /** MRP em lote: todos os pedidos confirmados com linhas pendentes. */
 export async function runMrpForOpenSalesOrders(
   admin: Admin,
@@ -830,12 +1117,18 @@ export async function runMrpForOpenSalesOrders(
   confirm: boolean
 ): Promise<MrpBatchSummary> {
   const statuses = [...MRP_BATCH_ORDER_STATUSES];
-  const { data: orders, error } = await admin
+  let orderQuery = admin
     .from("sales_orders")
     .select("id, order_number")
     .eq("tenant_id", tenantId)
     .in("status", statuses)
     .order("order_date", { ascending: true });
+
+  if (!confirm) {
+    orderQuery = orderQuery.eq("mrp_processed", false);
+  }
+
+  const { data: orders, error } = await orderQuery;
   if (error) throw new Error(error.message);
 
   const out: MrpProcessResult[] = [];
@@ -851,7 +1144,12 @@ export async function runMrpForOpenSalesOrders(
         confirm
       );
       const worthShowing = r.lines.some(
-        (l) => l.skipped_reason !== "Já possui ordem de produção."
+        (l) =>
+          l.production_order_id != null ||
+          (l.purchase_orders?.length ?? 0) > 0 ||
+          (l.requirements?.some((req) => req.shortage > 0.0001) ?? false) ||
+          (l.skipped_reason != null &&
+            l.skipped_reason !== "Já possui ordem de produção.")
       );
       if (worthShowing) {
         out.push(r);

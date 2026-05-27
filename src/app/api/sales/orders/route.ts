@@ -6,7 +6,8 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/lib/utils/tenant";
-import { SALES_ORDER_STATUSES } from "@/lib/types/sales.types";
+import { SALES_ORDER_STATUSES, type SalesOrderRow } from "@/lib/types/sales.types";
+import type { SalesOrderProductionSituation } from "@/lib/sales/sales-order-production-summary";
 import {
   insertSalesOrderItemsFromLines,
   nextSalesOrderNumber,
@@ -14,6 +15,12 @@ import {
   generateReceivablesForSalesOrder,
   rollbackSalesOrderCreation,
 } from "@/lib/sales/sales-flow";
+import { parseRequiredExpectedDelivery } from "@/lib/schemas/sales-order.schema";
+import { isSalesOrderListTab } from "@/lib/sales/sales-order-list-display";
+import {
+  enrichSalesOrdersListWithProduction,
+  type SalesOrderProductionSummary,
+} from "@/lib/sales/sales-order-production-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +59,7 @@ export async function GET(request: NextRequest) {
     return apiOk({ suggestion });
   }
 
+  const tabParam = searchParams.get("tab")?.trim() ?? "open";
   const status = searchParams.get("status");
   const client = searchParams.get("client")?.trim();
   const dateFrom = searchParams.get("date_from")?.trim();
@@ -70,19 +78,32 @@ export async function GET(request: NextRequest) {
 
   const admin = createSupabaseAdminClient();
 
-  const ORDER_LIST_SELECT = `
-    *,
-    production_order:production_orders!sales_orders_production_order_id_fkey(
-      id,
-      status,
-      order_number
-    )
-  `.trim();
-
   let query = admin
     .from("sales_orders")
-    .select(ORDER_LIST_SELECT, { count: "exact" })
-    .eq("tenant_id", tenantId);
+    .select("*", { count: "exact" })
+    .eq("tenant_id", tenantId)
+    .neq("status", "superseded");
+
+  if (!isSalesOrderListTab(tabParam)) {
+    return apiError("Aba inválida", 400);
+  }
+
+  switch (tabParam) {
+    case "open":
+      query = query.in("status", ["pending", "confirmed", "in_production"]);
+      break;
+    case "finished":
+      query = query.in("status", ["delivered", "shipped"]);
+      break;
+    case "cancelled":
+      query = query.eq("status", "cancelled");
+      break;
+    case "ready":
+      query = query
+        .eq("ready_for_invoice", true)
+        .in("status", ["pending", "confirmed", "in_production", "shipped"]);
+      break;
+  }
 
   if (status && status !== "all") {
     if (!SO_SET.has(status)) {
@@ -116,9 +137,36 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const rows = (data ?? []) as SalesOrderRow[];
+  const orderIds = rows.map((r) => r.id);
+  let productionByOrder = new Map<string, SalesOrderProductionSummary>();
+
+  try {
+    productionByOrder = await enrichSalesOrdersListWithProduction(
+      admin,
+      tenantId,
+      orderIds
+    );
+  } catch (enrichErr) {
+    const msg =
+      enrichErr instanceof Error ? enrichErr.message : "Erro ao carregar produção";
+    return apiError("Erro ao enriquecer listagem: " + msg, 500);
+  }
+
+  const enriched = rows.map((row) => {
+    const prod = productionByOrder.get(row.id);
+    return {
+      ...row,
+      production_deadline: prod?.production_deadline ?? null,
+      production_situation:
+        (prod?.production_situation ?? "none") as SalesOrderProductionSituation,
+    };
+  });
+
   return apiOk({
-    data: data ?? [],
+    data: enriched,
     pagination: { page, limit, total: count ?? 0 },
+    tab: tabParam,
   });
 }
 
@@ -212,10 +260,11 @@ export async function POST(request: NextRequest) {
       ? new Date().toISOString().slice(0, 10)
       : String(b.order_date).slice(0, 10);
 
-  const expected_delivery =
-    b.expected_delivery === undefined || b.expected_delivery === null
-      ? null
-      : String(b.expected_delivery).slice(0, 10);
+  const expectedParsed = parseRequiredExpectedDelivery(b.expected_delivery);
+  if (!expectedParsed.ok) {
+    return apiError(expectedParsed.message, 400);
+  }
+  const expected_delivery = expectedParsed.value;
 
   const pcp_deadline =
     b.pcp_deadline === undefined || b.pcp_deadline === null

@@ -4,40 +4,49 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   AlertTriangle,
-  KanbanSquare,
   BarChart2,
+  BookOpen,
   Boxes,
   Building2,
+  Calculator,
   CalendarDays,
   ChevronDown,
   ChevronRight,
+  ClipboardCheck,
   Clock,
-  Calculator,
+  Cog,
   DollarSign,
   Factory,
   FileText,
   FileUp,
+  KanbanSquare,
   LayoutDashboard,
   Layers,
   LineChart,
-  Package,
-  Percent,
-  Settings,
   LogOut,
   Menu,
+  Package,
+  PenTool,
+  Percent,
   PieChart,
+  Ruler,
+  Send,
+  Settings,
   ShoppingBag,
   ShoppingCart,
   Tags,
   Truck,
   User,
+  UserCog,
   Users,
   Wallet,
   Warehouse,
+  Wrench,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -47,6 +56,10 @@ import { cn } from "@/lib/utils/cn";
 import { APP_NAME } from "@/lib/utils/constants";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { ModuleKey } from "@/lib/permissions";
+import { fetchProductionLines } from "@/lib/production/production-lines-api";
+
+const PRODUCTION_MENU_TITLE = "Produção";
+const LOADING_LINES_NAV_HREF = "__loading_lines__";
 
 type NavLeaf = {
   title: string;
@@ -92,10 +105,209 @@ const MENU_STRUCTURE: NavEntry[] = [
   },
   {
     type: "group",
+    title: "Logística",
+    icon: Truck,
+    module: "logistics",
+    children: [
+      {
+        title: "PCP",
+        href: "/logistics/pcp",
+        icon: CalendarDays,
+        module: "logistics",
+        anyOf: ["logistics", "mrp", "production"],
+      },
+      {
+        title: "Compras",
+        href: "/purchasing/orders",
+        icon: ShoppingCart,
+        module: "logistics",
+        anyOf: ["logistics", "purchasing"],
+      },
+      {
+        title: "Almoxarifado",
+        href: "/logistics/warehouse",
+        icon: Warehouse,
+        module: "logistics",
+        anyOf: ["logistics", "inventory"],
+      },
+      {
+        title: "Expedição",
+        href: "/logistics/shipping",
+        icon: Send,
+        module: "logistics",
+      },
+      {
+        title: "Relatórios logísticos",
+        href: "/logistics/reports",
+        icon: BarChart2,
+        module: "logistics",
+        anyOf: ["logistics", "reports"],
+      },
+    ],
+  },
+  {
+    type: "group",
+    title: "Produção",
+    icon: Factory,
+    module: "production",
+    children: [
+      {
+        title: "Ordens de produção",
+        href: "/production/orders",
+        icon: Package,
+        module: "production",
+      },
+      {
+        title: "Apontamento de produção",
+        href: "/production/timesheet",
+        icon: PenTool,
+        module: "production",
+      },
+      {
+        title: "Controle de qualidade (CQ)",
+        href: "/production/quality-control",
+        icon: ClipboardCheck,
+        module: "production",
+        anyOf: ["production", "quality"],
+      },
+      {
+        title: "KPIs de produção",
+        href: "/production/dashboard",
+        icon: LayoutDashboard,
+        module: "production",
+      },
+      {
+        title: "MRP",
+        href: "/mrp",
+        icon: Boxes,
+        module: "mrp",
+        anyOf: ["mrp", "production", "logistics"],
+      },
+    ],
+  },
+  {
+    type: "group",
+    title: "Qualidade",
+    icon: ClipboardCheck,
+    module: "quality",
+    children: [
+      {
+        title: "Inspeção de recebimento",
+        href: "/quality/inspection-receiving",
+        icon: Package,
+        module: "quality",
+      },
+      {
+        title: "Inspeção em processo",
+        href: "/quality/inspection-in-process",
+        icon: Wrench,
+        module: "quality",
+      },
+      {
+        title: "Controle final (liberação)",
+        href: "/quality/final-release",
+        icon: ClipboardCheck,
+        module: "quality",
+      },
+      {
+        title: "Não conformidades",
+        href: "/quality/non-conformities",
+        icon: AlertTriangle,
+        module: "quality",
+      },
+    ],
+  },
+  {
+    type: "group",
+    title: "Engenharia",
+    icon: Cog,
+    module: "engineering",
+    children: [
+      {
+        title: "Produtos",
+        href: "/products",
+        icon: Package,
+        module: "engineering",
+        anyOf: ["engineering", "products"],
+      },
+      {
+        title: "Manuais técnicos",
+        href: "/engineering/manuals",
+        icon: BookOpen,
+        module: "engineering",
+      },
+      {
+        title: "Instruções de trabalho",
+        href: "/engineering/work-instructions",
+        icon: FileText,
+        module: "engineering",
+      },
+      {
+        title: "Desenhos técnicos",
+        href: "/engineering/drawings",
+        icon: Ruler,
+        module: "engineering",
+      },
+    ],
+  },
+  {
+    type: "group",
+    title: "RH",
+    icon: Users,
+    module: "hr",
+    children: [
+      {
+        title: "Colaboradores",
+        href: "/hr/employees",
+        icon: Users,
+        module: "hr",
+      },
+      {
+        title: "Departamentos",
+        href: "/hr/departments",
+        icon: Building2,
+        module: "hr",
+      },
+      {
+        title: "Cargos e salários",
+        href: "/hr/positions",
+        icon: UserCog,
+        module: "hr",
+      },
+      {
+        title: "Treinamentos",
+        href: "/hr/training",
+        icon: BookOpen,
+        module: "hr",
+      },
+      {
+        title: "Turnover",
+        href: "/hr/turnover",
+        icon: PieChart,
+        module: "hr",
+      },
+    ],
+  },
+  {
+    type: "group",
     title: "Financeiro",
     icon: DollarSign,
     module: "finance",
     children: [
+      {
+        title: "Dashboard",
+        href: "/finance/dashboard",
+        icon: LayoutDashboard,
+        module: "finance",
+        anyOf: ["finance", "reports"],
+      },
+      {
+        title: "Custos de MO",
+        href: "/finance/cost-dashboard",
+        icon: Calculator,
+        module: "finance",
+        anyOf: ["finance", "production", "reports"],
+      },
       {
         title: "Contas a Receber",
         href: "/finance/receivables",
@@ -132,95 +344,26 @@ const MENU_STRUCTURE: NavEntry[] = [
   },
   {
     type: "group",
-    title: "RH",
-    icon: Users,
-    module: "hr",
-    children: [
-      {
-        title: "Colaboradores",
-        href: "/hr/employees",
-        icon: Users,
-        module: "hr",
-      },
-    ],
-  },
-  {
-    type: "group",
-    title: "Produção",
-    icon: Factory,
-    module: "production",
-    children: [
-      {
-        title: "Linhas de produção",
-        href: "/production/lines",
-        icon: Factory,
-        module: "production",
-      },
-      {
-        title: "Ordens de produção",
-        href: "/production/orders",
-        icon: Package,
-        module: "production",
-      },
-      {
-        title: "MRP",
-        href: "/mrp",
-        icon: Boxes,
-        module: "mrp",
-      },
-      {
-        title: "Planeamento PCP",
-        href: "/pcp/planning",
-        icon: CalendarDays,
-        module: "production",
-        anyOf: ["production", "mrp"],
-      },
-      {
-        title: "Custo de mão de obra",
-        href: "/reports/labor-cost",
-        icon: Calculator,
-        module: "production",
-        anyOf: ["production", "reports"],
-      },
-      {
-        title: "Atraso na produção",
-        href: "/reports/production-delay",
-        icon: Clock,
-        module: "production",
-        anyOf: ["production", "reports"],
-      },
-    ],
-  },
-  {
-    type: "group",
-    title: "Compras",
-    icon: ShoppingCart,
-    module: "purchasing",
-    children: [
-      {
-        title: "Fornecedores",
-        href: "/purchasing/suppliers",
-        icon: Truck,
-        module: "purchasing",
-      },
-      {
-        title: "Pedidos de compra",
-        href: "/purchasing/orders",
-        icon: ShoppingCart,
-        module: "purchasing",
-      },
-    ],
-  },
-  {
-    type: "group",
     title: "Vendas",
-    icon: DollarSign,
+    icon: ShoppingBag,
     module: "sales",
     children: [
+      {
+        title: "Dashboard",
+        href: "/sales/dashboard",
+        icon: LayoutDashboard,
+        module: "sales",
+      },
       {
         title: "Orçamentos",
         href: "/sales/quotes",
         icon: FileText,
+        module: "sales",
+      },
+      {
+        title: "Clientes",
+        href: "/customers",
+        icon: User,
         module: "sales",
       },
       {
@@ -253,32 +396,6 @@ const MENU_STRUCTURE: NavEntry[] = [
   },
   {
     type: "group",
-    title: "Produtos",
-    icon: Package,
-    module: "products",
-    children: [
-      {
-        title: "Cadastro",
-        href: "/products",
-        icon: Package,
-        module: "products",
-      },
-      {
-        title: "Estoque",
-        href: "/inventory",
-        icon: Warehouse,
-        module: "inventory",
-      },
-      {
-        title: "Classificação técnica",
-        href: "/settings/product-families",
-        icon: Tags,
-        module: "products",
-      },
-    ],
-  },
-  {
-    type: "group",
     title: "Configurações",
     icon: Settings,
     module: "settings",
@@ -300,6 +417,13 @@ const MENU_STRUCTURE: NavEntry[] = [
         href: "/settings/work-centers",
         icon: Factory,
         module: "settings",
+      },
+      {
+        title: "Classificação técnica",
+        href: "/settings/product-families",
+        icon: Tags,
+        module: "settings",
+        anyOf: ["settings", "products", "engineering"],
       },
       {
         title: "BDI precificação",
@@ -350,6 +474,14 @@ export function AppShell({ children, user }: AppShellProps) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { can } = usePermissions();
+  const canSeeProduction = can("production");
+
+  const productionLinesQ = useQuery({
+    queryKey: ["production-lines-nav"],
+    queryFn: fetchProductionLines,
+    enabled: Boolean(user) && canSeeProduction,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const o: Record<string, boolean> = {};
@@ -366,12 +498,32 @@ export function AppShell({ children, user }: AppShellProps) {
         if (navItemVisible(e, can)) out.push(e);
         continue;
       }
-      const children = e.children.filter((c) => navItemVisible(c, can));
+      let children = e.children.filter((c) => navItemVisible(c, can));
+
+      if (e.title === PRODUCTION_MENU_TITLE && canSeeProduction) {
+        const lineNav: NavLeaf[] = productionLinesQ.isLoading
+          ? [
+              {
+                title: "Carregando linhas…",
+                href: LOADING_LINES_NAV_HREF,
+                icon: Factory,
+                module: "production",
+              },
+            ]
+          : (productionLinesQ.data ?? []).map((line) => ({
+              title: `${line.code} - ${line.name}`,
+              href: `/production/lines/${line.id}`,
+              icon: Factory,
+              module: "production" as const,
+            }));
+        children = [...lineNav, ...children];
+      }
+
       if (children.length === 0) continue;
       out.push({ ...e, children });
     }
     return out;
-  }, [can]);
+  }, [can, canSeeProduction, productionLinesQ.data, productionLinesQ.isLoading]);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -393,13 +545,22 @@ export function AppShell({ children, user }: AppShellProps) {
     setOpenGroups((s) => ({ ...s, [title]: !s[title] }));
   }
 
+  const isQuotePrintRoute =
+    pathname.includes("/sales/quotes/") && pathname.endsWith("/print");
+
   return (
-    <div className="min-h-screen min-h-[100dvh] flex bg-slate-50">
+    <div
+      className={cn(
+        "min-h-screen min-h-[100dvh] flex bg-slate-50",
+        isQuotePrintRoute && "quote-print-shell"
+      )}
+    >
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 w-64 transform border-r border-slate-200 bg-white",
           "transition-transform duration-200 lg:static lg:translate-x-0",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          isQuotePrintRoute && "hidden print:hidden"
         )}
         aria-label="Menu lateral"
       >
@@ -477,7 +638,20 @@ export function AppShell({ children, user }: AppShellProps) {
                   <div className="ml-2 mt-1 flex flex-col gap-0.5 border-l border-slate-200 pl-2">
                     {entry.children.map((c) => {
                       const CIcon = c.icon;
-                      const active = pathActive(pathname, c.href);
+                      const active =
+                        c.href !== LOADING_LINES_NAV_HREF &&
+                        pathActive(pathname, c.href);
+                      if (c.href === LOADING_LINES_NAV_HREF) {
+                        return (
+                          <span
+                            key={c.href}
+                            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-400 italic"
+                          >
+                            <CIcon className="h-3.5 w-3.5 shrink-0" />
+                            <span>{c.title}</span>
+                          </span>
+                        );
+                      }
                       return (
                         <Link
                           key={c.href}
@@ -491,7 +665,7 @@ export function AppShell({ children, user }: AppShellProps) {
                           )}
                         >
                           <CIcon className="h-3.5 w-3.5 shrink-0" />
-                          <span>{c.title}</span>
+                          <span className="truncate">{c.title}</span>
                         </Link>
                       );
                     })}
@@ -538,7 +712,12 @@ export function AppShell({ children, user }: AppShellProps) {
       ) : null}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-20 h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 lg:px-6">
+        <header
+          className={cn(
+            "sticky top-0 z-20 h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 lg:px-6",
+            isQuotePrintRoute && "print:hidden hidden"
+          )}
+        >
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
@@ -552,7 +731,14 @@ export function AppShell({ children, user }: AppShellProps) {
           </h1>
         </header>
 
-        <main className="flex-1 min-w-0 p-4 lg:p-6">{children}</main>
+        <main
+          className={cn(
+            "flex-1 min-w-0 p-4 lg:p-6",
+            isQuotePrintRoute && "p-0 lg:p-0 print:p-0"
+          )}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

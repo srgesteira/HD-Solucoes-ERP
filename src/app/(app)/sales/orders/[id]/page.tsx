@@ -7,13 +7,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Ban,
-  Boxes,
-  ClipboardList,
   FileText,
+  History,
   Loader2,
   Pencil,
   Receipt,
   RefreshCw,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,9 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
 import type { Tables } from "@/lib/types/database";
 import type { ReceivableStatus } from "@/lib/types/finance.types";
-import type { MaterialRequirement } from "@/lib/mrp-service";
 import type { SalesOrderStatus } from "@/lib/types/sales.types";
+import { defaultExpectedDeliveryForOrder } from "@/lib/sales/sales-flow";
+import { SalesOrderChangeHistory } from "@/components/sales/sales-order-change-history";
 
 /** Progressão permitida pelo UI (exclude cancelled via acção separada). */
 const SALES_FLOW: SalesOrderStatus[] = [
@@ -54,10 +55,6 @@ type QuoteBrief =
   | { id: string; quote_number?: string | null }
   | null;
 
-type ProductionBrief =
-  | { id: string; order_number?: string | null; status?: string | null }
-  | null;
-
 type SalesOrderDetail = {
   id: string;
   order_number: string;
@@ -65,7 +62,6 @@ type SalesOrderDetail = {
   created_at: string;
   order_date: string;
   expected_delivery: string | null;
-  pcp_deadline: string | null;
   actual_delivery: string | null;
   client_name: string;
   client_document: string | null;
@@ -78,12 +74,13 @@ type SalesOrderDetail = {
   subtotal: number;
   discount: number;
   tax: number;
+  total_icms?: number;
+  total_ipi?: number;
+  total_tax_base?: number;
   total: number;
   notes: string | null;
   quote_id: string | null;
   quote?: unknown;
-  production_order?: unknown;
-  production_order_id: string | null;
   items?: SaleItemLine[] | null;
   nfes?: unknown;
 };
@@ -119,19 +116,6 @@ function unwrapQuote(raw: unknown): QuoteBrief {
     typeof rec.quote_number === "string" ? rec.quote_number : null;
   if (!id) return null;
   return { id, quote_number };
-}
-
-function unwrapProduction(raw: unknown): ProductionBrief {
-  if (!raw || typeof raw !== "object") return null;
-  const o = Array.isArray(raw) ? raw[0] : raw;
-  if (!o || typeof o !== "object") return null;
-  const rec = o as Record<string, unknown>;
-  const id = typeof rec.id === "string" ? rec.id : "";
-  const order_number =
-    typeof rec.order_number === "string" ? rec.order_number : null;
-  const status = typeof rec.status === "string" ? rec.status : null;
-  if (!id) return null;
-  return { id, order_number, status };
 }
 
 type NfeLineBrief = {
@@ -222,6 +206,12 @@ function salesOrderStatusPill(
         className:
           "bg-red-50 text-red-900 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-100",
       };
+    case "superseded":
+      return {
+        label: "Substituído",
+        className:
+          "bg-slate-100 text-slate-700 ring-1 ring-slate-300 dark:bg-slate-800 dark:text-slate-200",
+      };
     default:
       return {
         label: status,
@@ -299,60 +289,6 @@ async function fetchReceivablesForOrder(
   return json.data;
 }
 
-async function postPlanSalesOrder(
-  salesOrderId: string,
-  confirm: boolean
-): Promise<{
-  requirements?: MaterialRequirement[];
-  purchase_orders?: Array<{
-    id: string;
-    po_number: string;
-    supplier_id: string | null;
-  }>;
-  production_order_id?: string;
-  production_order_ids?: string[];
-  production_error?: string;
-  summary?: {
-    has_shortage: boolean;
-    lines: number;
-    production_lines?: number;
-  };
-}> {
-  const res = await fetch("/api/mrp/plan-sales-order", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      confirm
-        ? { sales_order_id: salesOrderId, confirm: true }
-        : { sales_order_id: salesOrderId, action: "requirements" }
-    ),
-  });
-  const json = (await res.json().catch(() => ({}))) as {
-    error?: string;
-    requirements?: MaterialRequirement[];
-    purchase_orders?: Array<{
-      id: string;
-      po_number: string;
-      supplier_id: string | null;
-    }>;
-    production_order_id?: string;
-    production_order_ids?: string[];
-    production_error?: string;
-    summary?: {
-      has_shortage: boolean;
-      lines: number;
-      production_lines?: number;
-    };
-  };
-  if (!res.ok) {
-    throw new Error(
-      typeof json.error === "string" ? json.error : "Erro no MRP"
-    );
-  }
-  return json;
-}
-
 async function postEmitNfseApi(
   salesOrderId: string
 ): Promise<{ nfe_id: string }> {
@@ -424,6 +360,15 @@ async function putOrder(
   if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar pedido");
 }
 
+async function reactivateSalesOrder(id: string): Promise<void> {
+  const res = await fetch(`/api/sales/orders/${id}/reactivate`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao reativar pedido");
+}
+
 async function putReceivablePayment(
   id: string,
   body: {
@@ -483,7 +428,7 @@ export default function SalesOrderDetailPage() {
   const { data: me } = useMe();
   const { can } = usePermissions();
   const isAdmin = me?.role === "admin";
-  const canEditPcpDeadline = isAdmin || can("sales") || can("mrp");
+  const canSales = isAdmin || can("sales");
 
   const orderQuery = useQuery({
     queryKey: ["sales-order", id],
@@ -504,24 +449,34 @@ export default function SalesOrderDetailPage() {
     enabled: Boolean(id),
   });
 
-  const [pcpDeadlineDraft, setPcpDeadlineDraft] = useState("");
+  const [expectedDeliveryDraft, setExpectedDeliveryDraft] = useState("");
+  const [paymentInstallmentsDraft, setPaymentInstallmentsDraft] = useState("1");
+  const [paymentDaysFirstDraft, setPaymentDaysFirstDraft] = useState("30");
+  const [paymentDaysBetweenDraft, setPaymentDaysBetweenDraft] = useState("30");
 
   useEffect(() => {
-    const cur = orderQuery.data?.pcp_deadline;
-    if (!cur) {
-      setPcpDeadlineDraft("");
-      return;
-    }
-    setPcpDeadlineDraft(String(cur).slice(0, 10));
-  }, [orderQuery.data?.id, orderQuery.data?.pcp_deadline]);
+    const row = orderQuery.data;
+    if (!row) return;
+    setExpectedDeliveryDraft(
+      row.expected_delivery
+        ? String(row.expected_delivery).slice(0, 10)
+        : defaultExpectedDeliveryForOrder(row.order_date)
+    );
+    setPaymentInstallmentsDraft(String(row.payment_installments ?? 1));
+    setPaymentDaysFirstDraft(String(row.payment_days_to_first_due ?? 30));
+    setPaymentDaysBetweenDraft(
+      String(row.payment_days_between_installments ?? 30)
+    );
+  }, [orderQuery.data]);
 
   const q = orderQuery.data;
   const quoteInfo = unwrapQuote(q?.quote);
   const quoteLinkId = quoteInfo?.id ?? q?.quote_id ?? null;
-  const prodOrder = unwrapProduction(q?.production_order);
-  const productionLinkId =
-    prodOrder?.id ?? (q?.production_order_id ? q.production_order_id : null);
   const st = (q?.status ?? "pending") as SalesOrderStatus;
+  const canNavigateToEdit =
+    canSales && st !== "cancelled" && st !== "superseded";
+  /** Edição comercial apenas na página /edit (uma tela unificada). */
+  const canEditCommercialInline = false;
   const nfeList = useMemo(() => unwrapNfes(q?.nfes), [q?.nfes]);
   const hasBlockingNfe = useMemo(
     () =>
@@ -537,17 +492,12 @@ export default function SalesOrderDetailPage() {
     Boolean(companyBrandingQuery.data?.focusnfe_configured);
   const canCancelAdmin =
     isAdmin && st !== "delivered" && st !== "cancelled";
+  const canReactivateAdmin = isAdmin && st === "cancelled";
   const showStatusControl =
     isAdmin && SALES_FLOW.includes(st) && st !== "delivered";
 
   const [cancelOpen, setCancelOpen] = useState(false);
-
-  const [mrpOpen, setMrpOpen] = useState(false);
-  const [mrpReqs, setMrpReqs] = useState<MaterialRequirement[]>([]);
-  const [mrpBusy, setMrpBusy] = useState(false);
-  const [mrpLastPo, setMrpLastPo] = useState<
-    Array<{ id: string; po_number: string; supplier_id: string | null }>
-  >([]);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
 
   const [nfeOpen, setNfeOpen] = useState(false);
   const [nfeBusy, setNfeBusy] = useState(false);
@@ -607,6 +557,17 @@ export default function SalesOrderDetailPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const reactivateMutation = useMutation({
+    mutationFn: () => reactivateSalesOrder(id),
+    onSuccess: () => {
+      toast.success("Pedido reativado com sucesso.");
+      setReactivateOpen(false);
+      invalidate();
+      router.push(`/sales/orders/${id}/edit`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const paymentMutation = useMutation({
     mutationFn: (args: {
       receivableId: string;
@@ -624,55 +585,6 @@ export default function SalesOrderDetailPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
-
-  const openMrpModal = async () => {
-    if (!id) return;
-    setMrpOpen(true);
-    setMrpBusy(true);
-    setMrpLastPo([]);
-    try {
-      const json = await postPlanSalesOrder(id, false);
-      setMrpReqs(json.requirements ?? []);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro");
-      setMrpOpen(false);
-    } finally {
-      setMrpBusy(false);
-    }
-  };
-
-  const runMrpConfirm = async () => {
-    if (!id) return;
-    setMrpBusy(true);
-    try {
-      const json = await postPlanSalesOrder(id, true);
-      setMrpReqs(json.requirements ?? []);
-      setMrpLastPo(json.purchase_orders ?? []);
-      const opCount =
-        json.production_order_ids?.length ??
-        (json.production_order_id ? 1 : 0);
-      const pcCount = json.purchase_orders?.length ?? 0;
-      if (json.production_error) {
-        toast.error(json.production_error);
-      } else if (opCount > 0 || pcCount > 0) {
-        toast.success(
-          opCount > 0 && pcCount > 0
-            ? `${pcCount} pedido(s) de compra e ${opCount} ordem(ns) de produção (por linha).`
-            : opCount > 0
-              ? `${opCount} ordem(ns) de produção criada(s) ou vinculada(s).`
-              : `${pcCount} pedido(s) de compra em rascunho.`
-        );
-        setMrpOpen(false);
-      } else {
-        toast.success("Nenhuma acção necessária (linhas já planeadas ou sem itens elegíveis).");
-      }
-      invalidate();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setMrpBusy(false);
-    }
-  };
 
   const runEmitNfseFlow = async () => {
     if (!id) return;
@@ -718,19 +630,6 @@ export default function SalesOrderDetailPage() {
     }
   };
 
-  const refreshMrpTable = async () => {
-    if (!id) return;
-    setMrpBusy(true);
-    try {
-      const json = await postPlanSalesOrder(id, false);
-      setMrpReqs(json.requirements ?? []);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setMrpBusy(false);
-    }
-  };
-
   const receivableSorted = useMemo(() => {
     const list = [...(receivablesQuery.data ?? [])];
     list.sort((a, b) => {
@@ -752,7 +651,7 @@ export default function SalesOrderDetailPage() {
             Voltar
           </Button>
         </Link>
-        {isAdmin ? (
+        {canNavigateToEdit ? (
           <Button
             type="button"
             size="sm"
@@ -760,7 +659,17 @@ export default function SalesOrderDetailPage() {
             onClick={() => router.push(`/sales/orders/${id}/edit`)}
           >
             <Pencil className="h-4 w-4" />
-            Editar
+            Editar pedido
+          </Button>
+        ) : null}
+        {canEmitNfe ? (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setNfeOpen(true)}
+          >
+            <Receipt className="h-4 w-4" />
+            Emitir NFS-e
           </Button>
         ) : null}
         {canCancelAdmin ? (
@@ -772,6 +681,18 @@ export default function SalesOrderDetailPage() {
           >
             <Ban className="h-4 w-4" />
             Cancelar
+          </Button>
+        ) : null}
+        {canReactivateAdmin ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+            onClick={() => setReactivateOpen(true)}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Reativar pedido
           </Button>
         ) : null}
         {showStatusControl ? (
@@ -808,6 +729,21 @@ export default function SalesOrderDetailPage() {
           </div>
         ) : null}
       </div>
+      {isAdmin && st === "confirmed" && !companyBrandingQuery.data?.focusnfe_configured ? (
+        <p className="w-full text-xs text-amber-800 dark:text-amber-200">
+          Para emitir NF-e, configure o token FocusNFe em{" "}
+          <Link href="/settings/company" className="underline font-medium">
+            Empresa
+          </Link>
+          .
+        </p>
+      ) : null}
+      {isAdmin && st === "confirmed" && hasBlockingNfe ? (
+        <p className="w-full text-xs text-slate-600 dark:text-slate-400">
+          Já existe NF-e em curso ou autorizada para este pedido. Sincronize na
+          Focus antes de nova emissão.
+        </p>
+      ) : null}
 
       {orderQuery.isLoading ? (
         <div className="flex items-center gap-2 text-slate-600 py-12 justify-center">
@@ -853,69 +789,12 @@ export default function SalesOrderDetailPage() {
                       </span>
                     </span>
                     <span>
-                      <span className="text-slate-500">
-                        Entrega prevista:
-                      </span>{" "}
-                      <span className="tabular-nums font-medium text-slate-800 dark:text-slate-200">
-                        {fmtDay(q.expected_delivery)}
-                      </span>
-                    </span>
-                    <span>
                       <span className="text-slate-500">Entrega real:</span>{" "}
                       <span className="tabular-nums font-medium text-slate-800 dark:text-slate-200">
                         {fmtDay(q.actual_delivery)}
                       </span>
                     </span>
-                    {!canEditPcpDeadline && q.pcp_deadline ? (
-                      <span>
-                        <span className="text-slate-500">Prazo PCP:</span>{" "}
-                        <span className="tabular-nums font-medium text-slate-800 dark:text-slate-200">
-                          {fmtDay(q.pcp_deadline)}
-                        </span>
-                      </span>
-                    ) : null}
                   </div>
-                  {canEditPcpDeadline ? (
-                    <div className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 max-w-md">
-                      <Label
-                        htmlFor="so-pcp-dl"
-                        className="text-sm text-slate-500 shrink-0"
-                      >
-                        Prazo PCP (interno)
-                      </Label>
-                      <Input
-                        id="so-pcp-dl"
-                        type="date"
-                        className="sm:max-w-[11rem]"
-                        value={pcpDeadlineDraft}
-                        onChange={(e) => setPcpDeadlineDraft(e.target.value)}
-                        onBlur={() => {
-                          if (!id || !q) return;
-                          const next = pcpDeadlineDraft.trim();
-                          const cur = q.pcp_deadline
-                            ? String(q.pcp_deadline).slice(0, 10)
-                            : "";
-                          if (next === cur) return;
-                          void (async () => {
-                            try {
-                              await putOrder(id, {
-                                pcp_deadline: next === "" ? null : next,
-                              });
-                              await queryClient.invalidateQueries({
-                                queryKey: ["sales-order", id],
-                              });
-                              toast.success("Prazo PCP actualizado.");
-                            } catch (e) {
-                              toast.error(
-                                e instanceof Error ? e.message : "Erro"
-                              );
-                              setPcpDeadlineDraft(cur);
-                            }
-                          })();
-                        }}
-                      />
-                    </div>
-                  ) : null}
                 </div>
                 <div className="flex flex-col gap-2 text-sm">
                   {quoteLinkId ? (
@@ -928,16 +807,6 @@ export default function SalesOrderDetailPage() {
                       {quoteInfo?.quote_number
                         ? quoteInfo.quote_number
                         : quoteLinkId.slice(0, 8)}
-                    </Link>
-                  ) : null}
-                  {productionLinkId ? (
-                    <Link
-                      href={`/production/orders/${productionLinkId}`}
-                      className="inline-flex items-center gap-1.5 text-brand-700 hover:underline dark:text-brand-400"
-                    >
-                      <ClipboardList className="h-4 w-4" />
-                      Ordem de produção{" "}
-                      {prodOrder?.order_number ?? productionLinkId.slice(0, 8)}
                     </Link>
                   ) : null}
                 </div>
@@ -977,26 +846,184 @@ export default function SalesOrderDetailPage() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Pagamento</CardTitle>
+              <CardTitle className="text-lg">Condições comerciais</CardTitle>
+              <p className="text-sm text-slate-500 font-normal">
+                Visível ao cliente — prazo de entrega e pagamento. Para alterar
+                itens, preços ou dados comerciais, use{" "}
+                {canNavigateToEdit ? (
+                  <button
+                    type="button"
+                    className="text-brand-700 font-medium underline"
+                    onClick={() => router.push(`/sales/orders/${id}/edit`)}
+                  >
+                    Editar pedido
+                  </button>
+                ) : (
+                  "a página de edição"
+                )}
+                .
+              </p>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-3 text-sm">
-              <div>
-                <p className="text-slate-500">Parcelas</p>
-                <p className="font-medium tabular-nums">
-                  {q.payment_installments}
-                </p>
+            <CardContent className="grid gap-4 sm:grid-cols-2 text-sm">
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="so-expected-delivery">
+                  Prazo de entrega <span className="text-red-600">*</span>
+                </Label>
+                {canEditCommercialInline ? (
+                  <Input
+                    id="so-expected-delivery"
+                    type="date"
+                    required
+                    className="max-w-xs"
+                    value={expectedDeliveryDraft}
+                    onChange={(e) =>
+                      setExpectedDeliveryDraft(e.target.value)
+                    }
+                    onBlur={async () => {
+                      if (!id || !q) return;
+                      const next = expectedDeliveryDraft.trim();
+                      const cur = q.expected_delivery
+                        ? String(q.expected_delivery).slice(0, 10)
+                        : "";
+                      if (next === cur) return;
+                      if (!next) {
+                        toast.error("Prazo de entrega é obrigatório.");
+                        setExpectedDeliveryDraft(cur);
+                        return;
+                      }
+                      if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) {
+                        toast.error("Data inválida (use AAAA-MM-DD).");
+                        setExpectedDeliveryDraft(cur);
+                        return;
+                      }
+                      try {
+                        await putOrder(id, {
+                          expected_delivery: next,
+                        });
+                        await queryClient.invalidateQueries({
+                          queryKey: ["sales-order", id],
+                        });
+                        toast.success("Prazo de entrega actualizado.");
+                      } catch (e) {
+                        toast.error(
+                          e instanceof Error ? e.message : "Erro"
+                        );
+                        setExpectedDeliveryDraft(cur);
+                      }
+                    }}
+                  />
+                ) : (
+                  <p className="font-medium tabular-nums">
+                    {fmtDay(q.expected_delivery)}
+                  </p>
+                )}
               </div>
-              <div>
-                <p className="text-slate-500">Dias até 1.ª parcela</p>
-                <p className="font-medium tabular-nums">
-                  {q.payment_days_to_first_due}
-                </p>
+              <div className="space-y-2">
+                <Label htmlFor="so-payment-installments">Parcelas</Label>
+                {canEditCommercialInline ? (
+                  <Input
+                    id="so-payment-installments"
+                    type="number"
+                    min={1}
+                    value={paymentInstallmentsDraft}
+                    onChange={(e) =>
+                      setPaymentInstallmentsDraft(e.target.value)
+                    }
+                    onBlur={async () => {
+                      if (!id || !q) return;
+                      const pi = parseInt(paymentInstallmentsDraft, 10);
+                      const pd1 = parseInt(paymentDaysFirstDraft, 10);
+                      const pdb = parseInt(paymentDaysBetweenDraft, 10);
+                      if (
+                        !Number.isFinite(pi) ||
+                        pi < 1 ||
+                        !Number.isFinite(pd1) ||
+                        pd1 < 0 ||
+                        !Number.isFinite(pdb) ||
+                        pdb < 0
+                      ) {
+                        toast.error("Valores de pagamento inválidos.");
+                        return;
+                      }
+                      if (
+                        pi === q.payment_installments &&
+                        pd1 === q.payment_days_to_first_due &&
+                        pdb === q.payment_days_between_installments
+                      ) {
+                        return;
+                      }
+                      try {
+                        await putOrder(id, {
+                          payment_installments: pi,
+                          payment_days_to_first_due: pd1,
+                          payment_days_between_installments: pdb,
+                        });
+                        await queryClient.invalidateQueries({
+                          queryKey: ["sales-order", id],
+                        });
+                        toast.success("Condições de pagamento actualizadas.");
+                      } catch (e) {
+                        toast.error(
+                          e instanceof Error ? e.message : "Erro"
+                        );
+                      }
+                    }}
+                  />
+                ) : (
+                  <p className="font-medium tabular-nums">
+                    {q.payment_installments}
+                  </p>
+                )}
               </div>
-              <div>
-                <p className="text-slate-500">Dias entre parcelas</p>
-                <p className="font-medium tabular-nums">
-                  {q.payment_days_between_installments}
-                </p>
+              <div className="space-y-2">
+                <Label htmlFor="so-payment-days-first">
+                  Dias até 1.ª parcela
+                </Label>
+                {canEditCommercialInline ? (
+                  <Input
+                    id="so-payment-days-first"
+                    type="number"
+                    min={0}
+                    value={paymentDaysFirstDraft}
+                    onChange={(e) => setPaymentDaysFirstDraft(e.target.value)}
+                    onBlur={async () => {
+                      const el = document.getElementById(
+                        "so-payment-installments"
+                      ) as HTMLInputElement | null;
+                      el?.blur();
+                    }}
+                  />
+                ) : (
+                  <p className="font-medium tabular-nums">
+                    {q.payment_days_to_first_due}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="so-payment-days-between">
+                  Dias entre parcelas
+                </Label>
+                {canEditCommercialInline ? (
+                  <Input
+                    id="so-payment-days-between"
+                    type="number"
+                    min={0}
+                    value={paymentDaysBetweenDraft}
+                    onChange={(e) =>
+                      setPaymentDaysBetweenDraft(e.target.value)
+                    }
+                    onBlur={async () => {
+                      const el = document.getElementById(
+                        "so-payment-installments"
+                      ) as HTMLInputElement | null;
+                      el?.blur();
+                    }}
+                  />
+                ) : (
+                  <p className="font-medium tabular-nums">
+                    {q.payment_days_between_installments}
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1066,61 +1093,25 @@ export default function SalesOrderDetailPage() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Planeamento e NFS-e</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Histórico de alterações
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm">
-              <div className="flex flex-wrap gap-2">
-                {isAdmin ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={mrpBusy}
-                    onClick={() => void openMrpModal()}
-                  >
-                    {mrpBusy && mrpOpen ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Boxes className="h-4 w-4" />
-                    )}
-                    Planejar pelo MRP
-                  </Button>
-                ) : null}
-                {canEmitNfe ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => {
-                      setNfeOpen(true);
-                    }}
-                  >
-                    <Receipt className="h-4 w-4" />
-                    Emitir NFS-e
-                  </Button>
-                ) : null}
-              </div>
-              {isAdmin &&
-              st === "confirmed" &&
-              !companyBrandingQuery.data?.focusnfe_configured ? (
-                <p className="text-xs text-amber-800 dark:text-amber-200">
-                  Para emitir NF-e, configure o token FocusNFe em{" "}
-                  <Link
-                    href="/settings/company"
-                    className="underline font-medium"
-                  >
-                    Empresa
-                  </Link>
-                  .
-                </p>
-              ) : null}
-              {isAdmin && st === "confirmed" && hasBlockingNfe ? (
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  Já existe NF-e em curso ou autorizada para este pedido.
-                  Sincronize na Focus antes de nova emissão.
-                </p>
-              ) : null}
+            <CardContent>
+              <SalesOrderChangeHistory orderId={id} />
+            </CardContent>
+          </Card>
 
-              {nfeList.length > 0 ? (
+          {nfeList.length > 0 ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Receipt className="h-5 w-5" />
+                  Notas fiscais
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm">
                 <div className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
                   <table className="w-full text-sm min-w-[640px]">
                     <thead>
@@ -1216,13 +1207,9 @@ export default function SalesOrderDetailPage() {
                     </tbody>
                   </table>
                 </div>
-              ) : (
-                <p className="text-slate-500">
-                  Sem NF-e registadas para este pedido.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
@@ -1245,11 +1232,25 @@ export default function SalesOrderDetailPage() {
                   </div>
                 ) : null}
                 <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Imposto</span>
+                  <span className="text-slate-500">Total ICMS</span>
                   <span className="tabular-nums font-medium">
-                    {fmtBRL(q.tax)}
+                    {fmtBRL(Number(q.total_icms ?? 0))}
                   </span>
                 </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Total IPI</span>
+                  <span className="tabular-nums font-medium">
+                    {fmtBRL(Number(q.total_ipi ?? 0))}
+                  </span>
+                </div>
+                {q.tax > 0 ? (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-500">Outros impostos</span>
+                    <span className="tabular-nums font-medium">
+                      {fmtBRL(q.tax)}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 dark:border-slate-700">
                   <span className="font-semibold">Total final</span>
                   <span className="tabular-nums font-semibold">
@@ -1388,130 +1389,6 @@ export default function SalesOrderDetailPage() {
         </>
       ) : null}
 
-      {mrpOpen && isAdmin ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="mrp-modal-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !mrpBusy) setMrpOpen(false);
-          }}
-        >
-          <div
-            className="relative z-10 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-950 dark:border-slate-700"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3
-              id="mrp-modal-title"
-              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
-            >
-              MRP — necessidades de materiais
-            </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Com base na BOM e no stock actual. Ao confirmar, gera-se uma ordem
-              de produção por linha de venda (produto acabado) e pedidos de
-              compra em rascunho com rastreio por linha e componente.
-            </p>
-
-            {mrpBusy && mrpReqs.length === 0 ? (
-              <div className="flex items-center gap-2 py-12 justify-center text-slate-600">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                A calcular…
-              </div>
-            ) : mrpReqs.length === 0 ? (
-              <p className="py-8 text-sm text-slate-500 text-center">
-                Sem necessidades de material (itens sem produto ou sem BOM).
-              </p>
-            ) : (
-              <div className="mt-4 rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
-                <table className="w-full text-sm min-w-[480px]">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
-                      <th className="px-3 py-2 text-left font-medium">
-                        Produto
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Quantidade necessária (bruta)
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium">Unidade</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mrpReqs.map((r) => (
-                      <tr
-                        key={r.product_id}
-                        className="border-b border-slate-100 dark:border-slate-800"
-                      >
-                        <td className="px-3 py-2 max-w-[18rem]">
-                          <span className="line-clamp-2">{r.description}</span>
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums font-medium">
-                          {r.needed}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
-                          {r.unit}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {mrpLastPo.length > 0 ? (
-              <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
-                <span className="font-medium">Últimos PCs gerados:</span>{" "}
-                {mrpLastPo.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={`/purchasing/orders/${p.id}`}
-                    className="ml-2 inline-block text-brand-700 underline dark:text-brand-400"
-                  >
-                    {p.po_number}
-                  </Link>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="mt-6 flex flex-wrap gap-2 justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={mrpBusy}
-                onClick={() => setMrpOpen(false)}
-              >
-                Fechar
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={mrpBusy || !mrpReqs.length}
-                onClick={() => void refreshMrpTable()}
-              >
-                {mrpBusy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-                Actualizar
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={mrpBusy}
-                onClick={() => void runMrpConfirm()}
-              >
-                Confirmar plano (PCs + OP por linha)
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {nfeOpen && isAdmin ? (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
@@ -1631,6 +1508,62 @@ export default function SalesOrderDetailPage() {
                   </>
                 ) : (
                   "Confirmar"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {reactivateOpen && isAdmin ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="so-detail-reactivate-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !reactivateMutation.isPending)
+              setReactivateOpen(false);
+          }}
+        >
+          <div
+            className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-950 dark:border-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="so-detail-reactivate-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              Reativar pedido
+            </h3>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              Tem certeza que deseja reativar este pedido cancelado? Ele voltará
+              ao estado <strong>pendente</strong> e poderá ser editado antes de
+              nova confirmação.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={reactivateMutation.isPending}
+                onClick={() => setReactivateOpen(false)}
+              >
+                Voltar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={reactivateMutation.isPending}
+                onClick={() => reactivateMutation.mutate()}
+              >
+                {reactivateMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    A reativar…
+                  </>
+                ) : (
+                  "Reativar pedido"
                 )}
               </Button>
             </div>

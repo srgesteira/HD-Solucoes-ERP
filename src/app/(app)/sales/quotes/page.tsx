@@ -1,37 +1,31 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, FileText, Loader2, Plus, Search } from "lucide-react";
 import {
-  ArrowRightLeft,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Edit,
-  Eye,
-  FileText,
-  Loader2,
-  MoreHorizontal,
-  Plus,
-  Search,
-  Send,
-  XCircle,
-} from "lucide-react";
+  QuoteRowActionsMenu,
+  type QuoteRowActionsQuote,
+} from "@/components/sales/quote-row-actions-menu";
+import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
+import { quoteStatusBadge } from "@/lib/sales/quote-display";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils/cn";
 import { useMe } from "@/hooks/use-me";
+import { usePermissions } from "@/hooks/use-permissions";
 
 type QuoteStatus =
   | "draft"
   | "sent"
   | "approved"
   | "rejected"
-  | "converted";
+  | "converted"
+  | "revision";
 
 interface QuoteRow {
   id: string;
@@ -55,6 +49,7 @@ const STATUS_OPTIONS: Array<{ value: "all" | QuoteStatus; label: string }> = [
   { value: "approved", label: "Aprovado" },
   { value: "rejected", label: "Rejeitado" },
   { value: "converted", label: "Convertido" },
+  { value: "revision", label: "Em revisÃ£o" },
 ];
 
 const quotesQueryKey = (filters: {
@@ -92,37 +87,62 @@ async function fetchQuotes(filters: {
 
   if (!res.ok) {
     const errMsg =
-      typeof json.error === "string" ? json.error : "Erro ao carregar orçamentos";
+      typeof json.error === "string" ? json.error : "Erro ao carregar orÃ§amentos";
     throw new Error(errMsg);
   }
 
   if (!json.data || !json.pagination) {
-    throw new Error("Resposta inválida da API");
+    throw new Error("Resposta invÃ¡lida da API");
   }
 
   return json as QuotesApiResponse;
 }
 
-async function patchQuoteStatus(id: string, status: string): Promise<void> {
+async function patchQuote(
+  id: string,
+  body: { status: string; revision_notes?: string | null }
+): Promise<void> {
   const res = await fetch(`/api/sales/quotes/${id}`, {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(body),
   });
   const json = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao atualizar orçamento");
+  if (!res.ok) throw new Error(json.error ?? "Erro ao atualizar orÃ§amento");
 }
 
-async function convertQuote(id: string): Promise<void> {
-  const res = await fetch(`/api/sales/quotes/${id}/convert`, {
+async function approveQuote(id: string): Promise<{ sales_order_id: string }> {
+  const res = await fetch(`/api/sales/quotes/${id}/approve`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: { sales_order_id: string };
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao aprovar orÃ§amento");
+  if (!json.data?.sales_order_id) {
+    throw new Error("Resposta invÃ¡lida ao aprovar");
+  }
+  return json.data;
+}
+
+async function rejectQuoteApi(
+  id: string,
+  reasonIds: string[],
+  notes: string
+): Promise<void> {
+  const res = await fetch(`/api/sales/quotes/${id}/reject`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason_ids: reasonIds, notes: notes || null }),
+  });
   const json = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao converter orçamento");
+  if (!res.ok) throw new Error(json.error ?? "Erro ao rejeitar orÃ§amento");
 }
 
 function formatCurrency(value: number): string {
@@ -133,58 +153,20 @@ function formatCurrency(value: number): string {
 }
 
 function formatDate(iso: string | null | undefined): string {
-  if (iso == null || iso === "") return "—";
+  if (iso == null || iso === "") return "â€”";
   const d = String(iso).slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return iso;
   const [y, m, day] = d.split("-");
   return `${day}/${m}/${y}`;
 }
 
-function statusBadge(status: string): { label: string; className: string } {
-  switch (status as QuoteStatus) {
-    case "draft":
-      return {
-        label: "Rascunho",
-        className:
-          "bg-slate-100 text-slate-800 ring-1 ring-slate-300 dark:bg-slate-800/80 dark:text-slate-200 dark:ring-slate-600",
-      };
-    case "sent":
-      return {
-        label: "Enviado",
-        className:
-          "bg-amber-50 text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-700/50",
-      };
-    case "approved":
-      return {
-        label: "Aprovado",
-        className:
-          "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200 dark:bg-emerald-950/35 dark:text-emerald-100",
-      };
-    case "rejected":
-      return {
-        label: "Rejeitado",
-        className:
-          "bg-red-50 text-red-900 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-100",
-      };
-    case "converted":
-      return {
-        label: "Convertido",
-        className:
-          "bg-blue-50 text-blue-900 ring-1 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-100",
-      };
-    default:
-      return {
-        label: status,
-        className: "bg-slate-50 text-slate-700 ring-1 ring-slate-200",
-      };
-  }
-}
-
 export default function QuotesListPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: me } = useMe();
+  const { can } = usePermissions();
   const isAdmin = me?.role === "admin";
+  const canEditQuotes = isAdmin || can("sales");
 
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState({
@@ -208,10 +190,9 @@ export default function QuotesListPage() {
     queryFn: () => fetchQuotes(filters),
   });
 
-  const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
-  const [convertTarget, setConvertTarget] = useState<QuoteRow | null>(null);
-  const [convertBusy, setConvertBusy] = useState(false);
-
+  const [rejectTarget, setRejectTarget] = useState<QuoteRow | null>(null);
+  const [rejectBusy, setRejectBusy] = useState(false);
+  const [approveBusyId, setApproveBusyId] = useState<string | null>(null);
   const totalPages = data?.pagination
     ? Math.max(1, Math.ceil(data.pagination.total / filters.limit))
     : 0;
@@ -221,42 +202,61 @@ export default function QuotesListPage() {
     const { total } = data.pagination;
     const start = total === 0 ? 0 : (filters.page - 1) * filters.limit + 1;
     const end = Math.min(filters.page * filters.limit, total);
-    return `${start}–${end} de ${total}`;
+    return `${start}â€“${end} de ${total}`;
   }, [data?.pagination, filters.page, filters.limit]);
 
   const invalidateQuotes = async () => {
     await queryClient.invalidateQueries({ queryKey: ["sales-quotes"] });
   };
 
-  const handleStatusAction = async (row: QuoteRow, status: string, labelOk: string) => {
+  const handleStatusAction = async (
+    row: QuoteRowActionsQuote,
+    status: string,
+    labelOk: string
+  ) => {
     if (!isAdmin) return;
     try {
-      await patchQuoteStatus(row.id, status);
+      await patchQuote(row.id, { status });
       toast.success(labelOk);
-      setMenuOpenFor(null);
       await invalidateQuotes();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Não foi possível atualizar o orçamento."
+        err instanceof Error ? err.message : "NÃ£o foi possÃ­vel atualizar o orÃ§amento."
       );
     }
   };
 
-  const handleConfirmConvert = async () => {
-    if (!convertTarget || !isAdmin) return;
-    setConvertBusy(true);
+  const handleApprove = async (row: QuoteRowActionsQuote) => {
+    if (!isAdmin) return;
+    setApproveBusyId(row.id);
     try {
-      await convertQuote(convertTarget.id);
-      toast.success("Orçamento convertido em pedido de venda.");
-      setConvertTarget(null);
-      setMenuOpenFor(null);
+      const { sales_order_id } = await approveQuote(row.id);
+      toast.success("OrÃ§amento aprovado e pedido de venda criado.");
+      await invalidateQuotes();
+      router.push(`/sales/orders/${sales_order_id}`);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "NÃ£o foi possÃ­vel aprovar o orÃ§amento."
+      );
+    } finally {
+      setApproveBusyId(null);
+    }
+  };
+
+  const handleSubmitReject = async (reasonIds: string[], notes: string) => {
+    if (!rejectTarget || !isAdmin) return;
+    setRejectBusy(true);
+    try {
+      await rejectQuoteApi(rejectTarget.id, reasonIds, notes);
+      toast.success("OrÃ§amento rejeitado.");
+      setRejectTarget(null);
       await invalidateQuotes();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Não foi possível converter o orçamento."
+        err instanceof Error ? err.message : "NÃ£o foi possÃ­vel rejeitar o orÃ§amento."
       );
     } finally {
-      setConvertBusy(false);
+      setRejectBusy(false);
     }
   };
 
@@ -264,9 +264,9 @@ export default function QuotesListPage() {
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Orçamentos</h2>
+          <h2 className="text-2xl font-semibold text-slate-900">OrÃ§amentos</h2>
           <p className="text-sm text-slate-500 mt-1">
-            Propostas comerciais — filtros e conversão em pedido de venda.
+            Propostas comerciais â€” filtros e conversÃ£o em pedido de venda.
           </p>
         </div>
         {isAdmin ? (
@@ -276,7 +276,7 @@ export default function QuotesListPage() {
             onClick={() => router.push("/sales/quotes/new")}
           >
             <Plus className="h-4 w-4" />
-            Novo orçamento
+            Novo orÃ§amento
           </Button>
         ) : null}
       </div>
@@ -296,7 +296,7 @@ export default function QuotesListPage() {
                 aria-hidden
               />
               <Input
-                placeholder="Buscar por nº do orçamento ou cliente…"
+                placeholder="Buscar por nÂº do orÃ§amento ou clienteâ€¦"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9"
@@ -322,7 +322,7 @@ export default function QuotesListPage() {
               </select>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="text-xs text-slate-500 sr-only">
-                  Data inicial do orçamento
+                  Data inicial do orÃ§amento
                 </label>
                 <Input
                   type="date"
@@ -337,9 +337,9 @@ export default function QuotesListPage() {
                     })
                   }
                 />
-                <span className="text-slate-400 text-sm">até</span>
+                <span className="text-slate-400 text-sm">atÃ©</span>
                 <label className="text-xs text-slate-500 sr-only">
-                  Data final do orçamento
+                  Data final do orÃ§amento
                 </label>
                 <Input
                   type="date"
@@ -377,7 +377,7 @@ export default function QuotesListPage() {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50 dark:border-slate-800">
                   <th className="px-3 py-2.5 font-medium text-slate-700">
-                    Nº orçamento
+                    NÂº orÃ§amento
                   </th>
                   <th className="px-3 py-2.5 font-medium text-slate-700">
                     Cliente
@@ -395,7 +395,7 @@ export default function QuotesListPage() {
                     Estado
                   </th>
                   <th className="px-3 py-2.5 font-medium text-slate-700 text-right w-[8rem]">
-                    Acções
+                    AcÃ§Ãµes
                   </th>
                 </tr>
               </thead>
@@ -405,20 +405,19 @@ export default function QuotesListPage() {
                     <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
                       <span className="inline-flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        A carregar…
+                        A carregarâ€¦
                       </span>
                     </td>
                   </tr>
                 ) : !data?.data?.length ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                      Nenhum orçamento encontrado para estes filtros.
+                      Nenhum orÃ§amento encontrado para estes filtros.
                     </td>
                   </tr>
                 ) : (
                   data.data.map((row) => {
-                    const sb = statusBadge(row.status);
-                    const st = row.status as QuoteStatus;
+                    const sb = quoteStatusBadge(row.status);
                     return (
                       <tr
                         key={row.id}
@@ -449,118 +448,15 @@ export default function QuotesListPage() {
                             {sb.label}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 text-right relative">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2"
-                            aria-expanded={menuOpenFor === row.id}
-                            aria-label="Abrir menu de acções"
-                            onClick={() =>
-                              setMenuOpenFor((id) => (id === row.id ? null : row.id))
-                            }
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                          {menuOpenFor === row.id ? (
-                            <>
-                              <div
-                                role="presentation"
-                                className="fixed inset-0 z-10"
-                                onClick={() => setMenuOpenFor(null)}
-                              />
-                              <div className="absolute right-3 top-full z-20 mt-1 w-56 rounded-md border border-slate-200 bg-white py-1 text-left shadow-lg dark:bg-slate-950 dark:border-slate-700">
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
-                                  onClick={() => {
-                                    setMenuOpenFor(null);
-                                    router.push(`/sales/quotes/${row.id}`);
-                                  }}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                  Visualizar
-                                </button>
-                                {isAdmin && st === "draft" ? (
-                                  <button
-                                    type="button"
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
-                                    onClick={() => {
-                                      setMenuOpenFor(null);
-                                      router.push(`/sales/quotes/${row.id}/edit`);
-                                    }}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                    Editar
-                                  </button>
-                                ) : null}
-                                {isAdmin && st === "draft" ? (
-                                  <button
-                                    type="button"
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
-                                    onClick={() =>
-                                      void handleStatusAction(
-                                        row,
-                                        "sent",
-                                        "Orçamento marcado como enviado."
-                                      )
-                                    }
-                                  >
-                                    <Send className="h-4 w-4" />
-                                    Enviar
-                                  </button>
-                                ) : null}
-                                {isAdmin &&
-                                (st === "draft" || st === "sent") ? (
-                                  <button
-                                    type="button"
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-                                    onClick={() =>
-                                      void handleStatusAction(
-                                        row,
-                                        "approved",
-                                        "Orçamento aprovado."
-                                      )
-                                    }
-                                  >
-                                    <Check className="h-4 w-4" />
-                                    Aprovar
-                                  </button>
-                                ) : null}
-                                {isAdmin &&
-                                (st === "draft" || st === "sent") ? (
-                                  <button
-                                    type="button"
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                                    onClick={() =>
-                                      void handleStatusAction(
-                                        row,
-                                        "rejected",
-                                        "Orçamento rejeitado."
-                                      )
-                                    }
-                                  >
-                                    <XCircle className="h-4 w-4" />
-                                    Rejeitar
-                                  </button>
-                                ) : null}
-                                {isAdmin && st === "approved" ? (
-                                  <button
-                                    type="button"
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
-                                    onClick={() => {
-                                      setMenuOpenFor(null);
-                                      setConvertTarget(row);
-                                    }}
-                                  >
-                                    <ArrowRightLeft className="h-4 w-4" />
-                                    Converter para pedido
-                                  </button>
-                                ) : null}
-                              </div>
-                            </>
-                          ) : null}
+                        <td className="px-3 py-2.5 text-right">
+                          <QuoteRowActionsMenu
+                            row={row}
+                            isAdmin={isAdmin}
+                            canEditQuotes={canEditQuotes}
+                            onStatusAction={handleStatusAction}
+                            onApprove={handleApprove}
+                            onReject={(r) => setRejectTarget(r as QuoteRow)}
+                          />
                         </td>
                       </tr>
                     );
@@ -573,7 +469,7 @@ export default function QuotesListPage() {
           {data?.pagination?.total !== undefined && data.pagination.total > 0 ? (
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">
               <p className="text-sm text-slate-500">
-                Orçamentos nesta página: {data.data.length}. Intervalo total:{" "}
+                OrÃ§amentos nesta pÃ¡gina: {data.data.length}. Intervalo total:{" "}
                 <span className="font-medium text-slate-700">{rangeDescription}</span>
               </p>
               <div className="flex items-center gap-2">
@@ -585,13 +481,13 @@ export default function QuotesListPage() {
                   onClick={() =>
                     setFilters({ ...filters, page: Math.max(1, filters.page - 1) })
                   }
-                  aria-label="Página anterior"
+                  aria-label="PÃ¡gina anterior"
                 >
                   <ChevronLeft className="h-4 w-4" />
                   Anterior
                 </Button>
                 <span className="text-sm tabular-nums px-2 text-slate-600">
-                  Página {filters.page} / {totalPages}
+                  PÃ¡gina {filters.page} / {totalPages}
                 </span>
                 <Button
                   type="button"
@@ -604,7 +500,7 @@ export default function QuotesListPage() {
                       page: Math.min(totalPages, filters.page + 1),
                     })
                   }
-                  aria-label="Página seguinte"
+                  aria-label="PÃ¡gina seguinte"
                 >
                   Seguinte
                   <ChevronRight className="h-4 w-4" />
@@ -615,62 +511,19 @@ export default function QuotesListPage() {
         </CardContent>
       </Card>
 
-      {convertTarget ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="quote-convert-title"
-        >
-          <div className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-950 dark:border-slate-700">
-            <h3
-              id="quote-convert-title"
-              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
-            >
-              Converter em pedido de venda
-            </h3>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              O orçamento{" "}
-              <strong className="font-medium text-slate-900 dark:text-slate-100">
-                {convertTarget.quote_number}
-              </strong>{" "}
-              será convertido: será criado um pedido de venda, contas a receber e
-              eventual ordem de produção para produtos acabados.
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2 justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={convertBusy}
-                onClick={() => setConvertTarget(null)}
-              >
-                Voltar
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={convertBusy}
-                onClick={() => void handleConfirmConvert()}
-              >
-                {convertBusy ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    A processar…
-                  </>
-                ) : (
-                  "Confirmar conversão"
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <QuoteRejectModal
+        open={Boolean(rejectTarget)}
+        quoteNumber={rejectTarget?.quote_number ?? ""}
+        busy={rejectBusy}
+        onClose={() => !rejectBusy && setRejectTarget(null)}
+        onSubmit={handleSubmitReject}
+      />
+
 
       {!isLoading && error == null ? (
         <p className="text-xs text-slate-500 text-center pb-8">
           <Link href="/boards" className="text-brand-700 underline">
-            Voltar às tarefas
+            Voltar Ã s tarefas
           </Link>
         </p>
       ) : null}

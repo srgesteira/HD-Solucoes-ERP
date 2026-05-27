@@ -6,7 +6,7 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/lib/utils/tenant";
-import { runMrpForOpenSalesOrders } from "@/lib/mrp-service";
+import { processMrpForPendingOrders } from "@/lib/mrp-service";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   const admin = createSupabaseAdminClient();
 
   try {
-    const batch = await runMrpForOpenSalesOrders(
+    const batch = await processMrpForPendingOrders(
       admin,
       tenantId,
       user.id,

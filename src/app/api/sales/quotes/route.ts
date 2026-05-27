@@ -4,11 +4,17 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/lib/utils/tenant";
 import { QUOTE_STATUSES } from "@/lib/types/sales.types";
+import { insertQuoteItemsFromLines, nextQuoteNumber } from "@/lib/sales/sales-flow";
 import {
-  insertQuoteItemsFromLines,
-  nextQuoteNumber,
-  parseSaleLines,
-} from "@/lib/sales/sales-flow";
+  refreshQuoteHeaderTotals,
+  resolveQuoteItemsFromPayload,
+} from "@/lib/sales/quote-items-resolve";
+import { fetchCustomerForTenant } from "@/lib/sales/quote-customer";
+import {
+  parseQuoteHeaderFromBody,
+  quoteHeaderToInsert,
+} from "@/lib/sales/quote-payload";
+import { createQuoteBodySchema } from "@/lib/schemas/quote.schema";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +80,7 @@ export async function GET(request: NextRequest) {
   if (rawSearch) {
     const safe = `%${escapeIlike(rawSearch)}%`;
     query = query.or(
-      `quote_number.ilike.${safe},client_name.ilike.${safe},client_document.ilike.${safe},client_email.ilike.${safe}`
+      `quote_number.ilike.${safe},client_name.ilike.${safe},client_email.ilike.${safe}`
     );
   }
 
@@ -126,14 +132,22 @@ export async function POST(request: NextRequest) {
   if (!body || typeof body !== "object") return apiError("Body inválido", 400);
   const b = body as Record<string, unknown>;
 
-  const parsedLines = parseSaleLines(b.items);
-  if (!parsedLines.ok) {
-    return apiError(parsedLines.message, 400);
-  }
+  console.log("[POST /api/sales/quotes] body recebido", {
+    customer_id: b.customer_id,
+    client_name: b.client_name,
+    quote_number: b.quote_number,
+    itemsCount: Array.isArray(b.items) ? b.items.length : null,
+    keys: Object.keys(b),
+  });
 
-  const client_name =
-    typeof b.client_name === "string" ? b.client_name.trim() : "";
-  if (!client_name) return apiError("Nome do cliente é obrigatório", 400);
+  const parsedBody = createQuoteBodySchema.safeParse(b);
+  if (!parsedBody.success) {
+    const first = parsedBody.error.issues[0];
+    const message =
+      first?.message ?? "Dados do orçamento inválidos";
+    console.error("[POST /api/sales/quotes] validação", parsedBody.error.issues);
+    return apiError(message, 400);
+  }
 
   const quote_number =
     typeof b.quote_number === "string" && b.quote_number.trim()
@@ -142,42 +156,46 @@ export async function POST(request: NextRequest) {
 
   const admin = createSupabaseAdminClient();
 
-  const productIds = parsedLines.lines
-    .map((l) => l.product_id)
-    .filter((id): id is string => Boolean(id));
-  if (productIds.length) {
-    const { data: prods, error: pErr } = await admin
-      .from("products")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .in("id", productIds);
-    if (pErr) {
-      return apiError(
-        "Erro ao validar produtos: " + pErr.message,
-        supabaseErrorToHttp(pErr.code)
-      );
-    }
-    const found = new Set((prods ?? []).map((p) => p.id));
-    for (const id of [...new Set(productIds)]) {
-      if (!found.has(id)) return apiError("Produto inválido: " + id, 400);
-    }
+  const customerId = parsedBody.data.customer_id;
+
+  const customer = await fetchCustomerForTenant(admin, tenantId, customerId);
+  if (!customer) {
+    console.error("[POST /api/sales/quotes] cliente inválido", {
+      customerId,
+      tenantId,
+    });
+    return apiError("Cliente inválido ou inativo", 400);
   }
+
+  const resolvedItems = await resolveQuoteItemsFromPayload(
+    admin,
+    tenantId,
+    parsedBody.data.items
+  );
+  if (!resolvedItems.ok) {
+    console.error("[POST /api/sales/quotes] itens inválidos", {
+      message: resolvedItems.message,
+      items: b.items,
+    });
+    return apiError(resolvedItems.message, 400);
+  }
+
+  const clientNameForQuote =
+    typeof b.client_name === "string" && b.client_name.trim()
+      ? b.client_name.trim()
+      : customer.name;
+
+  const headerParsed = parseQuoteHeaderFromBody(
+    { ...b, customer_id: customerId },
+    clientNameForQuote
+  );
+  if (!headerParsed.ok) return apiError(headerParsed.message, 400);
 
   const { data: profile } = await admin
     .from("user_profiles")
     .select("id")
     .eq("id", user.id)
     .maybeSingle();
-
-  const quote_date =
-    b.quote_date === undefined || b.quote_date === null
-      ? new Date().toISOString().slice(0, 10)
-      : String(b.quote_date).slice(0, 10);
-
-  const valid_until =
-    b.valid_until === undefined || b.valid_until === null
-      ? null
-      : String(b.valid_until).slice(0, 10);
 
   const discount =
     b.discount === undefined || b.discount === null
@@ -203,37 +221,18 @@ export async function POST(request: NextRequest) {
     return apiError("Imposto inválido", 400);
   }
 
-  const notes =
-    b.notes === undefined || b.notes === null
-      ? null
-      : String(b.notes).trim() || null;
+  const insertRow = quoteHeaderToInsert(headerParsed.data, {
+    tenant_id: tenantId,
+    quote_number,
+    status: "draft",
+    created_by: profile?.id ?? null,
+    ...(discount !== undefined ? { discount } : {}),
+    ...(tax !== undefined ? { tax } : {}),
+  });
 
   const { data: row, error: insErr } = await admin
     .from("quotes")
-    .insert({
-      tenant_id: tenantId,
-      quote_number,
-      client_name,
-      client_document:
-        b.client_document === undefined || b.client_document === null
-          ? null
-          : String(b.client_document).trim() || null,
-      client_email:
-        b.client_email === undefined || b.client_email === null
-          ? null
-          : String(b.client_email).trim() || null,
-      client_phone:
-        b.client_phone === undefined || b.client_phone === null
-          ? null
-          : String(b.client_phone).trim() || null,
-      quote_date,
-      valid_until,
-      status: "draft",
-      notes,
-      created_by: profile?.id ?? null,
-      ...(discount !== undefined ? { discount } : {}),
-      ...(tax !== undefined ? { tax } : {}),
-    })
+    .insert(insertRow)
     .select()
     .single();
 
@@ -241,6 +240,7 @@ export async function POST(request: NextRequest) {
     return apiError("Número do orçamento já existe", 409);
   }
   if (insErr) {
+    console.error("[POST /api/sales/quotes] insert quote", insErr);
     return apiError(
       "Erro ao criar orçamento: " + insErr.message,
       supabaseErrorToHttp(insErr.code)
@@ -251,12 +251,15 @@ export async function POST(request: NextRequest) {
     admin,
     tenantId,
     row.id,
-    parsedLines.lines
+    resolvedItems.lines
   );
   if (qErr.error) {
+    console.error("[POST /api/sales/quotes] insert items", qErr.error);
     await admin.from("quotes").delete().eq("id", row.id).eq("tenant_id", tenantId);
     return apiError("Erro ao gravar itens: " + qErr.error, 500);
   }
+
+  await refreshQuoteHeaderTotals(admin, row.id, tenantId);
 
   const { data: full } = await admin
     .from("quotes")

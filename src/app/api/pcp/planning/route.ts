@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { apiError, apiOk } from "@/lib/http";
 import { getCurrentTenantId } from "@/lib/utils/tenant";
 import { fetchPcpPlanning } from "@/lib/pcp-planning";
+import { syncSalesOrderReadyForInvoice } from "@/lib/sales/sales-order-ready-for-invoice";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,17 @@ export async function GET(_request: NextRequest) {
 
   try {
     const orders = await fetchPcpPlanning(admin, tenantId);
+    for (const order of orders) {
+      try {
+        order.ready_for_invoice = await syncSalesOrderReadyForInvoice(
+          admin,
+          tenantId,
+          order.id
+        );
+      } catch {
+        /* mantém valor da BD */
+      }
+    }
     return apiOk({ orders });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao carregar planeamento PCP.";

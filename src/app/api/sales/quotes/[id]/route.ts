@@ -4,9 +4,25 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
 import {
   getCurrentTenantId,
+  currentUserCanModule,
   isCurrentUserTenantAdmin,
 } from "@/lib/utils/tenant";
+import { quoteStatusAllowsContentEdit } from "@/lib/sales/quote-access";
 import { QUOTE_STATUSES, type QuoteUpdate } from "@/lib/types/sales.types";
+import { fetchCustomerForTenant } from "@/lib/sales/quote-customer";
+import {
+  computeValidUntil,
+  parseShippingType,
+  parseValidityDays,
+} from "@/lib/sales/quote-validity";
+import {
+  replaceQuoteItemsFromLines,
+  type SaleLineInput,
+} from "@/lib/sales/sales-flow";
+import {
+  refreshQuoteHeaderTotals,
+  resolveQuoteItemsFromPayload,
+} from "@/lib/sales/quote-items-resolve";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +32,7 @@ const QUOTE_SET = new Set<string>(QUOTE_STATUSES);
 
 const QUOTE_DETAIL_SELECT = `
   *,
+  customer:customers(id, name, document, email, phone, address),
   items:quote_items(
     *,
     product:products!quote_items_product_id_fkey(*)
@@ -78,38 +95,191 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const b = body as Record<string, unknown>;
 
   const admin = createSupabaseAdminClient();
+
+  const { data: existing } = await admin
+    .from("quotes")
+    .select("quote_date, validity_days, status")
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (!existing) return apiError("Orçamento não encontrado", 404);
+
+  const isAdmin = await isCurrentUserTenantAdmin();
+  const canSales = await currentUserCanModule("sales");
+  const canEditQuote = isAdmin || canSales;
+
+  const hasContentFields =
+    b.items !== undefined ||
+    b.customer_id !== undefined ||
+    b.client_email !== undefined ||
+    b.quote_date !== undefined ||
+    b.validity_days !== undefined ||
+    b.valid_until !== undefined ||
+    b.payment_terms !== undefined ||
+    b.delivery_deadline !== undefined ||
+    b.expected_delivery_date !== undefined ||
+    b.payment_installments !== undefined ||
+    b.payment_days_to_first_due !== undefined ||
+    b.payment_days_between_installments !== undefined ||
+    b.shipping_type !== undefined ||
+    b.notes !== undefined ||
+    b.quote_number !== undefined ||
+    b.discount !== undefined ||
+    b.tax !== undefined ||
+    b.subtotal !== undefined ||
+    b.bdi_percentage !== undefined ||
+    b.bdi_value !== undefined ||
+    b.base_cost !== undefined;
+
+  if (hasContentFields && !canEditQuote) {
+    return apiError("Sem permissão para editar orçamentos", 403);
+  }
+
+  if (hasContentFields && !quoteStatusAllowsContentEdit(existing.status)) {
+    return apiError(
+      "Este orçamento não pode ser alterado no estado actual",
+      400
+    );
+  }
+
+  if (b.status !== undefined && !isAdmin) {
+    return apiError("Apenas administradores podem alterar o estado", 403);
+  }
+
+  let resolvedItemLines: SaleLineInput[] | null = null;
+  if (b.items !== undefined) {
+    if (!quoteStatusAllowsContentEdit(existing.status)) {
+      return apiError(
+        "Não é possível alterar itens neste estado do orçamento",
+        400
+      );
+    }
+    const resolved = await resolveQuoteItemsFromPayload(
+      admin,
+      tenantId,
+      b.items
+    );
+    if (!resolved.ok) return apiError(resolved.message, 400);
+    resolvedItemLines = resolved.lines;
+  }
+
   const updateData: QuoteUpdate = {};
 
-  if (b.client_name !== undefined) {
-    const n = typeof b.client_name === "string" ? b.client_name.trim() : "";
-    if (!n) return apiError("Nome do cliente inválido", 400);
-    updateData.client_name = n;
-  }
-  if (b.client_document !== undefined) {
-    updateData.client_document =
-      b.client_document === null
-        ? null
-        : String(b.client_document).trim() || null;
+  if (b.customer_id !== undefined) {
+    const cid =
+      b.customer_id === null ? "" : String(b.customer_id).trim();
+    if (!cid) return apiError("Cliente inválido", 400);
+    const customer = await fetchCustomerForTenant(admin, tenantId, cid);
+    if (!customer) return apiError("Cliente inválido ou inativo", 400);
+    updateData.customer_id = cid;
+    updateData.client_name = customer.name;
   }
   if (b.client_email !== undefined) {
     updateData.client_email =
       b.client_email === null ? null : String(b.client_email).trim() || null;
   }
-  if (b.client_phone !== undefined) {
-    updateData.client_phone =
-      b.client_phone === null ? null : String(b.client_phone).trim() || null;
-  }
   if (b.quote_date !== undefined) {
     if (b.quote_date === null) return apiError("quote_date não pode ser nulo", 400);
     updateData.quote_date = String(b.quote_date).slice(0, 10);
   }
-  if (b.valid_until !== undefined) {
-    updateData.valid_until =
-      b.valid_until === null ? null : String(b.valid_until).slice(0, 10);
+  if (b.validity_days !== undefined) {
+    const vd = parseValidityDays(b.validity_days, existing.validity_days ?? 30);
+    if (typeof vd === "object" && "error" in vd) {
+      return apiError(vd.error, 400);
+    }
+    updateData.validity_days = vd as number;
+  }
+  if (b.payment_terms !== undefined) {
+    updateData.payment_terms =
+      b.payment_terms === null
+        ? null
+        : String(b.payment_terms).trim() || null;
+  }
+  if (b.delivery_deadline !== undefined) {
+    updateData.delivery_deadline =
+      b.delivery_deadline === null
+        ? null
+        : String(b.delivery_deadline).trim() || null;
+  }
+  if (b.expected_delivery_date !== undefined) {
+    if (b.expected_delivery_date === null) {
+      updateData.expected_delivery_date = null;
+    } else {
+      const d = String(b.expected_delivery_date).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        return apiError("expected_delivery_date inválida", 400);
+      }
+      updateData.expected_delivery_date = d;
+    }
+  }
+  if (b.payment_installments !== undefined && b.payment_installments !== null) {
+    const v =
+      typeof b.payment_installments === "number"
+        ? b.payment_installments
+        : parseInt(String(b.payment_installments), 10);
+    if (!Number.isFinite(v) || v < 1) {
+      return apiError("payment_installments inválido", 400);
+    }
+    updateData.payment_installments = v;
+  }
+  if (
+    b.payment_days_to_first_due !== undefined &&
+    b.payment_days_to_first_due !== null
+  ) {
+    const v =
+      typeof b.payment_days_to_first_due === "number"
+        ? b.payment_days_to_first_due
+        : parseInt(String(b.payment_days_to_first_due), 10);
+    if (!Number.isFinite(v) || v < 0) {
+      return apiError("payment_days_to_first_due inválido", 400);
+    }
+    updateData.payment_days_to_first_due = v;
+  }
+  if (
+    b.payment_days_between_installments !== undefined &&
+    b.payment_days_between_installments !== null
+  ) {
+    const v =
+      typeof b.payment_days_between_installments === "number"
+        ? b.payment_days_between_installments
+        : parseInt(String(b.payment_days_between_installments), 10);
+    if (!Number.isFinite(v) || v < 0) {
+      return apiError("payment_days_between_installments inválido", 400);
+    }
+    updateData.payment_days_between_installments = v;
+  }
+  if (b.shipping_type !== undefined) {
+    const st = parseShippingType(b.shipping_type);
+    if (typeof st === "object" && "error" in st) {
+      return apiError(st.error, 400);
+    }
+    updateData.shipping_type = st as string;
   }
   if (b.notes !== undefined) {
     updateData.notes =
       b.notes === null ? null : String(b.notes).trim() || null;
+  }
+
+  const nextQuoteDate = updateData.quote_date ?? existing.quote_date;
+  const nextValidityDays =
+    updateData.validity_days ?? existing.validity_days ?? 30;
+  if (
+    b.quote_date !== undefined ||
+    b.validity_days !== undefined ||
+    b.valid_until !== undefined
+  ) {
+    try {
+      updateData.valid_until = computeValidUntil(
+        String(nextQuoteDate),
+        Number(nextValidityDays)
+      );
+    } catch (e) {
+      return apiError(
+        e instanceof Error ? e.message : "Validade inválida",
+        400
+      );
+    }
   }
   if (b.quote_number !== undefined) {
     const n = typeof b.quote_number === "string" ? b.quote_number.trim() : "";
@@ -119,7 +289,28 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (b.status !== undefined) {
     const st = String(b.status);
     if (!QUOTE_SET.has(st)) return apiError("Status inválido", 400);
+
+    if (st === "revision") {
+      const notes =
+        typeof b.revision_notes === "string" ? b.revision_notes.trim() : "";
+      if (!notes) {
+        return apiError("Informe o motivo da revisão", 400);
+      }
+      updateData.revision_notes = notes;
+    }
+
+    if (st === "draft") {
+      updateData.revision_notes = null;
+    }
+
     updateData.status = st;
+  }
+
+  if (b.revision_notes !== undefined && b.status === undefined) {
+    updateData.revision_notes =
+      b.revision_notes === null
+        ? null
+        : String(b.revision_notes).trim() || null;
   }
   if (b.discount !== undefined) {
     const v =
@@ -168,30 +359,60 @@ export async function PUT(request: NextRequest, { params }: Params) {
           : parseFloat(String(b.base_cost));
   }
 
-  if (Object.keys(updateData).length === 0) {
+  if (Object.keys(updateData).length === 0 && !resolvedItemLines) {
     return apiError("Nenhum campo para atualizar", 400);
   }
 
-  const { data, error } = await admin
+  if (Object.keys(updateData).length > 0) {
+    const { data: updated, error } = await admin
+      .from("quotes")
+      .update(updateData)
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .select()
+      .maybeSingle();
+
+    if (error?.code === "23505") {
+      return apiError("Número do orçamento já existe", 409);
+    }
+    if (error) {
+      return apiError(
+        "Erro ao atualizar orçamento: " + error.message,
+        supabaseErrorToHttp(error.code)
+      );
+    }
+    if (!updated) return apiError("Orçamento não encontrado", 404);
+  }
+
+  if (resolvedItemLines) {
+    const rep = await replaceQuoteItemsFromLines(
+      admin,
+      tenantId,
+      id,
+      resolvedItemLines
+    );
+    if (rep.error) {
+      return apiError("Erro ao atualizar itens: " + rep.error, 500);
+    }
+    await refreshQuoteHeaderTotals(admin, id, tenantId);
+  }
+
+  const { data: full, error: fetchErr } = await admin
     .from("quotes")
-    .update(updateData)
+    .select(QUOTE_DETAIL_SELECT)
     .eq("id", id)
     .eq("tenant_id", tenantId)
-    .select()
     .maybeSingle();
 
-  if (error?.code === "23505") {
-    return apiError("Número do orçamento já existe", 409);
-  }
-  if (error) {
+  if (fetchErr) {
     return apiError(
-      "Erro ao atualizar orçamento: " + error.message,
-      supabaseErrorToHttp(error.code)
+      "Erro ao carregar orçamento: " + fetchErr.message,
+      supabaseErrorToHttp(fetchErr.code)
     );
   }
-  if (!data) return apiError("Orçamento não encontrado", 404);
+  if (!full) return apiError("Orçamento não encontrado", 404);
 
-  return apiOk({ data });
+  return apiOk({ data: full });
 }
 
 export async function DELETE(_request: NextRequest, { params }: Params) {

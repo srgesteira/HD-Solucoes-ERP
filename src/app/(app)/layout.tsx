@@ -2,6 +2,9 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { MeBootstrapProvider } from "@/contexts/me-bootstrap";
+import type { MeResponse } from "@/hooks/use-me";
+import { effectivePermissions } from "@/lib/permissions";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +27,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
    */
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("full_name, role")
+    .select("full_name, role, permissions")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -33,21 +36,31 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       ? user.user_metadata.full_name
       : "";
 
+  const tenantRole =
+    profile?.role === "admin" || profile?.role === "member"
+      ? profile.role
+      : "member";
+
+  const initialMe: MeResponse = {
+    id: user.id,
+    role: tenantRole,
+    permissions: effectivePermissions(tenantRole, profile?.permissions),
+  };
+
   return (
     <QueryProvider>
-      <AppShell
-        user={{
-          id: user.id,
-          email: user.email ?? "",
-          fullName: profile?.full_name ?? fallbackName,
-          tenantRole:
-            profile?.role === "admin" || profile?.role === "member"
-              ? profile.role
-              : "member",
-        }}
-      >
-        {children}
-      </AppShell>
+      <MeBootstrapProvider value={initialMe}>
+        <AppShell
+          user={{
+            id: user.id,
+            email: user.email ?? "",
+            fullName: profile?.full_name ?? fallbackName,
+            tenantRole,
+          }}
+        >
+          {children}
+        </AppShell>
+      </MeBootstrapProvider>
     </QueryProvider>
   );
 }

@@ -15,6 +15,42 @@ type EmployeeUpdate = Database["public"]["Tables"]["employees"]["Update"];
 
 type Ctx = { params: Promise<{ id: string }> };
 
+export async function GET(_request: NextRequest, ctx: Ctx) {
+  const gate = await assertModuleAccess("hr");
+  if (!gate.ok) return gate.response;
+
+  const tenantId = await getCurrentTenantId();
+  if (!tenantId) return apiError("Tenant não encontrado", 403);
+
+  const { id } = await ctx.params;
+  const admin = createSupabaseAdminClient();
+
+  const { data, error } = await admin
+    .from("employees")
+    .select("*")
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) {
+    return apiError(error.message, supabaseErrorToHttp(error.code));
+  }
+  if (!data) return apiError("Colaborador não encontrado", 404);
+
+  const { count: allocCount } = await admin
+    .from("employee_allocations")
+    .select("*", { count: "exact", head: true })
+    .eq("employee_id", id)
+    .eq("tenant_id", tenantId);
+
+  return apiOk({
+    data: {
+      ...data,
+      has_period_allocations: (allocCount ?? 0) > 0,
+    },
+  });
+}
+
 export async function PUT(request: NextRequest, ctx: Ctx) {
   const gate = await assertModuleAccess("hr");
   if (!gate.ok) return gate.response;
@@ -47,6 +83,10 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
   if (b.position !== undefined) update.position = b.position;
   if (b.monthly_salary !== undefined) update.monthly_salary = b.monthly_salary;
   if (b.work_center_id !== undefined) update.work_center_id = b.work_center_id;
+  if (b.department_id !== undefined) update.department_id = b.department_id;
+  if (b.allocation_percentage !== undefined) {
+    update.allocation_percentage = b.allocation_percentage;
+  }
   if (b.admission_date !== undefined) update.admission_date = b.admission_date;
   if (b.status !== undefined) update.status = b.status;
   if (b.notes !== undefined) update.notes = b.notes;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useMeBootstrap } from "@/contexts/me-bootstrap";
 import type { ModulePermissions } from "@/lib/permissions";
 
 export type MeResponse = {
@@ -19,9 +20,11 @@ async function fetchMe(): Promise<MeResponse> {
 }
 
 export function useMe() {
+  const bootstrap = useMeBootstrap();
   return useQuery({
     queryKey: ["me"],
     queryFn: fetchMe,
     staleTime: 60_000,
+    initialData: bootstrap,
   });
 }

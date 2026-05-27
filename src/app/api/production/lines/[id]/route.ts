@@ -9,6 +9,40 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
+export async function GET(_request: NextRequest, { params }: Params) {
+  const { id } = await params;
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return apiError("Não autenticado", 401);
+
+  const tenantId = await getCurrentTenantId();
+  if (!tenantId) return apiError("Tenant não encontrado", 403);
+
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("production_lines")
+    .select("id, code, name, sort_order, is_active, description")
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) {
+    return apiError(
+      "Erro ao buscar linha de produção: " + error.message,
+      supabaseErrorToHttp(error.code)
+    );
+  }
+  if (!data) return apiError("Linha de produção não encontrada", 404);
+  if (!data.is_active) {
+    return apiError("Linha de produção inactiva", 404);
+  }
+
+  return apiOk({ data });
+}
+
 export async function PUT(request: NextRequest, { params }: Params) {
   const { id } = await params;
 

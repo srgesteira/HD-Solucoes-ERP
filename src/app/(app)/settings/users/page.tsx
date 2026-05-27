@@ -28,7 +28,10 @@ type TenantUser = {
 const MODULE_LABELS: Record<ModuleKey, string> = {
   dashboard: "Dashboard",
   boards: "Tarefas",
+  logistics: "Logística",
   production: "Produção",
+  quality: "Qualidade",
+  engineering: "Engenharia",
   purchasing: "Compras",
   sales: "Vendas",
   products: "Produtos",

@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Calculator, Loader2, Package, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, Calculator, Loader2, Save, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,26 +13,34 @@ import { Label } from "@/components/ui/label";
 import {
   ProductFormFields,
   type ProductFormShape,
-  sellingPriceDigitsToDisplay,
-  parseSellingPriceDigits,
+  fetchProductPrefixesForForm,
+  isProductFormMo,
+  moProductFieldsValidationMessage,
+  productClassificationValidationMessage,
 } from "@/components/products/product-form-fields";
+import { ProductCostHistoryTable } from "@/components/products/product-cost-history-table";
+import { ProductCompositionPanel } from "@/components/products/product-composition-panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isSimplifiedClassificationSuffix } from "@/lib/products/prefix-classification";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
 import type { StructureSuggestion } from "@/lib/services/ai.service";
 import type { TaxAnalysis } from "@/lib/services/tax-ai.service";
 import type { Database } from "@/lib/types/database";
 import type { ProductType } from "@/lib/types/product.types";
-import {
-  PRODUCT_NATURE_CODES,
-  type ProductNatureCode,
-} from "@/lib/products/mrp-product-nature";
-
 function isProductType(t: string): t is ProductType {
   return t === "finished" || t === "raw" || t === "component";
 }
 
-function buildPayload(f: ProductFormShape) {
-  return {
+function buildPayload(
+  f: ProductFormShape,
+  options: {
+    isMO: boolean;
+    isSimplified: boolean;
+    classificationLocked: boolean;
+  }
+) {
+  const shared = {
     name: f.name.trim(),
     description: f.description?.trim() ? f.description : null,
     technical_description: f.technical_description?.trim()
@@ -40,18 +48,32 @@ function buildPayload(f: ProductFormShape) {
       : null,
     ncm: f.ncm?.trim() ? f.ncm : null,
     unit: f.unit.trim(),
-    type: f.type,
-    selling_price: f.selling_price,
+    cost_price: Number(f.cost_price ?? 0),
     is_active: f.is_active,
-    use_custom_bdi: f.use_custom_bdi,
-    custom_tax_rate: f.custom_tax_rate,
-    custom_profit_margin: f.custom_profit_margin,
+    default_production_line_id: f.default_production_line_id?.trim()
+      ? f.default_production_line_id.trim()
+      : null,
+  };
+
+  const moFields = {
+    default_is_external_labor: f.default_is_external_labor,
+    default_work_center_id: f.default_work_center_id?.trim()
+      ? f.default_work_center_id.trim()
+      : null,
+  };
+
+  if (options.classificationLocked) {
+    return options.isMO ? { ...shared, ...moFields } : { ...shared };
+  }
+
+  return {
+    ...shared,
     prefix_id: f.prefix_id.trim(),
-    family_id: f.family_id.trim(),
-    subfamily_id: f.subfamily_id.trim(),
-    material_id: f.material_id.trim(),
-    finish_id: f.finish_id.trim(),
-    product_nature: f.product_nature || null,
+    family_id: options.isSimplified ? null : f.family_id.trim() || null,
+    subfamily_id: options.isSimplified ? null : f.subfamily_id.trim() || null,
+    material_id: f.material_id.trim() || null,
+    finish_id: f.finish_id.trim() || null,
+    ...moFields,
   };
 }
 
@@ -129,20 +151,19 @@ function rowToForm(data: ProductLoaded): ProductFormShape {
     subfamily_id: data.subfamily_id ?? "",
     material_id: data.material_id ?? "",
     finish_id: data.finish_id ?? "",
-    product_nature: (() => {
-      const n = data.product_nature;
-      if (
-        typeof n === "string" &&
-        (PRODUCT_NATURE_CODES as readonly string[]).includes(n)
-      ) {
-        return n as ProductNatureCode;
-      }
-      return "";
-    })(),
     technical_code:
       data.technical_code != null && String(data.technical_code).trim()
         ? String(data.technical_code)
         : null,
+    default_is_external_labor: Boolean(data.default_is_external_labor),
+    default_work_center_id: data.default_work_center_id ?? null,
+    default_labor_cost:
+      data.default_labor_cost != null && data.default_labor_cost !== undefined
+        ? Number(data.default_labor_cost)
+        : null,
+    default_production_line_id:
+      (data as { default_production_line_id?: string | null })
+        .default_production_line_id ?? null,
   };
 }
 
@@ -163,8 +184,15 @@ async function updateProduct(
   return json;
 }
 
+type EditTab = "basics" | "composition";
+
+function tabFromSearchParam(value: string | null): EditTab {
+  return value === "composition" ? "composition" : "basics";
+}
+
 export default function EditProductPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const params = useParams();
   const rawId = params.id;
   const productId =
@@ -188,12 +216,24 @@ export default function EditProductPage() {
     null
   );
   const [pricingLoading, setPricingLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<EditTab>(() =>
+    tabFromSearchParam(searchParams.get("tab"))
+  );
 
   const { data: productRaw, isLoading, error } = useQuery({
     queryKey: ["product", productId],
     queryFn: () => fetchProduct(productId!),
     enabled: !!productId,
   });
+
+  const { data: prefixes = [] } = useQuery({
+    queryKey: ["product-prefixes-form"],
+    queryFn: fetchProductPrefixesForForm,
+  });
+
+  const prefixCode =
+    prefixes.find((p) => p.id === formData?.prefix_id.trim())?.code ?? "";
+  const isSimplified = isSimplifiedClassificationSuffix(prefixCode);
 
   useEffect(() => {
     if (meLoading) return;
@@ -209,6 +249,10 @@ export default function EditProductPage() {
     }
   }, [productRaw]);
 
+  useEffect(() => {
+    setActiveTab(tabFromSearchParam(searchParams.get("tab")));
+  }, [searchParams]);
+
   const mutation = useMutation({
     mutationFn: (payload: ReturnType<typeof buildPayload>) => {
       if (!productId) throw new Error("ID inválido");
@@ -219,6 +263,9 @@ export default function EditProductPage() {
       await queryClient.invalidateQueries({ queryKey: ["products"] });
       if (productId) {
         await queryClient.invalidateQueries({ queryKey: ["product", productId] });
+        await queryClient.invalidateQueries({
+          queryKey: ["product-price-history", productId],
+        });
       }
     },
   });
@@ -232,33 +279,32 @@ export default function EditProductPage() {
       return;
     }
 
-    const uuidRe =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    const reqs: [string, string][] = [
-      ["prefix_id", formData.prefix_id.trim()],
-      ["family_id", formData.family_id.trim()],
-      ["subfamily_id", formData.subfamily_id.trim()],
-      ["material_id", formData.material_id.trim()],
-      ["finish_id", formData.finish_id.trim()],
-    ];
-    if (reqs.some(([, v]) => !v || !uuidRe.test(v))) {
-      toast.error(
-        "Prefixo, família, sub-família, material e acabamento são obrigatórios."
-      );
+    const prefixes = await fetchProductPrefixesForForm();
+    const isMO = isProductFormMo(formData, prefixes);
+    const prefixCode =
+      prefixes.find((p) => p.id === formData.prefix_id.trim())?.code ?? "";
+    const isSimplified = isSimplifiedClassificationSuffix(prefixCode);
+    const classErr = productClassificationValidationMessage(formData, prefixes);
+    if (classErr) {
+      toast.error(classErr);
       return;
     }
-    if (
-      !formData.product_nature ||
-      !(PRODUCT_NATURE_CODES as readonly string[]).includes(
-        formData.product_nature
-      )
-    ) {
-      toast.error("Selecione a natureza do produto (MP, SE, EB, …).");
+    const moErr = moProductFieldsValidationMessage(formData, prefixes);
+    if (moErr) {
+      toast.error(moErr);
       return;
     }
 
+    const classificationLocked = Boolean(formData.technical_code?.trim());
+
     try {
-      await mutation.mutateAsync(buildPayload(formData));
+      await mutation.mutateAsync(
+        buildPayload(formData, {
+          isMO,
+          isSimplified,
+          classificationLocked,
+        })
+      );
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Erro ao atualizar produto."
@@ -282,13 +328,6 @@ export default function EditProductPage() {
       }
       return next;
     });
-  }
-
-  function onSellingPriceInput(value: string) {
-    handleChange(
-      "selling_price",
-      parseSellingPriceDigits(value) as ProductFormShape["selling_price"]
-    );
   }
 
   async function handleCalculatePricing() {
@@ -425,7 +464,8 @@ export default function EditProductPage() {
       }
       if (json.suggestion?.components?.length) {
         setStructureSuggestion(json.suggestion);
-        toast.success("Estrutura sugerida.");
+        setActiveTab("composition");
+        toast.success("Estrutura sugerida — veja a aba Composição.");
       } else {
         toast.message("A IA não devolveu componentes.", {
           description: "Tente detalhar mais a descrição técnica.",
@@ -493,8 +533,6 @@ export default function EditProductPage() {
     );
   }
 
-  const sellingDisplay = sellingPriceDigitsToDisplay(formData.selling_price);
-
   return (
     <div className="max-w-4xl mx-auto py-6 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -538,144 +576,28 @@ export default function EditProductPage() {
       </div>
 
       <form onSubmit={(e) => void handleSubmit(e)}>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-900">
-              Informações básicas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <ProductFormFields
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as EditTab)}
+        >
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="basics">Informações básicas</TabsTrigger>
+            <TabsTrigger value="composition">Composição</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="basics" className="space-y-6 mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold text-slate-900">
+                  Dados do produto
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <ProductFormFields
               formData={formData}
-              sellingPriceDisplay={sellingDisplay}
+              hideCostField
+              classificationLocked={Boolean(formData.technical_code?.trim())}
               onChange={handleChange}
-              onSellingPriceInput={onSellingPriceInput}
-              pricingActionSlot={
-                <div className="space-y-3 pt-2">
-                  <div className="flex flex-wrap items-end gap-3">
-                    <div className="space-y-1">
-                      <Label htmlFor="bdi-qty">Quantidade (simulação)</Label>
-                      <Input
-                        id="bdi-qty"
-                        type="number"
-                        min={1}
-                        step={1}
-                        className="w-28 h-9"
-                        value={pricingQty}
-                        onChange={(e) =>
-                          setPricingQty(
-                            Math.max(1, parseInt(e.target.value, 10) || 1)
-                          )
-                        }
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9"
-                      disabled={pricingLoading}
-                      onClick={() => void handleCalculatePricing()}
-                    >
-                      {pricingLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Calculator className="h-4 w-4" />
-                      )}
-                      Calcular preço
-                    </Button>
-                  </div>
-                  {pricingDetail ? (
-                    <div className="rounded-lg border border-slate-200 bg-white dark:bg-slate-950 dark:border-slate-700 p-4 text-sm space-y-4">
-                      <div className="grid sm:grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-xs text-slate-500 uppercase tracking-wide">
-                            Forma de BDI
-                          </p>
-                          <p className="font-medium text-slate-900 dark:text-slate-100">
-                            {pricingDetail.bdi_compound
-                              ? "Composto"
-                              : "Simples"}
-                            {pricingDetail.use_custom_bdi
-                              ? " — parâmetros personalizados neste produto"
-                              : " — política da empresa"}
-                          </p>
-                        </div>
-                        <div className="text-xs text-slate-600 dark:text-slate-400 space-y-0.5">
-                          <p>
-                            Imposto efectivo:{" "}
-                            <strong className="text-slate-800 dark:text-slate-200 tabular-nums">
-                              {pricingDetail.effective_tax_pct.toFixed(2)}%
-                            </strong>
-                          </p>
-                          <p>
-                            Margem:{" "}
-                            <strong className="text-slate-800 dark:text-slate-200 tabular-nums">
-                              {pricingDetail.effective_profit_pct.toFixed(2)}%
-                            </strong>
-                          </p>
-                        </div>
-                      </div>
-                      <dl className="grid sm:grid-cols-2 gap-3 text-slate-800 dark:text-slate-200">
-                        <div className="space-y-0.5">
-                          <dt className="text-xs text-slate-500">
-                            Custos × {pricingDetail.quantity}
-                          </dt>
-                          <dd className="tabular-nums font-semibold">
-                            {fmtBRL(pricingDetail.line_cost_price)}{" "}
-                            <span className="text-xs font-normal text-slate-500">
-                              ({fmtBRL(pricingDetail.unit_cost_price)} / un.)
-                            </span>
-                          </dd>
-                        </div>
-                        <div className="space-y-0.5">
-                          <dt className="text-xs text-slate-500">
-                            Preço de venda sugerido × {pricingDetail.quantity}
-                          </dt>
-                          <dd className="tabular-nums font-semibold text-emerald-800 dark:text-emerald-400">
-                            {fmtBRL(pricingDetail.line_selling_price)}{" "}
-                            <span className="text-xs font-normal text-slate-500">
-                              ({fmtBRL(pricingDetail.unit_selling_price)} / un.)
-                            </span>
-                          </dd>
-                        </div>
-                      </dl>
-                      <div>
-                        <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
-                          Composição estimada (preço total)
-                        </p>
-                        <div className="flex h-4 w-full overflow-hidden rounded-md ring-1 ring-slate-200 dark:ring-slate-600">
-                          {pricingDetail.breakdown_scaled.map((seg) => (
-                            <div
-                              key={seg.label}
-                              title={`${seg.label}: ${fmtBRL(seg.amount)} (${seg.pct_of_price}%)`}
-                              className={seg.color ?? "bg-slate-400"}
-                              style={{
-                                flex: `${Math.max(seg.pct_of_price, 0)} 1 0%`,
-                              }}
-                            />
-                          ))}
-                        </div>
-                        <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-400">
-                          {pricingDetail.breakdown_scaled.map((seg) => (
-                            <li key={seg.label} className="flex justify-between gap-2">
-                              <span className="flex items-center gap-1.5">
-                                <span
-                                  className={`inline-block h-2 w-2 rounded-sm ${seg.color ?? "bg-slate-400"}`}
-                                />
-                                {seg.label}
-                              </span>
-                              <span className="tabular-nums">
-                                {fmtBRL(seg.amount)} ({seg.pct_of_price}%)
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              }
               ncmAction={
                 <Button
                   type="button"
@@ -710,38 +632,85 @@ export default function EditProductPage() {
                   Sugerir BOM
                 </Button>
               }
-            />
+                />
+              </CardContent>
+            </Card>
 
+            <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-slate-900">
+              Custo de lista
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isSimplified ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 space-y-2 max-w-md">
+                <Label htmlFor="edit_cost_price">Custo unitário (R$)</Label>
+                <Input
+                  id="edit_cost_price"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={
+                    Number.isFinite(formData.cost_price) ? formData.cost_price : ""
+                  }
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === "") {
+                      handleChange("cost_price", 0);
+                      return;
+                    }
+                    const n = Number(raw);
+                    handleChange(
+                      "cost_price",
+                      Number.isFinite(n) ? Math.max(0, n) : 0
+                    );
+                  }}
+                />
+                <p className="text-xs text-slate-600">
+                  Ao guardar, o valor é registado no histórico de custos.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600">
+                Para produtos acabados, o custo de lista é calculado pela
+                composição (BOM). Recalcule na aba Composição para actualizar o
+                histórico.
+              </p>
+            )}
+            <ProductCostHistoryTable productId={productId} />
+          </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="composition" className="mt-4">
             {structureSuggestion ? (
-              <BomSuggestionCard
-                suggestion={structureSuggestion}
-                onDismiss={() => setStructureSuggestion(null)}
-                structureHref={
-                  formData.type === "finished"
-                    ? `/products/${productId}/structure`
-                    : undefined
-                }
-              />
+              <div className="mb-4">
+                <BomSuggestionCard
+                  suggestion={structureSuggestion}
+                  onDismiss={() => setStructureSuggestion(null)}
+                  structureHref={`/products/${productId}/edit?tab=composition`}
+                />
+              </div>
             ) : null}
 
             {formData.type === "finished" ? (
-              <div className="mt-6 pt-6 border-t border-slate-200 space-y-3">
-                <h2 className="text-base font-semibold text-slate-900">
-                  Estrutura (BOM)
-                </h2>
-                <p className="text-sm text-slate-600">
-                  Defina materiais e mão de obra para o cálculo do custo de lista.
-                </p>
-                <Link href={`/products/${productId}/structure`}>
-                  <Button variant="outline" type="button" className="gap-2">
-                    <Package className="h-4 w-4 shrink-0" aria-hidden />
-                    Gerir estrutura
-                  </Button>
-                </Link>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+              <ProductCompositionPanel productId={productId} embedded />
+            ) : (
+              <Card>
+                <CardContent className="py-8 text-center space-y-2">
+                  <p className="text-sm text-slate-600">
+                    A composição (lista de materiais e mão de obra) está
+                    disponível para produtos do tipo <strong>acabado</strong>.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Altere o prefixo/classificação se este produto deve ter BOM.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
 
         <div className="flex justify-end gap-3 mt-6">
           <Link href="/products">

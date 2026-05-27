@@ -5,62 +5,53 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Ban,
   ChevronLeft,
   ChevronRight,
-  Edit,
-  Eye,
   Loader2,
-  MoreHorizontal,
   Plus,
   Search,
   ShoppingBag,
 } from "lucide-react";
+import { SalesOrderRowActionsMenu } from "@/components/sales/sales-order-row-actions-menu";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils/cn";
 import { useMe } from "@/hooks/use-me";
+import { usePermissions } from "@/hooks/use-permissions";
 import type { SalesOrderStatus } from "@/lib/types/sales.types";
-
-type ProdOrderBrief = {
-  id: string;
-  status: string;
-  order_number: string;
-} | null;
+import type { SalesOrderProductionSituation } from "@/lib/sales/sales-order-production-summary";
+import {
+  formatSalesListDate,
+  productionSituationPill,
+  salesOrderStatusPill,
+  SALES_ORDER_LIST_TAB_LABELS,
+  SALES_ORDER_LIST_TABS,
+  type SalesOrderListTab,
+} from "@/lib/sales/sales-order-list-display";
 
 type SalesOrderListRow = {
   id: string;
   order_number: string;
   client_name: string;
   order_date: string;
+  expected_delivery: string | null;
   status: string;
   total: number;
-  production_order?: unknown;
+  ready_for_invoice?: boolean;
+  production_deadline: string | null;
+  production_situation: SalesOrderProductionSituation;
 };
 
 interface OrdersApiResponse {
   data: SalesOrderListRow[];
   pagination: { page: number; limit: number; total: number };
+  tab?: string;
 }
 
-type StatusFilter =
-  | "all"
-  | SalesOrderStatus;
-
-const ORDER_STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
-  { value: "all", label: "Todos os estados" },
-  { value: "pending", label: "Pendente" },
-  { value: "confirmed", label: "Confirmado" },
-  { value: "in_production", label: "Em produção" },
-  { value: "shipped", label: "Expedido" },
-  { value: "delivered", label: "Entregue" },
-  { value: "cancelled", label: "Cancelado" },
-];
-
 const salesOrdersQueryKey = (filters: {
-  status: string;
+  tab: SalesOrderListTab;
   search: string;
   dateFrom: string;
   dateTo: string;
@@ -69,7 +60,7 @@ const salesOrdersQueryKey = (filters: {
 }) => ["sales-orders", filters] as const;
 
 async function fetchSalesOrders(filters: {
-  status: string;
+  tab: SalesOrderListTab;
   search: string;
   dateFrom: string;
   dateTo: string;
@@ -79,7 +70,7 @@ async function fetchSalesOrders(filters: {
   const params = new URLSearchParams();
   params.append("page", String(filters.page));
   params.append("limit", String(filters.limit));
-  if (filters.status !== "all") params.append("status", filters.status);
+  params.append("tab", filters.tab);
   if (filters.search.trim()) params.append("client", filters.search.trim());
   if (filters.dateFrom.trim())
     params.append("date_from", filters.dateFrom.trim());
@@ -119,6 +110,24 @@ async function putOrderStatus(id: string, status: string): Promise<void> {
   if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar pedido");
 }
 
+async function deleteSalesOrder(id: string): Promise<void> {
+  const res = await fetch(`/api/sales/orders/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao excluir pedido");
+}
+
+async function reactivateSalesOrder(id: string): Promise<void> {
+  const res = await fetch(`/api/sales/orders/${id}/reactivate`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao reativar pedido");
+}
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -126,116 +135,17 @@ function formatCurrency(value: number): string {
   }).format(Number(value ?? 0));
 }
 
-function formatDate(iso: string | null | undefined): string {
-  if (iso == null || iso === "") return "—";
-  const d = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return iso;
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
-}
-
-function salesOrderStatusPill(
-  status: string
-): { label: string; className: string } {
-  switch (status as SalesOrderStatus) {
-    case "pending":
-      return {
-        label: "Pendente",
-        className:
-          "bg-amber-50 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-700/50",
-      };
-    case "confirmed":
-      return {
-        label: "Confirmado",
-        className:
-          "bg-blue-50 text-blue-950 ring-1 ring-blue-200 dark:bg-blue-950/45 dark:text-blue-100 dark:ring-blue-700/45",
-      };
-    case "in_production":
-      return {
-        label: "Em produção",
-        className:
-          "bg-violet-50 text-violet-950 ring-1 ring-violet-200 dark:bg-violet-950/45 dark:text-violet-100 dark:ring-violet-700/50",
-      };
-    case "shipped":
-      return {
-        label: "Expedido",
-        className:
-          "bg-orange-50 text-orange-950 ring-1 ring-orange-200 dark:bg-orange-950/40 dark:text-orange-100 dark:ring-orange-700/45",
-      };
-    case "delivered":
-      return {
-        label: "Entregue",
-        className:
-          "bg-emerald-50 text-emerald-950 ring-1 ring-emerald-200 dark:bg-emerald-950/35 dark:text-emerald-100",
-      };
-    case "cancelled":
-      return {
-        label: "Cancelado",
-        className:
-          "bg-red-50 text-red-900 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-100",
-      };
-    default:
-      return {
-        label: status,
-        className: "bg-slate-50 text-slate-700 ring-1 ring-slate-200",
-      };
-  }
-}
-
-/** Normaliza FK aninhado do Supabase. */
-function unwrapProductionOrder(raw: unknown): ProdOrderBrief {
-  if (raw == null) return null;
-  const row = Array.isArray(raw) ? raw[0] : raw;
-  if (!row || typeof row !== "object") return null;
-  const o = row as Record<string, unknown>;
-  const id = typeof o.id === "string" ? o.id : "";
-  const status = typeof o.status === "string" ? o.status : "";
-  const order_number =
-    typeof o.order_number === "string" ? o.order_number : "";
-  if (!id) return null;
-  return { id, status, order_number };
-}
-
-const PRODUCTION_STATUS_LABEL: Record<string, string> = {
-  imported: "Importado",
-  planning: "Planeamento",
-  in_production: "Em produção",
-  ready: "Pronto",
-  finished: "Finalizado",
-  delayed: "Atrasado",
-  cancelled: "Cancelado",
-};
-
-function productionStatusPillClass(status: string): string {
-  switch (status) {
-    case "imported":
-      return "bg-slate-100 text-slate-800 ring-slate-300 dark:bg-slate-800/80 dark:text-slate-200";
-    case "planning":
-      return "bg-blue-50 text-blue-900 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-100";
-    case "in_production":
-      return "bg-emerald-50 text-emerald-900 ring-emerald-200 dark:bg-emerald-950/35 dark:text-emerald-100";
-    case "ready":
-      return "bg-amber-50 text-amber-900 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100";
-    case "finished":
-      return "bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800/60";
-    case "delayed":
-      return "bg-orange-50 text-orange-900 ring-orange-200 dark:bg-orange-950/35";
-    case "cancelled":
-      return "bg-red-50 text-red-900 ring-red-200 dark:bg-red-950/40";
-    default:
-      return "bg-slate-50 text-slate-700 ring-slate-200";
-  }
-}
-
 export default function SalesOrdersListPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: me } = useMe();
+  const { can } = usePermissions();
   const isAdmin = me?.role === "admin";
+  const canSales = isAdmin || can("sales");
 
+  const [tab, setTab] = useState<SalesOrderListTab>("open");
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState({
-    status: "all",
     search: "",
     dateFrom: "",
     dateTo: "",
@@ -250,15 +160,24 @@ export default function SalesOrdersListPage() {
     return () => window.clearTimeout(t);
   }, [searchInput]);
 
+  const queryFilters = useMemo(
+    () => ({ ...filters, tab }),
+    [filters, tab]
+  );
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: salesOrdersQueryKey(filters),
-    queryFn: () => fetchSalesOrders(filters),
+    queryKey: salesOrdersQueryKey(queryFilters),
+    queryFn: () => fetchSalesOrders(queryFilters),
   });
 
-  const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<SalesOrderListRow | null>(
     null
   );
+  const [deleteTarget, setDeleteTarget] = useState<SalesOrderListRow | null>(
+    null
+  );
+  const [reactivateTarget, setReactivateTarget] =
+    useState<SalesOrderListRow | null>(null);
 
   const totalPages = data?.pagination
     ? Math.max(1, Math.ceil(data.pagination.total / filters.limit))
@@ -281,21 +200,46 @@ export default function SalesOrdersListPage() {
     onSuccess: () => {
       toast.success("Pedido de venda cancelado.");
       setCancelTarget(null);
-      setMenuOpenFor(null);
       invalidateList();
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (rowId: string) => deleteSalesOrder(rowId),
+    onSuccess: () => {
+      toast.success("Pedido de venda excluído permanentemente.");
+      setDeleteTarget(null);
+      invalidateList();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: (rowId: string) => reactivateSalesOrder(rowId),
+    onSuccess: (_data, rowId) => {
+      toast.success("Pedido reativado com sucesso.");
+      setReactivateTarget(null);
+      invalidateList();
+      router.push(`/sales/orders/${rowId}/edit`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  function onTabChange(next: SalesOrderListTab) {
+    setTab(next);
+    setFilters((f) => ({ ...f, page: 1 }));
+  }
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-[90rem] mx-auto space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-slate-900">
             Pedidos de venda
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Pedidos comerciais, filtros e acções administrativas.
+            Visão comercial com prazos de entrega, produção e situação PCP.
           </p>
         </div>
         {isAdmin ? (
@@ -318,6 +262,30 @@ export default function SalesOrdersListPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <nav
+            className="flex flex-wrap gap-1 border-b border-slate-200 -mx-1"
+            role="tablist"
+            aria-label="Filtrar pedidos por situação"
+          >
+            {SALES_ORDER_LIST_TABS.map((tabId) => (
+              <button
+                key={tabId}
+                type="button"
+                role="tab"
+                aria-selected={tab === tabId}
+                className={cn(
+                  "px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap",
+                  tab === tabId
+                    ? "border-brand-700 text-brand-800 font-medium"
+                    : "border-transparent text-slate-600 hover:text-slate-900"
+                )}
+                onClick={() => onTabChange(tabId)}
+              >
+                {SALES_ORDER_LIST_TAB_LABELS[tabId]}
+              </button>
+            ))}
+          </nav>
+
           <div className="flex flex-col gap-3">
             <div className="relative flex-1 min-w-0">
               <Search
@@ -331,53 +299,34 @@ export default function SalesOrdersListPage() {
                 className="pl-9"
               />
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 flex-wrap sm:items-center">
-              <select
-                className={cn(
-                  "h-9 rounded-md border border-slate-300 bg-white px-3 text-sm min-w-[12rem]",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 dark:bg-slate-950 dark:border-slate-600"
-                )}
-                aria-label="Filtrar por estado do pedido"
-                value={filters.status}
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type="date"
+                className="h-9 w-[11rem]"
+                aria-label="Data inicial"
+                value={filters.dateFrom}
                 onChange={(e) =>
-                  setFilters({ ...filters, status: e.target.value, page: 1 })
+                  setFilters({
+                    ...filters,
+                    dateFrom: e.target.value,
+                    page: 1,
+                  })
                 }
-              >
-                {ORDER_STATUS_FILTERS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  type="date"
-                  className="h-9 w-[11rem]"
-                  aria-label="Data inicial"
-                  value={filters.dateFrom}
-                  onChange={(e) =>
-                    setFilters({
-                      ...filters,
-                      dateFrom: e.target.value,
-                      page: 1,
-                    })
-                  }
-                />
-                <span className="text-slate-400 text-sm">até</span>
-                <Input
-                  type="date"
-                  className="h-9 w-[11rem]"
-                  aria-label="Data final"
-                  value={filters.dateTo}
-                  onChange={(e) =>
-                    setFilters({
-                      ...filters,
-                      dateTo: e.target.value,
-                      page: 1,
-                    })
-                  }
-                />
-              </div>
+              />
+              <span className="text-slate-400 text-sm">até</span>
+              <Input
+                type="date"
+                className="h-9 w-[11rem]"
+                aria-label="Data final"
+                value={filters.dateTo}
+                onChange={(e) =>
+                  setFilters({
+                    ...filters,
+                    dateTo: e.target.value,
+                    page: 1,
+                  })
+                }
+              />
             </div>
           </div>
 
@@ -396,10 +345,10 @@ export default function SalesOrdersListPage() {
           ) : null}
 
           <div className="rounded-lg border border-slate-200 overflow-x-auto bg-white dark:bg-slate-950 dark:border-slate-800">
-            <table className="w-full text-sm text-left min-w-[1020px]">
+            <table className="w-full text-sm text-left min-w-[1200px]">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50 dark:border-slate-800">
-                  <th className="px-3 py-2.5 font-medium text-slate-700">
+                  <th className="px-3 py-2.5 font-medium text-slate-700 whitespace-nowrap">
                     Nº pedido
                   </th>
                   <th className="px-3 py-2.5 font-medium text-slate-700">
@@ -408,14 +357,20 @@ export default function SalesOrdersListPage() {
                   <th className="px-3 py-2.5 font-medium text-slate-700 whitespace-nowrap">
                     Data
                   </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">
-                    Estado
+                  <th className="px-3 py-2.5 font-medium text-slate-700 whitespace-nowrap">
+                    Prazo entrega
                   </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right whitespace-nowrap">
-                    Valor total
+                  <th className="px-3 py-2.5 font-medium text-slate-700 whitespace-nowrap">
+                    Prazo produção
+                  </th>
+                  <th className="px-3 py-2.5 font-medium text-slate-700">
+                    Status
                   </th>
                   <th className="px-3 py-2.5 font-medium text-slate-700">
                     Situação produção
+                  </th>
+                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right whitespace-nowrap">
+                    Valor total
                   </th>
                   <th className="px-3 py-2.5 font-medium text-slate-700 text-right w-[8rem]">
                     Acções
@@ -426,7 +381,7 @@ export default function SalesOrdersListPage() {
                 {isLoading ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={9}
                       className="px-3 py-10 text-center text-slate-500"
                     >
                       <span className="inline-flex items-center gap-2">
@@ -438,32 +393,55 @@ export default function SalesOrdersListPage() {
                 ) : !data?.data?.length ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={9}
                       className="px-3 py-10 text-center text-slate-500"
                     >
-                      Nenhum pedido encontrado para estes filtros.
+                      Nenhum pedido em «{SALES_ORDER_LIST_TAB_LABELS[tab]}»
+                      {filters.search ? " para esta busca." : "."}
                     </td>
                   </tr>
                 ) : (
                   data.data.map((row) => {
                     const sb = salesOrderStatusPill(row.status);
+                    const prod = productionSituationPill(
+                      row.production_situation ?? "none"
+                    );
                     const st = row.status as SalesOrderStatus;
-                    const po = unwrapProductionOrder(row.production_order);
                     const canCancel =
                       isAdmin && st !== "delivered" && st !== "cancelled";
+                    const canReactivate = isAdmin && st === "cancelled";
                     return (
                       <tr
                         key={row.id}
-                        className="border-b border-slate-100 last:border-0 dark:border-slate-800"
+                        className="border-b border-slate-100 last:border-0 dark:border-slate-800 hover:bg-slate-50/60"
                       >
-                        <td className="px-3 py-2.5 font-medium text-slate-900 whitespace-nowrap">
-                          {row.order_number}
+                        <td className="px-3 py-2.5 font-medium whitespace-nowrap">
+                          <Link
+                            href={`/sales/orders/${row.id}`}
+                            className="text-brand-800 hover:underline font-mono"
+                          >
+                            {row.order_number}
+                          </Link>
+                          {row.ready_for_invoice && tab !== "ready" ? (
+                            <span
+                              className="ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium bg-teal-50 text-teal-900 ring-1 ring-teal-200"
+                              title="Liberado para faturamento"
+                            >
+                              Faturar
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5 text-slate-800 max-w-[14rem]">
                           <span className="line-clamp-2">{row.client_name}</span>
                         </td>
                         <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap tabular-nums">
-                          {formatDate(row.order_date)}
+                          {formatSalesListDate(row.order_date)}
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap tabular-nums">
+                          {formatSalesListDate(row.expected_delivery)}
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap tabular-nums">
+                          {formatSalesListDate(row.production_deadline)}
                         </td>
                         <td className="px-3 py-2.5">
                           <span
@@ -475,95 +453,34 @@ export default function SalesOrdersListPage() {
                             {sb.label}
                           </span>
                         </td>
+                        <td className="px-3 py-2.5">
+                          {row.production_situation === "none" ? (
+                            <span className="text-slate-400">—</span>
+                          ) : (
+                            <span
+                              className={cn(
+                                "inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1",
+                                prod.className
+                              )}
+                            >
+                              {prod.label}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-slate-800">
                           {formatCurrency(row.total)}
                         </td>
-                        <td className="px-3 py-2.5">
-                          {po ? (
-                            <div className="flex flex-col gap-1 max-w-[14rem]">
-                              <span className="text-xs text-slate-500 truncate">
-                                {po.order_number}
-                              </span>
-                              <span
-                                className={cn(
-                                  "inline-flex w-fit rounded-md px-2 py-0.5 text-xs font-medium ring-1",
-                                  productionStatusPillClass(po.status)
-                                )}
-                              >
-                                {PRODUCTION_STATUS_LABEL[po.status] ??
-                                  po.status}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-right relative">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2"
-                            aria-expanded={menuOpenFor === row.id}
-                            aria-label="Abrir menu de acções"
-                            onClick={() =>
-                              setMenuOpenFor((open) =>
-                                open === row.id ? null : row.id
-                              )
-                            }
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                          {menuOpenFor === row.id ? (
-                            <>
-                              <div
-                                role="presentation"
-                                className="fixed inset-0 z-10"
-                                onClick={() => setMenuOpenFor(null)}
-                              />
-                              <div className="absolute right-3 top-full z-20 mt-1 w-56 rounded-md border border-slate-200 bg-white py-1 text-left shadow-lg dark:bg-slate-950 dark:border-slate-700">
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
-                                  onClick={() => {
-                                    setMenuOpenFor(null);
-                                    router.push(`/sales/orders/${row.id}`);
-                                  }}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                  Visualizar
-                                </button>
-                                {isAdmin ? (
-                                  <button
-                                    type="button"
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
-                                    onClick={() => {
-                                      setMenuOpenFor(null);
-                                      router.push(
-                                        `/sales/orders/${row.id}/edit`
-                                      );
-                                    }}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                    Editar
-                                  </button>
-                                ) : null}
-                                {canCancel ? (
-                                  <button
-                                    type="button"
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                                    onClick={() => {
-                                      setMenuOpenFor(null);
-                                      setCancelTarget(row);
-                                    }}
-                                  >
-                                    <Ban className="h-4 w-4" />
-                                    Cancelar
-                                  </button>
-                                ) : null}
-                              </div>
-                            </>
-                          ) : null}
+                        <td className="px-3 py-2.5 text-right">
+                          <SalesOrderRowActionsMenu
+                            orderId={row.id}
+                            canEdit={canSales}
+                            canCancel={canCancel}
+                            canDelete={isAdmin}
+                            canReactivate={canReactivate}
+                            onCancel={() => setCancelTarget(row)}
+                            onDelete={() => setDeleteTarget(row)}
+                            onReactivate={() => setReactivateTarget(row)}
+                          />
                         </td>
                       </tr>
                     );
@@ -622,6 +539,116 @@ export default function SalesOrdersListPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      {reactivateTarget ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="so-reactivate-title"
+        >
+          <div className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-950 dark:border-slate-700">
+            <h3
+              id="so-reactivate-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              Reativar pedido de venda
+            </h3>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              Tem certeza que deseja reativar o pedido{" "}
+              <strong className="font-medium text-slate-900 dark:text-slate-100">
+                {reactivateTarget.order_number}
+              </strong>
+              ? Ele voltará ao estado <strong>pendente</strong> e poderá ser
+              editado antes de nova confirmação.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={reactivateMutation.isPending}
+                onClick={() => setReactivateTarget(null)}
+              >
+                Voltar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={reactivateMutation.isPending}
+                onClick={() =>
+                  reactivateMutation.mutate(reactivateTarget.id)
+                }
+              >
+                {reactivateMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    A reativar…
+                  </>
+                ) : (
+                  "Reativar pedido"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="so-delete-title"
+        >
+          <div className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-950 dark:border-slate-700">
+            <h3
+              id="so-delete-title"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
+              Excluir pedido de venda
+            </h3>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+              O pedido{" "}
+              <strong className="font-medium text-slate-900 dark:text-slate-100">
+                {deleteTarget.order_number}
+              </strong>{" "}
+              será removido permanentemente, incluindo itens, parcelas a receber
+              e histórico de alterações. Esta acção não pode ser desfeita.
+            </p>
+            <p className="mt-2 text-sm text-amber-800 dark:text-amber-200">
+              Pedidos com produção associada não podem ser excluídos.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={deleteMutation.isPending}
+                onClick={() => setDeleteTarget(null)}
+              >
+                Voltar
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+              >
+                {deleteMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    A excluir…
+                  </>
+                ) : (
+                  "Excluir permanentemente"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {cancelTarget ? (
         <div

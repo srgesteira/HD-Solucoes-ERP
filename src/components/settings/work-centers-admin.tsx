@@ -24,6 +24,8 @@ interface WorkCenter {
   default_monthly_hours: number;
   labor_hourly_rate_this_month?: number | null;
   labor_hourly_rate_latest?: number | null;
+  labor_direct_hourly_this_month?: number | null;
+  labor_allocated_hourly_this_month?: number | null;
 }
 
 async function fetchWorkCenters(): Promise<WorkCenter[]> {
@@ -100,6 +102,7 @@ export function WorkCentersAdmin() {
   });
 
   const [recalculatingId, setRecalculatingId] = useState<string | null>(null);
+  const [batchRecalc, setBatchRecalc] = useState(false);
 
   const {
     data: centers,
@@ -264,19 +267,63 @@ export function WorkCentersAdmin() {
       <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
         <div className="flex items-center gap-2 text-slate-700">
           <Factory className="h-5 w-5 shrink-0" aria-hidden />
-          <span className="text-sm font-medium">Máquinas, linhas e equipas para custo hora na BOM.</span>
+          <span className="text-sm font-medium">
+            Custo MO directo + rateio de departamentos de apoio.
+          </span>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => {
-            resetForm();
-            setDialogOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          Novo centro
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={batchRecalc}
+            onClick={async () => {
+              setBatchRecalc(true);
+              try {
+                const res = await fetch("/api/lines/recalculate-costs", {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({}),
+                });
+                const j = (await res.json().catch(() => ({}))) as {
+                  lines_processed?: number;
+                  error?: string;
+                };
+                if (!res.ok) {
+                  toast.error(j.error ?? "Erro ao recalcular");
+                  return;
+                }
+                toast.success(
+                  `Custos recalculados (${j.lines_processed ?? 0} linha(s)).`
+                );
+                await queryClient.invalidateQueries({
+                  queryKey: workCentersQueryKey,
+                });
+              } finally {
+                setBatchRecalc(false);
+              }
+            }}
+          >
+            {batchRecalc ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Calculator className="h-4 w-4" />
+            )}
+            Recalcular custos
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              resetForm();
+              setDialogOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            Nova linha
+          </Button>
+        </div>
       </div>
 
       {error ? (
@@ -293,7 +340,7 @@ export function WorkCentersAdmin() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-lg font-semibold text-slate-900">
-            Lista de centros
+            Linhas de produção
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -333,11 +380,25 @@ export function WorkCentersAdmin() {
                           Eficiência: {(Number(center.efficiency) * 100).toFixed(0)}%
                         </span>
                       </div>
-                      <div>
-                        Custo/h calculado (mês atual):{" "}
-                        {center.labor_hourly_rate_this_month != null
-                          ? formatCurrency(center.labor_hourly_rate_this_month)
-                          : "—"}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 text-xs">
+                        <span>
+                          Directo:{" "}
+                          {center.labor_direct_hourly_this_month != null
+                            ? formatCurrency(center.labor_direct_hourly_this_month)
+                            : "—"}
+                        </span>
+                        <span>
+                          Rateio:{" "}
+                          {center.labor_allocated_hourly_this_month != null
+                            ? formatCurrency(center.labor_allocated_hourly_this_month)
+                            : "—"}
+                        </span>
+                        <span className="font-medium text-slate-700">
+                          Final:{" "}
+                          {center.labor_hourly_rate_this_month != null
+                            ? formatCurrency(center.labor_hourly_rate_this_month)
+                            : "—"}
+                        </span>
                       </div>
                     </div>
                     {center.description ? (
@@ -594,3 +655,5 @@ export function WorkCentersAdmin() {
     </div>
   );
 }
+
+export { WorkCentersAdmin as ProductionLinesAdmin };

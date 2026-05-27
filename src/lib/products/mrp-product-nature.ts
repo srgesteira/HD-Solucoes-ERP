@@ -51,3 +51,24 @@ export const PRODUCT_NATURE_LABELS: Record<ProductNatureCode, string> = {
   RV: "RV — Revenda",
   AC: "AC — Acabado",
 };
+
+/** Deriva `product_nature` (MRP) a partir do código do prefixo/sufixo. */
+export function productNatureFromPrefixCode(
+  prefixCode: string
+): ProductNatureCode | null {
+  const code = prefixCode.trim().toUpperCase();
+  if (code === "MO") return null;
+  if (
+    code === "MP" ||
+    code === "SE" ||
+    code === "EB" ||
+    code === "MC" ||
+    code === "RV"
+  ) {
+    return code;
+  }
+  if (code === "AC" || code === "HD1" || code === "HD2" || code === "HD3") {
+    return "AC";
+  }
+  return null;
+}

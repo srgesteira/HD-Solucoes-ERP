@@ -9,8 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils/cn";
 import type { ProductType } from "@/lib/types/product.types";
-import type { ProductNatureCode } from "@/lib/products/mrp-product-nature";
-import { PRODUCT_NATURE_LABELS } from "@/lib/products/mrp-product-nature";
+import {
+  isCompleteClassificationSuffix,
+  isMoClassificationSuffix,
+  isSimplifiedClassificationSuffix,
+} from "@/lib/products/prefix-classification";
 
 const SELECT_CLASS =
   "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm " +
@@ -37,19 +40,18 @@ export type ProductFormShape = {
   selling_price: number;
   is_active: boolean;
   use_custom_bdi: boolean;
-  /** Soma efectiva dos impostos em % quando BDI personalizado */
   custom_tax_rate: number | null;
   custom_profit_margin: number | null;
-  /** IDs da classificação técnica (UUID ou string vazia) */
   prefix_id: string;
   family_id: string;
   subfamily_id: string;
   material_id: string;
   finish_id: string;
-  /** Código MRP (MP, SE, …) ou vazio até o utilizador escolher */
-  product_nature: ProductNatureCode | "";
-  /** Preenchido pelo servidor após INSERT (identificador principal) */
   technical_code: string | null;
+  default_is_external_labor: boolean;
+  default_work_center_id: string | null;
+  default_labor_cost: number | null;
+  default_production_line_id: string | null;
 };
 
 type ClassListRow = {
@@ -59,42 +61,59 @@ type ClassListRow = {
   sort_order?: number | null;
 };
 
-type FieldHandlers = {
+type PrefixRow = { id: string; code: string };
+
+type Props = {
+  formData: ProductFormShape;
   onChange<K extends keyof ProductFormShape>(
     field: K,
     value: ProductFormShape[K]
   ): void;
-  onSellingPriceInput(value: string): void;
+  /** Em edição: oculta o bloco de custo (histórico na página de edição). */
+  hideCostField?: boolean;
+  /** Quando o código técnico já existe: bloqueia alteração da classificação. */
+  classificationLocked?: boolean;
+  ncmAction?: ReactNode;
+  technicalDescriptionAction?: ReactNode;
 };
 
-type Props = {
-  formData: ProductFormShape;
-  sellingPriceDisplay: string;
-  /** Botão / ações ao lado do campo NCM (ex.: sugestão IA). */
-  ncmAction?: ReactNode;
-  /** Botão junto ao rótulo da descrição técnica (ex.: sugestão BOM). */
-  technicalDescriptionAction?: ReactNode;
-  /** Secção opcional sob BDI (ex.: calcular preço na edição). */
-  pricingActionSlot?: ReactNode;
-} & FieldHandlers;
+function fmtBrl(n: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(n ?? 0));
+}
 
 export function ProductFormFields({
   formData,
-  sellingPriceDisplay,
+  hideCostField = false,
+  classificationLocked = false,
   onChange,
-  onSellingPriceInput,
   ncmAction,
   technicalDescriptionAction,
-  pricingActionSlot,
 }: Props) {
   const [prefixes, setPrefixes] = useState<ClassListRow[]>([]);
   const [families, setFamilies] = useState<ClassListRow[]>([]);
   const [materials, setMaterials] = useState<ClassListRow[]>([]);
   const [subfamilies, setSubfamilies] = useState<ClassListRow[]>([]);
   const [finishes, setFinishes] = useState<ClassListRow[]>([]);
+  const [workCenters, setWorkCenters] = useState<
+    {
+      id: string;
+      code: string;
+      name: string;
+      is_active: boolean | null;
+      hourly_cost: number | null;
+    }[]
+  >([]);
   const [baseLoading, setBaseLoading] = useState(true);
   const [subLoading, setSubLoading] = useState(false);
   const [finLoading, setFinLoading] = useState(false);
+  const [wcLoading, setWcLoading] = useState(false);
+  const [productionLines, setProductionLines] = useState<
+    { id: string; code: string; name: string; is_active: boolean }[]
+  >([]);
+  const [plLoading, setPlLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -204,6 +223,87 @@ export function ProductFormFields({
   }, [formData.material_id]);
 
   const classBusy = baseLoading;
+  const classFieldsDisabled = classBusy || classificationLocked;
+  const selectedPrefix = prefixes.find((p) => p.id === formData.prefix_id);
+  const prefixCode = selectedPrefix?.code ?? "";
+  const isMO = isMoClassificationSuffix(prefixCode);
+  const needsCompleteClassification =
+    isCompleteClassificationSuffix(prefixCode);
+  const needsSimplifiedClassification =
+    isSimplifiedClassificationSuffix(prefixCode);
+  const showClassificationFields =
+    needsCompleteClassification || needsSimplifiedClassification;
+  const showDefaultProductionLine =
+    needsCompleteClassification || formData.type === "finished";
+
+  useEffect(() => {
+    if (!showDefaultProductionLine) {
+      setProductionLines([]);
+      setPlLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setPlLoading(true);
+      try {
+        const res = await fetch("/api/production/lines", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          data?: { id: string; code: string; name: string; is_active: boolean }[];
+        };
+        if (!cancelled && res.ok) {
+          setProductionLines((json.data ?? []).filter((l) => l.is_active !== false));
+        }
+      } finally {
+        if (!cancelled) setPlLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showDefaultProductionLine]);
+
+  useEffect(() => {
+    if (!isMO) {
+      setWorkCenters([]);
+      setWcLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setWcLoading(true);
+      try {
+        const res = await fetch("/api/work-centers", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        let json: {
+          data?: {
+            id: string;
+            code: string;
+            name: string;
+            is_active: boolean | null;
+            hourly_cost: number | null;
+          }[];
+        } = {};
+        try {
+          json = (await res.json()) as typeof json;
+        } catch {
+          /* ignore */
+        }
+        if (!cancelled && res.ok) {
+          setWorkCenters(json.data ?? []);
+        }
+      } finally {
+        if (!cancelled) setWcLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isMO]);
 
   return (
     <div className="space-y-4">
@@ -224,14 +324,16 @@ export function ProductFormFields({
             Sufixo de entrada e sequência do código
           </p>
           <p className="mt-1">
-            O primeiro campo abaixo lista <strong>HD1, HD2, HD3</strong> (linha comercial) e{' '}
-            <strong>MP, SE, EB, MC, RV, AC</strong> — passa a ser o <strong>primeiro segmento</strong>{' '}
-            do código técnico (ex.: <span className="font-mono text-slate-900">HD1-A10A10-001</span> ou{' '}
-            <span className="font-mono text-slate-900">MP-A10A10-001</span>). A parte{' '}
-            <span className="font-mono">-001</span> no fim é a <strong>sequência numérica</strong>,
-            atribuída automaticamente na gravação (não é um campo). O <strong>MRP</strong> continua a
-            usar o campo <strong>Natureza</strong>; mantenha os dois alinhados quando possível. Se as
-            listas estiverem vazias, cadastre em{' '}
+            <strong>HD1, HD2, HD3, AC</strong> — classificação completa (família,
+            subfamília, material, acabamento); código ex.:{" "}
+            <span className="font-mono text-slate-900">HD1-A10A10-001</span>.{" "}
+            <strong>MP, SE, EB, MC, RV, MO</strong> — só material e acabamento;
+            código ex.: <span className="font-mono text-slate-900">MP-A10-001</span>{" "}
+            ou <span className="font-mono text-slate-900">MO-A10-001</span>. A
+            parte <span className="font-mono">-001</span> é a{" "}
+            <strong>sequência</strong>, gerada ao guardar. A natureza MRP é
+            derivada automaticamente do prefixo seleccionado. Se as listas
+            estiverem vazias, cadastre em{" "}
             <Link
               href="/settings/product-families"
               className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
@@ -248,9 +350,26 @@ export function ProductFormFields({
               id="prefix_id"
               className={SELECT_CLASS}
               required
-              disabled={classBusy}
+              disabled={classFieldsDisabled}
               value={formData.prefix_id}
-              onChange={(e) => onChange("prefix_id", e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                onChange("prefix_id", v);
+                const nextP = prefixes.find((x) => x.id === v);
+                const nextCode = nextP?.code ?? "";
+                if (isSimplifiedClassificationSuffix(nextCode)) {
+                  onChange("family_id", "");
+                  onChange("subfamily_id", "");
+                  if (isMoClassificationSuffix(nextCode)) {
+                    onChange("material_id", "");
+                    onChange("finish_id", "");
+                  }
+                } else {
+                  onChange("default_is_external_labor", false);
+                  onChange("default_work_center_id", null);
+                  onChange("default_labor_cost", null);
+                }
+              }}
             >
               <option value="">Selecionar…</option>
               {prefixes.map((p) => (
@@ -260,93 +379,209 @@ export function ProductFormFields({
               ))}
             </select>
             <p className="text-xs text-slate-500">
-              HD1–HD3 ou MP, SE, EB, MC, RV, AC (9 opções após migração da base de dados).
+              Completo: HD1–HD3, AC. Simplificado: MP, SE, EB, MC, RV, MO.
             </p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="family_id">Família *</Label>
-            <select
-              id="family_id"
-              className={SELECT_CLASS}
-              required
-              disabled={classBusy}
-              value={formData.family_id}
-              onChange={(e) => onChange("family_id", e.target.value)}
-            >
-              <option value="">Selecionar…</option>
-              {families.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.name}
+
+          {needsCompleteClassification ? (
+            <div className="space-y-2">
+              <Label htmlFor="family_id">Família *</Label>
+              <select
+                id="family_id"
+                className={SELECT_CLASS}
+                required
+                disabled={classFieldsDisabled}
+                value={formData.family_id}
+                onChange={(e) => onChange("family_id", e.target.value)}
+              >
+                <option value="">Selecionar…</option>
+                {families.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} — {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {needsCompleteClassification ? (
+            <div className="space-y-2">
+              <Label htmlFor="subfamily_id">Sub-família *</Label>
+              <select
+                id="subfamily_id"
+                className={SELECT_CLASS}
+                required
+                disabled={
+                  classFieldsDisabled || !formData.family_id || subLoading
+                }
+                value={formData.subfamily_id}
+                onChange={(e) => onChange("subfamily_id", e.target.value)}
+              >
+                <option value="">
+                  {formData.family_id
+                    ? subLoading
+                      ? "A carregar…"
+                      : "Selecionar…"
+                    : "Escolha primeiro a família"}
                 </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="subfamily_id">Sub-família *</Label>
-            <select
-              id="subfamily_id"
-              className={SELECT_CLASS}
-              required
-              disabled={classBusy || !formData.family_id || subLoading}
-              value={formData.subfamily_id}
-              onChange={(e) => onChange("subfamily_id", e.target.value)}
+                {subfamilies.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} — {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {showClassificationFields ? (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="classification_material_id">Material *</Label>
+                <select
+                  id="classification_material_id"
+                  className={SELECT_CLASS}
+                  required
+                  disabled={classFieldsDisabled}
+                  value={formData.material_id}
+                  onChange={(e) => onChange("material_id", e.target.value)}
+                >
+                  <option value="">Selecionar…</option>
+                  {materials.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code} — {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="finish_id">Acabamento *</Label>
+                <select
+                  id="finish_id"
+                  className={SELECT_CLASS}
+                  required
+                  disabled={
+                    classFieldsDisabled || !formData.material_id || finLoading
+                  }
+                  value={formData.finish_id}
+                  onChange={(e) => onChange("finish_id", e.target.value)}
+                >
+                  <option value="">
+                    {formData.material_id
+                      ? finLoading
+                        ? "A carregar…"
+                        : "Selecionar…"
+                      : "Escolha primeiro o material"}
+                  </option>
+                  {finishes.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code} — {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : null}
+
+          {isMO ? (
+            <div className="md:col-span-2 rounded-lg border border-violet-200 bg-violet-50/60 px-4 py-4 space-y-4">
+              <p className="text-sm font-medium text-slate-800">
+                Mão-de-obra (prefixo MO)
+              </p>
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-slate-700">Tipo de MO *</p>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 cursor-pointer text-sm">
+                    <input
+                      type="radio"
+                      name="mo-labor-type"
+                      className="mt-1"
+                      checked={!formData.default_is_external_labor}
+                      disabled={classBusy}
+                      onChange={() => {
+                        onChange("default_is_external_labor", false);
+                        onChange("default_labor_cost", null);
+                      }}
+                    />
+                    <span>
+                      <strong>Interna</strong> — centro de trabalho da empresa;
+                      o custo/hora vem do centro (preenchido no custo unitário).
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer text-sm">
+                    <input
+                      type="radio"
+                      name="mo-labor-type"
+                      className="mt-1"
+                      checked={formData.default_is_external_labor}
+                      disabled={classBusy}
+                      onChange={() => {
+                        onChange("default_is_external_labor", true);
+                        onChange("default_work_center_id", null);
+                      }}
+                    />
+                    <span>
+                      <strong>Externa</strong> — terceiros; indique o custo
+                      unitário (R$) no campo de custo abaixo.
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {!formData.default_is_external_labor ? (
+                <div className="space-y-2">
+                  <Label htmlFor="default_work_center_id">
+                    Centro de trabalho padrão *
+                  </Label>
+                  <select
+                    id="default_work_center_id"
+                    className={SELECT_CLASS}
+                    required={isMO}
+                    disabled={classBusy || wcLoading}
+                    value={formData.default_work_center_id ?? ""}
+                    onChange={(e) => {
+                      const wcId = e.target.value.trim()
+                        ? e.target.value
+                        : null;
+                      onChange("default_work_center_id", wcId);
+                      if (wcId) {
+                        const wc = workCenters.find((w) => w.id === wcId);
+                        const rate = Number(wc?.hourly_cost ?? 0);
+                        if (
+                          rate > 0 &&
+                          (!formData.cost_price || formData.cost_price === 0)
+                        ) {
+                          onChange("cost_price", rate);
+                        }
+                      }
+                    }}
+                  >
+                    <option value="">
+                      {wcLoading ? "A carregar…" : "Selecionar…"}
+                    </option>
+                    {workCenters
+                      .filter((w) => w.is_active !== false)
+                      .map((wc) => (
+                        <option key={wc.id} value={wc.id}>
+                          {wc.code} — {wc.name} ({fmtBrl(Number(wc.hourly_cost ?? 0))}
+                          /h)
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {classificationLocked ? (
+            <div
+              role="status"
+              className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950"
             >
-              <option value="">
-                {formData.family_id
-                  ? subLoading
-                    ? "A carregar…"
-                    : "Selecionar…"
-                  : "Escolha primeiro a família"}
-              </option>
-              {subfamilies.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="classification_material_id">Material *</Label>
-            <select
-              id="classification_material_id"
-              className={SELECT_CLASS}
-              required
-              disabled={classBusy}
-              value={formData.material_id}
-              onChange={(e) => onChange("material_id", e.target.value)}
-            >
-              <option value="">Selecionar…</option>
-              {materials.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="finish_id">Acabamento *</Label>
-            <select
-              id="finish_id"
-              className={SELECT_CLASS}
-              required
-              disabled={classBusy || !formData.material_id || finLoading}
-              value={formData.finish_id}
-              onChange={(e) => onChange("finish_id", e.target.value)}
-            >
-              <option value="">
-                {formData.material_id
-                  ? finLoading
-                    ? "A carregar…"
-                    : "Selecionar…"
-                  : "Escolha primeiro o material"}
-              </option>
-              {finishes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
+              Código técnico já gerado. Para alterar a classificação, crie um novo
+              produto.
+            </div>
+          ) : null}
+
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="technical_code_ro">Código técnico</Label>
             <Input
@@ -358,41 +593,12 @@ export function ProductFormFields({
               title={
                 formData.technical_code
                   ? undefined
-                  : "Guardar o produto para gerar o código (ex.: HD1-A10A10-001 ou MP-A10A10-001)"
+                  : "Guardar o produto para gerar o código (ex.: HD1-A10A10-001 ou MP-A10-001)"
               }
             />
             <p className="text-xs text-slate-500">
               Identificador único do produto. Gerado na base de dados a partir da
-              classificação (ex.: HD1-A10A10-001 ou MP-A10A10-001). Não é editável.
-            </p>
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="product_nature">Natureza *</Label>
-            <select
-              id="product_nature"
-              className={SELECT_CLASS}
-              required
-              disabled={classBusy}
-              value={formData.product_nature}
-              onChange={(e) =>
-                onChange(
-                  "product_nature",
-                  e.target.value as ProductFormShape["product_nature"]
-                )
-              }
-            >
-              <option value="">Selecionar…</option>
-              {(Object.keys(PRODUCT_NATURE_LABELS) as ProductNatureCode[]).map(
-                (code) => (
-                  <option key={code} value={code}>
-                    {PRODUCT_NATURE_LABELS[code]}
-                  </option>
-                )
-              )}
-            </select>
-            <p className="text-xs text-slate-500">
-              Define se o MRP trata o item como compra, produção ou semi-elaborado
-              (com composição).
+              classificação. Não é editável.
             </p>
           </div>
         </div>
@@ -480,137 +686,72 @@ export function ProductFormFields({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="type">Tipo *</Label>
+      {showDefaultProductionLine ? (
+        <div className="space-y-2 max-w-md">
+          <Label htmlFor="default_production_line_id">
+            Linha de produção padrão
+          </Label>
           <select
-            id="type"
+            id="default_production_line_id"
             className={SELECT_CLASS}
-            value={formData.type}
+            disabled={plLoading}
+            value={formData.default_production_line_id ?? ""}
             onChange={(e) =>
-              onChange("type", e.target.value as ProductFormShape["type"])
+              onChange(
+                "default_production_line_id",
+                e.target.value.trim() ? e.target.value : null
+              )
             }
           >
-            <option value="finished">Acabado (produto final)</option>
-            <option value="raw">Matéria-prima</option>
-            <option value="component">Componente (intermediário)</option>
+            <option value="">— Nenhuma —</option>
+            {productionLines.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.code} — {l.name}
+              </option>
+            ))}
           </select>
+          {plLoading ? (
+            <p className="text-xs text-slate-500 flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> A carregar linhas…
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Usada pelo MRP ao gerar ordens de produção para este acabado.
+            </p>
+          )}
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="selling_price">Preço de venda (R$)</Label>
+      ) : null}
+
+      {!hideCostField && needsSimplifiedClassification ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 space-y-2 max-w-md">
+          <Label htmlFor="cost_price">Custo unitário (R$)</Label>
           <Input
-            id="selling_price"
-            type="text"
-            inputMode="numeric"
-            value={sellingPriceDisplay}
-            onChange={(e) => onSellingPriceInput(e.target.value)}
+            id="cost_price"
+            type="number"
+            step="0.01"
+            min={0}
+            className="max-w-xs bg-white"
+            value={
+              Number.isFinite(formData.cost_price) ? formData.cost_price : ""
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "") {
+                onChange("cost_price", 0);
+                return;
+              }
+              const n = parseFloat(v.replace(",", "."));
+              onChange("cost_price", Number.isFinite(n) ? Math.max(0, n) : 0);
+            }}
             placeholder="0,00"
           />
+          <p className="text-xs text-slate-500">
+            {isMO
+              ? "MO: use o custo unitário (interna sem valor usa o custo/hora do centro). Registado no histórico de custos."
+              : "Registado no histórico de custos. Referência para MRP e orçamentos."}
+          </p>
         </div>
-      </div>
-
-      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 space-y-4 dark:border-slate-700 dark:bg-slate-900/40">
-        <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-          BDI — precificação
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2 md:col-span-2">
-            <Label>Custo base (R$)</Label>
-            <Input
-              disabled
-              className="bg-white dark:bg-slate-950"
-              value={
-                Number.isFinite(formData.cost_price) && formData.cost_price !== 0
-                  ? Number(formData.cost_price).toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                  : "0,00"
-              }
-              readOnly
-            />
-            <p className="text-xs text-slate-500">
-              O custo típico vem da estrutura do produto (BOM); pode ser alterado ao
-              recalcular a lista de materiais.
-            </p>
-          </div>
-          <div className="flex items-start gap-2 md:col-span-2">
-            <input
-              type="checkbox"
-              id="use_custom_bdi"
-              checked={formData.use_custom_bdi}
-              onChange={(e) => onChange("use_custom_bdi", e.target.checked)}
-              className={cn(
-                "mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-700",
-                "focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
-              )}
-            />
-            <Label htmlFor="use_custom_bdi" className="font-normal text-sm">
-              Usar BDI personalizado (sobrepor soma fiscal e margem respectivas ao
-              tenant)
-            </Label>
-          </div>
-          {formData.use_custom_bdi ? (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="custom_tax_rate">Alíquota fiscal efectiva (%)</Label>
-                <Input
-                  id="custom_tax_rate"
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  value={
-                    formData.custom_tax_rate != null
-                      ? String(formData.custom_tax_rate)
-                      : ""
-                  }
-                  onChange={(e) => {
-                    const v = e.target.value.trim();
-                    if (v === "") onChange("custom_tax_rate", null);
-                    else {
-                      const n = parseFloat(v.replace(",", "."));
-                      onChange(
-                        "custom_tax_rate",
-                        Number.isFinite(n) ? n : null
-                      );
-                    }
-                  }}
-                  placeholder="Total impostos (%)"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="custom_profit_margin">Margem de lucro (%)</Label>
-                <Input
-                  id="custom_profit_margin"
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  value={
-                    formData.custom_profit_margin != null
-                      ? String(formData.custom_profit_margin)
-                      : ""
-                  }
-                  onChange={(e) => {
-                    const v = e.target.value.trim();
-                    if (v === "") onChange("custom_profit_margin", null);
-                    else {
-                      const n = parseFloat(v.replace(",", "."));
-                      onChange(
-                        "custom_profit_margin",
-                        Number.isFinite(n) ? n : null
-                      );
-                    }
-                  }}
-                  placeholder="Margem sobre custo na fórmula"
-                />
-              </div>
-            </>
-          ) : null}
-          {pricingActionSlot ? (
-            <div className="md:col-span-2 space-y-2">{pricingActionSlot}</div>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
 
       <div className="flex items-start gap-2">
         <input
@@ -631,17 +772,124 @@ export function ProductFormFields({
   );
 }
 
-/** Converte dígitos escritos pelo utilizador para valor em reais (máscara centavos). */
-export function parseSellingPriceDigits(input: string): number {
-  const digits = input.replace(/\D/g, "");
-  const cents = parseInt(digits || "0", 10);
-  return cents / 100;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** True quando o prefixo seleccionado é MO. */
+export function isProductFormMo(
+  formData: Pick<ProductFormShape, "prefix_id">,
+  prefixes: PrefixRow[]
+): boolean {
+  const p = prefixes.find((x) => x.id === formData.prefix_id.trim());
+  return p?.code === "MO";
 }
 
-export function sellingPriceDigitsToDisplay(price: number): string {
-  if (!price || Number(price) === 0) return "";
-  return Number(price).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+/** Lista de prefixos (mesmo endpoint do formulário), para validação no submit. */
+export async function fetchProductPrefixesForForm(): Promise<PrefixRow[]> {
+  const res = await fetch("/api/products/prefixes", {
+    credentials: "include",
+    cache: "no-store",
   });
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: ClassListRow[];
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(json.error ?? "Erro ao carregar prefixos");
+  }
+  return (json.data ?? []).map((row) => ({ id: row.id, code: row.code }));
+}
+
+function resolvePrefixCode(
+  formData: Pick<ProductFormShape, "prefix_id">,
+  prefixes: PrefixRow[]
+): string {
+  return prefixes.find((x) => x.id === formData.prefix_id.trim())?.code ?? "";
+}
+
+function simplifiedClassificationValidationMessage(
+  formData: Pick<
+    ProductFormShape,
+    "prefix_id" | "material_id" | "finish_id"
+  >,
+  prefixes: PrefixRow[]
+): string | null {
+  const code = resolvePrefixCode(formData, prefixes);
+  if (!isSimplifiedClassificationSuffix(code)) return null;
+  if (!formData.material_id.trim() || !UUID_RE.test(formData.material_id.trim())) {
+    return "Material é obrigatório para este prefixo.";
+  }
+  if (!formData.finish_id.trim() || !UUID_RE.test(formData.finish_id.trim())) {
+    return "Acabamento é obrigatório para este prefixo.";
+  }
+  return null;
+}
+
+function completeClassificationValidationMessage(
+  formData: Pick<
+    ProductFormShape,
+    "prefix_id" | "family_id" | "subfamily_id" | "material_id" | "finish_id"
+  >,
+  prefixes: PrefixRow[]
+): string | null {
+  const code = resolvePrefixCode(formData, prefixes);
+  if (!isCompleteClassificationSuffix(code)) return null;
+  const fields: [string, string][] = [
+    ["prefix_id", formData.prefix_id.trim()],
+    ["family_id", formData.family_id.trim()],
+    ["subfamily_id", formData.subfamily_id.trim()],
+    ["material_id", formData.material_id.trim()],
+    ["finish_id", formData.finish_id.trim()],
+  ];
+  if (fields.some(([, v]) => !v || !UUID_RE.test(v))) {
+    return "Prefixo, família, sub-família, material e acabamento são obrigatórios.";
+  }
+  return null;
+}
+
+/** Valida classificação conforme o sufixo seleccionado. */
+export function productClassificationValidationMessage(
+  formData: Pick<
+    ProductFormShape,
+    "prefix_id" | "family_id" | "subfamily_id" | "material_id" | "finish_id"
+  >,
+  prefixes: PrefixRow[]
+): string | null {
+  const code = resolvePrefixCode(formData, prefixes);
+  if (!formData.prefix_id.trim() || !UUID_RE.test(formData.prefix_id.trim())) {
+    return "Seleccione o sufixo / prefixo.";
+  }
+  if (isCompleteClassificationSuffix(code)) {
+    return completeClassificationValidationMessage(formData, prefixes);
+  }
+  if (isSimplifiedClassificationSuffix(code)) {
+    return simplifiedClassificationValidationMessage(formData, prefixes);
+  }
+  return `Prefixo «${code}» não suportado.`;
+}
+
+/** Valida campos de MO (tipo interna/externa, centro ou custo). */
+export function moProductFieldsValidationMessage(
+  formData: Pick<
+    ProductFormShape,
+    | "prefix_id"
+    | "cost_price"
+    | "default_is_external_labor"
+    | "default_work_center_id"
+  >,
+  prefixes: PrefixRow[]
+): string | null {
+  const p = prefixes.find((x) => x.id === formData.prefix_id.trim());
+  if (p?.code !== "MO") return null;
+  if (formData.default_is_external_labor) {
+    const c = Number(formData.cost_price ?? 0);
+    if (!Number.isFinite(c) || c < 0) {
+      return "Com prefixo MO (externa), indique o custo unitário (R$).";
+    }
+    return null;
+  }
+  if (!formData.default_work_center_id?.trim()) {
+    return "Com prefixo MO (interna), seleccione o centro de trabalho padrão.";
+  }
+  return null;
 }

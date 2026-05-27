@@ -117,7 +117,11 @@ export default function NewSupplierPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <SupplierFormFields formData={formData} onChange={handleChange} />
+            <SupplierFormFields
+              formData={formData}
+              onChange={handleChange}
+              onBulkChange={setFormData}
+            />
           </CardContent>
         </Card>
 

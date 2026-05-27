@@ -27,6 +27,7 @@ export const QUOTE_STATUSES = [
   "approved",
   "rejected",
   "converted",
+  "revision",
 ] as const;
 
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
@@ -38,6 +39,7 @@ export const SALES_ORDER_STATUSES = [
   "shipped",
   "delivered",
   "cancelled",
+  "superseded",
 ] as const;
 
 export type SalesOrderStatus = (typeof SALES_ORDER_STATUSES)[number];

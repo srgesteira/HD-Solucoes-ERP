@@ -1,10 +1,6 @@
 import { z } from "zod";
 
-const productNatureEnum = z.enum(["MP", "SE", "EB", "MC", "RV", "AC"], {
-  message: "Natureza do produto é obrigatória",
-});
-
-/** Classificação técnica (código tipo HD1-A10A10-001): FKs obrigatórias na criação. */
+/** Classificação técnica completa (não-MO): FKs obrigatórias na criação. */
 export const technicalClassificationSchema = z.object({
   prefix_id: z.uuid({ message: "Prefixo é obrigatório" }),
   family_id: z.uuid({ message: "Família é obrigatória" }),
@@ -19,9 +15,11 @@ const productSharedFields = {
   technical_description: z.string().optional().nullable(),
   ncm: z.string().optional().nullable(),
   unit: z.string().min(1, "Unidade é obrigatória"),
-  type: z.enum(["finished", "raw", "component"]),
+  /** Calculado na API a partir do prefixo; opcional no body. */
+  type: z.enum(["finished", "raw", "component"]).optional(),
   cost_price: z.number().min(0).default(0),
-  selling_price: z.number().min(0).default(0),
+  /** Legado — preço de venda fixo; usar histórico (sale) e cost_price no orçamento. */
+  selling_price: z.number().min(0).optional(),
   is_active: z.boolean().default(true),
   use_custom_bdi: z.boolean().optional(),
   custom_tax_rate: z.number().min(0).max(999).nullable().optional(),
@@ -31,20 +29,34 @@ const productSharedFields = {
   subfamily_id: z.uuid().optional().nullable(),
   material_id: z.uuid().optional().nullable(),
   finish_id: z.uuid().optional().nullable(),
+  /** Prefixo MO: mão-de-obra externa (terceiros) no cadastro do produto. */
+  default_is_external_labor: z.boolean().optional().default(false),
+  /** Prefixo MO externa: custo unitário padrão (R$/h ou unidade). */
+  default_labor_cost: z.number().min(0).nullable().optional(),
+  /** Prefixo MO interna: centro sugerido na BOM (obrigatório se interna). */
+  default_work_center_id: z.string().uuid().nullable().optional(),
+  /** Produto acabado: linha de fabricação padrão no PCP. */
+  default_production_line_id: z.string().uuid().nullable().optional(),
 };
 
-/** Criação: sem campo `code` manual; identificador = technical_code gerado na BD. */
+/**
+ * Criação: sem campo `code` manual; identificador = technical_code gerado na BD.
+ * Classificação validada na API conforme o sufixo (completo HD1–HD3/AC ou
+ * simplificado MP/SE/EB/MC/RV/MO). Campos MO validados na API.
+ */
 export const productCreateSchema = z
-  .object(productSharedFields)
-  .merge(technicalClassificationSchema)
-  .extend({
-    product_nature: productNatureEnum,
+  .object({
+    ...productSharedFields,
+    prefix_id: z.uuid({ message: "Prefixo é obrigatório" }),
+    family_id: z.uuid().optional().nullable(),
+    subfamily_id: z.uuid().optional().nullable(),
+    material_id: z.uuid().optional().nullable(),
+    finish_id: z.uuid().optional().nullable(),
   });
 
-/** Actualização parcial; `code` legado opcional (não usar na UI). */
+/** Actualização parcial; `code` legado opcional (não usar na UI). Campos MO validados na API. */
 export const productSchema = z.object({
   ...productSharedFields,
-  product_nature: productNatureEnum.optional().nullable(),
   code: z.string().max(50).optional().nullable(),
 });
 
@@ -60,15 +72,38 @@ export const productComponentSchema = z
     unit_cost: z.number().min(0).optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.is_labor) {
+    if (data.is_labor && data.component_product_id) {
       const external = data.is_external_labor === true;
-      if (data.component_product_id) {
+      if (external) {
+        if (data.work_center_id) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "MO externa (catálogo) não deve ter centro de trabalho",
+            path: ["work_center_id"],
+          });
+        }
+        if (
+          data.unit_cost === undefined ||
+          data.unit_cost === null ||
+          Number.isNaN(data.unit_cost)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Custo unitário (R$) é obrigatório para MO externa",
+            path: ["unit_cost"],
+          });
+        }
+      } else if (!data.work_center_id) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Linha de mão de obra não deve referenciar produto componente",
-          path: ["component_product_id"],
+          message: "Centro de trabalho é obrigatório para MO interna (catálogo)",
+          path: ["work_center_id"],
         });
       }
+      return;
+    }
+    if (data.is_labor) {
+      const external = data.is_external_labor === true;
       if (external) {
         if (data.work_center_id) {
           ctx.addIssue({

@@ -203,7 +203,11 @@ export default function EditSupplierPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <SupplierFormFields formData={formData} onChange={handleChange} />
+            <SupplierFormFields
+              formData={formData}
+              onChange={handleChange}
+              onBulkChange={setFormData}
+            />
           </CardContent>
         </Card>
 

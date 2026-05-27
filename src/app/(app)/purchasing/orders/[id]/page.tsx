@@ -9,10 +9,11 @@ import {
   Ban,
   Edit,
   Loader2,
-  Plus,
+  PackageCheck,
+  Printer,
   ShoppingCart,
-  Trash2,
 } from "lucide-react";
+import { purchaseOrderExtrasTotal } from "@/lib/purchasing/purchase-order-totals";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils/cn";
 import { useMe } from "@/hooks/use-me";
+import { usePermissions } from "@/hooks/use-permissions";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
 import type { Tables } from "@/lib/types/database";
 
@@ -76,33 +78,17 @@ interface PurchaseOrderItemEmbedded {
   unit: string;
   unit_price: number;
   total_price: number;
+  icms_rate?: number;
+  icms_value?: number;
+  icms_amount?: number;
+  ipi_rate?: number;
+  ipi_value?: number;
+  ipi_amount?: number;
+  tax_base?: number;
   received_quantity?: number;
   product?: ProductEmbedded | null;
   production_order?: ProductionOrderBrief | null;
 }
-
-interface ProductPickRow {
-  id: string;
-  code: string;
-  name: string;
-}
-
-const PRODUCTION_IN_PROGRESS_STATUSES = new Set([
-  "imported",
-  "planning",
-  "in_production",
-  "delayed",
-]);
-
-const PRODUCTION_STATUS_LABEL_PT: Record<string, string> = {
-  imported: "Importado",
-  planning: "Planeamento",
-  in_production: "Em produção",
-  ready: "Pronto",
-  finished: "Concluído",
-  delayed: "Atrasado",
-  cancelled: "Cancelado",
-};
 
 interface PurchaseOrderDetail {
   id: string;
@@ -114,6 +100,13 @@ interface PurchaseOrderDetail {
   subtotal: number;
   discount: number;
   tax: number;
+  total_icms?: number;
+  total_ipi?: number;
+  total_tax_base?: number;
+  freight_cost?: number;
+  insurance_cost?: number;
+  other_costs?: number;
+  total_tax_non_creditable?: number;
   total: number;
   notes: string | null;
   internal_notes?: string | null;
@@ -168,121 +161,15 @@ async function cancelPurchaseOrder(id: string): Promise<void> {
   await patchOrder(id, { status: "cancelled" });
 }
 
-async function fetchProductsForPick(): Promise<ProductPickRow[]> {
-  const all: ProductPickRow[] = [];
-  let page = 1;
-  const limit = 100;
-
-  while (page <= 20) {
-    const params = new URLSearchParams({
-      type: "all",
-      is_active: "true",
-      page: String(page),
-      limit: String(limit),
-    });
-    const res = await fetch(`/api/products?${params.toString()}`, {
-      credentials: "include",
-      cache: "no-store",
-    });
-    const json = (await res.json().catch(() => ({}))) as {
-      data?: ProductPickRow[];
-      pagination?: { total: number };
-      error?: string;
-    };
-
-    if (!res.ok) {
-      throw new Error(
-        typeof json.error === "string" ? json.error : "Erro ao carregar produtos"
-      );
-    }
-
-    const chunk = json.data ?? [];
-    for (const row of chunk) {
-      all.push({
-        id: row.id,
-        code: row.code,
-        name: row.name,
-      });
-    }
-
-    if (chunk.length < limit) break;
-    page += 1;
-  }
-
-  return all;
-}
-
-async function fetchProductionOrdersActive(): Promise<ProductionOrderBrief[]> {
-  const all: ProductionOrderBrief[] = [];
-  let page = 1;
-  const limit = 100;
-
-  while (page <= 20) {
-    const params = new URLSearchParams({
-      status: "all",
-      page: String(page),
-      limit: String(limit),
-    });
-    const res = await fetch(`/api/production/orders?${params.toString()}`, {
-      credentials: "include",
-      cache: "no-store",
-    });
-    const json = (await res.json().catch(() => ({}))) as {
-      data?: ProductionOrderBrief[];
-      error?: string;
-    };
-
-    if (!res.ok) {
-      throw new Error(
-        typeof json.error === "string"
-          ? json.error
-          : "Erro ao carregar ordens de produção"
-      );
-    }
-
-    const chunk = json.data ?? [];
-    for (const row of chunk) {
-      if (PRODUCTION_IN_PROGRESS_STATUSES.has(row.status)) all.push(row);
-    }
-
-    if (chunk.length < limit) break;
-    page += 1;
-  }
-
-  const byId = new Map<string, ProductionOrderBrief>();
-  for (const r of all) byId.set(r.id, r);
-  return [...byId.values()].sort((a, b) =>
-    a.order_number.localeCompare(b.order_number, "pt-BR")
-  );
-}
-
-async function postPurchaseOrderItem(
-  orderId: string,
-  body: Record<string, unknown>
-): Promise<void> {
-  const res = await fetch(`/api/purchasing/orders/${orderId}/items`, {
+async function receivePurchaseOrder(id: string): Promise<void> {
+  const res = await fetch(`/api/purchasing/orders/${id}/receive`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
   });
   const json = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) {
-    throw new Error(json.error ?? "Erro ao adicionar item");
+    throw new Error(json.error ?? "Erro ao finalizar recebimento");
   }
-}
-
-async function deletePurchaseOrderItem(orderId: string, itemId: string): Promise<void> {
-  const params = new URLSearchParams({ itemId });
-  const res = await fetch(
-    `/api/purchasing/orders/${orderId}/items?${params.toString()}`,
-    {
-      method: "DELETE",
-      credentials: "include",
-    }
-  );
-  const json = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao remover item");
 }
 
 function formatCurrency(value: number): string {
@@ -354,20 +241,14 @@ export default function PurchaseOrderDetailPage() {
 
   const queryClient = useQueryClient();
   const { data: me } = useMe();
+  const { can } = usePermissions();
   const isAdmin = me?.role === "admin";
+  const canPurchasing = isAdmin || can("purchasing");
 
   const [selectedStatus, setSelectedStatus] = useState<PurchaseOrderStatus | "">(
     ""
   );
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [addItemOpen, setAddItemOpen] = useState(false);
-  const [removeItemId, setRemoveItemId] = useState<string | null>(null);
-  const [mfProductId, setMfProductId] = useState("");
-  const [mfDescription, setMfDescription] = useState("");
-  const [mfQuantity, setMfQuantity] = useState("1");
-  const [mfUnit, setMfUnit] = useState("UN");
-  const [mfUnitPrice, setMfUnitPrice] = useState("");
-  const [mfProductionOrderId, setMfProductionOrderId] = useState("");
 
   const {
     data: order,
@@ -402,55 +283,12 @@ export default function PurchaseOrderDetailPage() {
 
   const items = useMemo(() => order?.items ?? [], [order?.items]);
 
-  const canEditItems = Boolean(
-    order &&
-      isAdmin &&
-      (order.status === "draft" || order.status === "sent")
+  const canNavigateToEdit = Boolean(
+    canPurchasing &&
+      order &&
+      order.status !== "cancelled" &&
+      order.status !== "received"
   );
-
-  const pickerQueriesEnabled =
-    !!orderId && isAdmin && addItemOpen && canEditItems;
-
-  const productsPickQuery = useQuery({
-    queryKey: ["purchase-order-item-picker-products"],
-    queryFn: fetchProductsForPick,
-    enabled: pickerQueriesEnabled,
-    staleTime: 60_000,
-  });
-
-  const productionPickQuery = useQuery({
-    queryKey: ["purchase-order-item-picker-production"],
-    queryFn: fetchProductionOrdersActive,
-    enabled: pickerQueriesEnabled,
-    staleTime: 60_000,
-  });
-
-  const sortedPickProducts = useMemo(() => {
-    const list = productsPickQuery.data ?? [];
-    return [...list].sort((a, b) =>
-      `${a.code} ${a.name}`.localeCompare(`${b.code} ${b.name}`, "pt-BR")
-    );
-  }, [productsPickQuery.data]);
-
-  useEffect(() => {
-    if (!addItemOpen) return;
-    setMfProductId("");
-    setMfDescription("");
-    setMfQuantity("1");
-    setMfUnit("UN");
-    setMfUnitPrice("");
-    setMfProductionOrderId("");
-  }, [addItemOpen]);
-
-  useEffect(() => {
-    if (!addItemOpen || !mfProductId) return;
-    const p = sortedPickProducts.find((x) => x.id === mfProductId);
-    if (p) setMfDescription(p.name);
-  }, [addItemOpen, mfProductId, sortedPickProducts]);
-
-  useEffect(() => {
-    if (!canEditItems && addItemOpen) setAddItemOpen(false);
-  }, [canEditItems, addItemOpen]);
 
   const statusMutation = useMutation({
     mutationFn: (status: PurchaseOrderStatus) =>
@@ -490,68 +328,25 @@ export default function PurchaseOrderDetailPage() {
     order.status !== "cancelled" &&
     order.status !== "received";
 
-  const addItemMutation = useMutation({
-    mutationFn: async () => {
-      if (!orderId) throw new Error("Pedido inválido.");
-      const desc = mfDescription.trim();
-      const q = parseFloat(String(mfQuantity).replace(",", "."));
-      if (!desc) throw new Error("Descrição é obrigatória.");
-      if (!Number.isFinite(q) || q <= 0) {
-        throw new Error("Quantidade inválida.");
-      }
-      const upRaw = mfUnitPrice.trim();
-      const up = upRaw
-        ? parseFloat(upRaw.replace(",", "."))
-        : 0;
-      if (!Number.isFinite(up) || up < 0) {
-        throw new Error("Preço unitário inválido.");
-      }
-      const body: Record<string, unknown> = {
-        description: desc,
-        quantity: q,
-        unit: mfUnit.trim() || "UN",
-        unit_price: up,
-      };
-      if (mfProductId.trim()) body.product_id = mfProductId.trim();
-      if (mfProductionOrderId.trim()) {
-        body.production_order_id = mfProductionOrderId.trim();
-      }
-      await postPurchaseOrderItem(orderId, body);
-    },
-    onSuccess: async () => {
-      toast.success("Item adicionado.");
-      setAddItemOpen(false);
-      await queryClient.invalidateQueries({
-        queryKey: ["purchasing-order", orderId],
-      });
-      await queryClient.invalidateQueries({ queryKey: ["purchasing-orders"] });
-      await refetch();
-    },
-    onError: (err: unknown) => {
-      toast.error(
-        err instanceof Error ? err.message : "Erro ao adicionar item."
-      );
-    },
-  });
+  const canReceive = Boolean(
+    isAdmin &&
+      order &&
+      order.status !== "received" &&
+      order.status !== "cancelled"
+  );
 
-  const removeItemMutation = useMutation({
-    mutationFn: async (itemId: string) => {
-      if (!orderId) throw new Error("Pedido inválido.");
-      await deletePurchaseOrderItem(orderId, itemId);
-    },
+  const receiveMutation = useMutation({
+    mutationFn: () => receivePurchaseOrder(orderId!),
     onSuccess: async () => {
-      toast.success("Item removido.");
-      setRemoveItemId(null);
+      toast.success("Recebimento finalizado e custos actualizados.");
       await queryClient.invalidateQueries({
         queryKey: ["purchasing-order", orderId],
       });
       await queryClient.invalidateQueries({ queryKey: ["purchasing-orders"] });
       await refetch();
     },
-    onError: (err: unknown) => {
-      toast.error(
-        err instanceof Error ? err.message : "Erro ao remover item."
-      );
+    onError: (err: Error) => {
+      toast.error(err.message ?? "Erro ao finalizar recebimento.");
     },
   });
 
@@ -611,24 +406,31 @@ export default function PurchaseOrderDetailPage() {
             variant="outline"
             size="sm"
             onClick={() =>
-              router.push(`/purchasing/orders/${orderId}/edit`)
+              window.open(
+                `/purchasing/orders/${orderId}/print`,
+                "_blank",
+                "noopener,noreferrer"
+              )
             }
           >
-            <Edit className="h-4 w-4" />
-            Editar
+            <Printer className="h-4 w-4" />
+            Imprimir / PDF
           </Button>
+          {canNavigateToEdit ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                router.push(`/purchasing/orders/${orderId}/edit`)
+              }
+            >
+              <Edit className="h-4 w-4" />
+              Editar pedido
+            </Button>
+          ) : null}
           {isAdmin ? (
             <>
-              {canEditItems ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => setAddItemOpen(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                  Adicionar item
-                </Button>
-              ) : null}
               {canCancel ? (
                 <Button
                   type="button"
@@ -775,6 +577,19 @@ export default function PurchaseOrderDetailPage() {
         </CardContent>
       </Card>
 
+      {canNavigateToEdit ? (
+        <p className="text-sm text-slate-600 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          Para alterar itens, custos e condições de pagamento, use{" "}
+          <Link
+            href={`/purchasing/orders/${orderId}/edit`}
+            className="text-brand-700 font-medium underline"
+          >
+            Editar pedido
+          </Link>
+          .
+        </p>
+      ) : null}
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold text-slate-900">
@@ -782,7 +597,7 @@ export default function PurchaseOrderDetailPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 text-sm">
             <div>
               <dt className="text-slate-500">Subtotal</dt>
               <dd className="font-semibold text-slate-900 tabular-nums">
@@ -796,9 +611,40 @@ export default function PurchaseOrderDetailPage() {
               </dd>
             </div>
             <div>
-              <dt className="text-slate-500">Impostos</dt>
+              <dt className="text-slate-500">ICMS</dt>
+              <dd className="font-semibold text-slate-900 tabular-nums">
+                {formatCurrency(order.total_icms ?? 0)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">IPI</dt>
+              <dd className="font-semibold text-slate-900 tabular-nums">
+                {formatCurrency(order.total_ipi ?? 0)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Base cálculo</dt>
+              <dd className="font-semibold text-slate-900 tabular-nums">
+                {formatCurrency(order.total_tax_base ?? 0)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Outros impostos</dt>
               <dd className="font-semibold text-slate-900 tabular-nums">
                 {formatCurrency(order.tax)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Extras</dt>
+              <dd className="font-semibold text-slate-900 tabular-nums">
+                {formatCurrency(
+                  purchaseOrderExtrasTotal({
+                    freight_cost: order.freight_cost,
+                    insurance_cost: order.insurance_cost,
+                    other_costs: order.other_costs,
+                    total_tax_non_creditable: order.total_tax_non_creditable,
+                  })
+                )}
               </dd>
             </div>
             <div>
@@ -808,6 +654,22 @@ export default function PurchaseOrderDetailPage() {
               </dd>
             </div>
           </dl>
+          {canReceive ? (
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <Button
+                type="button"
+                disabled={receiveMutation.isPending}
+                onClick={() => void receiveMutation.mutateAsync()}
+              >
+                {receiveMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PackageCheck className="h-4 w-4" />
+                )}
+                Recalcular custos e finalizar recebimento
+              </Button>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -816,22 +678,10 @@ export default function PurchaseOrderDetailPage() {
           <CardTitle className="text-base font-semibold text-slate-900">
             Itens do pedido
           </CardTitle>
-          {canEditItems ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0 w-fit"
-              onClick={() => setAddItemOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              Adicionar item
-            </Button>
-          ) : null}
         </CardHeader>
         <CardContent className="p-0 sm:p-6 sm:pt-0">
           <div className="rounded-lg border border-slate-200 overflow-x-auto">
-            <table className="w-full text-sm text-left min-w-[760px]">
+            <table className="w-full text-sm text-left min-w-[1000px]">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
                   <th className="px-3 py-2.5 font-medium text-slate-700">
@@ -850,10 +700,22 @@ export default function PurchaseOrderDetailPage() {
                     Preço unit.
                   </th>
                   <th className="px-3 py-2.5 font-medium text-slate-700 text-right">
-                    Total linha
+                    % ICMS
                   </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right w-[7rem]">
-                    Acções
+                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right">
+                    ICMS
+                  </th>
+                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right">
+                    % IPI
+                  </th>
+                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right">
+                    IPI
+                  </th>
+                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right">
+                    Base cálculo
+                  </th>
+                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right">
+                    Total linha
                   </th>
                 </tr>
               </thead>
@@ -861,7 +723,7 @@ export default function PurchaseOrderDetailPage() {
                 {!items.length ? (
                   <tr>
                     <td
-                      colSpan={7}
+colSpan={11}
                       className="px-3 py-10 text-center text-slate-500"
                     >
                       Nenhuma linha neste pedido.
@@ -899,24 +761,27 @@ export default function PurchaseOrderDetailPage() {
                         <td className="px-3 py-2.5 text-right tabular-nums text-slate-800">
                           {formatCurrency(line.unit_price)}
                         </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
+                          {line.icms_rate ?? 0}%
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-800">
+                          {formatCurrency(
+                            line.icms_value ?? line.icms_amount ?? 0
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
+                          {line.ipi_rate ?? 0}%
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-800">
+                          {formatCurrency(
+                            line.ipi_value ?? line.ipi_amount ?? 0
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-800">
+                          {formatCurrency(line.tax_base ?? 0)}
+                        </td>
                         <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-900">
                           {formatCurrency(line.total_price)}
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          {canEditItems ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 text-red-700 border-red-200 hover:bg-red-50"
-                              onClick={() => setRemoveItemId(line.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Remover
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-slate-400">—</span>
-                          )}
                         </td>
                       </tr>
                     );
@@ -940,224 +805,6 @@ export default function PurchaseOrderDetailPage() {
           </p>
         </CardContent>
       </Card>
-
-      {addItemOpen && canEditItems ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 overflow-y-auto"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="add-item-title"
-          onClick={() =>
-            !addItemMutation.isPending && setAddItemOpen(false)
-          }
-        >
-          <div
-            className="relative z-10 w-full max-w-lg max-h-[min(90vh,40rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3
-              id="add-item-title"
-              className="text-lg font-semibold text-slate-900"
-            >
-              Adicionar linha ao pedido
-            </h3>
-
-            <form
-              className="mt-4 space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void addItemMutation.mutateAsync();
-              }}
-            >
-              <div className="space-y-2">
-                <Label htmlFor="add-product">Produto</Label>
-                <select
-                  id="add-product"
-                  className={cn(SELECT_CLASS)}
-                  value={mfProductId}
-                  onChange={(e) => setMfProductId(e.target.value)}
-                  disabled={
-                    productsPickQuery.isPending || productsPickQuery.isFetching
-                  }
-                >
-                  <option value="">Sem produto (só texto)</option>
-                  {sortedPickProducts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.code} — {p.name}
-                    </option>
-                  ))}
-                </select>
-                {productsPickQuery.isError ? (
-                  <p className="text-xs text-red-600">
-                    {productsPickQuery.error instanceof Error
-                      ? productsPickQuery.error.message
-                      : "Erro ao carregar produtos."}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="add-desc">Descrição *</Label>
-                <Input
-                  id="add-desc"
-                  value={mfDescription}
-                  onChange={(e) => setMfDescription(e.target.value)}
-                  required
-                  placeholder="Descrição da linha"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="add-qty">Quantidade *</Label>
-                  <Input
-                    id="add-qty"
-                    type="number"
-                    min={0.0001}
-                    step="any"
-                    value={mfQuantity}
-                    onChange={(e) => setMfQuantity(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="add-unit">Unidade</Label>
-                  <Input
-                    id="add-unit"
-                    value={mfUnit}
-                    onChange={(e) => setMfUnit(e.target.value)}
-                    placeholder="UN"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="add-up">Preço unitário</Label>
-                <Input
-                  id="add-up"
-                  type="text"
-                  inputMode="decimal"
-                  value={mfUnitPrice}
-                  onChange={(e) => setMfUnitPrice(e.target.value)}
-                  placeholder="0 (opcional)"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="add-po-link">Ordem de produção (opcional)</Label>
-                <select
-                  id="add-po-link"
-                  className={cn(SELECT_CLASS)}
-                  value={mfProductionOrderId}
-                  onChange={(e) => setMfProductionOrderId(e.target.value)}
-                  disabled={
-                    productionPickQuery.isPending ||
-                    productionPickQuery.isFetching
-                  }
-                >
-                  <option value="">Sem vínculo à produção</option>
-                  {(productionPickQuery.data ?? []).map((po) => (
-                    <option key={po.id} value={po.id}>
-                      {po.order_number}
-                      {po.client_name
-                        ? ` — ${po.client_name.slice(0, 42)}`
-                        : ""}{" "}
-                      ({PRODUCTION_STATUS_LABEL_PT[po.status] ?? po.status})
-                    </option>
-                  ))}
-                </select>
-                {productionPickQuery.isError ? (
-                  <p className="text-xs text-red-600">
-                    {productionPickQuery.error instanceof Error
-                      ? productionPickQuery.error.message
-                      : "Erro ao carregar produção."}
-                  </p>
-                ) : (
-                  <p className="text-xs text-slate-500">
-                    Apenas OP em curso (importadas, planeadas, em produção,
-                    atrasadas).
-                  </p>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={addItemMutation.isPending}
-                  onClick={() => setAddItemOpen(false)}
-                >
-                  Fechar
-                </Button>
-                <Button type="submit" size="sm" disabled={addItemMutation.isPending}>
-                  {addItemMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      A gravar…
-                    </>
-                  ) : (
-                    "Guardar linha"
-                  )}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
-
-      {removeItemId && canEditItems ? (
-        <div
-          className="fixed inset-0 z-[101] flex items-center justify-center p-4 bg-slate-900/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="remove-item-title"
-        >
-          <div className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
-            <h3
-              id="remove-item-title"
-              className="text-lg font-semibold text-slate-900"
-            >
-              Remover linha do pedido
-            </h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Esta linha será eliminada e os totais do pedido são recalculados
-              pela base de dados. Confirma?
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2 justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={removeItemMutation.isPending}
-                onClick={() => setRemoveItemId(null)}
-              >
-                Voltar
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                disabled={removeItemMutation.isPending}
-                onClick={() =>
-                  removeItemId
-                    ? void removeItemMutation.mutateAsync(removeItemId)
-                    : undefined
-                }
-              >
-                {removeItemMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    A remover…
-                  </>
-                ) : (
-                  "Remover"
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {cancelOpen ? (
         <div

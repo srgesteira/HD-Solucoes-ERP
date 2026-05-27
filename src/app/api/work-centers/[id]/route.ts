@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/lib/utils/tenant";
 import { workCenterSchema } from "@/lib/schemas/product.schema";
+import { ensureProductionLineForWorkCenter } from "@/lib/production-line-sync";
 import type { Database } from "@/lib/types/database";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +77,22 @@ export async function PUT(request: NextRequest, { params }: Params) {
       supabaseErrorToHttp(error.code)
     );
   }
-  if (!data) return apiError("Centro de trabalho não encontrado", 404);
+  if (!data) return apiError("Linha de produção não encontrada", 404);
+
+  try {
+    await ensureProductionLineForWorkCenter(admin, tenantId, {
+      id: data.id,
+      code: data.code,
+      name: data.name,
+      description: data.description,
+      is_active: data.is_active,
+    });
+  } catch (syncErr) {
+    return apiError(
+      syncErr instanceof Error ? syncErr.message : "Erro ao sincronizar PCP",
+      500
+    );
+  }
 
   return apiOk({ data });
 }

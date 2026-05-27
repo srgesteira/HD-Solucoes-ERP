@@ -173,6 +173,214 @@ export async function suggestProductStructure(
   }
 }
 
+/** Texto extraído de NF-e / nota de compra (entrada). */
+export interface PurchaseNFItem {
+  lineNumber?: number;
+  productCode?: string;
+  description: string;
+  quantity: number;
+  unit?: string;
+  unitPrice?: number;
+  totalPrice?: number;
+  icmsValue?: number;
+  ipiValue?: number;
+  ncm?: string;
+}
+
+export interface PurchaseNFExtraction {
+  supplierName?: string;
+  /** CNPJ/CPF do emitente (fornecedor) */
+  supplierDocument?: string;
+  invoiceNumber?: string;
+  invoiceSeries?: string;
+  /** Chave de acesso NF-e (44 dígitos) */
+  accessKey?: string;
+  /** AAAA-MM-DD */
+  issueDate?: string;
+  totalAmount?: number;
+  items: PurchaseNFItem[];
+}
+
+async function extractPdfText(pdfBuffer: Buffer): Promise<string> {
+  try {
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({
+      data: new Uint8Array(pdfBuffer),
+    });
+    try {
+      const textResult = await parser.getText();
+      return (textResult?.text ?? "").trim();
+    } finally {
+      await parser.destroy().catch(() => undefined);
+    }
+  } catch (e) {
+    console.error("pdf-parse:", e);
+    throw new Error("Não foi possível ler o ficheiro PDF.");
+  }
+}
+
+function parseOptionalNumber(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function normalizePurchaseNFJson(raw: PurchaseNFExtraction): PurchaseNFExtraction {
+  const items = Array.isArray(raw.items) ? raw.items : [];
+  const normalized = items
+    .map((it, idx) => {
+      const description =
+        typeof it.description === "string" ? it.description.trim() : "";
+      const q = Number(it.quantity);
+      const quantity = Number.isFinite(q) && q > 0 ? q : 0;
+      const unit =
+        typeof it.unit === "string" && it.unit.trim() ?
+          it.unit.trim().slice(0, 16)
+        : undefined;
+      const lineNumber =
+        it.lineNumber !== undefined && it.lineNumber !== null ?
+          Number(it.lineNumber)
+        : idx + 1;
+      return {
+        lineNumber: Number.isFinite(lineNumber) ? lineNumber : idx + 1,
+        productCode:
+          typeof it.productCode === "string" ?
+            it.productCode.trim().slice(0, 64)
+          : undefined,
+        description,
+        quantity,
+        unit,
+        unitPrice: parseOptionalNumber(it.unitPrice),
+        totalPrice: parseOptionalNumber(it.totalPrice),
+        icmsValue: parseOptionalNumber(it.icmsValue),
+        ipiValue: parseOptionalNumber(it.ipiValue),
+        ncm:
+          typeof it.ncm === "string" ? it.ncm.trim().slice(0, 16) : undefined,
+      };
+    })
+    .filter((it) => it.description.length > 0 && it.quantity > 0);
+
+  let issueDate =
+    typeof raw.issueDate === "string" ? raw.issueDate.trim().slice(0, 10) : "";
+  if (issueDate && !/^\d{4}-\d{2}-\d{2}$/.test(issueDate)) {
+    const d = new Date(issueDate);
+    if (!Number.isNaN(d.getTime())) {
+      issueDate = d.toISOString().slice(0, 10);
+    } else {
+      issueDate = "";
+    }
+  }
+
+  return {
+    supplierName:
+      typeof raw.supplierName === "string" ?
+        raw.supplierName.trim()
+      : undefined,
+    supplierDocument:
+      typeof raw.supplierDocument === "string" ?
+        raw.supplierDocument.trim()
+      : undefined,
+    invoiceNumber:
+      typeof raw.invoiceNumber === "string" ?
+        raw.invoiceNumber.trim()
+      : undefined,
+    invoiceSeries:
+      typeof raw.invoiceSeries === "string" ?
+        raw.invoiceSeries.trim()
+      : undefined,
+    accessKey:
+      typeof raw.accessKey === "string" ?
+        raw.accessKey.replace(/\D/g, "").slice(0, 44)
+      : undefined,
+    issueDate: issueDate || undefined,
+    totalAmount: parseOptionalNumber(raw.totalAmount),
+    items: normalized,
+  };
+}
+
+/**
+ * Extrai dados de NF-e de compra (entrada) a partir do PDF.
+ */
+export async function extractPurchaseNF(
+  pdfBuffer: Buffer
+): Promise<PurchaseNFExtraction> {
+  const client = getAnthropicClient();
+  const text = await extractPdfText(pdfBuffer);
+
+  if (!text) {
+    throw new Error("PDF sem texto extraível (pode ser imagem escaneada).");
+  }
+
+  const textForModel = clip(text, 14000);
+
+  const prompt =
+    `Analisa o texto de uma NOTA FISCAL ELETRÓNICA (NF-e) de ENTRADA / compra ` +
+    `(documento emitido pelo FORNECEDOR para a empresa compradora), em português.\n\n` +
+    `Tarefa:\n` +
+    `1) Emitente = fornecedor: razão social e CNPJ (ou CPF).\n` +
+    `2) Número da NF-e, série (se existir), chave de acesso (44 dígitos, se existir).\n` +
+    `3) Data de emissão (formato AAAA-MM-DD).\n` +
+    `4) Valor total da nota (se visível).\n` +
+    `5) Para cada LINHA de produto/serviço: código do produto (se houver), descrição, ` +
+    `quantidade (>0), unidade (UN, PC, KG…), valor unitário, valor total da linha, ` +
+    `ICMS e IPI da linha (se separados), NCM (se visível).\n` +
+    `Ignore totais gerais duplicados; foque nas linhas de itens.\n\n` +
+    `Texto do PDF:\n---\n${textForModel}\n---\n\n` +
+    `Responde APENAS com um único objeto JSON válido (sem markdown):\n` +
+    `{\n` +
+    `  "supplierName": "",\n` +
+    `  "supplierDocument": "",\n` +
+    `  "invoiceNumber": "",\n` +
+    `  "invoiceSeries": "",\n` +
+    `  "accessKey": "",\n` +
+    `  "issueDate": "AAAA-MM-DD",\n` +
+    `  "totalAmount": 0,\n` +
+    `  "items": [\n` +
+    `    {\n` +
+    `      "lineNumber": 1,\n` +
+    `      "productCode": "",\n` +
+    `      "description": "",\n` +
+    `      "quantity": 1,\n` +
+    `      "unit": "UN",\n` +
+    `      "unitPrice": 0,\n` +
+    `      "totalPrice": 0,\n` +
+    `      "icmsValue": 0,\n` +
+    `      "ipiValue": 0,\n` +
+    `      "ncm": ""\n` +
+    `    }\n` +
+    `  ]\n` +
+    `}\n` +
+    `Use "" ou omita campos desconhecidos. "items": [] se não houver linhas.`;
+
+  try {
+    const message = await client.messages.create({
+      model: getAnthropicModelId(),
+      max_tokens: 8192,
+      temperature: 0.1,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const block = message.content[0];
+    if (!block || block.type !== "text") {
+      throw new Error("Resposta vazia do modelo.");
+    }
+    const parsed = parseAnthropicJson<PurchaseNFExtraction>(block.text);
+    if (!Array.isArray(parsed.items)) parsed.items = [];
+    const out = normalizePurchaseNFJson(parsed);
+    if (!out.items.length) {
+      throw new Error(
+        "Nenhuma linha de produto reconhecida na NF-e. Verifique se o PDF tem texto seleccionável."
+      );
+    }
+    return out;
+  } catch (e) {
+    console.error("extractPurchaseNF:", e);
+    throw new Error(
+      e instanceof Error ? e.message : "Falha ao interpretar NF-e com IA."
+    );
+  }
+}
+
 function normalizePdfOrderJson(raw: OrderPdfExtraction): OrderPdfExtraction {
   const items = Array.isArray(raw.items) ? raw.items : [];
   const normalized = items
@@ -214,23 +422,7 @@ export async function extractOrderFromPDF(
   pdfBuffer: Buffer
 ): Promise<OrderPdfExtraction> {
   const client = getAnthropicClient();
-
-  let text: string;
-  try {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({
-      data: new Uint8Array(pdfBuffer),
-    });
-    try {
-      const textResult = await parser.getText();
-      text = (textResult?.text ?? "").trim();
-    } finally {
-      await parser.destroy().catch(() => undefined);
-    }
-  } catch (e) {
-    console.error("pdf-parse:", e);
-    throw new Error("Não foi possível ler o ficheiro PDF.");
-  }
+  const text = await extractPdfText(pdfBuffer);
 
   if (!text) {
     throw new Error("PDF sem texto extraível (pode ser imagem escaneada).");

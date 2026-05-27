@@ -51,7 +51,9 @@ export async function GET(request: NextRequest) {
   if (search) {
     const condensed = search.replace(/,/g, " ").trim();
     const safe = `%${escapeIlike(condensed)}%`;
-    query = query.or(`code.ilike.${safe},name.ilike.${safe},document.ilike.${safe}`);
+    query = query.or(
+      `code.ilike.${safe},name.ilike.${safe},document.ilike.${safe},email.ilike.${safe},phone.ilike.${safe}`
+    );
   }
 
   if (isActive !== null && isActive !== "" && isActive !== "all") {

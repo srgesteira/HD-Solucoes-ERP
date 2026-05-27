@@ -3,7 +3,10 @@ import type { Json } from "@/lib/types/database";
 export type ModuleKey =
   | "dashboard"
   | "boards"
+  | "logistics"
   | "production"
+  | "quality"
+  | "engineering"
   | "purchasing"
   | "sales"
   | "products"
@@ -19,7 +22,10 @@ export type ModulePermissions = Record<ModuleKey, boolean>;
 export const MODULE_KEYS: ModuleKey[] = [
   "dashboard",
   "boards",
+  "logistics",
   "production",
+  "quality",
+  "engineering",
   "purchasing",
   "sales",
   "products",
@@ -34,7 +40,10 @@ export const MODULE_KEYS: ModuleKey[] = [
 export const DEFAULT_MODULE_PERMISSIONS: ModulePermissions = {
   dashboard: true,
   boards: true,
+  logistics: false,
   production: true,
+  quality: false,
+  engineering: false,
   purchasing: true,
   sales: true,
   products: true,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -11,15 +11,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ProductFormFields,
   type ProductFormShape,
-  sellingPriceDigitsToDisplay,
-  parseSellingPriceDigits,
+  fetchProductPrefixesForForm,
+  isProductFormMo,
+  moProductFieldsValidationMessage,
+  productClassificationValidationMessage,
 } from "@/components/products/product-form-fields";
+import { isSimplifiedClassificationSuffix } from "@/lib/products/prefix-classification";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
-import { PRODUCT_NATURE_CODES } from "@/lib/products/mrp-product-nature";
 import type { StructureSuggestion } from "@/lib/services/ai.service";
 
-function buildPayload(f: ProductFormShape) {
+function buildPayload(
+  f: ProductFormShape,
+  options: { isMO: boolean; isSimplified: boolean }
+) {
   return {
     name: f.name.trim(),
     description: f.description?.trim() ? f.description : null,
@@ -28,18 +33,20 @@ function buildPayload(f: ProductFormShape) {
       : null,
     ncm: f.ncm?.trim() ? f.ncm : null,
     unit: f.unit.trim(),
-    type: f.type,
-    selling_price: f.selling_price,
+    cost_price: Number(f.cost_price ?? 0),
     is_active: f.is_active,
-    use_custom_bdi: f.use_custom_bdi,
-    custom_tax_rate: f.custom_tax_rate,
-    custom_profit_margin: f.custom_profit_margin,
     prefix_id: f.prefix_id.trim(),
-    family_id: f.family_id.trim(),
-    subfamily_id: f.subfamily_id.trim(),
-    material_id: f.material_id.trim(),
-    finish_id: f.finish_id.trim(),
-    product_nature: f.product_nature,
+    family_id: options.isSimplified ? null : f.family_id.trim() || null,
+    subfamily_id: options.isSimplified ? null : f.subfamily_id.trim() || null,
+    material_id: f.material_id.trim() || null,
+    finish_id: f.finish_id.trim() || null,
+    default_is_external_labor: f.default_is_external_labor,
+    default_work_center_id: f.default_work_center_id?.trim()
+      ? f.default_work_center_id.trim()
+      : null,
+    default_production_line_id: f.default_production_line_id?.trim()
+      ? f.default_production_line_id.trim()
+      : null,
   };
 }
 
@@ -87,14 +94,65 @@ export default function NewProductPage() {
     subfamily_id: "",
     material_id: "",
     finish_id: "",
-    product_nature: "",
     technical_code: null,
+    default_is_external_labor: false,
+    default_work_center_id: null,
+    default_labor_cost: null,
+    default_production_line_id: null,
   });
 
   const [structureSuggestion, setStructureSuggestion] =
     useState<StructureSuggestion | null>(null);
   const [aiNcmPending, setAiNcmPending] = useState(false);
   const [aiBomPending, setAiBomPending] = useState(false);
+  const fromBomRef = useRef(false);
+  const fromBomToastShown = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    fromBomRef.current = sp.get("fromBom") === "1";
+    const pp = sp.get("parentProductId");
+    if (pp) {
+      try {
+        sessionStorage.setItem("bomParentProductId", pp);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (fromBomRef.current && !fromBomToastShown.current) {
+      fromBomToastShown.current = true;
+      toast.message("Criação a partir da BOM", {
+        description:
+          "Após guardar, volte ao separador da estrutura e actualize a pesquisa para encontrar o novo produto.",
+        duration: 10_000,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("fromBom") !== "1") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const prefixes = await fetchProductPrefixesForForm();
+        if (cancelled) return;
+        const mo = prefixes.find((p) => p.code === "MO");
+        if (!mo) return;
+        setFormData((prev) => {
+          if (prev.prefix_id.trim()) return prev;
+          return { ...prev, prefix_id: mo.id };
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (meLoading) return;
@@ -107,12 +165,18 @@ export default function NewProductPage() {
   const mutation = useMutation({
     mutationFn: createProduct,
     onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      if (fromBomRef.current) {
+        toast.success(
+          "Produto criado! Volte para a aba da BOM e recarregue a lista para encontrar o novo produto."
+        );
+        return;
+      }
       toast.success(
         res.data?.technical_code
           ? `Produto criado. Código técnico: ${res.data.technical_code}`
           : "Produto criado com sucesso."
       );
-      await queryClient.invalidateQueries({ queryKey: ["products"] });
       const id = res.data?.id;
       if (id) {
         router.push(`/products/${id}/edit`);
@@ -131,39 +195,30 @@ export default function NewProductPage() {
       return;
     }
 
-    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    const fields = [
-      ["prefix_id", formData.prefix_id.trim()],
-      ["family_id", formData.family_id.trim()],
-      ["subfamily_id", formData.subfamily_id.trim()],
-      ["material_id", formData.material_id.trim()],
-      ["finish_id", formData.finish_id.trim()],
-    ] as const;
-    const missing = fields.filter(([, v]) => !v || !uuidRe.test(v));
-    if (missing.length > 0) {
-      toast.error(
-        "Prefixo, família, sub-família, material e acabamento são obrigatórios."
-      );
+    const prefixes = await fetchProductPrefixesForForm();
+    const isMO = isProductFormMo(formData, prefixes);
+    const prefixCode =
+      prefixes.find((p) => p.id === formData.prefix_id.trim())?.code ?? "";
+    const isSimplified = isSimplifiedClassificationSuffix(prefixCode);
+    const classErr = productClassificationValidationMessage(formData, prefixes);
+    if (classErr) {
+      toast.error(classErr);
       return;
     }
-    if (
-      !formData.product_nature ||
-      !(PRODUCT_NATURE_CODES as readonly string[]).includes(
-        formData.product_nature
-      )
-    ) {
-      toast.error("Selecione a natureza do produto (MP, SE, EB, …).");
+    const moErr = moProductFieldsValidationMessage(formData, prefixes);
+    if (moErr) {
+      toast.error(moErr);
       return;
     }
 
     try {
-      await mutation.mutateAsync(buildPayload(formData));
+      await mutation.mutateAsync(
+        buildPayload(formData, { isMO, isSimplified })
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao criar produto.");
     }
   };
-
-  const sellingDisplay = sellingPriceDigitsToDisplay(formData.selling_price);
 
   function handleChange<K extends keyof ProductFormShape>(
     field: K,
@@ -180,13 +235,6 @@ export default function NewProductPage() {
       }
       return next;
     });
-  }
-
-  function onSellingPriceInput(value: string) {
-    handleChange(
-      "selling_price",
-      parseSellingPriceDigits(value) as ProductFormShape["selling_price"]
-    );
   }
 
   async function handleSuggestNcm() {
@@ -303,9 +351,7 @@ export default function NewProductPage() {
           <CardContent className="space-y-6">
             <ProductFormFields
               formData={formData}
-              sellingPriceDisplay={sellingDisplay}
               onChange={handleChange}
-              onSellingPriceInput={onSellingPriceInput}
               ncmAction={
                 <Button
                   type="button"

@@ -620,10 +620,168 @@ export type Database = {
           },
         ]
       }
+      customers: {
+        Row: {
+          address: string | null
+          created_at: string
+          document: string | null
+          email: string | null
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          phone: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          document?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          phone?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          document?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      departments: {
+        Row: {
+          allocation_driver: string
+          code: string
+          created_at: string
+          driver_config: Json
+          id: string
+          is_support: boolean
+          name: string
+          tenant_id: string
+        }
+        Insert: {
+          allocation_driver?: string
+          code: string
+          created_at?: string
+          driver_config?: Json
+          id?: string
+          is_support?: boolean
+          name: string
+          tenant_id: string
+        }
+        Update: {
+          allocation_driver?: string
+          code?: string
+          created_at?: string
+          driver_config?: Json
+          id?: string
+          is_support?: boolean
+          name?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "departments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_allocations: {
+        Row: {
+          allocation_percentage: number
+          created_at: string
+          department_id: string | null
+          employee_id: string
+          end_date: string | null
+          id: string
+          start_date: string
+          tenant_id: string
+          work_center_id: string | null
+        }
+        Insert: {
+          allocation_percentage: number
+          created_at?: string
+          department_id?: string | null
+          employee_id: string
+          end_date?: string | null
+          id?: string
+          start_date: string
+          tenant_id: string
+          work_center_id?: string | null
+        }
+        Update: {
+          allocation_percentage?: number
+          created_at?: string
+          department_id?: string | null
+          employee_id?: string
+          end_date?: string | null
+          id?: string
+          start_date?: string
+          tenant_id?: string
+          work_center_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_allocations_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_allocations_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_allocations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_allocations_work_center_id_fkey"
+            columns: ["work_center_id"]
+            isOneToOne: false
+            referencedRelation: "work_centers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employees: {
         Row: {
           admission_date: string | null
+          allocation_percentage: number
           created_at: string
+          department_id: string | null
           document: string | null
           email: string | null
           id: string
@@ -639,7 +797,9 @@ export type Database = {
         }
         Insert: {
           admission_date?: string | null
+          allocation_percentage?: number
           created_at?: string
+          department_id?: string | null
           document?: string | null
           email?: string | null
           id?: string
@@ -655,7 +815,9 @@ export type Database = {
         }
         Update: {
           admission_date?: string | null
+          allocation_percentage?: number
           created_at?: string
+          department_id?: string | null
           document?: string | null
           email?: string | null
           id?: string
@@ -670,6 +832,13 @@ export type Database = {
           work_center_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "employees_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "employees_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -894,6 +1063,54 @@ export type Database = {
           },
         ]
       }
+      inventory_movements: {
+        Row: {
+          created_at: string
+          id: string
+          movement_type: string
+          product_id: string
+          quantity: number
+          reason: string | null
+          reference_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          movement_type: string
+          product_id: string
+          quantity: number
+          reason?: string | null
+          reference_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          movement_type?: string
+          product_id?: string
+          quantity?: number
+          reason?: string | null
+          reference_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labels: {
         Row: {
           board_id: string
@@ -928,7 +1145,11 @@ export type Database = {
       }
       labor_costs: {
         Row: {
+          allocated_cost: number | null
+          allocated_hourly_rate: number | null
           calculated_at: string
+          direct_cost: number | null
+          direct_hourly_rate: number | null
           hourly_rate: number
           id: string
           month: number
@@ -939,7 +1160,11 @@ export type Database = {
           year: number
         }
         Insert: {
+          allocated_cost?: number | null
+          allocated_hourly_rate?: number | null
           calculated_at?: string
+          direct_cost?: number | null
+          direct_hourly_rate?: number | null
           hourly_rate: number
           id?: string
           month: number
@@ -950,7 +1175,11 @@ export type Database = {
           year: number
         }
         Update: {
+          allocated_cost?: number | null
+          allocated_hourly_rate?: number | null
           calculated_at?: string
+          direct_cost?: number | null
+          direct_hourly_rate?: number | null
           hourly_rate?: number
           id?: string
           month?: number
@@ -1146,7 +1375,9 @@ export type Database = {
           pcp_deadline: string | null
           product_id: string | null
           production_end: string | null
+          production_notes: string | null
           production_start: string | null
+          quality_control: string | null
           quantity: number
           sales_order_item_id: string | null
           status: string
@@ -1169,7 +1400,9 @@ export type Database = {
           pcp_deadline?: string | null
           product_id?: string | null
           production_end?: string | null
+          production_notes?: string | null
           production_start?: string | null
+          quality_control?: string | null
           quantity?: number
           sales_order_item_id?: string | null
           status?: string
@@ -1192,7 +1425,9 @@ export type Database = {
           pcp_deadline?: string | null
           product_id?: string | null
           production_end?: string | null
+          production_notes?: string | null
           production_start?: string | null
+          quality_control?: string | null
           quantity?: number
           sales_order_item_id?: string | null
           status?: string
@@ -1238,6 +1473,61 @@ export type Database = {
           },
           {
             foreignKeyName: "order_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      picking_suggestions: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          quantity: number
+          sales_order_id: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          quantity: number
+          sales_order_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          quantity?: number
+          sales_order_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "picking_suggestions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "picking_suggestions_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "picking_suggestions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1547,6 +1837,60 @@ export type Database = {
           },
         ]
       }
+      product_price_history: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          position: number
+          price_type: string
+          product_id: string
+          quote_date: string
+          tax_deduction_percent: number | null
+          tenant_id: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          position: number
+          price_type: string
+          product_id: string
+          quote_date?: string
+          tax_deduction_percent?: number | null
+          tenant_id: string
+          value: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          position?: number
+          price_type?: string
+          product_id?: string
+          quote_date?: string
+          tax_deduction_percent?: number | null
+          tenant_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_price_history_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_price_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_subfamilies: {
         Row: {
           code: string
@@ -1612,6 +1956,7 @@ export type Database = {
           sort_order: number
           tenant_id: string
           updated_at: string
+          work_center_id: string | null
         }
         Insert: {
           code: string
@@ -1623,6 +1968,7 @@ export type Database = {
           sort_order?: number
           tenant_id: string
           updated_at?: string
+          work_center_id?: string | null
         }
         Update: {
           code?: string
@@ -1634,6 +1980,7 @@ export type Database = {
           sort_order?: number
           tenant_id?: string
           updated_at?: string
+          work_center_id?: string | null
         }
         Relationships: [
           {
@@ -1641,6 +1988,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_lines_work_center_id_fkey"
+            columns: ["work_center_id"]
+            isOneToOne: false
+            referencedRelation: "work_centers"
             referencedColumns: ["id"]
           },
         ]
@@ -1727,6 +2081,10 @@ export type Database = {
           created_at: string
           custom_profit_margin: number | null
           custom_tax_rate: number | null
+          default_is_external_labor: boolean
+          default_labor_cost: number | null
+          default_production_line_id: string | null
+          default_work_center_id: string | null
           description: string | null
           family_id: string | null
           finish_id: string | null
@@ -1739,6 +2097,7 @@ export type Database = {
           preferred_supplier_id: string | null
           prefix_id: string | null
           product_nature: string | null
+          purchase_lead_time_days: number | null
           selling_price: number
           subfamily_id: string | null
           technical_code: string
@@ -1755,6 +2114,10 @@ export type Database = {
           created_at?: string
           custom_profit_margin?: number | null
           custom_tax_rate?: number | null
+          default_is_external_labor?: boolean
+          default_labor_cost?: number | null
+          default_production_line_id?: string | null
+          default_work_center_id?: string | null
           description?: string | null
           family_id?: string | null
           finish_id?: string | null
@@ -1767,6 +2130,7 @@ export type Database = {
           preferred_supplier_id?: string | null
           prefix_id?: string | null
           product_nature?: string | null
+          purchase_lead_time_days?: number | null
           selling_price?: number
           subfamily_id?: string | null
           technical_code: string
@@ -1783,6 +2147,10 @@ export type Database = {
           created_at?: string
           custom_profit_margin?: number | null
           custom_tax_rate?: number | null
+          default_is_external_labor?: boolean
+          default_labor_cost?: number | null
+          default_production_line_id?: string | null
+          default_work_center_id?: string | null
           description?: string | null
           family_id?: string | null
           finish_id?: string | null
@@ -1795,6 +2163,7 @@ export type Database = {
           preferred_supplier_id?: string | null
           prefix_id?: string | null
           product_nature?: string | null
+          purchase_lead_time_days?: number | null
           selling_price?: number
           subfamily_id?: string | null
           technical_code?: string
@@ -1806,6 +2175,20 @@ export type Database = {
           use_custom_bdi?: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "products_default_production_line_id_fkey"
+            columns: ["default_production_line_id"]
+            isOneToOne: false
+            referencedRelation: "production_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_default_work_center_id_fkey"
+            columns: ["default_work_center_id"]
+            isOneToOne: false
+            referencedRelation: "work_centers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "products_family_id_fkey"
             columns: ["family_id"]
@@ -1859,15 +2242,29 @@ export type Database = {
       }
       purchase_order_items: {
         Row: {
+          actual_delivery_date: string | null
           created_at: string
           description: string
+          expected_delivery_date: string | null
+          follow_up_date: string | null
+          icms_rate: number
+          icms_value: number
           id: string
+          ipi_rate: number
+          ipi_value: number
+          need_date: string | null
           product_id: string | null
           production_item_id: string | null
           production_order_id: string | null
-          purchase_order_id: string
+          production_order_item_id: string | null
+          purchase_order_id: string | null
           quantity: number
+          quotation_sent_at: string | null
           received_quantity: number
+          sales_order_item_id: string | null
+          status: string
+          suggested_supplier_id: string | null
+          tax_base: number
           tenant_id: string
           total_price: number
           trace_key: string | null
@@ -1876,15 +2273,29 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          actual_delivery_date?: string | null
           created_at?: string
           description: string
+          expected_delivery_date?: string | null
+          follow_up_date?: string | null
+          icms_rate?: number
+          icms_value?: number
           id?: string
+          ipi_rate?: number
+          ipi_value?: number
+          need_date?: string | null
           product_id?: string | null
           production_item_id?: string | null
           production_order_id?: string | null
-          purchase_order_id: string
+          production_order_item_id?: string | null
+          purchase_order_id?: string | null
           quantity?: number
+          quotation_sent_at?: string | null
           received_quantity?: number
+          sales_order_item_id?: string | null
+          status?: string
+          suggested_supplier_id?: string | null
+          tax_base?: number
           tenant_id: string
           total_price?: number
           trace_key?: string | null
@@ -1893,15 +2304,29 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          actual_delivery_date?: string | null
           created_at?: string
           description?: string
+          expected_delivery_date?: string | null
+          follow_up_date?: string | null
+          icms_rate?: number
+          icms_value?: number
           id?: string
+          ipi_rate?: number
+          ipi_value?: number
+          need_date?: string | null
           product_id?: string | null
           production_item_id?: string | null
           production_order_id?: string | null
-          purchase_order_id?: string
+          production_order_item_id?: string | null
+          purchase_order_id?: string | null
           quantity?: number
+          quotation_sent_at?: string | null
           received_quantity?: number
+          sales_order_item_id?: string | null
+          status?: string
+          suggested_supplier_id?: string | null
+          tax_base?: number
           tenant_id?: string
           total_price?: number
           trace_key?: string | null
@@ -1932,10 +2357,31 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "purchase_order_items_production_order_item_id_fkey"
+            columns: ["production_order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "purchase_order_items_purchase_order_id_fkey"
             columns: ["purchase_order_id"]
             isOneToOne: false
             referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_sales_order_item_id_fkey"
+            columns: ["sales_order_item_id"]
+            isOneToOne: false
+            referencedRelation: "sales_order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_suggested_supplier_id_fkey"
+            columns: ["suggested_supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
           {
@@ -1955,10 +2401,16 @@ export type Database = {
           created_at: string
           discount: number
           expected_delivery: string | null
+          freight_cost: number
           id: string
+          insurance_cost: number
           internal_notes: string | null
           notes: string | null
           order_date: string
+          other_costs: number
+          payment_days_between_installments: number
+          payment_days_to_first_due: number
+          payment_installments: number
           po_number: string
           requested_by: string | null
           status: string
@@ -1967,6 +2419,10 @@ export type Database = {
           tax: number
           tenant_id: string
           total: number
+          total_icms: number
+          total_ipi: number
+          total_tax_base: number
+          total_tax_non_creditable: number
           updated_at: string
         }
         Insert: {
@@ -1976,10 +2432,16 @@ export type Database = {
           created_at?: string
           discount?: number
           expected_delivery?: string | null
+          freight_cost?: number
           id?: string
+          insurance_cost?: number
           internal_notes?: string | null
           notes?: string | null
           order_date?: string
+          other_costs?: number
+          payment_days_between_installments?: number
+          payment_days_to_first_due?: number
+          payment_installments?: number
           po_number: string
           requested_by?: string | null
           status?: string
@@ -1988,6 +2450,10 @@ export type Database = {
           tax?: number
           tenant_id: string
           total?: number
+          total_icms?: number
+          total_ipi?: number
+          total_tax_base?: number
+          total_tax_non_creditable?: number
           updated_at?: string
         }
         Update: {
@@ -1997,10 +2463,16 @@ export type Database = {
           created_at?: string
           discount?: number
           expected_delivery?: string | null
+          freight_cost?: number
           id?: string
+          insurance_cost?: number
           internal_notes?: string | null
           notes?: string | null
           order_date?: string
+          other_costs?: number
+          payment_days_between_installments?: number
+          payment_days_to_first_due?: number
+          payment_installments?: number
           po_number?: string
           requested_by?: string | null
           status?: string
@@ -2009,6 +2481,10 @@ export type Database = {
           tax?: number
           tenant_id?: string
           total?: number
+          total_icms?: number
+          total_ipi?: number
+          total_tax_base?: number
+          total_tax_non_creditable?: number
           updated_at?: string
         }
         Relationships: [
@@ -2047,6 +2523,7 @@ export type Database = {
           created_at: string
           description: string
           id: string
+          markup_percent: number | null
           product_id: string | null
           quantity: number
           quote_id: string
@@ -2060,6 +2537,7 @@ export type Database = {
           created_at?: string
           description: string
           id?: string
+          markup_percent?: number | null
           product_id?: string | null
           quantity?: number
           quote_id: string
@@ -2073,6 +2551,7 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          markup_percent?: number | null
           product_id?: string | null
           quantity?: number
           quote_id?: string
@@ -2106,23 +2585,79 @@ export type Database = {
           },
         ]
       }
+      quote_rejections: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          quote_id: string
+          rejection_reason_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          quote_id: string
+          rejection_reason_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          quote_id?: string
+          rejection_reason_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_rejections_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_rejections_rejection_reason_id_fkey"
+            columns: ["rejection_reason_id"]
+            isOneToOne: false
+            referencedRelation: "rejection_reasons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_rejections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quotes: {
         Row: {
           base_cost: number | null
           bdi_percentage: number | null
           bdi_value: number | null
-          client_document: string | null
           client_email: string | null
           client_name: string
-          client_phone: string | null
           converted_to_sale_id: string | null
           created_at: string
           created_by: string | null
+          customer_id: string | null
+          delivery_deadline: string | null
           discount: number
+          expected_delivery_date: string | null
           id: string
           notes: string | null
+          payment_days_between_installments: number
+          payment_days_to_first_due: number
+          payment_installments: number
+          payment_terms: string | null
           quote_date: string
           quote_number: string
+          revision_notes: string | null
+          shipping_type: string
           status: string
           subtotal: number
           tax: number
@@ -2130,23 +2665,31 @@ export type Database = {
           total: number
           updated_at: string
           valid_until: string | null
+          validity_days: number
         }
         Insert: {
           base_cost?: number | null
           bdi_percentage?: number | null
           bdi_value?: number | null
-          client_document?: string | null
           client_email?: string | null
           client_name: string
-          client_phone?: string | null
           converted_to_sale_id?: string | null
           created_at?: string
           created_by?: string | null
+          customer_id?: string | null
+          delivery_deadline?: string | null
           discount?: number
+          expected_delivery_date?: string | null
           id?: string
           notes?: string | null
+          payment_days_between_installments?: number
+          payment_days_to_first_due?: number
+          payment_installments?: number
+          payment_terms?: string | null
           quote_date?: string
           quote_number: string
+          revision_notes?: string | null
+          shipping_type?: string
           status?: string
           subtotal?: number
           tax?: number
@@ -2154,23 +2697,31 @@ export type Database = {
           total?: number
           updated_at?: string
           valid_until?: string | null
+          validity_days?: number
         }
         Update: {
           base_cost?: number | null
           bdi_percentage?: number | null
           bdi_value?: number | null
-          client_document?: string | null
           client_email?: string | null
           client_name?: string
-          client_phone?: string | null
           converted_to_sale_id?: string | null
           created_at?: string
           created_by?: string | null
+          customer_id?: string | null
+          delivery_deadline?: string | null
           discount?: number
+          expected_delivery_date?: string | null
           id?: string
           notes?: string | null
+          payment_days_between_installments?: number
+          payment_days_to_first_due?: number
+          payment_installments?: number
+          payment_terms?: string | null
           quote_date?: string
           quote_number?: string
+          revision_notes?: string | null
+          shipping_type?: string
           status?: string
           subtotal?: number
           tax?: number
@@ -2178,6 +2729,7 @@ export type Database = {
           total?: number
           updated_at?: string
           valid_until?: string | null
+          validity_days?: number
         }
         Relationships: [
           {
@@ -2192,6 +2744,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
           {
@@ -2284,6 +2843,41 @@ export type Database = {
           },
         ]
       }
+      rejection_reasons: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          reason: string
+          sort_order: number
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          reason: string
+          sort_order?: number
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          reason?: string
+          sort_order?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rejection_reasons_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_goals: {
         Row: {
           achieved_amount: number
@@ -2342,13 +2936,19 @@ export type Database = {
         Row: {
           created_at: string
           description: string
+          icms_rate: number | null
+          icms_value: number | null
           id: string
+          ipi_rate: number | null
+          ipi_value: number | null
           line_number: number
+          pcp_deadline: string | null
           product_id: string | null
           production_order_id: string | null
           profit: number | null
           quantity: number
           sales_order_id: string
+          tax_base: number | null
           tenant_id: string
           total_cost: number | null
           total_price: number
@@ -2360,13 +2960,19 @@ export type Database = {
         Insert: {
           created_at?: string
           description: string
+          icms_rate?: number | null
+          icms_value?: number | null
           id?: string
+          ipi_rate?: number | null
+          ipi_value?: number | null
           line_number?: number
+          pcp_deadline?: string | null
           product_id?: string | null
           production_order_id?: string | null
           profit?: number | null
           quantity?: number
           sales_order_id: string
+          tax_base?: number | null
           tenant_id: string
           total_cost?: number | null
           total_price?: number
@@ -2378,13 +2984,19 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string
+          icms_rate?: number | null
+          icms_value?: number | null
           id?: string
+          ipi_rate?: number | null
+          ipi_value?: number | null
           line_number?: number
+          pcp_deadline?: string | null
           product_id?: string | null
           production_order_id?: string | null
           profit?: number | null
           quantity?: number
           sales_order_id?: string
+          tax_base?: number | null
           tenant_id?: string
           total_cost?: number | null
           total_price?: number
@@ -2424,6 +3036,64 @@ export type Database = {
           },
         ]
       }
+      sales_order_logs: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          field_name: string | null
+          id: string
+          new_value: string | null
+          notes: string | null
+          old_value: string | null
+          sales_order_id: string
+          tenant_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          field_name?: string | null
+          id?: string
+          new_value?: string | null
+          notes?: string | null
+          old_value?: string | null
+          sales_order_id: string
+          tenant_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          field_name?: string | null
+          id?: string
+          new_value?: string | null
+          notes?: string | null
+          old_value?: string | null
+          sales_order_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_order_logs_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_logs_sales_order_id_fkey"
+            columns: ["sales_order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_orders: {
         Row: {
           actual_delivery: string | null
@@ -2437,6 +3107,7 @@ export type Database = {
           discount: number
           expected_delivery: string | null
           id: string
+          mrp_processed: boolean
           notes: string | null
           order_date: string
           order_number: string
@@ -2446,11 +3117,15 @@ export type Database = {
           pcp_deadline: string | null
           production_order_id: string | null
           quote_id: string | null
+          ready_for_invoice: boolean
           status: string
           subtotal: number
           tax: number
           tenant_id: string
           total: number
+          total_icms: number | null
+          total_ipi: number | null
+          total_tax_base: number | null
           updated_at: string
         }
         Insert: {
@@ -2465,6 +3140,7 @@ export type Database = {
           discount?: number
           expected_delivery?: string | null
           id?: string
+          mrp_processed?: boolean
           notes?: string | null
           order_date?: string
           order_number: string
@@ -2474,11 +3150,15 @@ export type Database = {
           pcp_deadline?: string | null
           production_order_id?: string | null
           quote_id?: string | null
+          ready_for_invoice?: boolean
           status?: string
           subtotal?: number
           tax?: number
           tenant_id: string
           total?: number
+          total_icms?: number | null
+          total_ipi?: number | null
+          total_tax_base?: number | null
           updated_at?: string
         }
         Update: {
@@ -2493,6 +3173,7 @@ export type Database = {
           discount?: number
           expected_delivery?: string | null
           id?: string
+          mrp_processed?: boolean
           notes?: string | null
           order_date?: string
           order_number?: string
@@ -2502,11 +3183,15 @@ export type Database = {
           pcp_deadline?: string | null
           production_order_id?: string | null
           quote_id?: string | null
+          ready_for_invoice?: boolean
           status?: string
           subtotal?: number
           tax?: number
           tenant_id?: string
           total?: number
+          total_icms?: number | null
+          total_ipi?: number | null
+          total_tax_base?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -2533,6 +3218,163 @@ export type Database = {
           },
           {
             foreignKeyName: "sales_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_invoice_items: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          line_index: number
+          product_code: string | null
+          product_id: string | null
+          purchase_order_id: string | null
+          purchase_order_item_id: string | null
+          quantity: number
+          supplier_invoice_id: string
+          tenant_id: string
+          total_price: number | null
+          unit: string | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          line_index?: number
+          product_code?: string | null
+          product_id?: string | null
+          purchase_order_id?: string | null
+          purchase_order_item_id?: string | null
+          quantity: number
+          supplier_invoice_id: string
+          tenant_id: string
+          total_price?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          line_index?: number
+          product_code?: string | null
+          product_id?: string | null
+          purchase_order_id?: string | null
+          purchase_order_item_id?: string | null
+          quantity?: number
+          supplier_invoice_id?: string
+          tenant_id?: string
+          total_price?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_invoice_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_invoice_items_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_invoice_items_purchase_order_item_id_fkey"
+            columns: ["purchase_order_item_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_invoice_items_supplier_invoice_id_fkey"
+            columns: ["supplier_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_invoice_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_invoices: {
+        Row: {
+          access_key: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          invoice_number: string | null
+          invoice_series: string | null
+          issue_date: string | null
+          notes: string | null
+          supplier_document: string | null
+          supplier_id: string | null
+          supplier_name: string | null
+          tenant_id: string
+          total_amount: number | null
+        }
+        Insert: {
+          access_key?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_number?: string | null
+          invoice_series?: string | null
+          issue_date?: string | null
+          notes?: string | null
+          supplier_document?: string | null
+          supplier_id?: string | null
+          supplier_name?: string | null
+          tenant_id: string
+          total_amount?: number | null
+        }
+        Update: {
+          access_key?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_number?: string | null
+          invoice_series?: string | null
+          issue_date?: string | null
+          notes?: string | null
+          supplier_document?: string | null
+          supplier_id?: string | null
+          supplier_name?: string | null
+          tenant_id?: string
+          total_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_invoices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_invoices_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_invoices_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -3187,6 +4029,15 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: number
+      }
+      generate_simplified_technical_code: {
+        Args: {
+          p_finish_code: string
+          p_material_code: string
+          p_prefix_code: string
+          p_sequence: number
+        }
+        Returns: string
       }
       generate_technical_code: {
         Args: {

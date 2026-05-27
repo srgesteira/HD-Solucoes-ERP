@@ -1,27 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  ArrowRightLeft,
   Check,
   FileText,
   Loader2,
   Pencil,
+  Printer,
+  FilePenLine,
   Send,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { quoteStatusBadge } from "@/lib/sales/quote-display";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils/cn";
 import { useMe } from "@/hooks/use-me";
+import { usePermissions } from "@/hooks/use-permissions";
 import type { QuoteStatus } from "@/lib/types/sales.types";
+import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
 import type { Tables } from "@/lib/types/database";
 
@@ -33,9 +37,19 @@ type QuoteItemLine = {
   quantity: number;
   unit?: string | null;
   unit_price: number;
+  markup_percent?: number | null;
   total_price: number;
   product?: ProductNested | ProductNested[] | null;
 };
+
+type CustomerNested = {
+  id?: string;
+  name?: string | null;
+  document?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+} | null;
 
 type QuoteDetail = {
   id: string;
@@ -43,12 +57,20 @@ type QuoteDetail = {
   status: string;
   quote_date: string;
   valid_until: string | null;
+  validity_days: number | null;
+  payment_terms: string | null;
+  expected_delivery_date: string | null;
+  payment_installments: number | null;
+  payment_days_to_first_due: number | null;
+  payment_days_between_installments: number | null;
+  delivery_deadline: string | null;
+  shipping_type: string | null;
   created_at: string;
   client_name: string;
-  client_document: string | null;
   client_email: string | null;
-  client_phone: string | null;
+  customer?: CustomerNested | CustomerNested[];
   notes: string | null;
+  revision_notes: string | null;
   subtotal: number;
   discount: number;
   tax: number;
@@ -70,46 +92,6 @@ function fmtDay(iso: string | null | undefined): string {
   const d = String(iso).slice(0, 10);
   const [y, m, day] = d.split("-");
   return `${day}/${m}/${y}`;
-}
-
-function statusBadge(status: string): { label: string; className: string } {
-  switch (status as QuoteStatus) {
-    case "draft":
-      return {
-        label: "Rascunho",
-        className:
-          "bg-slate-100 text-slate-800 ring-1 ring-slate-300 dark:bg-slate-800/80 dark:text-slate-200 dark:ring-slate-600",
-      };
-    case "sent":
-      return {
-        label: "Enviado",
-        className:
-          "bg-amber-50 text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-700/50",
-      };
-    case "approved":
-      return {
-        label: "Aprovado",
-        className:
-          "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200 dark:bg-emerald-950/35 dark:text-emerald-100",
-      };
-    case "rejected":
-      return {
-        label: "Rejeitado",
-        className:
-          "bg-red-50 text-red-900 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-100",
-      };
-    case "converted":
-      return {
-        label: "Convertido",
-        className:
-          "bg-blue-50 text-blue-900 ring-1 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-100",
-      };
-    default:
-      return {
-        label: status,
-        className: "bg-slate-50 text-slate-700 ring-1 ring-slate-200",
-      };
-  }
 }
 
 function unwrapProduct(p: QuoteItemLine["product"]): string {
@@ -149,39 +131,50 @@ async function fetchQuoteDetail(id: string): Promise<{ data: QuoteDetail }> {
   return { data: json.data as QuoteDetail };
 }
 
-async function putQuoteStatus(id: string, status: string): Promise<void> {
+async function putQuoteUpdate(
+  id: string,
+  body: { status: string; revision_notes?: string | null }
+): Promise<void> {
   const res = await fetch(`/api/sales/quotes/${id}`, {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(body),
   });
   const json = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar estado");
 }
 
-async function postConvertQuote(
-  id: string,
-  body: {
-    payment_installments: number;
-    payment_days_to_first_due: number;
-    payment_days_between_installments: number;
-  }
-): Promise<string> {
-  const res = await fetch(`/api/sales/quotes/${id}/convert`, {
+async function postApproveQuote(id: string): Promise<string> {
+  const res = await fetch(`/api/sales/quotes/${id}/approve`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({}),
   });
   const json = (await res.json().catch(() => ({}))) as {
-    data?: { id?: string };
+    data?: { sales_order_id?: string };
     error?: string;
   };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao converter orçamento");
-  const oid = json.data?.id;
+  if (!res.ok) throw new Error(json.error ?? "Erro ao aprovar orçamento");
+  const oid = json.data?.sales_order_id;
   if (!oid) throw new Error("Pedido criado sem identificador");
   return oid;
+}
+
+async function postRejectQuote(
+  id: string,
+  reasonIds: string[],
+  notes: string
+): Promise<void> {
+  const res = await fetch(`/api/sales/quotes/${id}/reject`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason_ids: reasonIds, notes: notes || null }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao rejeitar orçamento");
 }
 
 async function fetchCompanyBranding(): Promise<Tables<"company_settings"> | null> {
@@ -196,28 +189,15 @@ async function fetchCompanyBranding(): Promise<Tables<"company_settings"> | null
   return json.data ?? null;
 }
 
-async function fetchNextOrderSuggestion(): Promise<string> {
-  const res = await fetch(`/api/sales/orders?suggest_number=1`, {
-    credentials: "include",
-    cache: "no-store",
-  });
-  const json = (await res.json().catch(() => ({}))) as {
-    suggestion?: string;
-    error?: string;
-  };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao obter número sugerido");
-  if (!json.suggestion || typeof json.suggestion !== "string")
-    throw new Error("Sugestão inválida");
-  return json.suggestion;
-}
-
 export default function QuoteDetailPage() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: me } = useMe();
+  const { can } = usePermissions();
   const isAdmin = me?.role === "admin";
+  const canEditQuotes = isAdmin || can("sales");
 
   const quoteQuery = useQuery({
     queryKey: ["sales-quote", id],
@@ -234,24 +214,7 @@ export default function QuoteDetailPage() {
 
   const q = quoteQuery.data?.data;
 
-  const [convertOpen, setConvertOpen] = useState(false);
-  const [payInst, setPayInst] = useState(1);
-  const [payFirst, setPayFirst] = useState(30);
-  const [payBetween, setPayBetween] = useState(30);
-
-  const suggestionQuery = useQuery({
-    queryKey: ["sales-order-suggest-number"],
-    queryFn: fetchNextOrderSuggestion,
-    enabled: convertOpen && isAdmin,
-  });
-
-  useEffect(() => {
-    if (convertOpen) {
-      setPayInst(1);
-      setPayFirst(30);
-      setPayBetween(30);
-    }
-  }, [convertOpen]);
+  const [rejectOpen, setRejectOpen] = useState(false);
 
   const invalidateQuote = () => {
     void queryClient.invalidateQueries({ queryKey: ["sales-quote", id] });
@@ -259,7 +222,8 @@ export default function QuoteDetailPage() {
   };
 
   const statusMutation = useMutation({
-    mutationFn: ({ status }: { status: string }) => putQuoteStatus(id, status),
+    mutationFn: (body: { status: string; revision_notes?: string | null }) =>
+      putQuoteUpdate(id, body),
     onSuccess: (_, v) => {
       const msg =
         v.status === "sent"
@@ -268,30 +232,39 @@ export default function QuoteDetailPage() {
             ? "Orçamento aprovado."
             : v.status === "rejected"
               ? "Orçamento rejeitado."
-              : "Estado actualizado.";
+              : v.status === "revision"
+                ? "Orçamento em revisão."
+                : v.status === "draft"
+                  ? "Orçamento reaberto como rascunho."
+                  : "Estado actualizado.";
       toast.success(msg);
       invalidateQuote();
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const convertMutation = useMutation({
-    mutationFn: () =>
-      postConvertQuote(id, {
-        payment_installments: payInst,
-        payment_days_to_first_due: payFirst,
-        payment_days_between_installments: payBetween,
-      }),
+  const approveMutation = useMutation({
+    mutationFn: () => postApproveQuote(id),
     onSuccess: (orderId) => {
-      toast.success("Orçamento convertido em pedido de venda.");
-      setConvertOpen(false);
+      toast.success("Orçamento aprovado e pedido de venda criado.");
       invalidateQuote();
       router.push(`/sales/orders/${orderId}`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const sb = q ? statusBadge(q.status) : null;
+  const rejectMutation = useMutation({
+    mutationFn: (p: { reasonIds: string[]; notes: string }) =>
+      postRejectQuote(id, p.reasonIds, p.notes),
+    onSuccess: () => {
+      toast.success("Orçamento rejeitado.");
+      setRejectOpen(false);
+      invalidateQuote();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const sb = q ? quoteStatusBadge(q.status) : null;
   const st = (q?.status ?? "") as QuoteStatus;
   const convertedSale = q ? unwrapConvertedSale(q.converted_sale) : null;
   const saleId =
@@ -308,7 +281,20 @@ export default function QuoteDetailPage() {
             Voltar
           </Button>
         </Link>
-        {isAdmin && q && (st === "draft" || st === "sent") ? (
+        {q ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              window.open(`/sales/quotes/${id}/print`, "_blank", "noopener,noreferrer")
+            }
+          >
+            <Printer className="h-4 w-4" />
+            Imprimir / PDF
+          </Button>
+        ) : null}
+        {canEditQuotes && q && st === "draft" ? (
           <Button
             type="button"
             size="sm"
@@ -319,13 +305,26 @@ export default function QuoteDetailPage() {
             Editar
           </Button>
         ) : null}
+        {canEditQuotes &&
+        q &&
+        (st === "sent" || st === "approved" || st === "revision") ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => router.push(`/sales/quotes/${id}/edit`)}
+          >
+            <FilePenLine className="h-4 w-4" />
+            Revisar
+          </Button>
+        ) : null}
         {isAdmin && q && st === "draft" ? (
           <Button
             type="button"
             size="sm"
             variant="outline"
             disabled={statusMutation.isPending}
-            onClick={() => statusMutation.mutate({ status: "sent" })}
+            onClick={() => statusMutation.mutate({ status: "sent" as const })}
           >
             <Send className="h-4 w-4" />
             Enviar
@@ -337,8 +336,8 @@ export default function QuoteDetailPage() {
               type="button"
               size="sm"
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate({ status: "approved" })}
+              disabled={approveMutation.isPending}
+              onClick={() => approveMutation.mutate()}
             >
               <Check className="h-4 w-4" />
               Aprovar
@@ -347,26 +346,13 @@ export default function QuoteDetailPage() {
               type="button"
               size="sm"
               variant="danger"
-              disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate({ status: "rejected" })}
+              disabled={rejectMutation.isPending}
+              onClick={() => setRejectOpen(true)}
             >
               <XCircle className="h-4 w-4" />
               Rejeitar
             </Button>
           </>
-        ) : null}
-        {isAdmin &&
-        q &&
-        st === "approved" &&
-        !q.converted_to_sale_id ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => setConvertOpen(true)}
-          >
-            <ArrowRightLeft className="h-4 w-4" />
-            Converter
-          </Button>
         ) : null}
       </div>
 
@@ -425,6 +411,9 @@ export default function QuoteDetailPage() {
                       <span className="text-slate-500">Validade:</span>{" "}
                       <span className="font-medium tabular-nums text-slate-800 dark:text-slate-200">
                         {fmtDay(q.valid_until)}
+                        {q.validity_days != null
+                          ? ` (${q.validity_days} dias)`
+                          : ""}
                       </span>
                     </span>
                   </div>
@@ -456,26 +445,107 @@ export default function QuoteDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2 text-sm">
-              <div>
-                <p className="text-slate-500">Nome</p>
-                <p className="font-medium text-slate-900 dark:text-slate-100">
-                  {q.client_name}
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-500">Documento</p>
-                <p className="font-medium">{q.client_document ?? "—"}</p>
-              </div>
-              <div>
-                <p className="text-slate-500">E-mail</p>
-                <p className="font-medium">{q.client_email ?? "—"}</p>
-              </div>
-              <div>
-                <p className="text-slate-500">Telefone</p>
-                <p className="font-medium">{q.client_phone ?? "—"}</p>
-              </div>
+              {(() => {
+                const cust = Array.isArray(q.customer)
+                  ? q.customer[0]
+                  : q.customer;
+                return (
+                  <>
+                    <div>
+                      <p className="text-slate-500">Nome</p>
+                      <p className="font-medium text-slate-900 dark:text-slate-100">
+                        {cust?.name ?? q.client_name}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Documento</p>
+                      <p className="font-medium">{cust?.document ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">E-mail (orçamento)</p>
+                      <p className="font-medium">{q.client_email ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Telefone</p>
+                      <p className="font-medium">{cust?.phone ?? "—"}</p>
+                    </div>
+                    {cust?.address ? (
+                      <div className="sm:col-span-2">
+                        <p className="text-slate-500">Endereço</p>
+                        <p className="font-medium">{cust.address}</p>
+                      </div>
+                    ) : null}
+                  </>
+                );
+              })()}
             </CardContent>
           </Card>
+
+          {(q.payment_terms ||
+            q.expected_delivery_date ||
+            q.delivery_deadline ||
+            q.shipping_type) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Condições comerciais</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2 text-sm">
+                <div>
+                  <p className="text-slate-500">Pagamento (texto)</p>
+                  <p className="font-medium">{q.payment_terms ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Entrega prevista (data)</p>
+                  <p className="font-medium tabular-nums">
+                    {q.expected_delivery_date
+                      ? String(q.expected_delivery_date).slice(0, 10)
+                      : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Parcelas</p>
+                  <p className="font-medium tabular-nums">
+                    {q.payment_installments ?? "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Dias até 1.ª parcela</p>
+                  <p className="font-medium tabular-nums">
+                    {q.payment_days_to_first_due ?? "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Dias entre parcelas</p>
+                  <p className="font-medium tabular-nums">
+                    {q.payment_days_between_installments ?? "—"}
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-slate-500">Prazo de entrega (texto)</p>
+                  <p className="font-medium">{q.delivery_deadline ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Frete</p>
+                  <p className="font-medium">{q.shipping_type ?? "—"}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {q.revision_notes?.trim() ? (
+            <Card className="border-orange-200 bg-orange-50/60 dark:border-orange-900 dark:bg-orange-950/30">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg text-orange-900 dark:text-orange-100">
+                  Motivo da revisão
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-orange-950 dark:text-orange-100 whitespace-pre-wrap">
+                  {q.revision_notes.trim()}
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader className="pb-3">
@@ -495,7 +565,7 @@ export default function QuoteDetailPage() {
                       Quantidade
                     </th>
                     <th className="px-3 py-2 text-right font-medium">
-                      Unitário
+                      Preço unitário
                     </th>
                     <th className="px-3 py-2 text-right font-medium">
                       Total
@@ -519,7 +589,18 @@ export default function QuoteDetailPage() {
                           {Number(line.quantity)}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {fmtBRL(Number(line.unit_price))}
+                          <span className="font-medium">
+                            {fmtBRL(Number(line.unit_price))}
+                          </span>
+                          {line.markup_percent != null ? (
+                            <span className="block text-xs text-slate-500 font-normal">
+                              ({Number(line.markup_percent)}% markup)
+                            </span>
+                          ) : (
+                            <span className="block text-xs text-slate-500 font-normal">
+                              (preço manual)
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums font-medium">
                           {fmtBRL(Number(line.total_price))}
@@ -592,139 +673,15 @@ export default function QuoteDetailPage() {
         </>
       ) : null}
 
-      {convertOpen && q && isAdmin ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="quote-convert-detail-title"
-          onClick={(e) => {
-            if (
-              e.target === e.currentTarget &&
-              !convertMutation.isPending
-            ) {
-              setConvertOpen(false);
-            }
-          }}
-        >
-          <div
-            className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-950 dark:border-slate-700"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3
-              id="quote-convert-detail-title"
-              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
-            >
-              Converter em pedido de venda
-            </h3>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              O pedido será criado com os itens deste orçamento. O número é
-              gerado automaticamente pelo sistema.
-            </p>
-
-            <div className="mt-4 space-y-3">
-              <div>
-                <Label htmlFor="conv-order-num">Número do pedido</Label>
-                <Input
-                  id="conv-order-num"
-                  readOnly
-                  className="mt-1 bg-slate-50 dark:bg-slate-900"
-                  value={
-                    suggestionQuery.isFetching || suggestionQuery.isPending
-                      ? "A gerar…"
-                      : suggestionQuery.isError
-                        ? "—"
-                        : (suggestionQuery.data ?? "—")
-                  }
-                />
-                {suggestionQuery.isError ? (
-                  <p className="mt-1 text-xs text-red-600">
-                    {(suggestionQuery.error as Error)?.message ??
-                      "Não foi possível obter o número sugerido."}
-                  </p>
-                ) : null}
-              </div>
-              <div>
-                <Label htmlFor="conv-inst">Parcelas</Label>
-                <Input
-                  id="conv-inst"
-                  type="number"
-                  min={1}
-                  className="mt-1"
-                  value={payInst}
-                  onChange={(e) =>
-                    setPayInst(Math.max(1, parseInt(e.target.value, 10) || 1))
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="conv-first">
-                  Dias até à primeira parcela
-                </Label>
-                <Input
-                  id="conv-first"
-                  type="number"
-                  min={0}
-                  className="mt-1"
-                  value={payFirst}
-                  onChange={(e) =>
-                    setPayFirst(Math.max(0, parseInt(e.target.value, 10) || 0))
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="conv-between">
-                  Dias entre parcelas
-                </Label>
-                <Input
-                  id="conv-between"
-                  type="number"
-                  min={0}
-                  className="mt-1"
-                  value={payBetween}
-                  onChange={(e) =>
-                    setPayBetween(
-                      Math.max(0, parseInt(e.target.value, 10) || 0)
-                    )
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-2 justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={convertMutation.isPending}
-                onClick={() => setConvertOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={
-                  convertMutation.isPending ||
-                  suggestionQuery.isFetching ||
-                  suggestionQuery.isPending ||
-                  suggestionQuery.isError
-                }
-                onClick={() => convertMutation.mutate()}
-              >
-                {convertMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    A processar…
-                  </>
-                ) : (
-                  "Confirmar conversão"
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <QuoteRejectModal
+        open={rejectOpen}
+        quoteNumber={q?.quote_number ?? ""}
+        busy={rejectMutation.isPending}
+        onClose={() => !rejectMutation.isPending && setRejectOpen(false)}
+        onSubmit={(reasonIds, notes) =>
+          rejectMutation.mutate({ reasonIds, notes })
+        }
+      />
     </div>
   );
 }

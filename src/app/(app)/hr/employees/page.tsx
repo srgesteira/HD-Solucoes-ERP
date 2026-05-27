@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Users } from "lucide-react";
+import { CalendarClock, Loader2, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,12 +21,16 @@ type Employee = {
   position: string | null;
   monthly_salary: number | null;
   work_center_id: string | null;
+  department_id: string | null;
+  allocation_percentage: number | null;
   admission_date: string | null;
   status: string;
   notes: string | null;
+  has_period_allocations?: boolean;
 };
 
 type WorkCenter = { id: string; name: string; code: string };
+type Department = { id: string; name: string; code: string; is_support: boolean };
 
 function fmtBrl(n: number | null) {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -42,6 +47,7 @@ export default function HrEmployeesPage() {
   const isAdmin = me?.role === "admin";
   const [rows, setRows] = useState<Employee[]>([]);
   const [centers, setCenters] = useState<WorkCenter[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -53,6 +59,8 @@ export default function HrEmployeesPage() {
     position: "",
     monthly_salary: "",
     work_center_id: "",
+    department_id: "",
+    allocation_percentage: "100",
     admission_date: "",
     status: "active",
     notes: "",
@@ -88,6 +96,19 @@ export default function HrEmployeesPage() {
     }
   }, []);
 
+  const loadDepartments = useCallback(async () => {
+    try {
+      const res = await fetch("/api/departments", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const j = (await res.json()) as { data?: Department[] };
+      if (res.ok) setDepartments(j.data ?? []);
+    } catch {
+      setDepartments([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (!permLoading && !can("hr")) {
       toast.error("Sem acesso ao módulo RH.");
@@ -99,7 +120,8 @@ export default function HrEmployeesPage() {
     if (permLoading || !can("hr")) return;
     void load();
     void loadCenters();
-  }, [permLoading, can, load, loadCenters]);
+    void loadDepartments();
+  }, [permLoading, can, load, loadCenters, loadDepartments]);
 
   function openEdit(e: Employee) {
     setEditing(e);
@@ -112,6 +134,9 @@ export default function HrEmployeesPage() {
       monthly_salary:
         e.monthly_salary != null ? String(e.monthly_salary) : "",
       work_center_id: e.work_center_id ?? "",
+      department_id: e.department_id ?? "",
+      allocation_percentage:
+        e.allocation_percentage != null ? String(e.allocation_percentage) : "100",
       admission_date: e.admission_date ?? "",
       status: e.status,
       notes: e.notes ?? "",
@@ -128,6 +153,11 @@ export default function HrEmployeesPage() {
       monthly_salary:
         form.monthly_salary === "" ? null : parseFloat(form.monthly_salary),
       work_center_id: form.work_center_id || null,
+      department_id: form.department_id || null,
+      allocation_percentage:
+        form.allocation_percentage === ""
+          ? 100
+          : parseFloat(form.allocation_percentage),
       admission_date: form.admission_date || null,
       status: form.status as "active" | "inactive" | "vacation" | "terminated",
       notes: form.notes.trim() || null,
@@ -174,6 +204,11 @@ export default function HrEmployeesPage() {
     return centers.find((c) => c.id === id)?.name ?? id;
   };
 
+  const deptName = (id: string | null) => {
+    if (!id) return "—";
+    return departments.find((d) => d.id === id)?.name ?? id;
+  };
+
   if (permLoading || (!permLoading && !can("hr"))) {
     return (
       <div className="flex justify-center items-center gap-2 py-20 text-slate-500">
@@ -191,7 +226,9 @@ export default function HrEmployeesPage() {
             <Users className="h-7 w-7 text-brand-700" />
             Colaboradores
           </h1>
-          <p className="text-sm text-slate-600 mt-1">RH básico e vínculo a centro de trabalho.</p>
+          <p className="text-sm text-slate-600 mt-1">
+            Departamento, linha de produção e % de alocação para rateio de MO.
+          </p>
         </div>
         <Button type="button" onClick={() => { setShowNew(true); setEditing(null); setForm({
           name: "",
@@ -201,6 +238,8 @@ export default function HrEmployeesPage() {
           position: "",
           monthly_salary: "",
           work_center_id: "",
+          department_id: "",
+          allocation_percentage: "100",
           admission_date: "",
           status: "active",
           notes: "",
@@ -266,7 +305,25 @@ export default function HrEmployeesPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Centro de trabalho</Label>
+              <Label>Departamento</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-slate-300 px-3 text-sm bg-white"
+                value={form.department_id}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, department_id: e.target.value }))
+                }
+              >
+                <option value="">—</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.code} — {d.name}
+                    {d.is_support ? " (apoio)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Linha de produção</Label>
               <select
                 className="flex h-9 w-full rounded-md border border-slate-300 px-3 text-sm bg-white"
                 value={form.work_center_id}
@@ -274,13 +331,26 @@ export default function HrEmployeesPage() {
                   setForm((f) => ({ ...f, work_center_id: e.target.value }))
                 }
               >
-                <option value="">—</option>
+                <option value="">— (só departamento apoio)</option>
                 {centers.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.code} — {c.name}
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="space-y-1">
+              <Label>% alocação</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                value={form.allocation_percentage}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, allocation_percentage: e.target.value }))
+                }
+              />
             </div>
             <div className="space-y-1">
               <Label>Admissão</Label>
@@ -347,7 +417,9 @@ export default function HrEmployeesPage() {
                   <tr>
                     <th className="text-left px-3 py-2">Nome</th>
                     <th className="text-left px-3 py-2">Cargo</th>
-                    <th className="text-left px-3 py-2">Centro trabalho</th>
+                    <th className="text-left px-3 py-2">Departamento</th>
+                    <th className="text-left px-3 py-2">Linha</th>
+                    <th className="text-right px-3 py-2">% aloc.</th>
                     <th className="text-left px-3 py-2">Salário</th>
                     <th className="text-left px-3 py-2">Situação</th>
                     <th className="text-right px-3 py-2">Ações</th>
@@ -356,23 +428,32 @@ export default function HrEmployeesPage() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.id} className="border-b border-slate-100">
-                      <td className="px-3 py-2 font-medium">{r.name}</td>
+                      <td className="px-3 py-2 font-medium">
+                        <span className="inline-flex items-center gap-1.5">
+                          {r.name}
+                          {r.has_period_allocations ? (
+                            <span title="Alocações temporárias por período">
+                              <CalendarClock className="h-4 w-4 text-amber-600 shrink-0" />
+                            </span>
+                          ) : null}
+                        </span>
+                      </td>
                       <td className="px-3 py-2">{r.position ?? "—"}</td>
+                      <td className="px-3 py-2">{deptName(r.department_id)}</td>
                       <td className="px-3 py-2">{centerName(r.work_center_id)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {r.allocation_percentage != null
+                          ? `${r.allocation_percentage}%`
+                          : "100%"}
+                      </td>
                       <td className="px-3 py-2">{fmtBrl(r.monthly_salary)}</td>
                       <td className="px-3 py-2">{r.status}</td>
                       <td className="px-3 py-2 text-right space-x-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setShowNew(false);
-                            openEdit(r);
-                          }}
-                        >
-                          Editar
-                        </Button>
+                        <Link href={`/hr/employees/${r.id}/edit`}>
+                          <Button type="button" size="sm" variant="outline">
+                            Editar
+                          </Button>
+                        </Link>
                         {isAdmin ? (
                           <Button
                             type="button"

@@ -3,6 +3,11 @@
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { SupplierDocumentLookup } from "@/components/purchasing/supplier-document-lookup";
+import {
+  applyDocumentLookupToSupplierForm,
+  normalizeSupplierDocumentForSave,
+} from "@/lib/suppliers/apply-document-lookup";
 import type { Supplier } from "@/lib/types/purchasing.types";
 
 function trimOrNull(v: string): string | null {
@@ -16,7 +21,9 @@ export function buildSupplierPayload(form: SupplierFormShape) {
     code: form.code.trim(),
     name: form.name.trim(),
     legal_name: trimOrNull(form.legal_name),
-    document: trimOrNull(form.document),
+    document: form.document.trim()
+      ? normalizeSupplierDocumentForSave(form.document)
+      : null,
     email: trimOrNull(form.email),
     phone: trimOrNull(form.phone),
     website: trimOrNull(form.website),
@@ -111,9 +118,28 @@ type Props = {
     field: K,
     value: SupplierFormShape[K]
   ): void;
+  /** Preenche vários campos de uma vez (ex.: após busca CNPJ). */
+  onBulkChange?: (next: SupplierFormShape) => void;
+  disabled?: boolean;
 };
 
-export function SupplierFormFields({ formData, onChange }: Props) {
+export function SupplierFormFields({
+  formData,
+  onChange,
+  onBulkChange,
+  disabled,
+}: Props) {
+  const applyLookup = (data: Parameters<typeof applyDocumentLookupToSupplierForm>[1]) => {
+    const next = applyDocumentLookupToSupplierForm(formData, data, {
+      autoCode: true,
+    });
+    if (onBulkChange) onBulkChange(next);
+    else {
+      (Object.keys(next) as (keyof SupplierFormShape)[]).forEach((key) => {
+        if (next[key] !== formData[key]) onChange(key, next[key]);
+      });
+    }
+  };
   return (
     <div className="space-y-8">
       <div className="space-y-4">
@@ -153,13 +179,12 @@ export function SupplierFormFields({ formData, onChange }: Props) {
               placeholder="Razão social (opcional)"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="supplier-document">Documento (CNPJ / CPF)</Label>
-            <Input
-              id="supplier-document"
-              value={formData.document}
-              onChange={(e) => onChange("document", e.target.value)}
-              placeholder="Somente números ou formato completo"
+          <div className="space-y-2 md:col-span-2">
+            <SupplierDocumentLookup
+              document={formData.document}
+              onDocumentChange={(v) => onChange("document", v)}
+              onLookup={applyLookup}
+              disabled={disabled}
             />
           </div>
         </div>

@@ -54,6 +54,8 @@ export const employeeCreateSchema = z.object({
   position: z.string().max(200).nullable().optional(),
   monthly_salary: z.coerce.number().min(0).max(1e9).nullable().optional(),
   work_center_id: z.string().uuid().nullable().optional(),
+  department_id: z.string().uuid().nullable().optional(),
+  allocation_percentage: z.coerce.number().min(0).max(100).optional(),
   admission_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   status: employeeStatusEnum.optional(),
   notes: z.string().max(8000).nullable().optional(),

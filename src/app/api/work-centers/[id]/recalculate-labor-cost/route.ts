@@ -5,10 +5,7 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/lib/utils/tenant";
-import {
-  calculateLaborCostForWorkCenter,
-  upsertLaborCostRow,
-} from "@/lib/labor-cost-utils";
+import { calculateHourlyRateWithAllocation } from "@/lib/labor-cost-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -56,38 +53,33 @@ export async function POST(request: NextRequest, ctx: Ctx) {
   }
 
   try {
-    const snapshot = await calculateLaborCostForWorkCenter(
+    const lines = await calculateHourlyRateWithAllocation(
       admin,
       tenantId,
-      workCenterId
+      year,
+      month
     );
+    const line = lines.find((l) => l.work_center_id === workCenterId);
 
-    if (!snapshot) {
+    if (!line || line.total_hours <= 0) {
       return apiOk({
         saved: false,
         message:
-          "Não há colaboradores ativos nesta linha para calcular o custo/hora.",
+          "Não há colaboradores/horas nesta linha para calcular o custo/hora.",
         year,
         month,
       });
     }
 
-    await upsertLaborCostRow(
-      admin,
-      tenantId,
-      workCenterId,
-      year,
-      month,
-      snapshot
-    );
-
     return apiOk({
       saved: true,
       year,
       month,
-      hourly_rate: snapshot.hourly_rate,
-      total_salary_base: snapshot.total_salary_base,
-      total_hours_base: snapshot.total_hours_base,
+      hourly_rate: line.hourly_rate,
+      direct_hourly_rate: line.direct_hourly_rate,
+      allocated_hourly_rate: line.allocated_hourly_rate,
+      total_salary_base: line.direct_cost + line.allocated_cost,
+      total_hours_base: line.total_hours,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao calcular";

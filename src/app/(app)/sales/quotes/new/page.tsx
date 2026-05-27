@@ -5,59 +5,22 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  FileText,
-  Loader2,
-  Plus,
-  Save,
-  Trash2,
-} from "lucide-react";
+import { ArrowLeft, FileText, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { QuoteFormFields } from "@/components/sales/quote-form-fields";
-
-const SELECT_CLASS =
-  "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 disabled:opacity-60 " +
-  "dark:bg-slate-950 dark:border-slate-600";
+import {
+  QuoteItemsEditor,
+  buildQuoteItemsPayload,
+  newQuoteLine,
+  type QuoteLineDraft,
+  type QuoteLineProduct,
+} from "@/components/sales/quote-items-editor";
 
 function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);
 }
-
-function defaultValidUntilISODate(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 30);
-  return d.toISOString().slice(0, 10);
-}
-
-function formatBRL(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number.isFinite(n) ? n : 0);
-}
-
-type ProductOption = {
-  id: string;
-  code: string;
-  name: string;
-  unit: string | null;
-  selling_price: number;
-};
-
-type QuoteLineDraft = {
-  key: string;
-  productId: string;
-  quantity: number;
-  unitPrice: number;
-  unit: string;
-};
 
 async function fetchSuggestion(): Promise<string> {
   const res = await fetch("/api/sales/quotes?suggest_number=1", {
@@ -76,57 +39,34 @@ async function fetchSuggestion(): Promise<string> {
   return json.suggestion.trim();
 }
 
-async function fetchProducts(): Promise<ProductOption[]> {
-  const params = new URLSearchParams({
-    is_active: "true",
-    page: "1",
-    limit: "500",
-  });
-  const res = await fetch(`/api/products?${params}`, {
-    credentials: "include",
-    cache: "no-store",
-  });
-  const json = (await res.json().catch(() => ({}))) as {
-    data?: ProductOption[];
-    error?: string;
-  };
-  if (!res.ok) {
-    throw new Error(
-      typeof json.error === "string" ? json.error : "Erro ao carregar produtos"
-    );
-  }
-  return json.data ?? [];
-}
+type CreateQuoteResponse = {
+  data?: { id?: string; quote_number?: string };
+  error?: string;
+  detail?: unknown;
+};
 
-function newLine(): QuoteLineDraft {
-  return {
-    key: crypto.randomUUID(),
-    productId: "",
-    quantity: 1,
-    unitPrice: 0,
-    unit: "UN",
-  };
-}
-
-function lineSubtotal(line: QuoteLineDraft): number {
-  const q = Number(line.quantity);
-  const u = Number(line.unitPrice);
-  if (!Number.isFinite(q) || !Number.isFinite(u)) return 0;
-  return Math.round(q * u * 10000) / 10000;
-}
-
-async function createQuote(payload: Record<string, unknown>): Promise<void> {
+async function createQuote(
+  payload: Record<string, unknown>
+): Promise<CreateQuoteResponse["data"]> {
   const res = await fetch("/api/sales/quotes", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  const json = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok)
+  const json = (await res.json().catch(() => ({}))) as CreateQuoteResponse;
+  if (!res.ok) {
+    console.error("[createQuote] falhou", {
+      status: res.status,
+      error: json.error,
+      detail: json.detail,
+      payload,
+    });
     throw new Error(
       typeof json.error === "string" ? json.error : "Erro ao criar orçamento"
     );
+  }
+  return json.data;
 }
 
 export default function NewQuotePage() {
@@ -135,49 +75,39 @@ export default function NewQuotePage() {
   const { data: me, isLoading: meLoading } = useMe();
 
   const [quoteNumber, setQuoteNumber] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [clientDocument, setClientDocument] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [clientEmail, setClientEmail] = useState("");
-  const [clientPhone, setClientPhone] = useState("");
   const [quoteDate, setQuoteDate] = useState(todayISODate);
-  const [validUntil, setValidUntil] = useState(defaultValidUntilISODate);
+  const [validityDays, setValidityDays] = useState("30");
+  const [paymentTerms, setPaymentTerms] = useState("");
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
+  const [paymentInstallments, setPaymentInstallments] = useState("1");
+  const [paymentDaysFirst, setPaymentDaysFirst] = useState("30");
+  const [paymentDaysBetween, setPaymentDaysBetween] = useState("30");
+  const [deliveryDeadline, setDeliveryDeadline] = useState("");
+  const [shippingType, setShippingType] = useState("FOB");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newLine()]);
+  const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newQuoteLine(0)]);
+  const [productCache, setProductCache] = useState<
+    Record<string, QuoteLineProduct>
+  >({});
+
+  const isAdmin = me?.role === "admin";
+  const canUseForm = !meLoading && isAdmin;
 
   const suggestionQuery = useQuery({
     queryKey: ["sales-quotes", "suggest-number"],
     queryFn: fetchSuggestion,
-    enabled: !meLoading && me?.role === "admin",
+    enabled: canUseForm,
     staleTime: 30_000,
     retry: 1,
   });
 
   useEffect(() => {
-  useEffect(() => {
     const s = suggestionQuery.data?.trim();
     if (!s) return;
     setQuoteNumber((prev) => (prev.trim() === "" ? s : prev));
   }, [suggestionQuery.data]);
-  }, [suggestionQuery.data]);
-
-  const productsQuery = useQuery({
-    queryKey: ["products", "quote-form-active"],
-    queryFn: fetchProducts,
-    enabled: !meLoading && me?.role === "admin",
-    staleTime: 60_000,
-  });
-
-  const productById = useMemo(() => {
-    const map = new Map<string, ProductOption>();
-    for (const p of productsQuery.data ?? []) map.set(p.id, p);
-    return map;
-  }, [productsQuery.data]);
-
-  const sortedProducts = useMemo(() => {
-    return [...(productsQuery.data ?? [])].sort((a, b) =>
-      `${a.code} ${a.name}`.localeCompare(`${b.code} ${b.name}`, "pt-BR")
-    );
-  }, [productsQuery.data]);
 
   useEffect(() => {
     if (meLoading) return;
@@ -187,39 +117,28 @@ export default function NewQuotePage() {
     }
   }, [me, meLoading, router]);
 
-  const computedTotal = useMemo(
-    () => lines.reduce((sum, l) => sum + lineSubtotal(l), 0),
-    [lines]
-  );
-
-  const updateLine = (
-    key: string,
-    patch: Partial<Omit<QuoteLineDraft, "key">>
-  ) => {
-    setLines((prev) =>
-      prev.map((row) => (row.key === key ? { ...row, ...patch } : row))
-    );
-  };
-
-  const handleProductChange = (key: string, productId: string) => {
-    if (!productId) {
-      updateLine(key, { productId: "", unitPrice: 0, unit: "UN" });
-      return;
-    }
-    const p = productById.get(productId);
-    updateLine(key, {
-      productId,
-      unitPrice: p ? Number(p.selling_price) : 0,
-      unit: (p?.unit && p.unit.trim()) || "UN",
-    });
-  };
+  const productById = useMemo(() => {
+    const map = new Map<string, QuoteLineProduct>();
+    for (const p of Object.values(productCache)) map.set(p.id, p);
+    return map;
+  }, [productCache]);
 
   const mutation = useMutation({
     mutationFn: createQuote,
-    onSuccess: async () => {
-      toast.success("Orçamento criado.");
+    onSuccess: async (data) => {
+      toast.success(
+        data?.quote_number
+          ? `Orçamento ${data.quote_number} criado.`
+          : "Orçamento criado."
+      );
       await queryClient.invalidateQueries({ queryKey: ["sales-quotes"] });
-      router.push("/sales/quotes");
+      router.push(
+        data?.id ? `/sales/quotes/${data.id}` : "/sales/quotes"
+      );
+    },
+    onError: (err: Error) => {
+      console.error("[createQuote] mutation", err);
+      toast.error(err.message || "Não foi possível criar o orçamento.");
     },
   });
 
@@ -232,16 +151,15 @@ export default function NewQuotePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (me?.role !== "admin") return;
+    if (!isAdmin) return;
 
     const qn = quoteNumber.trim();
     if (!qn) {
       toast.error("O número do orçamento é obrigatório.");
       return;
     }
-    const cn = clientName.trim();
-    if (!cn) {
-      toast.error("O nome do cliente é obrigatório.");
+    if (!customerId.trim()) {
+      toast.error("Selecione um cliente.");
       return;
     }
 
@@ -250,65 +168,45 @@ export default function NewQuotePage() {
       toast.error("Indique a data do orçamento.");
       return;
     }
-    const vu = validUntil.trim();
-    if (!vu) {
-      toast.error("Indique a validade.");
+    const vd = parseInt(validityDays.trim(), 10);
+    if (!Number.isFinite(vd) || vd < 1) {
+      toast.error("Validade em dias deve ser ≥ 1.");
       return;
     }
 
-    const builtItems: Array<Record<string, unknown>> = [];
-
-    for (const line of lines) {
-      if (!line.productId.trim()) continue;
-      const prod = productById.get(line.productId);
-      if (!prod) {
-        toast.error("Produto inválido numa linha.");
-        return;
-      }
-      if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
-        toast.error("Quantidade inválida (deve ser maior que zero).");
-        return;
-      }
-      if (!Number.isFinite(line.unitPrice) || line.unitPrice < 0) {
-        toast.error("Preço unitário inválido.");
-        return;
-      }
-      builtItems.push({
-        product_id: prod.id,
-        description: `${prod.code} — ${prod.name}`,
-        quantity: line.quantity,
-        unit_price: line.unitPrice,
-        unit: line.unit.trim() || "UN",
-      });
-    }
-
-    if (builtItems.length === 0) {
-      toast.error("Adicione pelo menos um produto ao orçamento.");
+    const itemsResult = buildQuoteItemsPayload(lines, productById);
+    if ("error" in itemsResult) {
+      toast.error(itemsResult.error);
       return;
     }
 
     const payload = {
       quote_number: qn,
-      client_name: cn,
-      client_document: clientDocument.trim() || null,
+      customer_id: customerId.trim(),
       client_email: clientEmail.trim() || null,
-      client_phone: clientPhone.trim() || null,
       quote_date: qd.slice(0, 10),
-      valid_until: vu.slice(0, 10),
+      validity_days: vd,
+      payment_terms: paymentTerms.trim() || null,
+      expected_delivery_date: expectedDeliveryDate.trim() || null,
+      payment_installments: parseInt(paymentInstallments, 10) || 1,
+      payment_days_to_first_due: parseInt(paymentDaysFirst, 10) || 30,
+      payment_days_between_installments: parseInt(paymentDaysBetween, 10) || 30,
+      delivery_deadline: deliveryDeadline.trim() || null,
+      shipping_type: shippingType,
       notes: notes.trim() || null,
-      items: builtItems,
+      items: itemsResult,
     };
+
+    console.log("[NewQuotePage] payload antes do POST", payload);
 
     try {
       await mutation.mutateAsync(payload);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Não foi possível criar o orçamento."
-      );
+    } catch {
+      /* toast em onError */
     }
   };
 
-  if (meLoading || !me || me.role !== "admin") {
+  if (meLoading || !me || !isAdmin) {
     return (
       <div className="max-w-4xl mx-auto flex justify-center py-16 text-slate-500 gap-2">
         <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
@@ -365,18 +263,28 @@ export default function NewQuotePage() {
             <QuoteFormFields
               quoteNumber={quoteNumber}
               onQuoteNumberChange={setQuoteNumber}
-              clientName={clientName}
-              onClientNameChange={setClientName}
-              clientDocument={clientDocument}
-              onClientDocumentChange={setClientDocument}
+              customerId={customerId}
+              onCustomerIdChange={setCustomerId}
               clientEmail={clientEmail}
               onClientEmailChange={setClientEmail}
-              clientPhone={clientPhone}
-              onClientPhoneChange={setClientPhone}
               quoteDate={quoteDate}
               onQuoteDateChange={setQuoteDate}
-              validUntil={validUntil}
-              onValidUntilChange={setValidUntil}
+              validityDays={validityDays}
+              onValidityDaysChange={setValidityDays}
+              paymentTerms={paymentTerms}
+              onPaymentTermsChange={setPaymentTerms}
+              expectedDeliveryDate={expectedDeliveryDate}
+              onExpectedDeliveryDateChange={setExpectedDeliveryDate}
+              paymentInstallments={paymentInstallments}
+              onPaymentInstallmentsChange={setPaymentInstallments}
+              paymentDaysFirst={paymentDaysFirst}
+              onPaymentDaysFirstChange={setPaymentDaysFirst}
+              paymentDaysBetween={paymentDaysBetween}
+              onPaymentDaysBetweenChange={setPaymentDaysBetween}
+              deliveryDeadline={deliveryDeadline}
+              onDeliveryDeadlineChange={setDeliveryDeadline}
+              shippingType={shippingType}
+              onShippingTypeChange={setShippingType}
               notes={notes}
               onNotesChange={setNotes}
             />
@@ -384,151 +292,24 @@ export default function NewQuotePage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 pb-4">
+          <CardHeader className="pb-4">
             <CardTitle className="text-lg font-semibold text-slate-900">
               Itens do orçamento
             </CardTitle>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setLines((p) => [...p, newLine()])}
-            >
-              <Plus className="h-4 w-4" />
-              Adicionar produto
-            </Button>
+            <p className="text-xs text-slate-500 mt-1">
+              Apenas produtos acabados (HD1, HD2, HD3, AC). Defina o preço por markup
+              (%) ou por valor unitário fixo (R$).
+            </p>
           </CardHeader>
           <CardContent className="space-y-6">
-            {productsQuery.error ? (
-              <p className="text-sm text-red-700">
-                {productsQuery.error instanceof Error
-                  ? productsQuery.error.message
-                  : "Erro ao carregar produtos."}
-              </p>
-            ) : null}
-
-            <div className="space-y-4">
-              {lines.map((line, index) => {
-                const sub = lineSubtotal(line);
-                return (
-                  <div
-                    key={line.key}
-                    className={cn(
-                      "rounded-lg border border-slate-200 p-4 space-y-3 dark:border-slate-800"
-                    )}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-slate-700">
-                        Item {index + 1}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
-                        aria-label={`Remover item ${index + 1}`}
-                        onClick={() =>
-                          setLines((prev) =>
-                            prev.length <= 1
-                              ? prev
-                              : prev.filter((r) => r.key !== line.key)
-                          )
-                        }
-                        disabled={lines.length <= 1}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Remover
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor={`product-${line.key}`}>Produto</Label>
-                        <select
-                          id={`product-${line.key}`}
-                          className={SELECT_CLASS}
-                          value={line.productId}
-                          onChange={(e) =>
-                            handleProductChange(line.key, e.target.value)
-                          }
-                          disabled={productsQuery.isLoading}
-                        >
-                          <option value="">— Selecione —</option>
-                          {sortedProducts.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.code} — {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`qty-${line.key}`}>Quantidade</Label>
-                        <Input
-                          id={`qty-${line.key}`}
-                          type="number"
-                          step="any"
-                          min={0}
-                          value={
-                            Number.isFinite(line.quantity) ? String(line.quantity) : ""
-                          }
-                          onChange={(e) => {
-                            const n = parseFloat(
-                              e.target.value.replace(",", ".")
-                            );
-                            updateLine(line.key, {
-                              quantity: Number.isFinite(n) ? n : 0,
-                            });
-                          }}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`price-${line.key}`}>
-                          Valor unitário (R$)
-                        </Label>
-                        <Input
-                          id={`price-${line.key}`}
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          value={
-                            Number.isFinite(line.unitPrice)
-                              ? String(line.unitPrice)
-                              : ""
-                          }
-                          onChange={(e) => {
-                            const n = parseFloat(
-                              e.target.value.replace(",", ".")
-                            );
-                            updateLine(line.key, {
-                              unitPrice: Number.isFinite(n) ? n : 0,
-                            });
-                          }}
-                        />
-                      </div>
-                      <div className="space-y-2 md:col-span-2">
-                        <p className="text-sm text-slate-600">
-                          Subtotal do item:{" "}
-                          <strong className="text-slate-900 tabular-nums">
-                            {formatBRL(sub)}
-                          </strong>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="border-t border-slate-200 pt-4 space-y-1 dark:border-slate-800">
-              <p className="text-base font-semibold text-slate-900">
-                Total (soma das linhas):{" "}
-                <span className="tabular-nums">{formatBRL(computedTotal)}</span>
-              </p>
-              <p className="text-xs text-slate-500">
-                O valor final registado será o definido pela base de dados
-                (subtotal das linhas, descontos e impostos podem aplicar‑se mais
-                tarde ao editar o orçamento).
-              </p>
-            </div>
+            <QuoteItemsEditor
+              lines={lines}
+              onLinesChange={setLines}
+              productCache={productCache}
+              onProductCacheMerge={(patch) =>
+                setProductCache((prev) => ({ ...prev, ...patch }))
+              }
+            />
           </CardContent>
         </Card>
 
@@ -538,11 +319,7 @@ export default function NewQuotePage() {
               Cancelar
             </Button>
           </Link>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={mutation.isPending || productsQuery.isLoading}
-          >
+          <Button type="submit" size="sm" disabled={mutation.isPending}>
             {mutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />

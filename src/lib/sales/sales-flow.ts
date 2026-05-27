@@ -1,5 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import {
+  lineSubtotal,
+  parseTaxAmount,
+  parseTaxRate,
+  parseTaxValueField,
+  roundMoney,
+} from "@/lib/purchasing/purchase-order-item-taxes";
+import { recalculateSalesOrderHeaderTotals } from "@/lib/sales/sales-order-totals";
 
 export type AdminClient = SupabaseClient<Database>;
 
@@ -10,12 +18,30 @@ export type SaleLineInput = {
   quantity: number;
   unit?: string;
   unit_price: number;
+  markup_percent?: number | null;
+  icms_rate?: number;
+  icms_value?: number;
+  ipi_rate?: number;
+  ipi_value?: number;
+  tax_base?: number;
 };
 
 export function addDaysToISODate(isoDate: string, days: number): string {
   const d = new Date(`${isoDate.slice(0, 10)}T12:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** Prazo sugerido quando `expected_delivery` ainda não foi gravado. */
+export function defaultExpectedDeliveryForOrder(
+  orderDate: string | null | undefined,
+  fallbackDays = 30
+): string {
+  const base =
+    orderDate && String(orderDate).slice(0, 10).length >= 10
+      ? String(orderDate).slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+  return addDaysToISODate(base, fallbackDays);
 }
 
 /** Reparte total em N parcelas (centavos) sem erro de soma. */
@@ -145,16 +171,106 @@ export function parseSaleLines(raw: unknown):
         ? null
         : String(r.product_id);
 
+    let markup_percent: number | null = null;
+    if (r.markup_percent !== undefined && r.markup_percent !== null) {
+      const mp =
+        typeof r.markup_percent === "number"
+          ? r.markup_percent
+          : parseFloat(String(r.markup_percent).replace(",", "."));
+      if (Number.isFinite(mp) && mp >= 0) markup_percent = mp;
+    }
+
+    const icms_rate =
+      r.icms_rate === undefined || r.icms_rate === null
+        ? 0
+        : parseTaxRate(r.icms_rate);
+    if (icms_rate === null) {
+      return { ok: false, message: `Item ${i + 1}: alíquota ICMS inválida.` };
+    }
+
+    const ipi_rate =
+      r.ipi_rate === undefined || r.ipi_rate === null
+        ? 0
+        : parseTaxRate(r.ipi_rate);
+    if (ipi_rate === null) {
+      return { ok: false, message: `Item ${i + 1}: alíquota IPI inválida.` };
+    }
+
+    const icms_value =
+      parseTaxValueField(r, "icms_value", "icms_amount") === undefined ||
+      parseTaxValueField(r, "icms_value", "icms_amount") === null
+        ? 0
+        : parseTaxAmount(parseTaxValueField(r, "icms_value", "icms_amount"));
+    if (icms_value === null) {
+      return { ok: false, message: `Item ${i + 1}: valor ICMS inválido.` };
+    }
+
+    const ipi_value =
+      parseTaxValueField(r, "ipi_value", "ipi_amount") === undefined ||
+      parseTaxValueField(r, "ipi_value", "ipi_amount") === null
+        ? 0
+        : parseTaxAmount(parseTaxValueField(r, "ipi_value", "ipi_amount"));
+    if (ipi_value === null) {
+      return { ok: false, message: `Item ${i + 1}: valor IPI inválido.` };
+    }
+
+    const sub = lineSubtotal(quantity, unit_price);
+    const tax_base =
+      r.tax_base === undefined || r.tax_base === null
+        ? roundMoney(sub + ipi_value)
+        : parseTaxAmount(r.tax_base);
+    if (tax_base === null) {
+      return { ok: false, message: `Item ${i + 1}: base de cálculo inválida.` };
+    }
+
     lines.push({
       description,
       quantity,
       unit_price,
       unit,
       product_id,
+      markup_percent,
+      icms_rate,
+      icms_value,
+      ipi_rate,
+      ipi_value,
+      tax_base,
     });
   }
 
   return { ok: true, lines };
+}
+
+function saleLineToDbRow(
+  it: SaleLineInput,
+  idx: number,
+  startLine: number,
+  tenantId: string,
+  salesOrderId: string,
+  unitCost: number | null
+) {
+  const sub = lineSubtotal(it.quantity, it.unit_price);
+  const ipiVal = roundMoney(it.ipi_value ?? 0);
+  const taxBase = roundMoney(it.tax_base ?? sub + ipiVal);
+  const totalPrice = roundMoney(sub + ipiVal);
+
+  return {
+    tenant_id: tenantId,
+    sales_order_id: salesOrderId,
+    line_number: startLine + idx,
+    product_id: it.product_id,
+    description: it.description,
+    quantity: it.quantity,
+    unit: it.unit ?? "UN",
+    unit_price: it.unit_price,
+    unit_cost: unitCost,
+    total_price: totalPrice,
+    icms_rate: it.icms_rate ?? 0,
+    icms_value: it.icms_value ?? 0,
+    ipi_rate: it.ipi_rate ?? 0,
+    ipi_value: ipiVal,
+    tax_base: taxBase,
+  };
 }
 
 async function fetchProductCosts(
@@ -204,21 +320,18 @@ export async function insertSalesOrderItemsFromLines(
   const rows = lines.map((it, idx) => {
     const pid = it.product_id;
     const uc = pid != null ? (costs.get(pid) ?? null) : null;
-    return {
-      tenant_id: tenantId,
-      sales_order_id: salesOrderId,
-      line_number: startLine + idx,
-      product_id: it.product_id,
-      description: it.description,
-      quantity: it.quantity,
-      unit: it.unit ?? "UN",
-      unit_price: it.unit_price,
-      unit_cost: uc,
-    };
+    return saleLineToDbRow(it, idx, startLine, tenantId, salesOrderId, uc);
   });
 
   const { error } = await admin.from("sales_order_items").insert(rows);
   if (error) return { error: error.message };
+
+  const totals = await recalculateSalesOrderHeaderTotals(
+    admin,
+    tenantId,
+    salesOrderId
+  );
+  if (totals.error) return { error: totals.error };
   return {};
 }
 
@@ -237,10 +350,29 @@ export async function insertQuoteItemsFromLines(
     quantity: it.quantity,
     unit: it.unit ?? "UN",
     unit_price: it.unit_price,
+    markup_percent: it.markup_percent ?? null,
   }));
   const { error } = await admin.from("quote_items").insert(rows);
   if (error) return { error: error.message };
   return {};
+}
+
+/** Substitui todos os itens de um orçamento (rascunho). */
+export async function replaceQuoteItemsFromLines(
+  admin: AdminClient,
+  tenantId: string,
+  quoteId: string,
+  lines: SaleLineInput[]
+): Promise<{ error?: string }> {
+  const { error: delErr } = await admin
+    .from("quote_items")
+    .delete()
+    .eq("quote_id", quoteId)
+    .eq("tenant_id", tenantId);
+
+  if (delErr) return { error: delErr.message };
+  if (!lines.length) return {};
+  return insertQuoteItemsFromLines(admin, tenantId, quoteId, lines);
 }
 
 /** Gera parcelas só se total > 0 e ainda não existir título para o pedido. */

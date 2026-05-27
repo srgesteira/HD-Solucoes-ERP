@@ -24,18 +24,20 @@ export default async function WorkCentersSettingsPage() {
     .maybeSingle();
 
   if (profile?.role !== "admin") {
-    redirect("/boards");
+    redirect("/dashboard");
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h2 className="text-2xl font-semibold text-slate-900 mb-2">
-        Centros de trabalho
-      </h2>
-      <p className="text-sm text-slate-500 mb-6">
-        Cadastre máquinas, linhas ou equipas com custo-hora e eficiência — usados nas
-        listas de materiais com mão-de-obra.
-      </p>
+    <div className="max-w-5xl mx-auto space-y-4">
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">
+          Centros de trabalho
+        </h1>
+        <p className="text-sm text-slate-600 mt-1">
+          Cadastro de linhas, horas padrão e custo de mão de obra (directo +
+          rateio dos departamentos de apoio).
+        </p>
+      </div>
       <WorkCentersAdmin />
     </div>
   );

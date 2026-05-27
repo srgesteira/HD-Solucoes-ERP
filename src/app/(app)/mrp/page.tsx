@@ -253,7 +253,11 @@ function MrpPageContent() {
               {lastPos.map((p) => (
                 <Link
                   key={p.id}
-                  href={`/purchasing/orders/${p.id}`}
+                  href={
+                    "requisition" in p && p.requisition
+                      ? "/purchasing/orders?tab=requisitions"
+                      : `/purchasing/orders/${p.id}`
+                  }
                   className="ml-2 text-brand-700 underline dark:text-brand-400"
                 >
                   {p.po_number}

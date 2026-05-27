@@ -3,71 +3,69 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Pencil } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils/cn";
 import { useMe } from "@/hooks/use-me";
+import { usePermissions } from "@/hooks/use-permissions";
+import { SalesOrderForm } from "@/components/sales/sales-order-form";
 
-export default function SalesOrderEditPlaceholderPage() {
+export default function SalesOrderEditPage() {
   const router = useRouter();
   const params = useParams();
-  const id = typeof params.id === "string" ? params.id : "";
-  const { data: me, isLoading } = useMe();
+  const rawId = params.id;
+  const orderId =
+    typeof rawId === "string" ? rawId : Array.isArray(rawId) ? rawId[0] : null;
+
+  const { data: me, isLoading: meLoading } = useMe();
+  const { can } = usePermissions();
+  const isAdmin = me?.role === "admin";
+  const canEdit = !meLoading && (isAdmin || can("sales"));
 
   useEffect(() => {
-    if (isLoading) return;
-    if (me?.role !== "admin") {
-      toast.error("Apenas administradores podem editar pedidos de venda.");
-      router.replace(id ? `/sales/orders/${id}` : "/sales/orders");
+    if (!canEdit && !meLoading) {
+      toast.error("Sem permissão para editar pedidos de venda.");
+      router.replace(
+        orderId ? `/sales/orders/${orderId}` : "/sales/orders"
+      );
     }
-  }, [id, isLoading, me?.role, router]);
+  }, [canEdit, meLoading, orderId, router]);
 
-  if (isLoading || !me || me.role !== "admin") {
+  if (!orderId) {
     return (
-      <div className="max-w-lg mx-auto py-16 flex items-center justify-center gap-2 text-slate-600">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">A verificar permissões…</span>
+      <p className="text-sm text-red-700 text-center py-8">Pedido inválido.</p>
+    );
+  }
+
+  if (meLoading || !canEdit) {
+    return (
+      <div className="max-w-4xl mx-auto flex justify-center py-16 text-slate-500">
+        <span className="text-sm">A validar permissões…</span>
       </div>
     );
   }
 
   return (
-    <div className="max-w-xl mx-auto space-y-6">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => router.push(`/sales/orders/${id}`)}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Voltar ao pedido
-      </Button>
+    <div className="max-w-4xl mx-auto space-y-6 pb-10">
+      <div className="flex items-center gap-3">
+        <Link href={`/sales/orders/${orderId}`}>
+          <Button type="button" variant="outline" size="sm">
+            <ArrowLeft className="h-4 w-4" />
+            Voltar ao pedido
+          </Button>
+        </Link>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+          Editar pedido de venda
+        </h1>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Pencil className="h-5 w-5" />
-            Editar pedido de venda
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm text-slate-600">
-          <p>
-            O formulário de edição completo será disponibilizado numa próxima
-            iteração. Por agora pode consultar o pedido na página de detalhes.
-          </p>
-          <Link
-            href={`/sales/orders/${id}`}
-            className={cn(
-              "inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium",
-              "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-900"
-            )}
-          >
-            Ver detalhes
-          </Link>
-        </CardContent>
-      </Card>
+      <SalesOrderForm
+        mode="edit"
+        orderId={orderId}
+        cancelHref={`/sales/orders/${orderId}`}
+        isAdmin={isAdmin}
+        onSaved={(id) => router.push(`/sales/orders/${id}`)}
+      />
     </div>
   );
 }

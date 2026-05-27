@@ -21,6 +21,18 @@ body {
   background-color: var(--brand-bg);
 }
 
+/* Sem setas em inputs numéricos legados */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Scrollbar mais discreta nas colunas do Kanban */
 .kanban-scroll::-webkit-scrollbar {
   height: 8px;
@@ -34,4 +46,56 @@ body {
 .kanban-scroll::-webkit-scrollbar-thumb {
   background-color: rgba(100, 116, 139, 0.4);
   border-radius: 9999px;
+}
+
+/* Página de impressão de orçamento */
+.quote-print-shell {
+  background: #f1f5f9;
+}
+
+@media print {
+  @page {
+    margin: 10mm;
+    size: A4;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .quote-print-shell {
+    display: block !important;
+    background: #fff !important;
+  }
+
+  .quote-print-page {
+    min-height: auto !important;
+    background: #fff !important;
+  }
+
+  .quote-print-document {
+    max-width: none !important;
+    box-shadow: none !important;
+  }
+
+  .quote-print-table {
+    page-break-inside: auto;
+  }
+
+  .quote-print-table tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  .quote-print-fixed-footer {
+    display: block !important;
+  }
+
+  @page {
+    @bottom-center {
+      content: "Página " counter(page);
+      font-size: 9px;
+      color: #64748b;
+    }
+  }
 }

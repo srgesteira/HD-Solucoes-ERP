@@ -151,3 +151,12 @@ export async function assertSalesOrReportsAccess(): Promise<
 
   return { ok: false, response: apiError("Sem acesso", 403) };
 }
+
+/** Vendas ou Compras (consulta CNPJ/CPF). */
+export async function assertSalesOrPurchasingAccess(): Promise<
+  { ok: true } | { ok: false; response: NextResponse }
+> {
+  const sales = await assertModuleAccess("sales");
+  if (sales.ok) return sales;
+  return assertModuleAccess("purchasing");
+}
