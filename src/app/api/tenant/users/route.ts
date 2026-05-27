@@ -33,7 +33,9 @@ export async function GET() {
   const admin = createSupabaseAdminClient();
   const { data: rows, error } = await admin
     .from("user_profiles")
-    .select("id, email, full_name, role, is_active, avatar_url, permissions")
+    .select(
+      "id, email, full_name, role, is_active, avatar_url, permissions, enabled_modules, role_keys"
+    )
     .eq("tenant_id", me.tenant_id)
     .eq("is_active", true)
     .order("full_name", { ascending: true });
