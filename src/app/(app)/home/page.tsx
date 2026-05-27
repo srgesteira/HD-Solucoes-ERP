@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { useMe } from "@/hooks/use-me";
+import {
+  MENU_MODULE_LABELS,
+} from "@/shared/auth/route-module-guard";
 import { userHasModule } from "@/shared/auth/menu-modules";
 import { HOME_MODULES } from "@/shared/auth/modules-registry";
 import type { DashboardKpiResponse } from "@/modules/core/lib/dashboard/module-kpis";
@@ -16,8 +21,18 @@ type MiniState =
   | { status: "error"; message: string };
 
 export default function HomePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: me } = useMe();
   const [kpiByKey, setKpiByKey] = useState<Record<string, MiniState>>({});
+
+  useEffect(() => {
+    const denied = searchParams.get("denied");
+    if (!denied) return;
+    const label = MENU_MODULE_LABELS[denied] ?? denied;
+    toast.error(`Sem permissão para o módulo ${label}.`);
+    router.replace("/home");
+  }, [searchParams, router]);
 
   const visible = useMemo(() => {
     if (!me) return [];

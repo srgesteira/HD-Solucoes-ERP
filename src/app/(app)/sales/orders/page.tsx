@@ -143,13 +143,6 @@ export default function SalesOrdersListPage() {
   const isAdmin = me?.role === "admin";
   const canSales = isAdmin || can("sales");
 
-  useEffect(() => {
-    if (me && !canSales) {
-      toast.error("Sem permissão para o módulo Vendas.");
-      router.replace("/home");
-    }
-  }, [me, canSales, router]);
-
   const [tab, setTab] = useState<SalesOrderListTab>("open");
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState({

@@ -1,5 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { loadMiddlewareAccessProfile } from "@/shared/auth/middleware-profile";
+import {
+  profileCanAccessMenuModule,
+  requiredMenuModuleForPath,
+} from "@/shared/auth/route-module-guard";
 
 const PUBLIC_PATHS = new Set<string>([
   "/login",
@@ -62,6 +67,21 @@ export async function middleware(request: NextRequest) {
 
   if (user && pathname === "/login") {
     return NextResponse.redirect(`${origin}/home`);
+  }
+
+  if (user && pathname !== "/home") {
+    const requiredModule = requiredMenuModuleForPath(pathname);
+    if (requiredModule) {
+      const profile = await loadMiddlewareAccessProfile(user.id);
+      if (
+        profile &&
+        !profileCanAccessMenuModule(profile, requiredModule)
+      ) {
+        const denied = new URL(`${origin}/home`);
+        denied.searchParams.set("denied", requiredModule);
+        return NextResponse.redirect(denied);
+      }
+    }
   }
 
   return supabaseResponse;
