@@ -6,8 +6,12 @@ import type { ModulePermissions } from "@/shared/auth/permissions";
 
 export type MeResponse = {
   id: string;
+  email: string;
+  full_name: string | null;
   role: "admin" | "member";
   permissions: ModulePermissions;
+  enabled_modules: string[];
+  role_keys: string[];
 };
 
 async function fetchMe(): Promise<MeResponse> {
