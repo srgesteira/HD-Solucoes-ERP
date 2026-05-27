@@ -84,6 +84,7 @@ type NavLink = {
   href: string;
   icon: LucideIcon;
   module: ModuleKey;
+  anyOf?: ModuleKey[];
 };
 
 type NavEntry = NavGroup | NavLink;
@@ -91,9 +92,24 @@ type NavEntry = NavGroup | NavLink;
 const MENU_STRUCTURE: NavEntry[] = [
   {
     type: "link",
-    title: "Dashboard",
-    href: "/dashboard",
+    title: "Portal",
+    href: "/home",
     icon: LayoutDashboard,
+    module: "dashboard",
+  },
+  {
+    type: "link",
+    title: "Dashboard Gerencial",
+    href: "/dashboard-gerencial",
+    icon: BarChart2,
+    module: "dashboard",
+    anyOf: ["dashboard", "reports", "finance"],
+  },
+  {
+    type: "link",
+    title: "Dashboard BI",
+    href: "/dashboard",
+    icon: LineChart,
     module: "dashboard",
   },
   {
@@ -307,6 +323,12 @@ const MENU_STRUCTURE: NavEntry[] = [
         icon: Calculator,
         module: "finance",
         anyOf: ["finance", "production", "reports"],
+      },
+      {
+        title: "Análise de crédito",
+        href: "/finance/credit-analysis",
+        icon: ClipboardCheck,
+        module: "finance",
       },
       {
         title: "Contas a Receber",
