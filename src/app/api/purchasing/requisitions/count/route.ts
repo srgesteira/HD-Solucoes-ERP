@@ -1,8 +1,8 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { countPurchaseRequisitions } from "@/lib/purchasing-requisitions";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { countPurchaseRequisitions } from "@/modules/compras/lib/purchasing-requisitions";
 
 export const dynamic = "force-dynamic";
 

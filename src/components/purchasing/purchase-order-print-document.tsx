@@ -1,6 +1,6 @@
 "use client";
 
-import type { CompanySettingsRow } from "@/lib/purchasing/purchase-order-display";
+import type { CompanySettingsRow } from "@/modules/compras/lib/purchasing/purchase-order-display";
 import {
   companyDisplayName,
   fmtPoBRL,
@@ -12,8 +12,8 @@ import {
   poPaymentTermsText,
   poStatusLabel,
   type PurchaseOrderPrintData,
-} from "@/lib/purchasing/purchase-order-display";
-import { cn } from "@/lib/utils/cn";
+} from "@/modules/compras/lib/purchasing/purchase-order-display";
+import { cn } from "@/shared/utils/cn";
 
 const PRINT_STYLES = `
 @media print {

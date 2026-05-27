@@ -6,16 +6,16 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileOutput, Loader2, Mail, Search, Package } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import type { PurchaseRequisitionRow } from "@/lib/purchasing-requisitions";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import type { PurchaseRequisitionRow } from "@/modules/compras/lib/purchasing-requisitions";
 import { SupplierSelectField } from "@/components/purchasing/supplier-select-field";
 import type { SupplierOption } from "@/components/purchasing/supplier-quick-create-modal";
 import {
   SUPPLIERS_ACTIVE_QUERY_KEY,
   SUPPLIERS_QUERY_KEY,
-} from "@/lib/suppliers/query-keys";
+} from "@/modules/compras/lib/suppliers/query-keys";
 
 export const requisitionsQueryKey = ["purchasing-requisitions"] as const;
 export const requisitionsCountQueryKey = ["purchasing-requisitions-count"] as const;

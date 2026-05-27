@@ -5,17 +5,17 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Save, Users } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Label } from "@/shared/ui/label";
 import { useMe } from "@/hooks/use-me";
 import {
   DEFAULT_MODULE_PERMISSIONS,
   mergeModulePermissions,
   type ModuleKey,
   type ModulePermissions,
-} from "@/lib/permissions";
-import type { Json } from "@/lib/types/database";
+} from "@/shared/auth/permissions";
+import type { Json } from "@/modules/core/types/database";
 
 type TenantUser = {
   id: string;

@@ -1,13 +1,13 @@
 import type { NextRequest } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { assertModuleAccess } from "@/lib/utils/module-access";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { assertModuleAccess } from "@/modules/core/lib/module-access";
 import {
   parseDashboardPeriod,
   round1,
   round2,
-} from "@/lib/dashboard/period";
+} from "@/modules/core/lib/dashboard/period";
 
 export const dynamic = "force-dynamic";
 

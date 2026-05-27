@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, CircleAlert } from "lucide-react";
-import type { PcpPlanningItem, PcpPlanningOrder } from "@/lib/pcp-planning";
+import type { PcpPlanningItem, PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
 import {
   effectiveOrderProductionDeadline,
   formatPcpDate,
@@ -16,8 +16,8 @@ import {
   productionDeadlineDisplayClass,
   salesDeadlineProximityClass,
   trafficRowClass,
-} from "@/lib/pcp-order-display";
-import { pcpItemOriginClass } from "@/lib/pcp-item-origin";
+} from "@/modules/pcp/lib/pcp-order-display";
+import { pcpItemOriginClass } from "@/modules/pcp/lib/pcp-item-origin";
 
 type ProductionLine = { id: string; code: string; name: string };
 

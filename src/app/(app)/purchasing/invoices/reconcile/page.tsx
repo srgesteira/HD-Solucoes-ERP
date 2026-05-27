@@ -13,11 +13,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { NumericInput } from "@/components/ui/numeric-input";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { NumericInput } from "@/shared/ui/numeric-input";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -28,12 +28,12 @@ import {
   ProductSearchModal,
   type ProductSearchHit,
 } from "@/components/products/product-search-modal";
-import type { PurchaseNFExtraction } from "@/lib/services/ai.service";
+import type { PurchaseNFExtraction } from "@/modules/engenharia/lib/services/ai.service";
 import type {
   PendingPoItem,
   ReconcileUploadResult,
-} from "@/lib/purchasing/purchase-invoice-reconcile";
-import { cn } from "@/lib/utils/cn";
+} from "@/modules/compras/lib/purchasing/purchase-invoice-reconcile";
+import { cn } from "@/shared/utils/cn";
 
 type LineMapping = {
   purchaseOrderItemId: string;

@@ -4,8 +4,8 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { useEpicsPipeline } from "@/hooks/use-epics-pipeline";
-import type { EpicPipelineItem } from "@/lib/types/epic-pipeline";
-import { cn } from "@/lib/utils/cn";
+import type { EpicPipelineItem } from "@/modules/core/types/epic-pipeline";
+import { cn } from "@/shared/utils/cn";
 import { EpicDetailModal } from "@/components/boards/epic-detail-modal";
 import { CreateEpicButton } from "@/components/boards/create-epic-button";
 

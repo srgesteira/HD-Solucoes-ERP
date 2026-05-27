@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import type { PcpPurchaseScheduleRow } from "@/lib/pcp-purchase-schedule";
-import { formatPcpDate } from "@/lib/pcp-order-display";
+import type { PcpPurchaseScheduleRow } from "@/modules/pcp/lib/pcp-purchase-schedule";
+import { formatPcpDate } from "@/modules/pcp/lib/pcp-order-display";
 
 async function fetchSchedule(): Promise<PcpPurchaseScheduleRow[]> {
   const res = await fetch("/api/pcp/purchase-schedule", {

@@ -1,6 +1,6 @@
 "use client";
 
-import type { Tables } from "@/lib/types/database";
+import type { Tables } from "@/modules/core/types/database";
 import {
   fmtQuoteBRL,
   fmtQuoteDay,
@@ -11,8 +11,8 @@ import {
   unwrapQuoteProductCode,
   unwrapQuoteProductName,
   type QuotePrintData,
-} from "@/lib/sales/quote-display";
-import { cn } from "@/lib/utils/cn";
+} from "@/modules/vendas/lib/sales/quote-display";
+import { cn } from "@/shared/utils/cn";
 
 const PRINT_STYLES = `
 @media print {

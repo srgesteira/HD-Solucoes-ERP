@@ -1,18 +1,18 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { userPermissionsUpdateSchema } from "@/lib/schemas/user-permissions.schema";
+} from "@/modules/core/lib/tenant";
+import { userPermissionsUpdateSchema } from "@/shared/contracts/user-permissions.schema";
 import {
   DEFAULT_MODULE_PERMISSIONS,
   mergeModulePermissions,
   type ModulePermissions,
-} from "@/lib/permissions";
-import type { Json } from "@/lib/types/database";
+} from "@/shared/auth/permissions";
+import type { Json } from "@/modules/core/types/database";
 
 export const dynamic = "force-dynamic";
 

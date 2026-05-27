@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Save, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import {
   ProductFormFields,
   type ProductFormShape,
@@ -16,10 +16,10 @@ import {
   moProductFieldsValidationMessage,
   productClassificationValidationMessage,
 } from "@/components/products/product-form-fields";
-import { isSimplifiedClassificationSuffix } from "@/lib/products/prefix-classification";
+import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/products/prefix-classification";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
-import type { StructureSuggestion } from "@/lib/services/ai.service";
+import type { StructureSuggestion } from "@/modules/engenharia/lib/services/ai.service";
 
 function buildPayload(
   f: ProductFormShape,

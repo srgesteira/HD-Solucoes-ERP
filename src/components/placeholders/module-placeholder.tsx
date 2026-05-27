@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { Construction } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/shared/ui/card";
 
 type Props = {
   title: string;

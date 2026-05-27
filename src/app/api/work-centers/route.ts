@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
-import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/lib/utils/tenant";
-import { workCenterSchema } from "@/lib/schemas/product.schema";
-import { ensureProductionLineForWorkCenter } from "@/lib/production-line-sync";
-import type { Database } from "@/lib/types/database";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
+import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
+import { workCenterSchema } from "@/shared/contracts/product.schema";
+import { ensureProductionLineForWorkCenter } from "@/modules/producao/lib/production-line-sync";
+import type { Database } from "@/modules/core/types/database";
 
 export const dynamic = "force-dynamic";
 

@@ -1,16 +1,16 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { insertSalesOrderLogsBestEffort } from "@/lib/sales/sales-order-change-log";
+} from "@/modules/core/lib/tenant";
+import { insertSalesOrderLogsBestEffort } from "@/modules/vendas/lib/sales/sales-order-change-log";
 import {
   salesOrderHasLinkedPurchaseOrderItems,
   salesOrderHasProductionStart,
-} from "@/lib/sales/reactivate-sales-order";
+} from "@/modules/vendas/lib/sales/reactivate-sales-order";
 
 export const dynamic = "force-dynamic";
 

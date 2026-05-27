@@ -1,9 +1,9 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { asUntypedAdmin } from "@/lib/supabase/untyped-tables";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { assertModuleAccess } from "@/lib/utils/module-access";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { assertModuleAccess } from "@/modules/core/lib/module-access";
 
 export const dynamic = "force-dynamic";
 

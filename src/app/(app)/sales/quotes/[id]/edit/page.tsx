@@ -6,11 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
-import { quoteStatusAllowsContentEdit } from "@/lib/sales/quote-access";
+import { quoteStatusAllowsContentEdit } from "@/modules/vendas/lib/sales/quote-access";
 import { QuoteFormFields } from "@/components/sales/quote-form-fields";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
 import {
@@ -21,7 +21,7 @@ import {
   type QuoteLineDraft,
   type QuoteLineProduct,
 } from "@/components/sales/quote-items-editor";
-import { DEFAULT_QUOTE_MARKUP_PERCENT } from "@/lib/sales/quote-line-pricing";
+import { DEFAULT_QUOTE_MARKUP_PERCENT } from "@/modules/vendas/lib/sales/quote-line-pricing";
 
 type CustomerNested = {
   id: string;

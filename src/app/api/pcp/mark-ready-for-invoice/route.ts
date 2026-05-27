@@ -1,15 +1,15 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { currentUserCanPcpPlanning } from "@/lib/pcp-api-auth";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
 import {
   markSalesOrderReadyForInvoice,
   syncSalesOrderReadyForInvoice,
-} from "@/lib/sales/sales-order-ready-for-invoice";
-import { enrichSalesOrdersListWithProduction } from "@/lib/sales/sales-order-production-summary";
-import { computeOrderProductionAggregateStatus } from "@/lib/order-item-production-status";
+} from "@/modules/vendas/lib/sales/sales-order-ready-for-invoice";
+import { enrichSalesOrdersListWithProduction } from "@/modules/vendas/lib/sales/sales-order-production-summary";
+import { computeOrderProductionAggregateStatus } from "@/modules/pcp/lib/order-item-production-status";
 
 export const dynamic = "force-dynamic";
 

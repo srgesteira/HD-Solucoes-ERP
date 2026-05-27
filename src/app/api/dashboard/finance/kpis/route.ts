@@ -1,15 +1,15 @@
 import type { NextRequest } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { assertFinanceOrReportsAccess } from "@/lib/utils/module-access";
-import { addDaysIso } from "@/lib/dashboard/month-range";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { assertFinanceOrReportsAccess } from "@/modules/core/lib/module-access";
+import { addDaysIso } from "@/modules/core/lib/dashboard/month-range";
 import {
   daysBetweenIso,
   parseDashboardPeriod,
   round1,
   round2,
-} from "@/lib/dashboard/period";
+} from "@/modules/core/lib/dashboard/period";
 
 export const dynamic = "force-dynamic";
 

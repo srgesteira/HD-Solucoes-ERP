@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { fetchProductionLines } from "@/lib/production/production-lines-api";
+import { fetchProductionLines } from "@/modules/producao/lib/production/production-lines-api";
 
 export default function ProductionLinesIndexPage() {
   const router = useRouter();

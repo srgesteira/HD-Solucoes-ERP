@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { WorkAreasAdmin } from "@/components/settings/work-areas-admin";
 
 export const metadata: Metadata = {

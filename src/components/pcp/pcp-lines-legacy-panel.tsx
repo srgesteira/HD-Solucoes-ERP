@@ -1,15 +1,15 @@
 "use client";
 
-import type { PcpPlanningItem } from "@/lib/pcp-planning";
+import type { PcpPlanningItem } from "@/modules/pcp/lib/pcp-planning";
 import {
   effectiveLinePcpDeadline,
   formatPcpDate,
   lineEndVsPcpTrafficClass,
   lineRowDelayClass,
   pcpDeadlineProximityClass,
-} from "@/lib/pcp-order-display";
-import { pcpItemOriginClass } from "@/lib/pcp-item-origin";
-import { isOrderItemProductionFinished } from "@/lib/order-item-production-status";
+} from "@/modules/pcp/lib/pcp-order-display";
+import { pcpItemOriginClass } from "@/modules/pcp/lib/pcp-item-origin";
+import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-production-status";
 
 export type LineRow = PcpPlanningItem & {
   client_name: string;

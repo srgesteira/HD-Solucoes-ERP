@@ -10,12 +10,12 @@ import {
   type QuoteRowActionsQuote,
 } from "@/components/sales/quote-row-actions-menu";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
-import { quoteStatusBadge } from "@/lib/sales/quote-display";
+import { quoteStatusBadge } from "@/modules/vendas/lib/sales/quote-display";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 

@@ -6,10 +6,10 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Calculator, Loader2, Save, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import {
   ProductFormFields,
   type ProductFormShape,
@@ -20,14 +20,14 @@ import {
 } from "@/components/products/product-form-fields";
 import { ProductCostHistoryTable } from "@/components/products/product-cost-history-table";
 import { ProductCompositionPanel } from "@/components/products/product-composition-panel";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isSimplifiedClassificationSuffix } from "@/lib/products/prefix-classification";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/products/prefix-classification";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
-import type { StructureSuggestion } from "@/lib/services/ai.service";
-import type { TaxAnalysis } from "@/lib/services/tax-ai.service";
-import type { Database } from "@/lib/types/database";
-import type { ProductType } from "@/lib/types/product.types";
+import type { StructureSuggestion } from "@/modules/engenharia/lib/services/ai.service";
+import type { TaxAnalysis } from "@/modules/engenharia/lib/services/tax-ai.service";
+import type { Database } from "@/modules/core/types/database";
+import type { ProductType } from "@/modules/core/types/product.types";
 function isProductType(t: string): t is ProductType {
   return t === "finished" || t === "raw" || t === "component";
 }

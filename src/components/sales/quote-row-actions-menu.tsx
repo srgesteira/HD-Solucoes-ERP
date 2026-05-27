@@ -12,7 +12,7 @@ import {
   Send,
   XCircle,
 } from "lucide-react";
-import { cn } from "@/lib/utils/cn";
+import { cn } from "@/shared/utils/cn";
 
 export type QuoteRowActionsQuote = {
   id: string;

@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import type { Database } from "@/lib/types/database";
-import { updateWorkAreaSchema } from "@/lib/validators/work-area";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import type { Database } from "@/modules/core/types/database";
+import { updateWorkAreaSchema } from "@/modules/engenharia/lib/validators/work-area";
 
 export const dynamic = "force-dynamic";
 

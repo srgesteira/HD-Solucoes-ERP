@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { analyzeProductTax } from "@/lib/services/tax-ai.service";
+} from "@/modules/core/lib/tenant";
+import { analyzeProductTax } from "@/modules/engenharia/lib/services/tax-ai.service";
 
 export const dynamic = "force-dynamic";
 

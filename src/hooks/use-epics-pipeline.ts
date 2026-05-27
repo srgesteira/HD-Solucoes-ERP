@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { EpicsPipelineResponse } from "@/lib/types/epic-pipeline";
+import type { EpicsPipelineResponse } from "@/modules/core/types/epic-pipeline";
 
 export const EPICS_PIPELINE_KEY = ["epics-pipeline"] as const;
 

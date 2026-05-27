@@ -5,7 +5,7 @@ import { Ban, Edit, Eye, RotateCcw, Trash2 } from "lucide-react";
 import {
   RowActionsMenu,
   type RowActionItem,
-} from "@/components/ui/row-actions-menu";
+} from "@/shared/ui/row-actions-menu";
 
 type Props = {
   orderId: string;

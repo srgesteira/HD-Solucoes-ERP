@@ -16,18 +16,18 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { quoteStatusBadge } from "@/lib/sales/quote-display";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils/cn";
+import { quoteStatusBadge } from "@/modules/vendas/lib/sales/quote-display";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
-import type { QuoteStatus } from "@/lib/types/sales.types";
+import type { QuoteStatus } from "@/modules/core/types/sales.types";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
-import type { Tables } from "@/lib/types/database";
+import type { Tables } from "@/modules/core/types/database";
 
 type ProductNested = { name?: string | null } | null;
 

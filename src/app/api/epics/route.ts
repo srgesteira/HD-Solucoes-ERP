@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createEpicSchema } from "@/lib/validators/epic";
-import { apiError, apiOk } from "@/lib/http";
-import { isMissingPublicTableError } from "@/lib/utils/supabase-migration";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { createEpicSchema } from "@/modules/boards/lib/validators/epic";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { isMissingPublicTableError } from "@/modules/core/lib/supabase-migration";
 
 export const dynamic = "force-dynamic";
 

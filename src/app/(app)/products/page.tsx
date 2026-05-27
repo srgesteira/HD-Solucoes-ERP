@@ -13,10 +13,10 @@ import {
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { ProductPrefixTabs } from "@/components/products/product-prefix-tabs";
 import { ProductRowActionsMenu } from "@/components/products/product-row-actions-menu";

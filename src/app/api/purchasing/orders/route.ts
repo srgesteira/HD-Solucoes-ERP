@@ -1,23 +1,23 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   currentUserCanModule,
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { computePurchaseOrderTotal } from "@/lib/purchasing/purchase-order-totals";
+} from "@/modules/core/lib/tenant";
+import { computePurchaseOrderTotal } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 import {
   syncPurchaseOrderItems,
   type PurchaseOrderLineInput,
-} from "@/lib/purchasing/purchase-order-edit";
-import { purchaseOrderItemsPayloadSchema } from "@/lib/schemas/purchase-order.schema";
-import { lineSubtotal, roundMoney } from "@/lib/purchasing/purchase-order-item-taxes";
+} from "@/modules/compras/lib/purchasing/purchase-order-edit";
+import { purchaseOrderItemsPayloadSchema } from "@/shared/contracts/purchase-order.schema";
+import { lineSubtotal, roundMoney } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import {
   coerceSalesOrderInt,
   parsePaymentDaysBetween,
-} from "@/lib/schemas/sales-order.schema";
+} from "@/shared/contracts/sales-order.schema";
 
 export const dynamic = "force-dynamic";
 

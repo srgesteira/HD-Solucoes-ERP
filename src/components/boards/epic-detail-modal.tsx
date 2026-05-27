@@ -3,14 +3,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils/cn";
-import type { EpicPipelineItem } from "@/lib/types/epic-pipeline";
+import { Button } from "@/shared/ui/button";
+import { cn } from "@/shared/utils/cn";
+import type { EpicPipelineItem } from "@/modules/core/types/epic-pipeline";
 import { EpicInnerKanban } from "@/components/boards/epic-inner-kanban";
 import { TaskModal } from "@/components/kanban/task-modal";
 import { useEpicTasks } from "@/hooks/use-board-tasks";
 import { useTenantUsers } from "@/hooks/use-tenant-users";
-import type { BoardColumn } from "@/lib/types/kanban";
+import type { BoardColumn } from "@/modules/core/types/kanban";
 
 async function fetchBoardColumns(boardId: string): Promise<
   Pick<BoardColumn, "id" | "name" | "color" | "sort_order">[]

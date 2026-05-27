@@ -1,30 +1,30 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
-import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/lib/utils/tenant";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
+import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import {
   canViewProductPrefixCode,
   finishedProductPrefixCodes,
-} from "@/lib/products/product-prefix-access";
+} from "@/modules/engenharia/lib/products/product-prefix-access";
 import {
   productCreateSchema,
-} from "@/lib/schemas/product.schema";
+} from "@/shared/contracts/product.schema";
 import {
   assertProductClassificationTenant,
   assertSimplifiedProductClassificationTenant,
   requireCompleteClassificationFields,
   requireSimplifiedClassificationFields,
-} from "@/lib/products/classification-validation";
+} from "@/modules/engenharia/lib/products/classification-validation";
 import {
   isCompleteClassificationSuffix,
   isMoClassificationSuffix,
   isSimplifiedClassificationSuffix,
-} from "@/lib/products/prefix-classification";
-import { productTypeFromPrefixCode } from "@/lib/products/product-type-from-prefix";
-import { recordProductPriceHistory } from "@/lib/products/product-price-history";
-import { resolveMoProductCostPrice } from "@/lib/products/mo-cost-price";
-import { productNatureFromPrefixCode } from "@/lib/products/mrp-product-nature";
+} from "@/modules/engenharia/lib/products/prefix-classification";
+import { productTypeFromPrefixCode } from "@/modules/engenharia/lib/products/product-type-from-prefix";
+import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
+import { resolveMoProductCostPrice } from "@/modules/engenharia/lib/products/mo-cost-price";
+import { productNatureFromPrefixCode } from "@/modules/engenharia/lib/products/mrp-product-nature";
 
 export const dynamic = "force-dynamic";
 

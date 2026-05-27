@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { calculateHourlyRateWithAllocation } from "@/lib/labor-cost-utils";
+} from "@/modules/core/lib/tenant";
+import { calculateHourlyRateWithAllocation } from "@/modules/rh/lib/labor-cost-utils";
 
 export const dynamic = "force-dynamic";
 

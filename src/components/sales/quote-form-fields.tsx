@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils/cn";
-import { computeValidUntil, QUOTE_SHIPPING_TYPES } from "@/lib/sales/quote-validity";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Textarea } from "@/shared/ui/textarea";
+import { Button } from "@/shared/ui/button";
+import { cn } from "@/shared/utils/cn";
+import { computeValidUntil, QUOTE_SHIPPING_TYPES } from "@/modules/vendas/lib/sales/quote-validity";
 import {
   CustomerQuickCreateModal,
   type CustomerOption,
@@ -16,7 +16,7 @@ import {
 import {
   CUSTOMERS_QUERY_KEY,
   customersQuoteFormQueryKey,
-} from "@/lib/customers/query-keys";
+} from "@/modules/vendas/lib/customers/query-keys";
 
 const SELECT_CLASS =
   "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm " +

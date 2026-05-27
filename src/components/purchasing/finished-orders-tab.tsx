@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import type { PurchaseOrderBoardRow } from "@/lib/purchasing/purchase-orders-board";
+import type { PurchaseOrderBoardRow } from "@/modules/compras/lib/purchasing/purchase-orders-board";
 import { PurchaseOrdersBoardTable } from "@/components/purchasing/purchase-orders-board-shared";
 
 const queryKey = ["purchasing-orders-board", "finished"] as const;

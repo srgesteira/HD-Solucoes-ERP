@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { FileOutput, Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import type { PurchaseRequisitionRow } from "@/lib/purchasing-requisitions";
-import { validateSameSuggestedSupplier } from "@/lib/purchasing/requisition-batch";
+import { Button } from "@/shared/ui/button";
+import type { PurchaseRequisitionRow } from "@/modules/compras/lib/purchasing-requisitions";
+import { validateSameSuggestedSupplier } from "@/modules/compras/lib/purchasing/requisition-batch";
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";

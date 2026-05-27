@@ -3,9 +3,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
-import type { PcpPlanningOrder } from "@/lib/pcp-planning";
-import { formatPcpDate } from "@/lib/pcp-order-display";
-import { cn } from "@/lib/utils/cn";
+import type { PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
+import { formatPcpDate } from "@/modules/pcp/lib/pcp-order-display";
+import { cn } from "@/shared/utils/cn";
 
 async function fetchPlanning(): Promise<{ orders: PcpPlanningOrder[] }> {
   const res = await fetch("/api/pcp/planning", {

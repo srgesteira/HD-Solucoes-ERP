@@ -1,14 +1,14 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import {
   groupPriceHistoryByType,
   listProductPriceHistory,
   PRODUCT_PRICE_TYPES,
   type ProductPriceType,
-} from "@/lib/products/product-price-history";
+} from "@/modules/engenharia/lib/products/product-price-history";
 
 export const dynamic = "force-dynamic";
 

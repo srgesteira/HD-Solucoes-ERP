@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { filterAllowedPrefixCodes } from "@/lib/products/product-prefix-access";
+} from "@/modules/core/lib/tenant";
+import { filterAllowedPrefixCodes } from "@/modules/engenharia/lib/products/product-prefix-access";
 
 export const dynamic = "force-dynamic";
 

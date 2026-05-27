@@ -6,8 +6,8 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import type { Board, BoardSummary } from "@/lib/types/kanban";
-import type { CreateBoardInput } from "@/lib/validators/board";
+import type { Board, BoardSummary } from "@/modules/core/types/kanban";
+import type { CreateBoardInput } from "@/modules/boards/lib/validators/board";
 
 export const BOARDS_QUERY_KEY = ["boards"] as const;
 

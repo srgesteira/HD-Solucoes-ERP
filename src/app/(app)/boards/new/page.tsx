@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { useCreateBoard } from "@/hooks/use-boards";
-import { createBoardSchema } from "@/lib/validators/board";
+import { createBoardSchema } from "@/modules/boards/lib/validators/board";
 
 const PRESET_COLORS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "#0f766e", label: "Teal" },

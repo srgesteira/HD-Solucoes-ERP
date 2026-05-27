@@ -1,7 +1,7 @@
 "use client";
 
-import { IntegerInput } from "@/components/ui/integer-input";
-import { Label } from "@/components/ui/label";
+import { IntegerInput } from "@/shared/ui/integer-input";
+import { Label } from "@/shared/ui/label";
 
 type Props = {
   idPrefix?: string;

@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import type { PcpPlanningOrder } from "@/lib/pcp-planning";
-import { isOrderItemProductionFinished } from "@/lib/order-item-production-status";
+import type { PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
+import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-production-status";
 import {
   fetchProductionLines,
   type ProductionLineBrief,
-} from "@/lib/production/production-lines-api";
+} from "@/modules/producao/lib/production/production-lines-api";
 import {
   PcpLinesLegacyPanel,
   type LineRow,

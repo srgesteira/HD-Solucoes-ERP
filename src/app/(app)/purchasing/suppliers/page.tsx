@@ -16,16 +16,16 @@ import {
   UserX,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { RowActionsMenu } from "@/components/ui/row-actions-menu";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
+import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import {
   SUPPLIERS_QUERY_KEY,
   suppliersListQueryKey,
-} from "@/lib/suppliers/query-keys";
+} from "@/modules/compras/lib/suppliers/query-keys";
 
 interface SupplierRow {
   id: string;

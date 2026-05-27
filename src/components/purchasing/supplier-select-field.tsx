@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Label } from "@/shared/ui/label";
+import { cn } from "@/shared/utils/cn";
 import {
   SupplierQuickCreateModal,
   type SupplierOption,

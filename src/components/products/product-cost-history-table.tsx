@@ -7,7 +7,7 @@ import {
   hasAnyCostHistory,
   priceTypeLabel,
   type ProductPriceHistoryRow,
-} from "@/lib/products/product-price-history";
+} from "@/modules/engenharia/lib/products/product-price-history";
 
 function fmtBRL(n: number): string {
   return new Intl.NumberFormat("pt-BR", {

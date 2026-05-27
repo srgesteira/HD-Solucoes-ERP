@@ -6,8 +6,8 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import type { TaskWithAssignee } from "@/lib/types/kanban";
-import type { CreateTaskInput, UpdateTaskInput } from "@/lib/validators/task";
+import type { TaskWithAssignee } from "@/modules/core/types/kanban";
+import type { CreateTaskInput, UpdateTaskInput } from "@/modules/boards/lib/validators/task";
 import { EPICS_PIPELINE_KEY } from "@/hooks/use-epics-pipeline";
 
 export const boardTasksKey = (boardId: string) => ["board-tasks", boardId] as const;

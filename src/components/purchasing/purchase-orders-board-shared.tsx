@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { cn } from "@/lib/utils/cn";
-import { InlineDateEdit } from "@/components/ui/inline-date-edit";
+import { cn } from "@/shared/utils/cn";
+import { InlineDateEdit } from "@/shared/ui/inline-date-edit";
 import {
   computeOrderSituation,
   type PurchaseOrderBoardRow,
   type OrderSituation,
-} from "@/lib/purchasing/purchase-orders-board";
+} from "@/modules/compras/lib/purchasing/purchase-orders-board";
 import { PurchaseOrderBoardActionsMenu } from "@/components/purchasing/purchase-order-board-actions-menu";
 
 function formatDate(iso: string | null | undefined): string {

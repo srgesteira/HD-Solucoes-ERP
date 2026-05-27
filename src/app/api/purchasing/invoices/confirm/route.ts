@@ -1,14 +1,14 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
 import {
   currentUserCanModule,
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { purchaseInvoiceConfirmSchema } from "@/lib/schemas/purchase-invoice.schema";
-import { applyPurchaseInvoiceConfirm } from "@/lib/purchasing/apply-purchase-invoice-confirm";
+} from "@/modules/core/lib/tenant";
+import { purchaseInvoiceConfirmSchema } from "@/shared/contracts/purchase-invoice.schema";
+import { applyPurchaseInvoiceConfirm } from "@/modules/compras/lib/purchasing/apply-purchase-invoice-confirm";
 
 export const dynamic = "force-dynamic";
 

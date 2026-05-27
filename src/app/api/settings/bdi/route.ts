@@ -1,15 +1,15 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { bdiSettingsUpdateSchema } from "@/lib/schemas/bdi.schema";
-import type { Database } from "@/lib/types/database";
-import { defaultBdiSettings } from "@/lib/pricing/bdi-calculate";
-import { bdiRowToSlice } from "@/lib/pricing/bdi-db";
+} from "@/modules/core/lib/tenant";
+import { bdiSettingsUpdateSchema } from "@/shared/contracts/bdi.schema";
+import type { Database } from "@/modules/core/types/database";
+import { defaultBdiSettings } from "@/modules/engenharia/lib/pricing/bdi-calculate";
+import { bdiRowToSlice } from "@/modules/engenharia/lib/pricing/bdi-db";
 
 export const dynamic = "force-dynamic";
 

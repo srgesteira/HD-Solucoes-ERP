@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { processMrpForPendingOrders } from "@/lib/mrp-service";
+} from "@/modules/core/lib/tenant";
+import { processMrpForPendingOrders } from "@/modules/pcp/lib/mrp-service";
 
 export const dynamic = "force-dynamic";
 

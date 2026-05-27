@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { UserProfile } from "@/lib/types/kanban";
+import type { UserProfile } from "@/modules/core/types/kanban";
 
 export const TENANT_USERS_KEY = ["tenant-users"] as const;
 

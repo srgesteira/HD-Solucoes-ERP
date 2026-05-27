@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { assertModuleAccess } from "@/lib/utils/module-access";
-import type { Database } from "@/lib/types/database";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import type { Database } from "@/modules/core/types/database";
 
 export const dynamic = "force-dynamic";
 

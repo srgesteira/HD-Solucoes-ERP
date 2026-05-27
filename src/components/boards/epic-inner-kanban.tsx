@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import type { BoardColumn } from "@/lib/types/kanban";
-import type { TaskWithAssignee } from "@/lib/types/kanban";
+import type { BoardColumn } from "@/modules/core/types/kanban";
+import type { TaskWithAssignee } from "@/modules/core/types/kanban";
 import { DndKanbanBoard } from "@/components/kanban/dnd-kanban-board";
 import { useCreateTask } from "@/hooks/use-board-tasks";
 

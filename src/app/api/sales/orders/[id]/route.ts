@@ -1,37 +1,37 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   currentUserCanModule,
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { SALES_ORDER_STATUSES, type SalesOrderUpdate } from "@/lib/types/sales.types";
+} from "@/modules/core/lib/tenant";
+import { SALES_ORDER_STATUSES, type SalesOrderUpdate } from "@/modules/core/types/sales.types";
 import {
   coerceSalesOrderInt,
   parseExpectedDeliveryForUpdate,
   parsePaymentDaysBetween,
-} from "@/lib/schemas/sales-order.schema";
+} from "@/shared/contracts/sales-order.schema";
 import {
   assertUpdateAllowedWhenProductionStarted,
   bodyWantsSalesOrderContentEdit,
   getSalesOrderEditGuard,
   replaceSalesOrderItemsFromLines,
   resolveCustomerForSalesOrderUpdate,
-} from "@/lib/sales/sales-order-edit";
+} from "@/modules/vendas/lib/sales/sales-order-edit";
 import {
   buildItemChangeLogEntries,
   buildScalarChangeLogs,
   fetchSalesOrderItemsSnapshot,
   insertSalesOrderLogsBestEffort,
   type SalesOrderItemSnapshot,
-} from "@/lib/sales/sales-order-change-log";
-import { parseSaleLines } from "@/lib/sales/sales-flow";
+} from "@/modules/vendas/lib/sales/sales-order-change-log";
+import { parseSaleLines } from "@/modules/vendas/lib/sales/sales-flow";
 import {
   hardDeleteSalesOrder,
   salesOrderHasAssociatedOrderItems,
-} from "@/lib/sales/delete-sales-order";
+} from "@/modules/vendas/lib/sales/delete-sales-order";
 
 export const dynamic = "force-dynamic";
 

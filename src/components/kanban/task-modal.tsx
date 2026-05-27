@@ -5,20 +5,20 @@ import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
-import type { BoardColumn } from "@/lib/types/kanban";
-import type { TaskWithAssignee, UserProfile } from "@/lib/types/kanban";
+import type { BoardColumn } from "@/modules/core/types/kanban";
+import type { TaskWithAssignee, UserProfile } from "@/modules/core/types/kanban";
 import {
   TASK_PRIORITY_LABELS,
   TASK_PRIORITIES,
   type TaskPriority,
-} from "@/lib/types/kanban";
-import { cn } from "@/lib/utils/cn";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+} from "@/modules/core/types/kanban";
+import { cn } from "@/shared/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Label } from "@/shared/ui/label";
+import { Input } from "@/shared/ui/input";
 import { useCreateTask, useDeleteTask, useUpdateTask } from "@/hooks/use-board-tasks";
 import { useWorkAreas } from "@/hooks/use-work-areas";
-import type { CreateTaskInput, UpdateTaskInput } from "@/lib/validators/task";
+import type { CreateTaskInput, UpdateTaskInput } from "@/modules/boards/lib/validators/task";
 import { X } from "lucide-react";
 
 function isoToLocalDatetimeValue(iso: string | null): string {

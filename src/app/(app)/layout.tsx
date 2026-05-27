@@ -4,8 +4,8 @@ import { AppShell } from "@/components/layout/app-shell";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { MeBootstrapProvider } from "@/contexts/me-bootstrap";
 import type { MeResponse } from "@/hooks/use-me";
-import { effectivePermissions } from "@/lib/permissions";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { effectivePermissions } from "@/shared/auth/permissions";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 
 export const dynamic = "force-dynamic";
 

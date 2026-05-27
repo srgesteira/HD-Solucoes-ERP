@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { Plus, Search, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { NumericInput } from "@/components/ui/numeric-input";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { NumericInput } from "@/shared/ui/numeric-input";
 import {
   ProductSearchModal,
   type ProductSearchHit,
@@ -15,7 +15,7 @@ import {
   lineSubtotal,
   recalcLineTaxAmounts,
   roundMoney,
-} from "@/lib/purchasing/purchase-order-item-taxes";
+} from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 
 export type PurchaseLineProduct = {
   id: string;

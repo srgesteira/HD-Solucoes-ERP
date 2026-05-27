@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { cn } from "@/lib/utils/cn";
-import type { StructureSuggestion } from "@/lib/services/ai.service";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/shared/utils/cn";
+import type { StructureSuggestion } from "@/modules/engenharia/lib/services/ai.service";
+import { Button } from "@/shared/ui/button";
 
 type Props = {
   suggestion: StructureSuggestion;

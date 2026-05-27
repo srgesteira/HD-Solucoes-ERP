@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { apiError, apiOk } from "@/lib/http";
-import { assertSalesOrPurchasingAccess } from "@/lib/utils/module-access";
-import { lookupCnpj } from "@/lib/external/document-lookup";
-import { onlyDigits } from "@/lib/utils/br-document";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { assertSalesOrPurchasingAccess } from "@/modules/core/lib/module-access";
+import { lookupCnpj } from "@/shared/utils/external/document-lookup";
+import { onlyDigits } from "@/shared/utils/br-document";
 
 export const dynamic = "force-dynamic";
 

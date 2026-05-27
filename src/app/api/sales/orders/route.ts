@@ -1,26 +1,26 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { SALES_ORDER_STATUSES, type SalesOrderRow } from "@/lib/types/sales.types";
-import type { SalesOrderProductionSituation } from "@/lib/sales/sales-order-production-summary";
+} from "@/modules/core/lib/tenant";
+import { SALES_ORDER_STATUSES, type SalesOrderRow } from "@/modules/core/types/sales.types";
+import type { SalesOrderProductionSituation } from "@/modules/vendas/lib/sales/sales-order-production-summary";
 import {
   insertSalesOrderItemsFromLines,
   nextSalesOrderNumber,
   parseSaleLines,
   generateReceivablesForSalesOrder,
   rollbackSalesOrderCreation,
-} from "@/lib/sales/sales-flow";
-import { parseRequiredExpectedDelivery } from "@/lib/schemas/sales-order.schema";
-import { isSalesOrderListTab } from "@/lib/sales/sales-order-list-display";
+} from "@/modules/vendas/lib/sales/sales-flow";
+import { parseRequiredExpectedDelivery } from "@/shared/contracts/sales-order.schema";
+import { isSalesOrderListTab } from "@/modules/vendas/lib/sales/sales-order-list-display";
 import {
   enrichSalesOrdersListWithProduction,
   type SalesOrderProductionSummary,
-} from "@/lib/sales/sales-order-production-summary";
+} from "@/modules/vendas/lib/sales/sales-order-production-summary";
 
 export const dynamic = "force-dynamic";
 

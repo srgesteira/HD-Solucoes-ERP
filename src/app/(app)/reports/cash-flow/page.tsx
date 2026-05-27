@@ -20,8 +20,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+} from "@/shared/ui/card";
+import { Label } from "@/shared/ui/label";
 import { ReportFilters } from "@/components/reports/report-filters";
 import { ReportTable } from "@/components/reports/report-table";
 import { usePermissions } from "@/hooks/use-permissions";

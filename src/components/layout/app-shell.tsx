@@ -50,13 +50,13 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils/cn";
-import { APP_NAME } from "@/lib/utils/constants";
+import { createClient } from "@/shared/db/supabase/client";
+import { Button } from "@/shared/ui/button";
+import { cn } from "@/shared/utils/cn";
+import { APP_NAME } from "@/shared/utils/constants";
 import { usePermissions } from "@/hooks/use-permissions";
-import type { ModuleKey } from "@/lib/permissions";
-import { fetchProductionLines } from "@/lib/production/production-lines-api";
+import type { ModuleKey } from "@/shared/auth/permissions";
+import { fetchProductionLines } from "@/modules/producao/lib/production/production-lines-api";
 
 const PRODUCTION_MENU_TITLE = "Produção";
 const LOADING_LINES_NAV_HREF = "__loading_lines__";

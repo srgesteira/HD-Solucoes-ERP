@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { WorkArea } from "@/lib/types/kanban";
+import type { WorkArea } from "@/modules/core/types/kanban";
 
 export const workAreasQueryKey = ["work-areas"] as const;
 

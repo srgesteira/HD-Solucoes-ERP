@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/lib/utils/tenant";
-import { defaultExpectedDeliveryForOrder } from "@/lib/sales/sales-flow";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
+import { defaultExpectedDeliveryForOrder } from "@/modules/vendas/lib/sales/sales-flow";
 
 export const dynamic = "force-dynamic";
 

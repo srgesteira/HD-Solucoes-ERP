@@ -1,28 +1,28 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   currentUserCanModule,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { quoteStatusAllowsContentEdit } from "@/lib/sales/quote-access";
-import { QUOTE_STATUSES, type QuoteUpdate } from "@/lib/types/sales.types";
-import { fetchCustomerForTenant } from "@/lib/sales/quote-customer";
+} from "@/modules/core/lib/tenant";
+import { quoteStatusAllowsContentEdit } from "@/modules/vendas/lib/sales/quote-access";
+import { QUOTE_STATUSES, type QuoteUpdate } from "@/modules/core/types/sales.types";
+import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
 import {
   computeValidUntil,
   parseShippingType,
   parseValidityDays,
-} from "@/lib/sales/quote-validity";
+} from "@/modules/vendas/lib/sales/quote-validity";
 import {
   replaceQuoteItemsFromLines,
   type SaleLineInput,
-} from "@/lib/sales/sales-flow";
+} from "@/modules/vendas/lib/sales/sales-flow";
 import {
   refreshQuoteHeaderTotals,
   resolveQuoteItemsFromPayload,
-} from "@/lib/sales/quote-items-resolve";
+} from "@/modules/vendas/lib/sales/quote-items-resolve";
 
 export const dynamic = "force-dynamic";
 

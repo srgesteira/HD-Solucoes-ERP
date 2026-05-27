@@ -1,20 +1,20 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
-import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/lib/utils/tenant";
-import { QUOTE_STATUSES } from "@/lib/types/sales.types";
-import { insertQuoteItemsFromLines, nextQuoteNumber } from "@/lib/sales/sales-flow";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
+import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
+import { QUOTE_STATUSES } from "@/modules/core/types/sales.types";
+import { insertQuoteItemsFromLines, nextQuoteNumber } from "@/modules/vendas/lib/sales/sales-flow";
 import {
   refreshQuoteHeaderTotals,
   resolveQuoteItemsFromPayload,
-} from "@/lib/sales/quote-items-resolve";
-import { fetchCustomerForTenant } from "@/lib/sales/quote-customer";
+} from "@/modules/vendas/lib/sales/quote-items-resolve";
+import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
 import {
   parseQuoteHeaderFromBody,
   quoteHeaderToInsert,
-} from "@/lib/sales/quote-payload";
-import { createQuoteBodySchema } from "@/lib/schemas/quote.schema";
+} from "@/modules/vendas/lib/sales/quote-payload";
+import { createQuoteBodySchema } from "@/shared/contracts/quote.schema";
 
 export const dynamic = "force-dynamic";
 

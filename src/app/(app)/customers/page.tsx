@@ -13,11 +13,11 @@ import {
   UserX,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils/cn";
-import { RowActionsMenu } from "@/components/ui/row-actions-menu";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { cn } from "@/shared/utils/cn";
+import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -27,7 +27,7 @@ import {
 import {
   CUSTOMERS_QUERY_KEY,
   customersListQueryKey,
-} from "@/lib/customers/query-keys";
+} from "@/modules/vendas/lib/customers/query-keys";
 
 interface CustomerRow {
   id: string;

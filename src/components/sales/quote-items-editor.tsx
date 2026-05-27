@@ -2,17 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { Plus, Search, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { NumericInput } from "@/components/ui/numeric-input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { NumericInput } from "@/shared/ui/numeric-input";
+import { Label } from "@/shared/ui/label";
+import { cn } from "@/shared/utils/cn";
 import {
   DEFAULT_QUOTE_MARKUP_PERCENT,
   lineTotalPrice,
   unitPriceFromCostAndMarkup,
   type QuoteLinePriceMode,
-} from "@/lib/sales/quote-line-pricing";
+} from "@/modules/vendas/lib/sales/quote-line-pricing";
 import {
   ProductSearchModal,
   type ProductSearchHit,

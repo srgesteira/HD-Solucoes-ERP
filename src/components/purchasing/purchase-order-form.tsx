@@ -6,15 +6,15 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Save, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { NumericInput } from "@/components/ui/numeric-input";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Textarea } from "@/shared/ui/textarea";
+import { NumericInput } from "@/shared/ui/numeric-input";
 import { SupplierSelectField } from "@/components/purchasing/supplier-select-field";
 import type { SupplierOption } from "@/components/purchasing/supplier-quick-create-modal";
-import { SUPPLIERS_ACTIVE_QUERY_KEY } from "@/lib/suppliers/query-keys";
+import { SUPPLIERS_ACTIVE_QUERY_KEY } from "@/modules/compras/lib/suppliers/query-keys";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
 import {
   PurchaseOrderItemsEditor,
@@ -24,10 +24,10 @@ import {
   type PurchaseLineProduct,
   type PurchaseOrderLineDraft,
 } from "@/components/purchasing/purchase-order-items-editor";
-import { purchaseOrderPaymentUpdateSchema } from "@/lib/schemas/purchase-order.schema";
-import { canEditPurchaseOrderItems } from "@/lib/purchasing/purchase-order-edit";
-import { aggregatePurchaseLineTaxes } from "@/lib/purchasing/purchase-order-item-taxes";
-import { computePurchaseOrderTotal } from "@/lib/purchasing/purchase-order-totals";
+import { purchaseOrderPaymentUpdateSchema } from "@/shared/contracts/purchase-order.schema";
+import { canEditPurchaseOrderItems } from "@/modules/compras/lib/purchasing/purchase-order-edit";
+import { aggregatePurchaseLineTaxes } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
+import { computePurchaseOrderTotal } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 export type PurchaseOrderFormData = {
   id: string;
   po_number: string;

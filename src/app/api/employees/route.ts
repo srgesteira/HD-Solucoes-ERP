@@ -1,15 +1,15 @@
 import { NextRequest } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { assertModuleAccess } from "@/lib/utils/module-access";
+} from "@/modules/core/lib/tenant";
+import { assertModuleAccess } from "@/modules/core/lib/module-access";
 import {
   employeeCreateSchema,
   employeeUpdateSchema,
-} from "@/lib/schemas/pacote-a-finance.schema";
+} from "@/shared/contracts/pacote-a-finance.schema";
 
 export const dynamic = "force-dynamic";
 

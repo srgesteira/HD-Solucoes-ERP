@@ -1,12 +1,12 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import { DEFAULT_COLUMNS } from "@/lib/types/kanban";
-import type { EpicPipelineItem, EpicsPipelineResponse } from "@/lib/types/epic-pipeline";
-import { columnRankInBoard } from "@/lib/utils/task-pipeline";
-import { epicOuterBucketFromRanks } from "@/lib/utils/epic-outer-stage";
-import { subtaskVisibleToMember } from "@/lib/utils/task-visibility";
-import { isMissingPublicTableError } from "@/lib/utils/supabase-migration";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { DEFAULT_COLUMNS } from "@/modules/core/types/kanban";
+import type { EpicPipelineItem, EpicsPipelineResponse } from "@/modules/core/types/epic-pipeline";
+import { columnRankInBoard } from "@/modules/boards/lib/utils/task-pipeline";
+import { epicOuterBucketFromRanks } from "@/modules/boards/lib/utils/epic-outer-stage";
+import { subtaskVisibleToMember } from "@/modules/boards/lib/utils/task-visibility";
+import { isMissingPublicTableError } from "@/modules/core/lib/supabase-migration";
 
 export const dynamic = "force-dynamic";
 

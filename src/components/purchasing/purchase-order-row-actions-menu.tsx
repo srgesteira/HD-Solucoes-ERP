@@ -4,7 +4,7 @@ import { Ban, Edit, Eye, Printer } from "lucide-react";
 import {
   RowActionsMenu,
   type RowActionItem,
-} from "@/components/ui/row-actions-menu";
+} from "@/shared/ui/row-actions-menu";
 
 type PurchaseOrderStatus =
   | "draft"

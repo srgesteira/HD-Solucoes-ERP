@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { BoardKanban } from "@/components/kanban/board-kanban";
-import type { TaskWithAssignee } from "@/lib/types/kanban";
+import type { TaskWithAssignee } from "@/modules/core/types/kanban";
 
 export const dynamic = "force-dynamic";
 

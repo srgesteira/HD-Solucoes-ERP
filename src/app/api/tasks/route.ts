@@ -1,19 +1,19 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createTaskSchema } from "@/lib/validators/task";
-import { nextSortOrderForColumn } from "@/lib/utils/kanban-helpers";
-import { apiError, apiOk } from "@/lib/http";
-import type { TaskWithAssignee } from "@/lib/types/kanban";
-import { notifyTaskAssigned } from "@/lib/notifications/task-assigned";
-import { resolveAssigneeCadastroEmail } from "@/lib/notifications/resolve-assignee-email";
-import { getDefaultEpicIdForBoard } from "@/lib/utils/board-epic";
-import { TASK_DETAIL_SELECT } from "@/lib/utils/task-select";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { createTaskSchema } from "@/modules/boards/lib/validators/task";
+import { nextSortOrderForColumn } from "@/modules/boards/lib/utils/kanban-helpers";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import type { TaskWithAssignee } from "@/modules/core/types/kanban";
+import { notifyTaskAssigned } from "@/modules/boards/lib/notifications/task-assigned";
+import { resolveAssigneeCadastroEmail } from "@/modules/boards/lib/notifications/resolve-assignee-email";
+import { getDefaultEpicIdForBoard } from "@/modules/boards/lib/utils/board-epic";
+import { TASK_DETAIL_SELECT } from "@/modules/boards/lib/utils/task-select";
 import {
   enrichTasksWithAssigneeAndArea,
   type TaskRowWithAreaEmbed,
-} from "@/lib/utils/task-embed-map";
-import { assertWorkAreaBelongsToTenant } from "@/lib/utils/work-area";
+} from "@/modules/boards/lib/utils/task-embed-map";
+import { assertWorkAreaBelongsToTenant } from "@/modules/engenharia/lib/work-area";
 
 export const dynamic = "force-dynamic";
 

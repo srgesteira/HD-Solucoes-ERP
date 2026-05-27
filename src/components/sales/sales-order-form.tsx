@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
 import { SalesOrderFormFields } from "@/components/sales/sales-order-form-fields";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
@@ -21,20 +21,20 @@ import {
   type SalesOrderLineDraft,
   type SalesOrderLineProduct,
 } from "@/components/sales/sales-order-items-editor";
-import { salesOrderCommercialUpdateSchema } from "@/lib/schemas/sales-order.schema";
-import { aggregatePurchaseLineTaxes } from "@/lib/purchasing/purchase-order-item-taxes";
-import { computeSalesOrderTotal } from "@/lib/sales/sales-order-totals";
-import type { SalesOrderEditGuard } from "@/lib/sales/sales-order-edit";
+import { salesOrderCommercialUpdateSchema } from "@/shared/contracts/sales-order.schema";
+import { aggregatePurchaseLineTaxes } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
+import { computeSalesOrderTotal } from "@/modules/vendas/lib/sales/sales-order-totals";
+import type { SalesOrderEditGuard } from "@/modules/vendas/lib/sales/sales-order-edit";
 import {
   addDaysToISODate,
   defaultExpectedDeliveryForOrder,
-} from "@/lib/sales/sales-flow";
+} from "@/modules/vendas/lib/sales/sales-flow";
 import {
   SALES_ORDER_EDITABLE_STATUSES,
   SALES_ORDER_STATUS_LABELS,
-} from "@/lib/sales/sales-order-status";
-import type { SalesOrderStatus } from "@/lib/types/sales.types";
-import { cn } from "@/lib/utils/cn";
+} from "@/modules/vendas/lib/sales/sales-order-status";
+import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
+import { cn } from "@/shared/utils/cn";
 
 export type SalesOrderFormData = {
   id: string;

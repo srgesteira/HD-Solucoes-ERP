@@ -1,10 +1,10 @@
 "use client";
 
-import type { BoardColumn } from "@/lib/types/kanban";
-import type { TaskWithAssignee } from "@/lib/types/kanban";
+import type { BoardColumn } from "@/modules/core/types/kanban";
+import type { TaskWithAssignee } from "@/modules/core/types/kanban";
 import { TaskCard } from "@/components/kanban/task-card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Button } from "@/shared/ui/button";
 
 type ColumnProps = {
   column: Pick<BoardColumn, "id" | "name" | "color">;

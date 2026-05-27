@@ -16,18 +16,18 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
-import type { Tables } from "@/lib/types/database";
-import type { ReceivableStatus } from "@/lib/types/finance.types";
-import type { SalesOrderStatus } from "@/lib/types/sales.types";
-import { defaultExpectedDeliveryForOrder } from "@/lib/sales/sales-flow";
+import type { Tables } from "@/modules/core/types/database";
+import type { ReceivableStatus } from "@/modules/core/types/finance.types";
+import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
+import { defaultExpectedDeliveryForOrder } from "@/modules/vendas/lib/sales/sales-flow";
 import { SalesOrderChangeHistory } from "@/components/sales/sales-order-change-history";
 
 /** Progressão permitida pelo UI (exclude cancelled via acção separada). */

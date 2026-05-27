@@ -6,8 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Save, Truck } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import {
   SupplierFormFields,
   buildSupplierPayload,
@@ -15,7 +15,7 @@ import {
   type SupplierFormShape,
 } from "@/components/purchasing/supplier-form-fields";
 import { useMe } from "@/hooks/use-me";
-import type { Supplier } from "@/lib/types/purchasing.types";
+import type { Supplier } from "@/modules/core/types/purchasing.types";
 
 async function fetchSupplier(id: string): Promise<Supplier> {
   const res = await fetch(`/api/purchasing/suppliers/${id}`, {

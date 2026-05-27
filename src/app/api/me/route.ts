@@ -1,6 +1,6 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { apiError, apiOk } from "@/lib/http";
-import { effectivePermissions } from "@/lib/permissions";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { effectivePermissions } from "@/shared/auth/permissions";
 
 export const dynamic = "force-dynamic";
 

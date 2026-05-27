@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { SALES_ORDER_FIELD_LABELS } from "@/lib/sales/sales-order-change-log";
+import { SALES_ORDER_FIELD_LABELS } from "@/modules/vendas/lib/sales/sales-order-change-log";
 
 type LogUser = {
   id: string;

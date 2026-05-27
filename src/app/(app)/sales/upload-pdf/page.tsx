@@ -6,12 +6,12 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowLeft, FileUp, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { useMe } from "@/hooks/use-me";
-import type { OrderPdfExtraction } from "@/lib/services/ai.service";
+import type { OrderPdfExtraction } from "@/modules/engenharia/lib/services/ai.service";
 
 async function extractPdf(file: File): Promise<OrderPdfExtraction> {
   const fd = new FormData();

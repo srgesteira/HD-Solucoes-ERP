@@ -1,11 +1,11 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { runFullBusinessAnalysis } from "@/lib/services/business-ai.service";
-import type { Json } from "@/lib/types/database";
+} from "@/modules/core/lib/tenant";
+import { runFullBusinessAnalysis } from "@/modules/engenharia/lib/services/business-ai.service";
+import type { Json } from "@/modules/core/types/database";
 
 export const dynamic = "force-dynamic";
 

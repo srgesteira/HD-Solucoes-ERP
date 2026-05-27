@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useMeBootstrap } from "@/contexts/me-bootstrap";
-import type { ModulePermissions } from "@/lib/permissions";
+import type { ModulePermissions } from "@/shared/auth/permissions";
 
 export type MeResponse = {
   id: string;

@@ -1,14 +1,14 @@
 "use client";
 
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/shared/ui/label";
+import { Input } from "@/shared/ui/input";
+import { Textarea } from "@/shared/ui/textarea";
 import { SupplierDocumentLookup } from "@/components/purchasing/supplier-document-lookup";
 import {
   applyDocumentLookupToSupplierForm,
   normalizeSupplierDocumentForSave,
-} from "@/lib/suppliers/apply-document-lookup";
-import type { Supplier } from "@/lib/types/purchasing.types";
+} from "@/modules/compras/lib/suppliers/apply-document-lookup";
+import type { Supplier } from "@/modules/core/types/purchasing.types";
 
 function trimOrNull(v: string): string | null {
   const t = v.trim();

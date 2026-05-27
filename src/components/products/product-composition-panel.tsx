@@ -13,13 +13,13 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
-import type { Database } from "@/lib/types/database";
+import type { Database } from "@/modules/core/types/database";
 import { ProductSearchModal, type ProductSearchHit } from "@/components/products/product-search-modal";
 import { workCentersQueryKey } from "@/components/settings/work-centers-admin";
 

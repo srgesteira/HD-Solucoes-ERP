@@ -1,14 +1,14 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
 import {
   currentUserCanModule,
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { fetchPurchaseOrderForExport } from "@/lib/purchasing/fetch-purchase-order-for-export";
-import { sendPurchaseOrderEmail } from "@/lib/purchasing/send-purchase-order-email";
+} from "@/modules/core/lib/tenant";
+import { fetchPurchaseOrderForExport } from "@/modules/compras/lib/purchasing/fetch-purchase-order-for-export";
+import { sendPurchaseOrderEmail } from "@/modules/compras/lib/purchasing/send-purchase-order-email";
 
 export const dynamic = "force-dynamic";
 

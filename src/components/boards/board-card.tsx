@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CheckSquare, Columns3, Crown } from "lucide-react";
-import type { BoardSummary } from "@/lib/types/kanban";
-import { cn } from "@/lib/utils/cn";
+import type { BoardSummary } from "@/modules/core/types/kanban";
+import { cn } from "@/shared/utils/cn";
 
 type BoardCardProps = {
   board: BoardSummary;

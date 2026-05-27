@@ -6,20 +6,20 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Percent, Save } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
-import type { Tables } from "@/lib/types/database";
-import type { BdiSettingsSlice } from "@/lib/pricing/bdi-calculate";
+import type { Tables } from "@/modules/core/types/database";
+import type { BdiSettingsSlice } from "@/modules/engenharia/lib/pricing/bdi-calculate";
 import {
   approximateBdiBreakdown,
   calculateBdiSellingPrice,
   defaultBdiSettings,
   totalTaxPctFromSettingsOrCompany,
-} from "@/lib/pricing/bdi-calculate";
+} from "@/modules/engenharia/lib/pricing/bdi-calculate";
 
 function fmtBRL(n: number): string {
   return new Intl.NumberFormat("pt-BR", {

@@ -4,10 +4,10 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import type { WorkArea } from "@/lib/types/kanban";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import type { WorkArea } from "@/modules/core/types/kanban";
 import { workAreasQueryKey } from "@/hooks/use-work-areas";
 
 async function fetchAreas(includeArchived: boolean): Promise<WorkArea[]> {

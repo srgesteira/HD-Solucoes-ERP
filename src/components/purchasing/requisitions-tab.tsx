@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileOutput, Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils/cn";
-import type { PurchaseRequisitionRow } from "@/lib/purchasing-requisitions";
+import { Button } from "@/shared/ui/button";
+import { cn } from "@/shared/utils/cn";
+import type { PurchaseRequisitionRow } from "@/modules/compras/lib/purchasing-requisitions";
 import {
   isMigrationRequiredError,
   REQUISITIONS_MIGRATION_HINT,
-} from "@/lib/purchasing-requisitions";
+} from "@/modules/compras/lib/purchasing-requisitions";
 import {
   requisitionsCountQueryKey,
   requisitionsQueryKey,

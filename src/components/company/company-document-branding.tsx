@@ -1,6 +1,6 @@
 "use client";
 
-import type { Tables } from "@/lib/types/database";
+import type { Tables } from "@/modules/core/types/database";
 
 export type CompanySettingsRow = Tables<"company_settings">;
 

@@ -19,14 +19,14 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { toast } from "sonner";
-import type { BoardColumn } from "@/lib/types/kanban";
-import type { TaskWithAssignee } from "@/lib/types/kanban";
+import type { BoardColumn } from "@/modules/core/types/kanban";
+import type { TaskWithAssignee } from "@/modules/core/types/kanban";
 import { TaskCard } from "@/components/kanban/task-card";
 import { useUpdateTask } from "@/hooks/use-board-tasks";
 import { useMe } from "@/hooks/use-me";
-import { cn } from "@/lib/utils/cn";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/shared/utils/cn";
+import { Input } from "@/shared/ui/input";
+import { Button } from "@/shared/ui/button";
 
 function findColumnForTask(
   taskId: string,

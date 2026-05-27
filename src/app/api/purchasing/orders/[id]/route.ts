@@ -1,27 +1,27 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   currentUserCanModule,
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import type { Database } from "@/lib/types/database";
-import { computePurchaseOrderTotal, num } from "@/lib/purchasing/purchase-order-totals";
-import { applyPurchaseOrderReceive } from "@/lib/purchasing/purchase-order-receive";
+} from "@/modules/core/lib/tenant";
+import type { Database } from "@/modules/core/types/database";
+import { computePurchaseOrderTotal, num } from "@/modules/compras/lib/purchasing/purchase-order-totals";
+import { applyPurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive";
 import {
   canEditPurchaseOrderItems,
   syncPurchaseOrderItems,
   type PurchaseOrderLineInput,
-} from "@/lib/purchasing/purchase-order-edit";
-import { purchaseOrderItemsPayloadSchema } from "@/lib/schemas/purchase-order.schema";
-import { lineSubtotal, roundMoney } from "@/lib/purchasing/purchase-order-item-taxes";
+} from "@/modules/compras/lib/purchasing/purchase-order-edit";
+import { purchaseOrderItemsPayloadSchema } from "@/shared/contracts/purchase-order.schema";
+import { lineSubtotal, roundMoney } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import {
   coerceSalesOrderInt,
   parsePaymentDaysBetween,
-} from "@/lib/schemas/sales-order.schema";
-import { checkPurchaseOrderExpectedDeliveryVsProduction } from "@/lib/purchasing/purchase-schedule-conflicts";
+} from "@/shared/contracts/sales-order.schema";
+import { checkPurchaseOrderExpectedDeliveryVsProduction } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
 
 export const dynamic = "force-dynamic";
 

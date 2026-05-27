@@ -1,9 +1,9 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { assertModuleAccess } from "@/lib/utils/module-access";
-import { round1 } from "@/lib/dashboard/period";
-import { PRODUCT_NATURE_CODES } from "@/lib/products/mrp-product-nature";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { round1 } from "@/modules/core/lib/dashboard/period";
+import { PRODUCT_NATURE_CODES } from "@/modules/engenharia/lib/products/mrp-product-nature";
 
 export const dynamic = "force-dynamic";
 

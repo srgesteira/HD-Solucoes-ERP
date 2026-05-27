@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Tags } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 
 export const metadata = {
   title: "Classificação técnica | ERP HD",

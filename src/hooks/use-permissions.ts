@@ -6,7 +6,7 @@ import {
   DEFAULT_MODULE_PERMISSIONS,
   type ModuleKey,
   type ModulePermissions,
-} from "@/lib/permissions";
+} from "@/shared/auth/permissions";
 
 export function usePermissions(): {
   permissions: ModulePermissions;

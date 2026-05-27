@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createBoardSchema } from "@/lib/validators/board";
-import { apiError, apiOk } from "@/lib/http";
-import { DEFAULT_COLUMNS, type BoardSummary } from "@/lib/types/kanban";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { createBoardSchema } from "@/modules/boards/lib/validators/board";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { DEFAULT_COLUMNS, type BoardSummary } from "@/modules/core/types/kanban";
 
 export const dynamic = "force-dynamic";
 

@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 import { QuotePrintDocument } from "@/components/sales/quote-print-document";
-import type { QuotePrintData } from "@/lib/sales/quote-display";
-import type { Tables } from "@/lib/types/database";
+import type { QuotePrintData } from "@/modules/vendas/lib/sales/quote-display";
+import type { Tables } from "@/modules/core/types/database";
 
 async function fetchQuoteDetail(id: string): Promise<QuotePrintData> {
   const res = await fetch(`/api/sales/quotes/${id}`, {

@@ -4,16 +4,16 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils/cn";
-import type { ProductType } from "@/lib/types/product.types";
+import { Label } from "@/shared/ui/label";
+import { Input } from "@/shared/ui/input";
+import { Textarea } from "@/shared/ui/textarea";
+import { cn } from "@/shared/utils/cn";
+import type { ProductType } from "@/modules/core/types/product.types";
 import {
   isCompleteClassificationSuffix,
   isMoClassificationSuffix,
   isSimplifiedClassificationSuffix,
-} from "@/lib/products/prefix-classification";
+} from "@/modules/engenharia/lib/products/prefix-classification";
 
 const SELECT_CLASS =
   "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm " +

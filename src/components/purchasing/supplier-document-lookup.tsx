@@ -3,17 +3,17 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import {
   documentKindFromDigits,
   formatDocumentMask,
   onlyDigits,
   validateDocumentDigits,
-} from "@/lib/utils/br-document";
-import { lookupDocumentClient } from "@/lib/suppliers/lookup-document-client";
-import type { DocumentLookupResult } from "@/lib/external/document-lookup";
+} from "@/shared/utils/br-document";
+import { lookupDocumentClient } from "@/modules/compras/lib/suppliers/lookup-document-client";
+import type { DocumentLookupResult } from "@/shared/utils/external/document-lookup";
 
 type Props = {
   document: string;

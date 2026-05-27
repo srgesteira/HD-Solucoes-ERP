@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { SupplierDocumentLookup } from "@/components/purchasing/supplier-document-lookup";
 import {
   buildSupplierPayload,
@@ -15,10 +15,10 @@ import {
 import {
   applyDocumentLookupToSupplierForm,
   normalizeSupplierDocumentForSave,
-} from "@/lib/suppliers/apply-document-lookup";
-import { formatSupplierAddressLine } from "@/lib/suppliers/format-supplier-address";
-import { onlyDigits, validateDocumentDigits } from "@/lib/utils/br-document";
-import type { DocumentLookupResult } from "@/lib/external/document-lookup";
+} from "@/modules/compras/lib/suppliers/apply-document-lookup";
+import { formatSupplierAddressLine } from "@/modules/compras/lib/suppliers/format-supplier-address";
+import { onlyDigits, validateDocumentDigits } from "@/shared/utils/br-document";
+import type { DocumentLookupResult } from "@/shared/utils/external/document-lookup";
 
 export type SupplierOption = {
   id: string;

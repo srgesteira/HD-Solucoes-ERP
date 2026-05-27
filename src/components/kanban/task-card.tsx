@@ -1,8 +1,8 @@
 "use client";
 
-import type { TaskWithAssignee } from "@/lib/types/kanban";
-import { TASK_PRIORITY_DOT_CLASS } from "@/lib/types/kanban";
-import { cn } from "@/lib/utils/cn";
+import type { TaskWithAssignee } from "@/modules/core/types/kanban";
+import { TASK_PRIORITY_DOT_CLASS } from "@/modules/core/types/kanban";
+import { cn } from "@/shared/utils/cn";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 

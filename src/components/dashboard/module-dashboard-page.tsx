@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { usePermissions } from "@/hooks/use-permissions";
-import type { ModuleKey } from "@/lib/permissions";
+import type { ModuleKey } from "@/shared/auth/permissions";
 import { toast } from "sonner";
 
 type KpiItem = { title: string; value: string; subtitle?: string };

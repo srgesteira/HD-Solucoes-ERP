@@ -1,9 +1,9 @@
 "use client";
 
 import { Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { downloadCsv, rowsToCsv } from "@/lib/utils/export-csv";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { downloadCsv, rowsToCsv } from "@/shared/utils/export-csv";
+import { cn } from "@/shared/utils/cn";
 
 export type ReportColumn = { key: string; header: string };
 

@@ -14,14 +14,14 @@ import {
 } from "lucide-react";
 import { SalesOrderRowActionsMenu } from "@/components/sales/sales-order-row-actions-menu";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
-import type { SalesOrderStatus } from "@/lib/types/sales.types";
-import type { SalesOrderProductionSituation } from "@/lib/sales/sales-order-production-summary";
+import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
+import type { SalesOrderProductionSituation } from "@/modules/vendas/lib/sales/sales-order-production-summary";
 import {
   formatSalesListDate,
   productionSituationPill,
@@ -29,7 +29,7 @@ import {
   SALES_ORDER_LIST_TAB_LABELS,
   SALES_ORDER_LIST_TABS,
   type SalesOrderListTab,
-} from "@/lib/sales/sales-order-list-display";
+} from "@/modules/vendas/lib/sales/sales-order-list-display";
 
 type SalesOrderListRow = {
   id: string;

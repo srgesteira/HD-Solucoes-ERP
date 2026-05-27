@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 import { PurchaseOrderPrintDocument } from "@/components/purchasing/purchase-order-print-document";
-import type { PurchaseOrderPrintData } from "@/lib/purchasing/purchase-order-display";
-import type { Tables } from "@/lib/types/database";
+import type { PurchaseOrderPrintData } from "@/modules/compras/lib/purchasing/purchase-order-display";
+import type { Tables } from "@/modules/core/types/database";
 
 async function fetchOrder(id: string): Promise<PurchaseOrderPrintData> {
   const res = await fetch(`/api/purchasing/orders/${id}`, {

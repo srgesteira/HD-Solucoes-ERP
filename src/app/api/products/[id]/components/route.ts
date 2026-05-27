@@ -1,16 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
-} from "@/lib/utils/tenant";
-import { productComponentSchema } from "@/lib/schemas/product.schema";
-import { resolveLaborHourlyRateForBom } from "@/lib/labor-cost-utils";
-import type { Database } from "@/lib/types/database";
-import { recordProductPriceHistory } from "@/lib/products/product-price-history";
+} from "@/modules/core/lib/tenant";
+import { productComponentSchema } from "@/shared/contracts/product.schema";
+import { resolveLaborHourlyRateForBom } from "@/modules/rh/lib/labor-cost-utils";
+import type { Database } from "@/modules/core/types/database";
+import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
 
 export const dynamic = "force-dynamic";
 

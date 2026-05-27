@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { apiError, apiOk, supabaseErrorToHttp } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 
 export const dynamic = "force-dynamic";
 

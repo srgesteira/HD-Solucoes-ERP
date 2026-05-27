@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { apiError, apiOk } from "@/lib/http";
-import { getCurrentTenantId } from "@/lib/utils/tenant";
-import { fetchPcpPlanning } from "@/lib/pcp-planning";
-import { syncSalesOrderReadyForInvoice } from "@/lib/sales/sales-order-ready-for-invoice";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { apiError, apiOk } from "@/modules/core/lib/http";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { fetchPcpPlanning } from "@/modules/pcp/lib/pcp-planning";
+import { syncSalesOrderReadyForInvoice } from "@/modules/vendas/lib/sales/sales-order-ready-for-invoice";
 
 export const dynamic = "force-dynamic";
 

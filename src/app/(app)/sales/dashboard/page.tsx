@@ -14,7 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import { KpiCard } from "@/components/dashboard/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { usePermissions } from "@/hooks/use-permissions";
 import { toast } from "sonner";
 
