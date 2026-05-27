@@ -1,4 +1,8 @@
-import type { ModuleKey, ModulePermissions } from "@/shared/auth/permissions";
+import {
+  MODULE_KEYS,
+  type ModuleKey,
+  type ModulePermissions,
+} from "@/shared/auth/permissions";
 
 /** Chaves de módulo do menu (decisão Item 12 — português). */
 export const APP_MODULE_KEYS = [
@@ -77,8 +81,16 @@ export function applyEnabledModulesToLegacyPermissions(
 ): ModulePermissions {
   const mods = normalizeEnabledModules(enabled_modules, role);
   if (mods.includes("*")) return perms;
+  /** Com enabled_modules explícito, não herdar DEFAULT (boards/sales true). */
+  if (mods.length === 0) return { ...perms };
 
-  const out = { ...perms };
+  const out = {} as ModulePermissions;
+  for (const k of MODULE_KEYS) {
+    out[k] = false;
+  }
+  out.dashboard = true;
+
+  if (hasAnyModule(mods, ["boards"])) out.boards = true;
   if (hasAnyModule(mods, ["vendas"])) out.sales = true;
   if (hasAnyModule(mods, ["faturamento"])) {
     out.finance = true;
@@ -93,11 +105,11 @@ export function applyEnabledModulesToLegacyPermissions(
   if (hasAnyModule(mods, ["almoxarifado"])) out.inventory = true;
   if (hasAnyModule(mods, ["producao"])) out.production = true;
   if (hasAnyModule(mods, ["qualidade"])) out.quality = true;
-  if (hasAnyModule(mods, ["expedicao", "pcp", "compras", "almoxarifado"])) {
+  if (hasAnyModule(mods, ["expedicao", "pcp", "almoxarifado"])) {
     out.logistics = true;
   }
   if (hasAnyModule(mods, ["rh"])) out.hr = true;
-  if (hasAnyModule(mods, ["core", "boards"])) out.settings = true;
+  if (hasAnyModule(mods, ["core"])) out.settings = true;
   return out;
 }
 

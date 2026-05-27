@@ -61,7 +61,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && pathname === "/login") {
-    return NextResponse.redirect(`${origin}/boards`);
+    return NextResponse.redirect(`${origin}/home`);
   }
 
   return supabaseResponse;

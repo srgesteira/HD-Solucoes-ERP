@@ -103,7 +103,7 @@ const MENU_STRUCTURE: NavEntry[] = [
     href: "/dashboard-gerencial",
     icon: BarChart2,
     module: "dashboard",
-    anyOf: ["dashboard", "reports", "finance"],
+    anyOf: ["reports", "finance"],
   },
   {
     type: "link",
@@ -111,6 +111,7 @@ const MENU_STRUCTURE: NavEntry[] = [
     href: "/dashboard",
     icon: LineChart,
     module: "dashboard",
+    anyOf: ["reports", "finance"],
   },
   {
     type: "link",

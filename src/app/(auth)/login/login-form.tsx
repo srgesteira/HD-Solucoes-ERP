@@ -104,7 +104,7 @@ export function LoginForm() {
        * Navegação completa garante que o middleware vê os cookies `sb-*` no próximo pedido.
        * Só `router.push` em cliente por vezes chega antes da persistência visível ao servidor.
        */
-      window.location.assign("/boards");
+      window.location.assign("/home");
     } catch (err) {
       setErrorMsg(
         err instanceof Error
