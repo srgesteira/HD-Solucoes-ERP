@@ -35,3 +35,8 @@ supabase/.branches/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# scripts auxiliares locais (testes / ops pontuais)
+scripts/create-member-compras.mjs
+scripts/deactivate-member-compras.mjs
+scripts/verify-member-compras.mjs
