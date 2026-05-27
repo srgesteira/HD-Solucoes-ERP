@@ -21,6 +21,7 @@ const productSharedFields = {
   /** Legado — preço de venda fixo; usar histórico (sale) e cost_price no orçamento. */
   selling_price: z.number().min(0).optional(),
   is_active: z.boolean().default(true),
+  released_for_sale: z.boolean().optional(),
   use_custom_bdi: z.boolean().optional(),
   custom_tax_rate: z.number().min(0).max(999).nullable().optional(),
   custom_profit_margin: z.number().min(0).max(999).nullable().optional(),
@@ -52,6 +53,11 @@ export const productCreateSchema = z
     subfamily_id: z.uuid().optional().nullable(),
     material_id: z.uuid().optional().nullable(),
     finish_id: z.uuid().optional().nullable(),
+    source_quote_id: z.string().uuid().optional().nullable(),
+    engineering_workflow_status: z
+      .enum(["pending_composition", "released"])
+      .optional()
+      .nullable(),
   });
 
 /** Actualização parcial; `code` legado opcional (não usar na UI). Campos MO validados na API. */

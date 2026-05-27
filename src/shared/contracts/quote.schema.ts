@@ -33,7 +33,13 @@ export const createQuoteBodySchema = z.object({
   quote_date: z.string().optional(),
   validity_days: z.union([z.number().int().min(1), z.string()]).optional(),
   payment_terms: z.string().nullable().optional(),
-  delivery_deadline: z.string().nullable().optional(),
+  /** Dias úteis para entrega (campo principal no formulário). */
+  delivery_business_days: z
+    .union([z.number().int().min(1), z.string()])
+    .nullable()
+    .optional(),
+  /** Legado: aceita número em string; ignorar texto livre antigo. */
+  delivery_deadline: z.union([z.number().int().min(1), z.string()]).nullable().optional(),
   expected_delivery_date: z.string().nullable().optional(),
   payment_installments: z.union([z.number().int().min(1), z.string()]).optional(),
   payment_days_to_first_due: z
