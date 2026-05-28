@@ -5,7 +5,7 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { employeeUpdateSchema } from "@/shared/contracts/pacote-a-finance.schema";
 import type { Database } from "@/modules/core/types/database";
 
@@ -16,7 +16,7 @@ type EmployeeUpdate = Database["public"]["Tables"]["employees"]["Update"];
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, ctx: Ctx) {
-  const gate = await assertModuleAccess("hr");
+  const gate = await assertMenuModuleAccess("rh");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();
@@ -52,7 +52,7 @@ export async function GET(_request: NextRequest, ctx: Ctx) {
 }
 
 export async function PUT(request: NextRequest, ctx: Ctx) {
-  const gate = await assertModuleAccess("hr");
+  const gate = await assertMenuModuleAccess("rh");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();
@@ -119,7 +119,7 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
     return apiError("Apenas administradores podem excluir.", 403);
   }
 
-  const gate = await assertModuleAccess("hr");
+  const gate = await assertMenuModuleAccess("rh");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();

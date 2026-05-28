@@ -5,7 +5,7 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import {
   employeeCreateSchema,
   employeeUpdateSchema,
@@ -14,7 +14,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const gate = await assertModuleAccess("hr");
+  const gate = await assertMenuModuleAccess("rh");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();
@@ -52,7 +52,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await assertModuleAccess("hr");
+  const gate = await assertMenuModuleAccess("rh");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();

@@ -4,7 +4,7 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import type { Database } from "@/modules/core/types/database";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ const allocUpdateSchema = z.object({
 type Ctx = { params: Promise<{ id: string; allocId: string }> };
 
 export async function PUT(request: NextRequest, ctx: Ctx) {
-  const gate = await assertModuleAccess("hr");
+  const gate = await assertMenuModuleAccess("rh");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();
@@ -80,7 +80,7 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
 }
 
 export async function DELETE(_request: NextRequest, ctx: Ctx) {
-  const gate = await assertModuleAccess("hr");
+  const gate = await assertMenuModuleAccess("rh");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();

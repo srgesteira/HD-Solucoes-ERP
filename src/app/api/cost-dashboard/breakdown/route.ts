@@ -2,15 +2,15 @@ import { NextRequest } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { computeLaborCostBreakdown } from "@/modules/rh/lib/labor-cost-utils";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const gate = await assertModuleAccess("finance");
+  const gate = await assertMenuModuleAccess("faturamento");
   if (!gate.ok) {
-    const prod = await assertModuleAccess("production");
+    const prod = await assertMenuModuleAccess("producao");
     if (!prod.ok) return gate.response;
   }
 

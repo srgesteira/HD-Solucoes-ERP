@@ -1,7 +1,7 @@
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { round1 } from "@/modules/core/lib/dashboard/period";
 import { PRODUCT_NATURE_CODES } from "@/modules/engenharia/lib/products/mrp-product-nature";
 
@@ -34,7 +34,7 @@ function isPurchasableProduct(prod: NonNullable<HistoryRow["product"]>): boolean
 }
 
 export async function GET() {
-  const access = await assertModuleAccess("purchasing");
+  const access = await assertMenuModuleAccess("compras");
   if (!access.ok) return access.response;
 
   const tenantId = await getCurrentTenantId();

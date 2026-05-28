@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import {
   accountsPayableCreateSchema,
   accountsPayableUpdateSchema,
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 const PAYABLE_STATUS = new Set(["pending", "paid", "overdue", "cancelled"]);
 
 export async function GET(request: NextRequest) {
-  const gate = await assertModuleAccess("finance");
+  const gate = await assertMenuModuleAccess("faturamento");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await assertModuleAccess("finance");
+  const gate = await assertMenuModuleAccess("faturamento");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();

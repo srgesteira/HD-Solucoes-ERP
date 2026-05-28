@@ -1,14 +1,13 @@
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { apiError } from "@/modules/core/lib/http";
-import type { ModuleKey } from "@/shared/auth/permissions";
 import type { NextResponse } from "next/server";
-import { currentUserCanModule } from "@/modules/core/lib/tenant";
+import { currentUserCanMenuModule } from "@/modules/core/lib/tenant";
 
 /**
- * Acesso a um módulo (admin, enabled_modules ou JSON legado `permissions`).
+ * Acesso por chave PT do menu (`enabled_modules`).
  */
-export async function assertModuleAccess(
-  module: ModuleKey
+export async function assertMenuModuleAccess(
+  menuKey: string
 ): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -18,14 +17,14 @@ export async function assertModuleAccess(
     return { ok: false, response: apiError("Não autenticado", 401) };
   }
 
-  if (!(await currentUserCanModule(module))) {
-    return { ok: false, response: apiError("Sem acesso a este módulo", 403) };
+  if (!(await currentUserCanMenuModule(menuKey))) {
+    return { ok: false, response: apiError("Sem permissão", 403) };
   }
 
   return { ok: true };
 }
 
-/** Relatórios financeiros: Financeiro ou Relatórios (legado). */
+/** Relatórios financeiros: módulo faturamento (inclui reports no bridge legado). */
 export async function assertFinanceOrReportsAccess(): Promise<
   { ok: true } | { ok: false; response: NextResponse }
 > {
@@ -37,10 +36,7 @@ export async function assertFinanceOrReportsAccess(): Promise<
     return { ok: false, response: apiError("Não autenticado", 401) };
   }
 
-  if (
-    (await currentUserCanModule("finance")) ||
-    (await currentUserCanModule("reports"))
-  ) {
+  if (await currentUserCanMenuModule("faturamento")) {
     return { ok: true };
   }
 
@@ -50,7 +46,7 @@ export async function assertFinanceOrReportsAccess(): Promise<
   };
 }
 
-/** Produção ou Relatórios (legado). */
+/** Produção ou faturamento (relatórios). */
 export async function assertProductionOrReportsAccess(): Promise<
   { ok: true } | { ok: false; response: NextResponse }
 > {
@@ -63,16 +59,16 @@ export async function assertProductionOrReportsAccess(): Promise<
   }
 
   if (
-    (await currentUserCanModule("production")) ||
-    (await currentUserCanModule("reports"))
+    (await currentUserCanMenuModule("producao")) ||
+    (await currentUserCanMenuModule("faturamento"))
   ) {
     return { ok: true };
   }
 
-  return { ok: false, response: apiError("Sem acesso", 403) };
+  return { ok: false, response: apiError("Sem permissão", 403) };
 }
 
-/** Vendas ou Relatórios (legado). */
+/** Vendas ou faturamento (relatórios). */
 export async function assertSalesOrReportsAccess(): Promise<
   { ok: true } | { ok: false; response: NextResponse }
 > {
@@ -85,20 +81,20 @@ export async function assertSalesOrReportsAccess(): Promise<
   }
 
   if (
-    (await currentUserCanModule("sales")) ||
-    (await currentUserCanModule("reports"))
+    (await currentUserCanMenuModule("vendas")) ||
+    (await currentUserCanMenuModule("faturamento"))
   ) {
     return { ok: true };
   }
 
-  return { ok: false, response: apiError("Sem acesso", 403) };
+  return { ok: false, response: apiError("Sem permissão", 403) };
 }
 
-/** Vendas ou Compras (consulta CNPJ/CPF). */
+/** Vendas ou compras (consulta CNPJ/CPF). */
 export async function assertSalesOrPurchasingAccess(): Promise<
   { ok: true } | { ok: false; response: NextResponse }
 > {
-  const sales = await assertModuleAccess("sales");
+  const sales = await assertMenuModuleAccess("vendas");
   if (sales.ok) return sales;
-  return assertModuleAccess("purchasing");
+  return assertMenuModuleAccess("compras");
 }

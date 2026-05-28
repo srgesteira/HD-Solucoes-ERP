@@ -2,13 +2,13 @@ import { NextRequest } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { cashFlowEntryCreateSchema } from "@/shared/contracts/pacote-a-finance.schema";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const gate = await assertModuleAccess("finance");
+  const gate = await assertMenuModuleAccess("faturamento");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();
@@ -42,7 +42,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await assertModuleAccess("finance");
+  const gate = await assertMenuModuleAccess("faturamento");
   if (!gate.ok) return gate.response;
 
   const tenantId = await getCurrentTenantId();

@@ -3,12 +3,12 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const access = await assertModuleAccess("sales");
+  const access = await assertMenuModuleAccess("vendas");
   if (!access.ok) return access.response;
 
   const supabase = await createServerSupabaseClient();

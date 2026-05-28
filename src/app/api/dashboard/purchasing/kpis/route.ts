@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { assertModuleAccess } from "@/modules/core/lib/module-access";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import {
   daysBetweenIso,
   last90DaysRange,
@@ -14,7 +14,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const access = await assertModuleAccess("purchasing");
+  const access = await assertMenuModuleAccess("compras");
   if (!access.ok) return access.response;
 
   const tenantId = await getCurrentTenantId();
