@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
@@ -40,6 +41,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
+  const access = await assertMenuModuleAccess("vendas");
+  if (!access.ok) return access.response;
 
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
@@ -84,6 +87,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
+  const access = await assertMenuModuleAccess("vendas");
+  if (!access.ok) return access.response;
 
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
@@ -209,6 +214,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
+  const access = await assertMenuModuleAccess("vendas");
+  if (!access.ok) return access.response;
 
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
