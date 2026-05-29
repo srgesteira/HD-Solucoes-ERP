@@ -3,15 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import {
-  Check,
-  Edit,
-  Eye,
-  FilePenLine,
-  MoreHorizontal,
-  Send,
-  XCircle,
-} from "lucide-react";
+import { Check, ExternalLink, MoreHorizontal, Send, XCircle } from "lucide-react";
 import { cn } from "@/shared/utils/cn";
 
 export type QuoteRowActionsQuote = {
@@ -85,10 +77,6 @@ export function QuoteRowActionsMenu({
   }, [menuPos, updatePosition]);
 
   const st = row.status;
-  const showEdit = canEditQuotes && st === "draft";
-  const showRevise =
-    canEditQuotes &&
-    (st === "sent" || st === "approved" || st === "revision");
   const showSend = isAdmin && st === "draft";
   const showApproveReject = isAdmin && (st === "draft" || st === "sent");
 
@@ -115,37 +103,9 @@ export function QuoteRowActionsMenu({
                 router.push(`/sales/quotes/${row.id}`);
               }}
             >
-              <Eye className="h-4 w-4 shrink-0" />
-              Visualizar
+              <ExternalLink className="h-4 w-4 shrink-0" />
+              {canEditQuotes ? "Abrir" : "Visualizar"}
             </button>
-            {showEdit ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
-                onClick={() => {
-                  closeMenu();
-                  router.push(`/sales/quotes/${row.id}/edit`);
-                }}
-              >
-                <Edit className="h-4 w-4 shrink-0" />
-                Editar
-              </button>
-            ) : null}
-            {showRevise ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-950/30"
-                onClick={() => {
-                  closeMenu();
-                  router.push(`/sales/quotes/${row.id}/edit`);
-                }}
-              >
-                <FilePenLine className="h-4 w-4 shrink-0" />
-                Revisar
-              </button>
-            ) : null}
             {showSend ? (
               <button
                 type="button"

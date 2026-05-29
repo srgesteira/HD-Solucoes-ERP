@@ -11,6 +11,8 @@ import {
 import { quoteStatusAllowsContentEdit } from "@/modules/vendas/lib/sales/quote-access";
 import { QUOTE_STATUSES, type QuoteUpdate } from "@/modules/core/types/sales.types";
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
+import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
+import { resolveQuoteDeliveryFromBody } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
   computeValidUntil,
   parseShippingType,
@@ -120,6 +122,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     b.validity_days !== undefined ||
     b.valid_until !== undefined ||
     b.payment_terms !== undefined ||
+    b.delivery_business_days !== undefined ||
     b.delivery_deadline !== undefined ||
     b.expected_delivery_date !== undefined ||
     b.payment_installments !== undefined ||
@@ -198,6 +201,32 @@ export async function PUT(request: NextRequest, { params }: Params) {
       b.payment_terms === null
         ? null
         : String(b.payment_terms).trim() || null;
+    if (updateData.payment_terms) {
+      const parsed = parsePaymentTermsFromText(updateData.payment_terms);
+      if (parsed) {
+        updateData.payment_installments = parsed.installments;
+        updateData.payment_days_to_first_due = parsed.daysToFirstDue;
+        updateData.payment_days_between_installments =
+          parsed.daysBetweenInstallments;
+      }
+    }
+  }
+  if (b.delivery_business_days !== undefined) {
+    const quoteDateForDelivery = String(
+      updateData.quote_date ?? existing.quote_date
+    ).slice(0, 10);
+    if (b.delivery_business_days === null || b.delivery_business_days === "") {
+      updateData.expected_delivery_date = null;
+      updateData.delivery_deadline = null;
+    } else {
+      const resolved = resolveQuoteDeliveryFromBody(
+        { delivery_business_days: b.delivery_business_days },
+        quoteDateForDelivery
+      );
+      if ("error" in resolved) return apiError(resolved.error, 400);
+      updateData.expected_delivery_date = resolved.expected_delivery_date;
+      updateData.delivery_deadline = resolved.delivery_deadline;
+    }
   }
   if (b.delivery_deadline !== undefined) {
     updateData.delivery_deadline =

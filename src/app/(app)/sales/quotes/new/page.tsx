@@ -80,11 +80,7 @@ export default function NewQuotePage() {
   const [quoteDate, setQuoteDate] = useState(todayISODate);
   const [validityDays, setValidityDays] = useState("30");
   const [paymentTerms, setPaymentTerms] = useState("");
-  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
-  const [paymentInstallments, setPaymentInstallments] = useState("1");
-  const [paymentDaysFirst, setPaymentDaysFirst] = useState("30");
-  const [paymentDaysBetween, setPaymentDaysBetween] = useState("30");
-  const [deliveryDeadline, setDeliveryDeadline] = useState("");
+  const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newQuoteLine(0)]);
@@ -180,6 +176,11 @@ export default function NewQuotePage() {
       return;
     }
 
+    const deliveryDaysRaw = deliveryBusinessDays.trim();
+    const deliveryDaysParsed = deliveryDaysRaw
+      ? parseInt(deliveryDaysRaw, 10)
+      : null;
+
     const payload = {
       quote_number: qn,
       customer_id: customerId.trim(),
@@ -187,11 +188,10 @@ export default function NewQuotePage() {
       quote_date: qd.slice(0, 10),
       validity_days: vd,
       payment_terms: paymentTerms.trim() || null,
-      expected_delivery_date: expectedDeliveryDate.trim() || null,
-      payment_installments: parseInt(paymentInstallments, 10) || 1,
-      payment_days_to_first_due: parseInt(paymentDaysFirst, 10) || 30,
-      payment_days_between_installments: parseInt(paymentDaysBetween, 10) || 30,
-      delivery_deadline: deliveryDeadline.trim() || null,
+      delivery_business_days:
+        deliveryDaysParsed != null && Number.isFinite(deliveryDaysParsed)
+          ? deliveryDaysParsed
+          : null,
       shipping_type: shippingType,
       notes: notes.trim() || null,
       items: itemsResult,
@@ -273,16 +273,8 @@ export default function NewQuotePage() {
               onValidityDaysChange={setValidityDays}
               paymentTerms={paymentTerms}
               onPaymentTermsChange={setPaymentTerms}
-              expectedDeliveryDate={expectedDeliveryDate}
-              onExpectedDeliveryDateChange={setExpectedDeliveryDate}
-              paymentInstallments={paymentInstallments}
-              onPaymentInstallmentsChange={setPaymentInstallments}
-              paymentDaysFirst={paymentDaysFirst}
-              onPaymentDaysFirstChange={setPaymentDaysFirst}
-              paymentDaysBetween={paymentDaysBetween}
-              onPaymentDaysBetweenChange={setPaymentDaysBetween}
-              deliveryDeadline={deliveryDeadline}
-              onDeliveryDeadlineChange={setDeliveryDeadline}
+              deliveryBusinessDays={deliveryBusinessDays}
+              onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
               shippingType={shippingType}
               onShippingTypeChange={setShippingType}
               notes={notes}

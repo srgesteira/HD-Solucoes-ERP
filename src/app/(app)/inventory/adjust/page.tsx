@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Save, Search } from "lucide-react";
 import { toast } from "sonner";
+import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import type { ProductSearchHit } from "@/components/products/product-search-types";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -25,20 +27,6 @@ type InvRow = {
   reorder_point: number;
   reorder_quantity: number;
 };
-
-async function searchProducts(q: string): Promise<ProductLite[]> {
-  const params = new URLSearchParams({ search: q, limit: "30", page: "1" });
-  const res = await fetch(`/api/products?${params}`, {
-    credentials: "include",
-    cache: "no-store",
-  });
-  const json = (await res.json().catch(() => ({}))) as {
-    data?: ProductLite[];
-    error?: string;
-  };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao pesquisar produtos");
-  return json.data ?? [];
-}
 
 async function fetchInventoryRow(
   productId: string
@@ -72,9 +60,7 @@ async function postInventory(body: Record<string, unknown>): Promise<void> {
 export default function InventoryAdjustPage() {
   const router = useRouter();
   const { data: me, isLoading: meLoading } = useMe();
-  const [search, setSearch] = useState("");
-  const [results, setResults] = useState<ProductLite[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [selected, setSelected] = useState<ProductLite | null>(null);
   const [loadingRow, setLoadingRow] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -92,24 +78,6 @@ export default function InventoryAdjustPage() {
       router.replace("/inventory");
     }
   }, [meLoading, isAdmin, router]);
-
-  const runSearch = useCallback(async () => {
-    const q = search.trim();
-    if (q.length < 2) {
-      toast.error("Digite pelo menos 2 caracteres para pesquisar.");
-      return;
-    }
-    setSearching(true);
-    try {
-      const rows = await searchProducts(q);
-      setResults(rows);
-      if (!rows.length) toast.info("Nenhum produto encontrado.");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setSearching(false);
-    }
-  }, [search]);
 
   const pickProduct = useCallback(async (p: ProductLite) => {
     setSelected(p);
@@ -189,55 +157,17 @@ export default function InventoryAdjustPage() {
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <p className="text-slate-600 dark:text-slate-400">
-            Pesquise o produto por código ou nome, seleccione e defina as
+            Abra o catálogo de produtos, seleccione um item e defina as
             quantidades. Os valores substituem o registo actual (upsert).
           </p>
-          <div className="flex flex-wrap gap-2">
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void runSearch();
-                }
-              }}
-              placeholder="Código ou nome…"
-              className="max-w-md"
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={searching}
-              onClick={() => void runSearch()}
-            >
-              {searching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-              Pesquisar
-            </Button>
-          </div>
-
-          {results.length > 0 ? (
-            <ul className="rounded-lg border border-slate-200 divide-y max-h-48 overflow-y-auto dark:border-slate-800">
-              {results.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-900/80"
-                    onClick={() => void pickProduct(p)}
-                  >
-                    <span className="font-mono text-xs text-slate-500">
-                      {p.technical_code ?? "—"}
-                    </span>{" "}
-                    {p.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setPickerOpen(true)}
+          >
+            <Search className="h-4 w-4" />
+            Pesquisar produto
+          </Button>
 
           {selected ? (
             <div className="space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
@@ -308,6 +238,23 @@ export default function InventoryAdjustPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <ProductCatalogPickerModal
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        excludeIds={[]}
+        onSelect={(hit: ProductSearchHit) => {
+          void pickProduct({
+            id: hit.id,
+            name: hit.name,
+            technical_code: hit.technical_code,
+          });
+          setPickerOpen(false);
+        }}
+        productType="all"
+        showNewProductButton={false}
+        title="Seleccionar produto"
+      />
     </div>
   );
 }

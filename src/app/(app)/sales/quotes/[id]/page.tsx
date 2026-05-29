@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,35 +9,50 @@ import {
   Check,
   FileText,
   Loader2,
-  Pencil,
   Printer,
-  FilePenLine,
+  Save,
   Send,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { quoteStatusBadge } from "@/modules/vendas/lib/sales/quote-display";
+import { quoteStatusAllowsContentEdit } from "@/modules/vendas/lib/sales/quote-access";
+import { inferDeliveryBusinessDaysFromQuote } from "@/modules/vendas/lib/sales/quote-delivery";
+import {
+  itemsToLinesAndCache,
+  type QuoteApiItem,
+} from "@/modules/vendas/lib/sales/quote-form-hydrate";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { QuoteStatus } from "@/modules/core/types/sales.types";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
+import { QuoteFormFields } from "@/components/sales/quote-form-fields";
+import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
+import {
+  QuoteItemsEditor,
+  buildQuoteItemsPayload,
+  newQuoteLine,
+  type QuoteLineDraft,
+  type QuoteLineProduct,
+} from "@/components/sales/quote-items-editor";
 import type { Tables } from "@/modules/core/types/database";
 
-type ProductNested = { name?: string | null } | null;
+type ProductNested = {
+  id?: string;
+  name?: string | null;
+  cost_price?: number | null;
+  unit?: string | null;
+  technical_code?: string | null;
+  code?: string | null;
+} | null;
 
-type QuoteItemLine = {
+type QuoteItemLine = QuoteApiItem & {
   id: string;
   description: string | null;
-  quantity: number;
-  unit?: string | null;
-  unit_price: number;
-  markup_percent?: number | null;
   total_price: number;
   product?: ProductNested | ProductNested[] | null;
 };
@@ -55,6 +70,7 @@ type QuoteDetail = {
   id: string;
   quote_number: string;
   status: string;
+  customer_id: string | null;
   quote_date: string;
   valid_until: string | null;
   validity_days: number | null;
@@ -76,6 +92,7 @@ type QuoteDetail = {
   tax: number;
   total: number;
   converted_to_sale_id: string | null;
+  awaiting_commercial_finalize?: boolean | null;
   items?: QuoteItemLine[] | null;
   converted_sale?: unknown;
 };
@@ -116,6 +133,29 @@ function unwrapConvertedSale(
   return { id, order_number };
 }
 
+function seedCustomerFromQuote(q: QuoteDetail): CustomerOption | null {
+  const c = Array.isArray(q.customer) ? q.customer[0] : q.customer;
+  if (c?.id && c?.name) {
+    return {
+      id: c.id,
+      name: c.name,
+      document: c.document ?? null,
+      email: c.email ?? null,
+      phone: c.phone ?? null,
+    };
+  }
+  if (q.customer_id) {
+    return {
+      id: q.customer_id,
+      name: q.client_name || "Cliente",
+      document: null,
+      email: null,
+      phone: null,
+    };
+  }
+  return null;
+}
+
 async function fetchQuoteDetail(id: string): Promise<{ data: QuoteDetail }> {
   const res = await fetch(`/api/sales/quotes/${id}`, {
     credentials: "include",
@@ -133,7 +173,7 @@ async function fetchQuoteDetail(id: string): Promise<{ data: QuoteDetail }> {
 
 async function putQuoteUpdate(
   id: string,
-  body: { status: string; revision_notes?: string | null }
+  body: Record<string, unknown>
 ): Promise<void> {
   const res = await fetch(`/api/sales/quotes/${id}`, {
     method: "PUT",
@@ -142,7 +182,7 @@ async function putQuoteUpdate(
     body: JSON.stringify(body),
   });
   const json = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar estado");
+  if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar orçamento");
 }
 
 async function postApproveQuote(id: string): Promise<string> {
@@ -215,11 +255,126 @@ export default function QuoteDetailPage() {
   const q = quoteQuery.data?.data;
 
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [customerId, setCustomerId] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [quoteDate, setQuoteDate] = useState("");
+  const [validityDays, setValidityDays] = useState("30");
+  const [paymentTerms, setPaymentTerms] = useState("");
+  const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
+  const [shippingType, setShippingType] = useState("FOB");
+  const [notes, setNotes] = useState("");
+  const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newQuoteLine(0)]);
+  const [productCache, setProductCache] = useState<
+    Record<string, QuoteLineProduct>
+  >({});
+  const structureAckRef = useRef(false);
+
+  const canContentEdit =
+    Boolean(q) &&
+    canEditQuotes &&
+    quoteStatusAllowsContentEdit(q!.status);
+
+  useEffect(() => {
+    setHydrated(false);
+    structureAckRef.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    if (!q || !canContentEdit || hydrated) return;
+    setCustomerId(q.customer_id ?? "");
+    setClientEmail(q.client_email ?? "");
+    setQuoteDate(String(q.quote_date ?? "").slice(0, 10));
+    setValidityDays(String(q.validity_days ?? 30));
+    setPaymentTerms(q.payment_terms ?? "");
+    setDeliveryBusinessDays(inferDeliveryBusinessDaysFromQuote(q));
+    setShippingType(q.shipping_type ?? "FOB");
+    setNotes(q.notes ?? "");
+    const apiItems = Array.isArray(q.items) ? q.items : [];
+    const { lines: loadedLines, cache } = itemsToLinesAndCache(apiItems);
+    setLines(loadedLines);
+    setProductCache(cache);
+    setHydrated(true);
+  }, [q, canContentEdit, hydrated]);
+
+  useEffect(() => {
+    if (
+      !id ||
+      !q?.awaiting_commercial_finalize ||
+      structureAckRef.current ||
+      !canContentEdit
+    ) {
+      return;
+    }
+    structureAckRef.current = true;
+    toast.info(
+      "A engenharia concluiu a estrutura. Os custos foram actualizados — reveja markup e preços."
+    );
+    void (async () => {
+      await fetch(`/api/sales/quotes/${id}/acknowledge-structure`, {
+        method: "POST",
+        credentials: "include",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["sales-quote", id] });
+      await queryClient.invalidateQueries({ queryKey: ["sales-quotes"] });
+      const fresh = await fetchQuoteDetail(id);
+      const apiItems = Array.isArray(fresh.data.items) ? fresh.data.items : [];
+      const { lines: loadedLines, cache } = itemsToLinesAndCache(apiItems);
+      setLines(loadedLines);
+      setProductCache(cache);
+    })();
+  }, [id, q?.awaiting_commercial_finalize, canContentEdit, queryClient]);
+
+  const productById = useMemo(() => {
+    const map = new Map<string, QuoteLineProduct>();
+    for (const p of Object.values(productCache)) map.set(p.id, p);
+    return map;
+  }, [productCache]);
+
+  const seedCustomer = q ? seedCustomerFromQuote(q) : null;
 
   const invalidateQuote = () => {
     void queryClient.invalidateQueries({ queryKey: ["sales-quote", id] });
     void queryClient.invalidateQueries({ queryKey: ["sales-quotes"] });
   };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!customerId.trim()) throw new Error("Selecione um cliente.");
+      const vd = parseInt(validityDays.trim(), 10);
+      if (!Number.isFinite(vd) || vd < 1) {
+        throw new Error("Validade em dias deve ser ≥ 1.");
+      }
+      const itemsResult = buildQuoteItemsPayload(lines, productById);
+      if ("error" in itemsResult) throw new Error(itemsResult.error);
+
+      const deliveryDaysRaw = deliveryBusinessDays.trim();
+      const deliveryDaysParsed = deliveryDaysRaw
+        ? parseInt(deliveryDaysRaw, 10)
+        : null;
+
+      await putQuoteUpdate(id, {
+        customer_id: customerId.trim(),
+        client_email: clientEmail.trim() || null,
+        quote_date: quoteDate.slice(0, 10),
+        validity_days: vd,
+        payment_terms: paymentTerms.trim() || null,
+        delivery_business_days:
+          deliveryDaysParsed != null && Number.isFinite(deliveryDaysParsed)
+            ? deliveryDaysParsed
+            : null,
+        shipping_type: shippingType,
+        notes: notes.trim() || null,
+        items: itemsResult,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Orçamento actualizado.");
+      setHydrated(false);
+      invalidateQuote();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
   const statusMutation = useMutation({
     mutationFn: (body: { status: string; revision_notes?: string | null }) =>
@@ -238,6 +393,7 @@ export default function QuoteDetailPage() {
                   ? "Orçamento reaberto como rascunho."
                   : "Estado actualizado.";
       toast.success(msg);
+      setHydrated(false);
       invalidateQuote();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -259,6 +415,7 @@ export default function QuoteDetailPage() {
     onSuccess: () => {
       toast.success("Orçamento rejeitado.");
       setRejectOpen(false);
+      setHydrated(false);
       invalidateQuote();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -271,9 +428,14 @@ export default function QuoteDetailPage() {
     convertedSale?.id ??
     (q?.converted_to_sale_id ? q.converted_to_sale_id : null);
   const saleHref = saleId ? `/sales/orders/${saleId}` : null;
+  const busy =
+    saveMutation.isPending ||
+    statusMutation.isPending ||
+    approveMutation.isPending ||
+    rejectMutation.isPending;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6 pb-10">
       <div className="flex flex-wrap items-center gap-2">
         <Link href="/sales/quotes">
           <Button type="button" variant="outline" size="sm">
@@ -287,35 +449,30 @@ export default function QuoteDetailPage() {
             variant="outline"
             size="sm"
             onClick={() =>
-              window.open(`/sales/quotes/${id}/print`, "_blank", "noopener,noreferrer")
+              window.open(
+                `/sales/quotes/${id}/print`,
+                "_blank",
+                "noopener,noreferrer"
+              )
             }
           >
             <Printer className="h-4 w-4" />
             Imprimir / PDF
           </Button>
         ) : null}
-        {canEditQuotes && q && st === "draft" ? (
+        {canContentEdit && hydrated ? (
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            onClick={() => router.push(`/sales/quotes/${id}/edit`)}
+            disabled={busy}
+            onClick={() => saveMutation.mutate()}
           >
-            <Pencil className="h-4 w-4" />
-            Editar
-          </Button>
-        ) : null}
-        {canEditQuotes &&
-        q &&
-        (st === "sent" || st === "approved" || st === "revision") ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => router.push(`/sales/quotes/${id}/edit`)}
-          >
-            <FilePenLine className="h-4 w-4" />
-            Revisar
+            {saveMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Guardar
           </Button>
         ) : null}
         {isAdmin && q && st === "draft" ? (
@@ -323,8 +480,8 @@ export default function QuoteDetailPage() {
             type="button"
             size="sm"
             variant="outline"
-            disabled={statusMutation.isPending}
-            onClick={() => statusMutation.mutate({ status: "sent" as const })}
+            disabled={busy}
+            onClick={() => statusMutation.mutate({ status: "sent" })}
           >
             <Send className="h-4 w-4" />
             Enviar
@@ -336,7 +493,7 @@ export default function QuoteDetailPage() {
               type="button"
               size="sm"
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={approveMutation.isPending}
+              disabled={busy}
               onClick={() => approveMutation.mutate()}
             >
               <Check className="h-4 w-4" />
@@ -346,7 +503,7 @@ export default function QuoteDetailPage() {
               type="button"
               size="sm"
               variant="danger"
-              disabled={rejectMutation.isPending}
+              disabled={busy}
               onClick={() => setRejectOpen(true)}
             >
               <XCircle className="h-4 w-4" />
@@ -400,11 +557,11 @@ export default function QuoteDetailPage() {
                       </span>
                     </span>
                     <span>
-                      <span className="text-slate-500">
-                        Data do orçamento:
-                      </span>{" "}
+                      <span className="text-slate-500">Data do orçamento:</span>{" "}
                       <span className="font-medium tabular-nums text-slate-800 dark:text-slate-200">
-                        {fmtDay(q.quote_date)}
+                        {canContentEdit && hydrated
+                          ? fmtDay(quoteDate)
+                          : fmtDay(q.quote_date)}
                       </span>
                     </span>
                     <span>
@@ -437,101 +594,6 @@ export default function QuoteDetailPage() {
             </CardHeader>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <FileText className="h-5 w-5 text-slate-600" />
-                Cliente
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2 text-sm">
-              {(() => {
-                const cust = Array.isArray(q.customer)
-                  ? q.customer[0]
-                  : q.customer;
-                return (
-                  <>
-                    <div>
-                      <p className="text-slate-500">Nome</p>
-                      <p className="font-medium text-slate-900 dark:text-slate-100">
-                        {cust?.name ?? q.client_name}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Documento</p>
-                      <p className="font-medium">{cust?.document ?? "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">E-mail (orçamento)</p>
-                      <p className="font-medium">{q.client_email ?? "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Telefone</p>
-                      <p className="font-medium">{cust?.phone ?? "—"}</p>
-                    </div>
-                    {cust?.address ? (
-                      <div className="sm:col-span-2">
-                        <p className="text-slate-500">Endereço</p>
-                        <p className="font-medium">{cust.address}</p>
-                      </div>
-                    ) : null}
-                  </>
-                );
-              })()}
-            </CardContent>
-          </Card>
-
-          {(q.payment_terms ||
-            q.expected_delivery_date ||
-            q.delivery_deadline ||
-            q.shipping_type) && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Condições comerciais</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2 text-sm">
-                <div>
-                  <p className="text-slate-500">Pagamento (texto)</p>
-                  <p className="font-medium">{q.payment_terms ?? "—"}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Entrega prevista (data)</p>
-                  <p className="font-medium tabular-nums">
-                    {q.expected_delivery_date
-                      ? String(q.expected_delivery_date).slice(0, 10)
-                      : "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Parcelas</p>
-                  <p className="font-medium tabular-nums">
-                    {q.payment_installments ?? "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Dias até 1.ª parcela</p>
-                  <p className="font-medium tabular-nums">
-                    {q.payment_days_to_first_due ?? "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Dias entre parcelas</p>
-                  <p className="font-medium tabular-nums">
-                    {q.payment_days_between_installments ?? "—"}
-                  </p>
-                </div>
-                <div className="sm:col-span-2">
-                  <p className="text-slate-500">Prazo de entrega (texto)</p>
-                  <p className="font-medium">{q.delivery_deadline ?? "—"}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Frete</p>
-                  <p className="font-medium">{q.shipping_type ?? "—"}</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {q.revision_notes?.trim() ? (
             <Card className="border-orange-200 bg-orange-50/60 dark:border-orange-900 dark:bg-orange-950/30">
               <CardHeader className="pb-3">
@@ -547,129 +609,308 @@ export default function QuoteDetailPage() {
             </Card>
           ) : null}
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Itens</CardTitle>
-            </CardHeader>
-            <CardContent className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
-              <table className="w-full text-sm min-w-[720px]">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
-                    <th className="px-3 py-2 text-left font-medium">
-                      Produto
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium">
-                      Descrição
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium">
-                      Quantidade
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium">
-                      Preço unitário
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.isArray(q.items) && q.items.length > 0 ? (
-                    q.items.map((line) => (
-                      <tr
-                        key={line.id}
-                        className="border-b border-slate-100 dark:border-slate-800"
-                      >
-                        <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
-                          {unwrapProduct(line.product)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {line.description ?? "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {Number(line.quantity)}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          <span className="font-medium">
-                            {fmtBRL(Number(line.unit_price))}
-                          </span>
-                          {line.markup_percent != null ? (
-                            <span className="block text-xs text-slate-500 font-normal">
-                              ({Number(line.markup_percent)}% markup)
-                            </span>
-                          ) : (
-                            <span className="block text-xs text-slate-500 font-normal">
-                              (preço manual)
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums font-medium">
-                          {fmtBRL(Number(line.total_price))}
-                        </td>
-                      </tr>
-                    ))
+          {canContentEdit && !hydrated ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-slate-600">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              A preparar edição…
+            </div>
+          ) : null}
+
+          {canContentEdit && hydrated ? (
+            <form
+              className="space-y-6"
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveMutation.mutate();
+              }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Dados do orçamento</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <QuoteFormFields
+                    quoteNumber={q.quote_number}
+                    onQuoteNumberChange={() => {}}
+                    quoteNumberReadOnly
+                    seedCustomer={seedCustomer}
+                    customerId={customerId}
+                    onCustomerIdChange={setCustomerId}
+                    clientEmail={clientEmail}
+                    onClientEmailChange={setClientEmail}
+                    quoteDate={quoteDate}
+                    onQuoteDateChange={setQuoteDate}
+                    validityDays={validityDays}
+                    onValidityDaysChange={setValidityDays}
+                    paymentTerms={paymentTerms}
+                    onPaymentTermsChange={setPaymentTerms}
+                    deliveryBusinessDays={deliveryBusinessDays}
+                    onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
+                    shippingType={shippingType}
+                    onShippingTypeChange={setShippingType}
+                    notes={notes}
+                    onNotesChange={setNotes}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg">Itens do orçamento</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <QuoteItemsEditor
+                    lines={lines}
+                    onLinesChange={setLines}
+                    productCache={productCache}
+                    onProductCacheMerge={(patch) =>
+                      setProductCache((prev) => ({ ...prev, ...patch }))
+                    }
+                    sourceQuoteId={id}
+                  />
+                </CardContent>
+              </Card>
+
+              <div className="flex justify-end">
+                <Button type="submit" disabled={busy}>
+                  {saveMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="px-3 py-6 text-center text-slate-500"
-                      >
-                        Sem itens registados neste orçamento.
-                      </td>
-                    </tr>
+                    <Save className="h-4 w-4" />
                   )}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
+                  Guardar alterações
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-slate-600" />
+                    Cliente
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2 text-sm">
+                  {(() => {
+                    const cust = Array.isArray(q.customer)
+                      ? q.customer[0]
+                      : q.customer;
+                    return (
+                      <>
+                        <div>
+                          <p className="text-slate-500">Nome</p>
+                          <p className="font-medium text-slate-900 dark:text-slate-100">
+                            {cust?.name ?? q.client_name}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Documento</p>
+                          <p className="font-medium">{cust?.document ?? "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">E-mail (orçamento)</p>
+                          <p className="font-medium">{q.client_email ?? "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Telefone</p>
+                          <p className="font-medium">{cust?.phone ?? "—"}</p>
+                        </div>
+                        {cust?.address ? (
+                          <div className="sm:col-span-2">
+                            <p className="text-slate-500">Endereço</p>
+                            <p className="font-medium">{cust.address}</p>
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Totais</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Subtotal</span>
-                  <span className="tabular-nums font-medium">
-                    {fmtBRL(q.subtotal)}
-                  </span>
-                </div>
-                {q.discount > 0 ? (
-                  <div className="flex justify-between gap-4">
-                    <span className="text-slate-500">Desconto</span>
-                    <span className="tabular-nums font-medium text-red-700 dark:text-red-400">
-                      − {fmtBRL(q.discount)}
-                    </span>
-                  </div>
-                ) : null}
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Imposto</span>
-                  <span className="tabular-nums font-medium">
-                    {fmtBRL(q.tax)}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 mt-2 dark:border-slate-700">
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    Total final
-                  </span>
-                  <span className="tabular-nums font-semibold text-slate-900 dark:text-slate-100">
-                    {fmtBRL(q.total)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+              {(q.payment_terms ||
+                q.expected_delivery_date ||
+                q.delivery_deadline ||
+                q.shipping_type) && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">
+                      Condições comerciais
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 sm:grid-cols-2 text-sm">
+                    <div>
+                      <p className="text-slate-500">Pagamento (texto)</p>
+                      <p className="font-medium">{q.payment_terms ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Entrega prevista (data)</p>
+                      <p className="font-medium tabular-nums">
+                        {q.expected_delivery_date
+                          ? String(q.expected_delivery_date).slice(0, 10)
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Parcelas</p>
+                      <p className="font-medium tabular-nums">
+                        {q.payment_installments ?? "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Dias até 1.ª parcela</p>
+                      <p className="font-medium tabular-nums">
+                        {q.payment_days_to_first_due ?? "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Dias entre parcelas</p>
+                      <p className="font-medium tabular-nums">
+                        {q.payment_days_between_installments ?? "—"}
+                      </p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <p className="text-slate-500">Prazo de entrega (texto)</p>
+                      <p className="font-medium">{q.delivery_deadline ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Frete</p>
+                      <p className="font-medium">{q.shipping_type ?? "—"}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Observações</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
-                  {q.notes?.trim() ? q.notes : "—"}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Itens</CardTitle>
+                </CardHeader>
+                <CardContent className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
+                  <table className="w-full text-sm min-w-[720px]">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
+                        <th className="px-3 py-2 text-left font-medium">
+                          Produto
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium">
+                          Descrição
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          Quantidade
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          Preço unitário
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.isArray(q.items) && q.items.length > 0 ? (
+                        q.items.map((line) => (
+                          <tr
+                            key={line.id}
+                            className="border-b border-slate-100 dark:border-slate-800"
+                          >
+                            <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
+                              {unwrapProduct(line.product)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span>{line.description ?? "—"}</span>
+                              {line.client_notes?.trim() ? (
+                                <p className="text-xs text-slate-500 mt-1 whitespace-pre-wrap">
+                                  Obs. cliente: {line.client_notes.trim()}
+                                </p>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {Number(line.quantity)}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              <span className="font-medium">
+                                {fmtBRL(Number(line.unit_price))}
+                              </span>
+                              {line.markup_percent != null ? (
+                                <span className="block text-xs text-slate-500 font-normal">
+                                  ({Number(line.markup_percent)}% markup)
+                                </span>
+                              ) : (
+                                <span className="block text-xs text-slate-500 font-normal">
+                                  (preço manual)
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums font-medium">
+                              {fmtBRL(Number(line.total_price))}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan={5}
+                            className="px-3 py-6 text-center text-slate-500"
+                          >
+                            Sem itens registados neste orçamento.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Totais</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-slate-500">Subtotal</span>
+                      <span className="tabular-nums font-medium">
+                        {fmtBRL(q.subtotal)}
+                      </span>
+                    </div>
+                    {q.discount > 0 ? (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-slate-500">Desconto</span>
+                        <span className="tabular-nums font-medium text-red-700 dark:text-red-400">
+                          − {fmtBRL(q.discount)}
+                        </span>
+                      </div>
+                    ) : null}
+                    <div className="flex justify-between gap-4">
+                      <span className="text-slate-500">Imposto</span>
+                      <span className="tabular-nums font-medium">
+                        {fmtBRL(q.tax)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 mt-2 dark:border-slate-700">
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        Total final
+                      </span>
+                      <span className="tabular-nums font-semibold text-slate-900 dark:text-slate-100">
+                        {fmtBRL(q.total)}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Observações</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                      {q.notes?.trim() ? q.notes : "—"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
         </>
       ) : null}
 

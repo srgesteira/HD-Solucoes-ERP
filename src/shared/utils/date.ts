@@ -123,6 +123,38 @@ export function countBusinessDaysInclusive(
   ).length;
 }
 
+/** Dias úteis entre `startYmd` (exclusivo) e `endYmd` (inclusivo). */
+export function countBusinessDaysFromDate(
+  startYmd: string,
+  endYmd: string,
+  holidays: CompanyHolidayForBusiness[] = []
+): number {
+  const end = parseLocalDate(endYmd);
+  let d = parseLocalDate(startYmd);
+  let count = 0;
+  while (d < end) {
+    d = addDays(d, 1);
+    if (isBusinessDay(d, holidays)) count++;
+  }
+  return count;
+}
+
+/** Soma `count` dias úteis a partir de `startYmd` (não conta o dia inicial). */
+export function addBusinessDays(
+  startYmd: string,
+  count: number,
+  holidays: CompanyHolidayForBusiness[] = []
+): string {
+  if (count <= 0) return startYmd.slice(0, 10);
+  let d = parseLocalDate(startYmd);
+  let remaining = count;
+  while (remaining > 0) {
+    d = addDays(d, 1);
+    if (isBusinessDay(d, holidays)) remaining--;
+  }
+  return format(d, "yyyy-MM-dd");
+}
+
 /**
  * Ajuste de exibição: o cálculo é sempre “data base + 2 corridos”, logo a margem
  * mínima em dias úteis não deve ser apresentada como 1.

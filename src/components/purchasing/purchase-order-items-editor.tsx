@@ -5,10 +5,8 @@ import { Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
-import {
-  ProductSearchModal,
-  type ProductSearchHit,
-} from "@/components/products/product-search-modal";
+import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import type { ProductSearchHit } from "@/components/products/product-search-types";
 import {
   aggregatePurchaseLineTaxes,
   lineDisplayTotal,
@@ -60,6 +58,21 @@ function hitToProduct(hit: ProductSearchHit): PurchaseLineProduct {
     name: hit.name,
     unit: hit.unit,
   };
+}
+
+function lineFromProduct(
+  hit: ProductSearchHit,
+  base?: PurchaseOrderLineDraft
+): { line: PurchaseOrderLineDraft; product: PurchaseLineProduct } {
+  const p = hitToProduct(hit);
+  const label = productLabel(p);
+  const line: PurchaseOrderLineDraft = {
+    ...(base ?? newPurchaseLine(0)),
+    productId: p.id,
+    description: label,
+    unit: (p.unit && p.unit.trim()) || "UN",
+  };
+  return { line, product: p };
 }
 
 export function newPurchaseLine(index = 0): PurchaseOrderLineDraft {
@@ -176,32 +189,56 @@ export function PurchaseOrderItemsEditor({
     );
   };
 
-  const openPicker = (index: number) => {
+  const openProductPicker = (lineIndex: number | null) => {
     if (disabled) return;
-    setPickerLineIndex(index);
+    setPickerLineIndex(lineIndex);
     setPickerOpen(true);
   };
 
-  const handleProductSelect = (hit: ProductSearchHit) => {
-    if (pickerLineIndex === null) return;
-    const p = hitToProduct(hit);
-    onProductCacheMerge({ [p.id]: p });
-    const label = productLabel(p);
-    updateLineAt(
-      pickerLineIndex,
-      {
-        productId: p.id,
-        description: label,
-        unit: (p.unit && p.unit.trim()) || "UN",
-      },
-      "none"
-    );
+  const applySelectedProducts = (hits: ProductSearchHit[]) => {
+    if (hits.length === 0) return;
+
+    const cache: Record<string, PurchaseLineProduct> = {};
+    let nextLines = [...lines];
+    let remaining = [...hits];
+
+    if (pickerLineIndex !== null && pickerLineIndex < nextLines.length) {
+      const { line, product } = lineFromProduct(
+        remaining[0],
+        nextLines[pickerLineIndex]
+      );
+      cache[product.id] = product;
+      nextLines[pickerLineIndex] = line;
+      remaining = remaining.slice(1);
+    }
+
+    for (let i = 0; i < nextLines.length && remaining.length > 0; i++) {
+      if (pickerLineIndex !== null && i === pickerLineIndex) continue;
+      if (!nextLines[i].productId) {
+        const { line, product } = lineFromProduct(remaining[0], nextLines[i]);
+        cache[product.id] = product;
+        nextLines[i] = line;
+        remaining = remaining.slice(1);
+      }
+    }
+
+    for (const hit of remaining) {
+      const { line, product } = lineFromProduct(
+        hit,
+        newPurchaseLine(nextLines.length)
+      );
+      cache[product.id] = product;
+      nextLines.push(line);
+    }
+
+    onProductCacheMerge(cache);
+    onLinesChange(reindexPurchaseLines(nextLines));
     setPickerLineIndex(null);
   };
 
-  const addLine = () => {
-    onLinesChange(reindexPurchaseLines([...lines, newPurchaseLine(lines.length)]));
-  };
+  const usedProductIds = lines
+    .map((l) => l.productId)
+    .filter(Boolean) as string[];
 
   return (
     <div className="space-y-4">
@@ -250,7 +287,7 @@ export function PurchaseOrderItemsEditor({
                           variant="outline"
                           size="sm"
                           className="w-fit h-7 text-xs"
-                          onClick={() => openPicker(index)}
+                          onClick={() => openProductPicker(index)}
                           disabled={disabled}
                         >
                           <Search className="h-3 w-3" />
@@ -262,7 +299,7 @@ export function PurchaseOrderItemsEditor({
                         type="button"
                         variant="secondary"
                         size="sm"
-                        onClick={() => openPicker(index)}
+                        onClick={() => openProductPicker(index)}
                         disabled={disabled}
                       >
                         <Search className="h-3.5 w-3.5" />
@@ -398,11 +435,14 @@ export function PurchaseOrderItemsEditor({
         type="button"
         variant="outline"
         size="sm"
-        onClick={addLine}
+        onClick={() => {
+          const firstEmpty = lines.findIndex((l) => !l.productId);
+          openProductPicker(firstEmpty >= 0 ? firstEmpty : null);
+        }}
         disabled={disabled}
       >
         <Plus className="h-4 w-4" />
-        Adicionar item
+        Adicionar produto
       </Button>
 
       <div className="text-sm text-slate-900 space-y-1">
@@ -432,14 +472,15 @@ export function PurchaseOrderItemsEditor({
         </p>
       </div>
 
-      <ProductSearchModal
+      <ProductCatalogPickerModal
         open={pickerOpen}
         onOpenChange={(open) => {
           setPickerOpen(open);
           if (!open) setPickerLineIndex(null);
         }}
-        excludeIds={lines.map((l) => l.productId).filter(Boolean) as string[]}
-        onSelect={handleProductSelect}
+        excludeIds={usedProductIds}
+        multiSelect
+        onComplete={applySelectedProducts}
         productType="all"
         showNewProductButton={false}
         title="Pesquisar produto"

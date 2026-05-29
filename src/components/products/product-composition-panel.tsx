@@ -20,7 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import type { Database } from "@/modules/core/types/database";
-import { ProductSearchModal, type ProductSearchHit } from "@/components/products/product-search-modal";
+import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import type { ProductSearchHit } from "@/components/products/product-search-modal";
 import { workCentersQueryKey } from "@/components/settings/work-centers-admin";
 
 type ProductEmbed = Pick<
@@ -973,7 +974,7 @@ export function ProductCompositionPanel({
         </div>
       ) : null}
 
-      <ProductSearchModal
+      <ProductCatalogPickerModal
         open={searchModalOpen}
         onOpenChange={setSearchModalOpen}
         excludeIds={excludeProductIdsForSearch}

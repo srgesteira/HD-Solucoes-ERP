@@ -31,6 +31,8 @@ interface ProductRow {
   technical_code: string | null;
   cost_price: number;
   is_active: boolean;
+  engineering_workflow_status?: string | null;
+  released_for_sale?: boolean;
 }
 
 interface ProductsApiResponse {
@@ -45,6 +47,7 @@ const productsQueryKey = (filters: {
   prefixCode: string;
   page: number;
   limit: number;
+  workflowPending: boolean;
 }) => ["products", filters] as const;
 
 async function fetchPrefixCodes(): Promise<string[]> {
@@ -69,6 +72,7 @@ async function fetchProducts(filters: {
   prefixCode: string;
   page: number;
   limit: number;
+  workflowPending: boolean;
 }): Promise<ProductsApiResponse> {
   const params = new URLSearchParams();
   if (filters.type !== "all") params.append("type", filters.type);
@@ -82,6 +86,7 @@ async function fetchProducts(filters: {
     params.append("prefix_code", filters.prefixCode.trim());
   }
   if (filters.search.trim()) params.append("search", filters.search.trim());
+  if (filters.workflowPending) params.append("workflow_pending", "1");
   params.append("page", String(filters.page));
   params.append("limit", String(filters.limit));
 
@@ -178,6 +183,7 @@ export default function ProductsPage() {
     prefixCode: "",
     page: 1,
     limit: 25,
+    workflowPending: false,
   });
 
   const prefixCodesQuery = useQuery({
@@ -258,12 +264,32 @@ export default function ProductsPage() {
             Catálogo do tenant — códigos, custos de lista e estado.
           </p>
         </div>
-        {isAdmin ? (
-          <Button type="button" size="sm" onClick={() => router.push("/products/new")}>
-            <Plus className="h-4 w-4" />
-            Novo produto
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={filters.workflowPending ? "primary" : "outline"}
+            className={cn(
+              filters.workflowPending &&
+                "animate-pulse ring-2 ring-amber-400 ring-offset-1"
+            )}
+            onClick={() =>
+              setFilters((f) => ({
+                ...f,
+                workflowPending: !f.workflowPending,
+                page: 1,
+              }))
+            }
+          >
+            Estrutura pendente
           </Button>
-        ) : null}
+          {isAdmin ? (
+            <Button type="button" size="sm" onClick={() => router.push("/products/new")}>
+              <Plus className="h-4 w-4" />
+              Novo produto
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <Card>
@@ -383,13 +409,27 @@ export default function ProductsPage() {
                 ) : (
                   data.data.map((product) => {
                     const tb = typeBadgeClasses(product.type);
+                    const pendingStructure =
+                      product.engineering_workflow_status === "pending_composition";
                     return (
-                      <tr key={product.id} className="border-b border-slate-100 last:border-0">
+                      <tr
+                        key={product.id}
+                        className={cn(
+                          "border-b border-slate-100 last:border-0",
+                          pendingStructure &&
+                            "bg-amber-50/90 animate-pulse ring-1 ring-inset ring-amber-300/80"
+                        )}
+                      >
                         <td className="px-3 py-2.5 font-mono text-xs font-medium text-slate-900 whitespace-nowrap">
                           {product.technical_code?.trim() || "—"}
                         </td>
                         <td className="px-3 py-2.5 text-slate-800 max-w-[16rem]">
                           <span className="line-clamp-2">{product.name}</span>
+                          {pendingStructure ? (
+                            <span className="mt-1 block text-xs font-medium text-amber-800">
+                              Aguarda estrutura (comercial)
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5">
                           <span

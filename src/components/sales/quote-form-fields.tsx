@@ -1,22 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search } from "lucide-react";
+import { useMemo } from "react";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
-import { Button } from "@/shared/ui/button";
-import { cn } from "@/shared/utils/cn";
+import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
+import { formatDeliveryBusinessDaysLabel } from "@/modules/vendas/lib/sales/quote-delivery";
 import { computeValidUntil, QUOTE_SHIPPING_TYPES } from "@/modules/vendas/lib/sales/quote-validity";
-import {
-  CustomerQuickCreateModal,
-  type CustomerOption,
-} from "@/components/sales/customer-quick-create-modal";
-import {
-  CUSTOMERS_QUERY_KEY,
-  customersQuoteFormQueryKey,
-} from "@/modules/vendas/lib/customers/query-keys";
+import { addBusinessDays } from "@/shared/utils/date";
+import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
+import { CustomerSearchField } from "@/components/sales/customer-search-field";
 
 const SELECT_CLASS =
   "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm " +
@@ -37,45 +30,14 @@ export interface QuoteHeaderFormProps {
   onValidityDaysChange: (value: string) => void;
   paymentTerms: string;
   onPaymentTermsChange: (value: string) => void;
-  expectedDeliveryDate: string;
-  onExpectedDeliveryDateChange: (value: string) => void;
-  paymentInstallments: string;
-  onPaymentInstallmentsChange: (value: string) => void;
-  paymentDaysFirst: string;
-  onPaymentDaysFirstChange: (value: string) => void;
-  paymentDaysBetween: string;
-  onPaymentDaysBetweenChange: (value: string) => void;
-  deliveryDeadline: string;
-  onDeliveryDeadlineChange: (value: string) => void;
+  deliveryBusinessDays: string;
+  onDeliveryBusinessDaysChange: (value: string) => void;
   shippingType: string;
   onShippingTypeChange: (value: string) => void;
   notes: string;
   onNotesChange: (value: string) => void;
-  customerSearch?: string;
-  onCustomerSearchChange?: (value: string) => void;
   seedCustomer?: CustomerOption | null;
   quoteNumberReadOnly?: boolean;
-}
-
-async function fetchCustomers(search: string): Promise<CustomerOption[]> {
-  const params = new URLSearchParams({
-    is_active: "true",
-    page: "1",
-    limit: "100",
-  });
-  if (search.trim()) params.set("search", search.trim());
-  const res = await fetch(`/api/customers?${params.toString()}`, {
-    credentials: "include",
-    cache: "no-store",
-  });
-  const json = (await res.json().catch(() => ({}))) as {
-    data?: CustomerOption[];
-    error?: string;
-  };
-  if (!res.ok) {
-    throw new Error(json.error ?? "Erro ao carregar clientes");
-  }
-  return json.data ?? [];
 }
 
 function formatDay(iso: string): string {
@@ -98,67 +60,15 @@ export function QuoteFormFields({
   onValidityDaysChange,
   paymentTerms,
   onPaymentTermsChange,
-  expectedDeliveryDate,
-  onExpectedDeliveryDateChange,
-  paymentInstallments,
-  onPaymentInstallmentsChange,
-  paymentDaysFirst,
-  onPaymentDaysFirstChange,
-  paymentDaysBetween,
-  onPaymentDaysBetweenChange,
-  deliveryDeadline,
-  onDeliveryDeadlineChange,
+  deliveryBusinessDays,
+  onDeliveryBusinessDaysChange,
   shippingType,
   onShippingTypeChange,
   notes,
   onNotesChange,
-  customerSearch: customerSearchProp,
-  onCustomerSearchChange,
   seedCustomer,
   quoteNumberReadOnly = false,
 }: QuoteHeaderFormProps) {
-  const queryClient = useQueryClient();
-  const [localSearch, setLocalSearch] = useState("");
-  const [quickOpen, setQuickOpen] = useState(false);
-  /** Clientes criados nesta sessão — garantem presença no select antes do refetch. */
-  const [pinnedCustomers, setPinnedCustomers] = useState<CustomerOption[]>([]);
-
-  const customerSearch =
-    customerSearchProp !== undefined ? customerSearchProp : localSearch;
-  const setCustomerSearch =
-    onCustomerSearchChange ?? ((v: string) => setLocalSearch(v));
-
-  const customersQuery = useQuery({
-    queryKey: customersQuoteFormQueryKey(customerSearch),
-    queryFn: () => fetchCustomers(customerSearch),
-    staleTime: 0,
-  });
-
-  const customers = useMemo(() => {
-    const map = new Map<string, CustomerOption>();
-    for (const c of pinnedCustomers) {
-      if (c.id) map.set(c.id, c);
-    }
-    if (seedCustomer?.id) map.set(seedCustomer.id, seedCustomer);
-    for (const c of customersQuery.data ?? []) {
-      if (c.id) map.set(c.id, c);
-    }
-    return Array.from(map.values()).sort((a, b) =>
-      a.name.localeCompare(b.name, "pt-BR")
-    );
-  }, [customersQuery.data, seedCustomer, pinnedCustomers]);
-
-  const customerIdInOptions = useMemo(
-    () => Boolean(customerId && customers.some((c) => c.id === customerId)),
-    [customerId, customers]
-  );
-
-  const orphanCustomerLabel = useMemo(() => {
-    if (!customerId) return "Cliente selecionado";
-    const found = customers.find((c) => c.id === customerId);
-    return found?.name ?? "Cliente selecionado";
-  }, [customerId, customers]);
-
   const computedValidUntil = useMemo(() => {
     const days = parseInt(String(validityDays).trim(), 10);
     const qd = quoteDate.trim();
@@ -170,49 +80,23 @@ export function QuoteFormFields({
     }
   }, [quoteDate, validityDays]);
 
-  useEffect(() => {
-    if (!customerId) {
-      onCustomerSelected?.(null);
-      return;
-    }
-    const c = customers.find((x) => x.id === customerId);
-    if (c) onCustomerSelected?.(c);
-  }, [customerId, customers, onCustomerSelected]);
-
-  const handleCustomerChange = (id: string) => {
-    onCustomerIdChange(id);
-    const c = customers.find((x) => x.id === id);
-    if (c?.email?.trim() && !clientEmail.trim()) {
-      onClientEmailChange(c.email.trim());
-    }
-    onCustomerSelected?.(c ?? null);
-  };
-
-  const handleCustomerCreated = useCallback(
-    async (c: CustomerOption) => {
-      setPinnedCustomers((prev) => {
-        if (prev.some((x) => x.id === c.id)) return prev;
-        return [c, ...prev];
-      });
-      setCustomerSearch("");
-      onCustomerIdChange(c.id);
-      if (c.email?.trim() && !clientEmail.trim()) {
-        onClientEmailChange(c.email.trim());
-      }
-      onCustomerSelected?.(c);
-      await queryClient.invalidateQueries({ queryKey: CUSTOMERS_QUERY_KEY });
-      await customersQuery.refetch();
-    },
-    [
-      queryClient,
-      customersQuery,
-      onCustomerIdChange,
-      onClientEmailChange,
-      onCustomerSelected,
-      clientEmail,
-      setCustomerSearch,
-    ]
+  const parsedPayment = useMemo(
+    () => parsePaymentTermsFromText(paymentTerms),
+    [paymentTerms]
   );
+
+  const computedDeliveryDate = useMemo(() => {
+    const qd = quoteDate.trim().slice(0, 10);
+    const n = parseInt(String(deliveryBusinessDays).trim(), 10);
+    if (!qd || !/^\d{4}-\d{2}-\d{2}$/.test(qd) || !Number.isFinite(n) || n < 1) {
+      return "";
+    }
+    try {
+      return addBusinessDays(qd, n);
+    } catch {
+      return "";
+    }
+  }, [quoteDate, deliveryBusinessDays]);
 
   return (
     <div className="space-y-6">
@@ -232,69 +116,16 @@ export function QuoteFormFields({
           />
         </div>
 
-        <div className="space-y-2 md:col-span-2">
-          <Label htmlFor="quote-customer-search">Cliente *</Label>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1 min-w-0">
-              <Search
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
-                aria-hidden
-              />
-              <Input
-                id="quote-customer-search"
-                className="pl-9"
-                placeholder="Pesquisar cliente…"
-                value={customerSearch}
-                onChange={(e) => setCustomerSearch(e.target.value)}
-              />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={() => setQuickOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              Novo cliente
-            </Button>
-          </div>
-          <select
-            id="quote-customer"
-            className={cn(SELECT_CLASS, "mt-2")}
-            value={customerId}
-            onChange={(e) => {
-              const next = e.target.value;
-              if (
-                !next &&
-                customerId &&
-                (customersQuery.isLoading || customersQuery.isFetching)
-              ) {
-                return;
-              }
-              handleCustomerChange(next);
-            }}
-            required
-            disabled={customersQuery.isLoading && !customerId}
-          >
-            <option value="">— Selecione o cliente —</option>
-            {customerId && !customerIdInOptions ? (
-              <option value={customerId}>{orphanCustomerLabel}</option>
-            ) : null}
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.document ? ` (${c.document})` : ""}
-              </option>
-            ))}
-          </select>
-          {customersQuery.isError ? (
-            <p className="text-xs text-red-600">
-              {customersQuery.error instanceof Error
-                ? customersQuery.error.message
-                : "Erro ao carregar clientes."}
-            </p>
-          ) : null}
+        <div className="md:col-span-2">
+          <CustomerSearchField
+            customerId={customerId}
+            onCustomerIdChange={onCustomerIdChange}
+            onCustomerSelected={onCustomerSelected}
+            clientEmail={clientEmail}
+            onClientEmailChange={onClientEmailChange}
+            seedCustomer={seedCustomer}
+            inputId="quote-customer-search"
+          />
         </div>
 
         <div className="space-y-2 md:col-span-2">
@@ -346,57 +177,49 @@ export function QuoteFormFields({
             id="quote-payment-terms"
             value={paymentTerms}
             onChange={(e) => onPaymentTermsChange(e.target.value)}
-            placeholder="Ex.: 30/60/90 dias ou À vista"
+            placeholder="Ex.: 28ddf, 30/60/90 ou À vista"
           />
+          {parsedPayment ? (
+            <p className="text-xs text-slate-500">
+              Interpretado:{" "}
+              <span className="font-medium text-slate-700">
+                {parsedPayment.installments === 1
+                  ? `1 parcela em ${parsedPayment.daysToFirstDue} dias`
+                  : `${parsedPayment.installments} parcelas (${parsedPayment.daysToFirstDue} dias até a 1.ª, depois a cada ${parsedPayment.daysBetweenInstallments} dias)`}
+              </span>
+            </p>
+          ) : paymentTerms.trim() ? (
+            <p className="text-xs text-slate-500">
+              Texto livre — será guardado como informado no orçamento.
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-2 md:col-span-2">
-          <Label htmlFor="quote-payment-installments">Parcelas</Label>
+          <Label htmlFor="quote-delivery-business-days">
+            Prazo de entrega (dias úteis)
+          </Label>
           <Input
-            id="quote-payment-installments"
+            id="quote-delivery-business-days"
             type="number"
             min={1}
-            value={paymentInstallments}
-            onChange={(e) => onPaymentInstallmentsChange(e.target.value)}
+            step={1}
+            value={deliveryBusinessDays}
+            onChange={(e) => onDeliveryBusinessDaysChange(e.target.value)}
+            placeholder="Ex.: 15"
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="quote-payment-days-first">Dias até 1.ª parcela</Label>
-          <Input
-            id="quote-payment-days-first"
-            type="number"
-            min={0}
-            value={paymentDaysFirst}
-            onChange={(e) => onPaymentDaysFirstChange(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="quote-payment-days-between">Dias entre parcelas</Label>
-          <Input
-            id="quote-payment-days-between"
-            type="number"
-            min={0}
-            value={paymentDaysBetween}
-            onChange={(e) => onPaymentDaysBetweenChange(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="quote-expected-delivery">Entrega prevista (data)</Label>
-          <Input
-            id="quote-expected-delivery"
-            type="date"
-            value={expectedDeliveryDate}
-            onChange={(e) => onExpectedDeliveryDateChange(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2 md:col-span-2">
-          <Label htmlFor="quote-delivery-deadline">Prazo de entrega (texto livre)</Label>
-          <Input
-            id="quote-delivery-deadline"
-            value={deliveryDeadline}
-            onChange={(e) => onDeliveryDeadlineChange(e.target.value)}
-            placeholder="Ex.: 15 dias úteis após confirmação"
-          />
+          {computedDeliveryDate ? (
+            <p className="text-xs text-slate-500">
+              {formatDeliveryBusinessDaysLabel(
+                parseInt(deliveryBusinessDays.trim(), 10)
+              )}
+              {" — "}
+              entrega prevista em{" "}
+              <span className="font-medium text-slate-700 tabular-nums">
+                {formatDay(computedDeliveryDate)}
+              </span>
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-2">
@@ -428,11 +251,6 @@ export function QuoteFormFields({
         </div>
       </div>
 
-      <CustomerQuickCreateModal
-        open={quickOpen}
-        onOpenChange={setQuickOpen}
-        onCustomerCreated={(c) => void handleCustomerCreated(c)}
-      />
     </div>
   );
 }

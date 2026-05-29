@@ -2800,6 +2800,7 @@ export type Database = {
       }
       quote_items: {
         Row: {
+          client_notes: string | null
           created_at: string
           description: string
           id: string
@@ -2814,6 +2815,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          client_notes?: string | null
           created_at?: string
           description: string
           id?: string
@@ -2828,6 +2830,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          client_notes?: string | null
           created_at?: string
           description?: string
           id?: string

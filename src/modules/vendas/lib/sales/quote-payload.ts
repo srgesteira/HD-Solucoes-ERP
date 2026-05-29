@@ -1,8 +1,7 @@
 import type { QuoteInsert, QuoteUpdate } from "@/modules/core/types/sales.types";
-import {
-  parseOptionalIsoDate,
-  parsePaymentInt,
-} from "@/modules/vendas/lib/sales/payment-fields";
+import { parsePaymentInt } from "@/modules/vendas/lib/sales/payment-fields";
+import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
+import { resolveQuoteDeliveryFromBody } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
   computeValidUntil,
   parseShippingType,
@@ -66,26 +65,38 @@ export function parseQuoteHeaderFromBody(
     return { ok: false, message: shippingParsed.error };
   }
 
-  const expectedDate = parseOptionalIsoDate(b.expected_delivery_date);
-  if (typeof expectedDate === "object" && expectedDate !== null && "error" in expectedDate) {
-    return { ok: false, message: expectedDate.error };
-  }
+  const paymentTermsText =
+    b.payment_terms === undefined || b.payment_terms === null
+      ? null
+      : String(b.payment_terms).trim() || null;
 
-  const pi = parsePaymentInt(b.payment_installments, "payment_installments", 1, 1);
-  const pd1 = parsePaymentInt(
-    b.payment_days_to_first_due,
-    "payment_days_to_first_due",
-    30
-  );
-  const pdb = parsePaymentInt(
-    b.payment_days_between_installments,
-    "payment_days_between_installments",
-    30
-  );
+  const parsedPayment = paymentTermsText
+    ? parsePaymentTermsFromText(paymentTermsText)
+    : null;
+
+  const pi = parsedPayment
+    ? parsedPayment.installments
+    : parsePaymentInt(b.payment_installments, "payment_installments", 1, 1);
+  const pd1 = parsedPayment
+    ? parsedPayment.daysToFirstDue
+    : parsePaymentInt(b.payment_days_to_first_due, "payment_days_to_first_due", 30);
+  const pdb = parsedPayment
+    ? parsedPayment.daysBetweenInstallments
+    : parsePaymentInt(
+        b.payment_days_between_installments,
+        "payment_days_between_installments",
+        30
+      );
+
   for (const x of [pi, pd1, pdb]) {
     if (typeof x === "object" && x !== null && "error" in x) {
       return { ok: false, message: (x as { error: string }).error };
     }
+  }
+
+  const deliveryResolved = resolveQuoteDeliveryFromBody(b, quote_date);
+  if ("error" in deliveryResolved) {
+    return { ok: false, message: deliveryResolved.error };
   }
 
   return {
@@ -100,15 +111,9 @@ export function parseQuoteHeaderFromBody(
       quote_date,
       validity_days,
       valid_until,
-      payment_terms:
-        b.payment_terms === undefined || b.payment_terms === null
-          ? null
-          : String(b.payment_terms).trim() || null,
-      delivery_deadline:
-        b.delivery_deadline === undefined || b.delivery_deadline === null
-          ? null
-          : String(b.delivery_deadline).trim() || null,
-      expected_delivery_date: expectedDate as string | null,
+      payment_terms: paymentTermsText,
+      delivery_deadline: deliveryResolved.delivery_deadline,
+      expected_delivery_date: deliveryResolved.expected_delivery_date,
       payment_installments: pi as number,
       payment_days_to_first_due: pd1 as number,
       payment_days_between_installments: pdb as number,

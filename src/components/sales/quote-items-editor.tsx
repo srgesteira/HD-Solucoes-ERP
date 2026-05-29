@@ -6,6 +6,7 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { Label } from "@/shared/ui/label";
+import { Textarea } from "@/shared/ui/textarea";
 import { cn } from "@/shared/utils/cn";
 import {
   DEFAULT_QUOTE_MARKUP_PERCENT,
@@ -13,10 +14,8 @@ import {
   unitPriceFromCostAndMarkup,
   type QuoteLinePriceMode,
 } from "@/modules/vendas/lib/sales/quote-line-pricing";
-import {
-  ProductSearchModal,
-  type ProductSearchHit,
-} from "@/components/products/product-search-modal";
+import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import type { ProductSearchHit } from "@/components/products/product-search-types";
 
 export type QuoteLineProduct = {
   id: string;
@@ -37,6 +36,8 @@ export type QuoteLineDraft = {
   costPrice: number;
   unitPrice: number;
   unit: string;
+  /** Texto livre visível ao cliente na proposta/impressão. */
+  clientNotes: string;
 };
 
 export function productDisplayLabel(p: QuoteLineProduct): string {
@@ -53,6 +54,27 @@ function hitToProduct(hit: ProductSearchHit): QuoteLineProduct {
     unit: hit.unit,
     cost_price: Number(hit.cost_price ?? 0),
   };
+}
+
+function lineFromProduct(
+  hit: ProductSearchHit,
+  base?: QuoteLineDraft
+): { line: QuoteLineDraft; product: QuoteLineProduct } {
+  const p = hitToProduct(hit);
+  const cost = Number(p.cost_price ?? 0);
+  const markup = DEFAULT_QUOTE_MARKUP_PERCENT;
+  const unitPrice = unitPriceFromCostAndMarkup(cost, markup);
+  const line: QuoteLineDraft = {
+    ...(base ?? newQuoteLine(0)),
+    productId: p.id,
+    costPrice: cost,
+    priceMode: "markup",
+    markupPercent: markup,
+    manualPrice: unitPrice,
+    unitPrice,
+    unit: (p.unit && p.unit.trim()) || "UN",
+  };
+  return { line, product: p };
 }
 
 function applyMarkupToLine(
@@ -83,6 +105,7 @@ export function newQuoteLine(index = 0): QuoteLineDraft {
     costPrice: 0,
     unitPrice: 0,
     unit: "UN",
+    clientNotes: "",
   };
 }
 
@@ -111,6 +134,8 @@ type Props = {
   onLinesChange: (lines: QuoteLineDraft[]) => void;
   productCache: Record<string, QuoteLineProduct>;
   onProductCacheMerge: (products: Record<string, QuoteLineProduct>) => void;
+  /** Orçamento em edição — liga produtos criados pelo comercial. */
+  sourceQuoteId?: string | null;
 };
 
 export function QuoteItemsEditor({
@@ -118,6 +143,7 @@ export function QuoteItemsEditor({
   onLinesChange,
   productCache,
   onProductCacheMerge,
+  sourceQuoteId,
 }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerLineIndex, setPickerLineIndex] = useState<number | null>(null);
@@ -164,27 +190,46 @@ export function QuoteItemsEditor({
     );
   };
 
-  const openProductPicker = (lineIndex: number) => {
+  const openProductPicker = (lineIndex: number | null) => {
     setPickerLineIndex(lineIndex);
     setPickerOpen(true);
   };
 
-  const handleProductSelect = (hit: ProductSearchHit) => {
-    if (pickerLineIndex === null) return;
-    const p = hitToProduct(hit);
-    onProductCacheMerge({ [p.id]: p });
-    const cost = Number(p.cost_price ?? 0);
-    const markup = DEFAULT_QUOTE_MARKUP_PERCENT;
-    const unitPrice = unitPriceFromCostAndMarkup(cost, markup);
-    updateLineAt(pickerLineIndex, {
-      productId: p.id,
-      costPrice: cost,
-      priceMode: "markup",
-      markupPercent: markup,
-      manualPrice: unitPrice,
-      unitPrice,
-      unit: (p.unit && p.unit.trim()) || "UN",
-    });
+  const applySelectedProducts = (hits: ProductSearchHit[]) => {
+    if (hits.length === 0) return;
+
+    const cache: Record<string, QuoteLineProduct> = {};
+    let nextLines = [...lines];
+    let remaining = [...hits];
+
+    if (pickerLineIndex !== null && pickerLineIndex < nextLines.length) {
+      const { line, product } = lineFromProduct(
+        remaining[0],
+        nextLines[pickerLineIndex]
+      );
+      cache[product.id] = product;
+      nextLines[pickerLineIndex] = line;
+      remaining = remaining.slice(1);
+    }
+
+    for (let i = 0; i < nextLines.length && remaining.length > 0; i++) {
+      if (pickerLineIndex !== null && i === pickerLineIndex) continue;
+      if (!nextLines[i].productId) {
+        const { line, product } = lineFromProduct(remaining[0], nextLines[i]);
+        cache[product.id] = product;
+        nextLines[i] = line;
+        remaining = remaining.slice(1);
+      }
+    }
+
+    for (const hit of remaining) {
+      const { line, product } = lineFromProduct(hit, newQuoteLine(nextLines.length));
+      cache[product.id] = product;
+      nextLines.push(line);
+    }
+
+    onProductCacheMerge(cache);
+    onLinesChange(reindexQuoteLines(nextLines));
     setPickerLineIndex(null);
   };
 
@@ -381,6 +426,25 @@ export function QuoteItemsEditor({
                     </strong>
                   </p>
                 </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor={`quote-client-notes-${index}`}>
+                    Observações para o cliente
+                  </Label>
+                  <Textarea
+                    id={`quote-client-notes-${index}`}
+                    value={line.clientNotes}
+                    onChange={(e) =>
+                      updateLineAt(index, { clientNotes: e.target.value })
+                    }
+                    rows={3}
+                    placeholder="Ex.: inclui instalação no local, prazo especial, cor RAL específica…"
+                    className="resize-y min-h-[72px]"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Opcional. Aparece na impressão do orçamento sob o produto.
+                  </p>
+                </div>
               </div>
             </div>
           );
@@ -392,9 +456,10 @@ export function QuoteItemsEditor({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() =>
-            onLinesChange(reindexQuoteLines([...lines, newQuoteLine(lines.length)]))
-          }
+          onClick={() => {
+            const firstEmpty = lines.findIndex((l) => !l.productId);
+            openProductPicker(firstEmpty >= 0 ? firstEmpty : null);
+          }}
         >
           <Plus className="h-4 w-4" />
           Adicionar produto
@@ -411,16 +476,19 @@ export function QuoteItemsEditor({
         </p>
       </div>
 
-      <ProductSearchModal
+      <ProductCatalogPickerModal
         open={pickerOpen}
         onOpenChange={(open) => {
           setPickerOpen(open);
           if (!open) setPickerLineIndex(null);
         }}
         excludeIds={usedProductIds}
-        onSelect={handleProductSelect}
+        multiSelect
+        onComplete={applySelectedProducts}
         productType="finished"
-        showNewProductButton={false}
+        showNewProductButton
+        commercialQuickCreate
+        sourceQuoteId={sourceQuoteId}
         title="Pesquisar produto acabado"
       />
     </>
@@ -463,6 +531,11 @@ export function buildQuoteItemsPayload(
       item.markup_percent = line.markupPercent;
     } else {
       item.markup_percent = null;
+    }
+
+    const notes = line.clientNotes.trim();
+    if (notes) {
+      item.client_notes = notes;
     }
 
     built.push(item);

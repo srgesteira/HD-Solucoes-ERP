@@ -57,6 +57,11 @@ import { APP_NAME } from "@/shared/utils/constants";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { ModuleKey } from "@/shared/auth/permissions";
 import { fetchProductionLines } from "@/modules/producao/lib/production/production-lines-api";
+import {
+  alertCountForHref,
+  useMenuAlerts,
+} from "@/hooks/use-menu-alerts";
+import { groupAlertTotal } from "@/modules/core/lib/navigation/menu-alerts";
 
 const PRODUCTION_MENU_TITLE = "Produção";
 const LOADING_LINES_NAV_HREF = "__loading_lines__";
@@ -492,6 +497,23 @@ function pathActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** Destaque pulsante para itens do menu com actividade em aberto. */
+function menuOpenActivityClass(count: number, active: boolean): string {
+  if (count <= 0 || active) return "";
+  return "animate-pulse font-semibold text-amber-800";
+}
+
+function MenuItemLabel({ title, count }: { title: string; count: number }) {
+  return (
+    <>
+      {title}
+      {count > 0 ? (
+        <span className="tabular-nums"> ({count})</span>
+      ) : null}
+    </>
+  );
+}
+
 export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -506,10 +528,13 @@ export function AppShell({ children, user }: AppShellProps) {
     staleTime: 5 * 60 * 1000,
   });
 
+  const menuAlertsQ = useMenuAlerts();
+  const menuAlerts = menuAlertsQ.data;
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const o: Record<string, boolean> = {};
     for (const e of MENU_STRUCTURE) {
-      if (e.type === "group") o[e.title] = true;
+      if (e.type === "group") o[e.title] = false;
     }
     return o;
   });
@@ -613,6 +638,7 @@ export function AppShell({ children, user }: AppShellProps) {
             if (entry.type === "link") {
               const Icon = entry.icon;
               const active = pathActive(pathname, entry.href);
+              const alertCount = alertCountForHref(menuAlerts, entry.href);
               return (
                 <Link
                   key={entry.href}
@@ -622,20 +648,25 @@ export function AppShell({ children, user }: AppShellProps) {
                     "flex items-center gap-3 rounded-md px-3 py-2 text-sm",
                     active
                       ? "bg-brand-50 text-brand-700 font-medium"
-                      : "text-slate-700 hover:bg-slate-100"
+                      : "text-slate-700 hover:bg-slate-100",
+                    menuOpenActivityClass(alertCount, active)
                   )}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
-                  <span>{entry.title}</span>
+                  <MenuItemLabel title={entry.title} count={alertCount} />
                 </Link>
               );
             }
 
-            const open = openGroups[entry.title] !== false;
+            const open = openGroups[entry.title] === true;
             const anyChildActive = entry.children.some((c) =>
               pathActive(pathname, c.href)
             );
             const GroupIcon = entry.icon;
+            const childHrefs = entry.children
+              .map((c) => c.href)
+              .filter((h) => h !== LOADING_LINES_NAV_HREF);
+            const groupAlertCount = groupAlertTotal(childHrefs, menuAlerts ?? {});
 
             return (
               <div key={entry.title} className="rounded-md">
@@ -646,7 +677,8 @@ export function AppShell({ children, user }: AppShellProps) {
                     "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left",
                     anyChildActive
                       ? "bg-slate-100 text-slate-900 font-medium"
-                      : "text-slate-800 hover:bg-slate-50"
+                      : "text-slate-800 hover:bg-slate-50",
+                    menuOpenActivityClass(groupAlertCount, anyChildActive)
                   )}
                 >
                   {open ? (
@@ -655,7 +687,7 @@ export function AppShell({ children, user }: AppShellProps) {
                     <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
                   )}
                   <GroupIcon className="h-4 w-4 shrink-0" />
-                  <span className="font-medium">{entry.title}</span>
+                  <MenuItemLabel title={entry.title} count={groupAlertCount} />
                 </button>
                 {open ? (
                   <div className="ml-2 mt-1 flex flex-col gap-0.5 border-l border-slate-200 pl-2">
@@ -675,6 +707,7 @@ export function AppShell({ children, user }: AppShellProps) {
                           </span>
                         );
                       }
+                      const childAlert = alertCountForHref(menuAlerts, c.href);
                       return (
                         <Link
                           key={c.href}
@@ -684,11 +717,14 @@ export function AppShell({ children, user }: AppShellProps) {
                             "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
                             active
                               ? "bg-brand-50 text-brand-700 font-medium"
-                              : "text-slate-600 hover:bg-slate-100"
+                              : "text-slate-600 hover:bg-slate-100",
+                            menuOpenActivityClass(childAlert, active)
                           )}
                         >
                           <CIcon className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{c.title}</span>
+                          <span className="truncate">
+                            <MenuItemLabel title={c.title} count={childAlert} />
+                          </span>
                         </Link>
                       );
                     })}

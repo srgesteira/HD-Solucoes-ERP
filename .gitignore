@@ -40,3 +40,4 @@ Desktop.ini
 scripts/create-member-compras.mjs
 scripts/deactivate-member-compras.mjs
 scripts/verify-member-compras.mjs
+.vercel

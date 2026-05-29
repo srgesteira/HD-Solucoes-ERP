@@ -77,6 +77,7 @@ export type QuotePrintProduct = {
 export type QuotePrintItem = {
   id: string;
   description: string | null;
+  client_notes?: string | null;
   quantity: number;
   unit?: string | null;
   unit_price: number;

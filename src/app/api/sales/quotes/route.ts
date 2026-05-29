@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
   }
 
   const status = searchParams.get("status");
+  const statusGroup = searchParams.get("status_group");
   const rawSearch =
     searchParams.get("search")?.trim() ??
     searchParams.get("client")?.trim() ??
@@ -73,7 +74,13 @@ export async function GET(request: NextRequest) {
     .select("*", { count: "exact" })
     .eq("tenant_id", tenantId);
 
-  if (status && status !== "all") {
+  const OPEN_QUOTE_STATUSES = ["draft", "sent", "approved", "revision"] as const;
+
+  if (statusGroup === "open") {
+    query = query.in("status", [...OPEN_QUOTE_STATUSES]);
+  } else if (statusGroup === "converted") {
+    query = query.eq("status", "converted");
+  } else if (status && status !== "all") {
     if (!QUOTE_SET.has(status)) {
       return apiError("Status inválido", 400);
     }

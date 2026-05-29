@@ -20,6 +20,7 @@ import {
 } from "@/components/products/product-form-fields";
 import { ProductCostHistoryTable } from "@/components/products/product-cost-history-table";
 import { ProductCompositionPanel } from "@/components/products/product-composition-panel";
+import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/products/prefix-classification";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
@@ -690,6 +691,24 @@ export default function EditProductPage() {
                   suggestion={structureSuggestion}
                   onDismiss={() => setStructureSuggestion(null)}
                   structureHref={`/products/${productId}/edit?tab=composition`}
+                />
+              </div>
+            ) : null}
+
+            {productRaw ? (
+              <div className="mb-4">
+                <ProductReleaseForSalePanel
+                  productId={productId}
+                  productName={productRaw.name}
+                  engineeringWorkflowStatus={
+                    productRaw.engineering_workflow_status
+                  }
+                  releasedForSale={Boolean(productRaw.released_for_sale)}
+                  onReleased={() => {
+                    void queryClient.invalidateQueries({
+                      queryKey: ["product", productId],
+                    });
+                  }}
                 />
               </div>
             ) : null}

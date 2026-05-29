@@ -24,10 +24,8 @@ import {
   SupplierQuickCreateModal,
   type SupplierOption,
 } from "@/components/purchasing/supplier-quick-create-modal";
-import {
-  ProductSearchModal,
-  type ProductSearchHit,
-} from "@/components/products/product-search-modal";
+import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import type { ProductSearchHit } from "@/components/products/product-search-types";
 import type { PurchaseNFExtraction } from "@/modules/engenharia/lib/services/ai.service";
 import type {
   PendingPoItem,
@@ -522,7 +520,7 @@ export default function PurchaseInvoiceReconcilePage() {
         }}
       />
 
-      <ProductSearchModal
+      <ProductCatalogPickerModal
         open={productPickerLine !== null}
         onOpenChange={(open) => {
           if (!open) setProductPickerLine(null);

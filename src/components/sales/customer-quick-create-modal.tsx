@@ -276,8 +276,8 @@ export function CustomerQuickCreateModal({
           address: row.address ?? null,
           is_active: row.is_active ?? true,
         };
-        onCreated?.(created);
-        onCustomerCreated?.(created);
+        await Promise.resolve(onCreated?.(created));
+        await Promise.resolve(onCustomerCreated?.(created));
         toast.success(`Cliente «${created.name}» criado.`);
       }
       reset();

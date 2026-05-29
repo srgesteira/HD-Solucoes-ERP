@@ -11,3 +11,14 @@ export async function requireMenuModule(
   }
   return null;
 }
+
+/** Aceita se o utilizador tiver pelo menos um dos módulos do menu. */
+export async function requireAnyMenuModule(
+  menuKeys: string[]
+): Promise<NextResponse | null> {
+  const { currentUserCanMenuModule } = await import("@/modules/core/lib/tenant");
+  for (const key of menuKeys) {
+    if (await currentUserCanMenuModule(key)) return null;
+  }
+  return apiError("Sem permissão", 403);
+}

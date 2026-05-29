@@ -629,6 +629,14 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                           {extraDesc}
                         </p>
                       ) : null}
+                      {line.client_notes?.trim() ? (
+                        <p className="qp-product-desc">
+                          <span className="qp-product-desc-label">
+                            Observações:{" "}
+                          </span>
+                          {line.client_notes.trim()}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="qp-qty">
                       <span className="qp-qty-num">

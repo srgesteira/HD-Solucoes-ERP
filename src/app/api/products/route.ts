@@ -2,8 +2,15 @@ import { NextRequest } from "next/server";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
-import { requireMenuModule } from "@/modules/core/lib/api-guards";
-import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
+import {
+  requireAnyMenuModule,
+  requireMenuModule,
+} from "@/modules/core/lib/api-guards";
+import {
+  currentUserCanMenuModule,
+  getCurrentTenantId,
+  isCurrentUserTenantAdmin,
+} from "@/modules/core/lib/tenant";
 import {
   canViewProductPrefixCode,
   finishedProductPrefixCodes,
@@ -40,7 +47,7 @@ export async function GET(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
-  const moduleDenied = await requireMenuModule("engenharia");
+  const moduleDenied = await requireAnyMenuModule(["engenharia", "vendas"]);
   if (moduleDenied) return moduleDenied;
 
   const tenantId = await getCurrentTenantId();
@@ -48,6 +55,8 @@ export async function GET(request: NextRequest) {
 
   const admin = createSupabaseAdminClient();
   const isAdmin = await isCurrentUserTenantAdmin();
+  const hasEngineering = await currentUserCanMenuModule("engenharia");
+  const salesCatalogOnly = !hasEngineering;
   const params = request.nextUrl.searchParams;
 
   const type = params.get("type");
@@ -60,7 +69,7 @@ export async function GET(request: NextRequest) {
   const end = start + limit - 1;
 
   const productListSelect =
-    "*, prefix:product_prefixes!products_prefix_id_fkey(code)";
+    "*, prefix:product_prefixes!products_prefix_id_fkey(code), engineering_workflow_status, released_for_sale, composition_requested_at";
 
   if (prefixCode && !canViewProductPrefixCode(prefixCode, isAdmin)) {
     return apiError("Sem permissão para este prefixo", 403);
@@ -123,9 +132,19 @@ export async function GET(request: NextRequest) {
     q = q.eq("prefix_id", prefixIdFilter);
   }
 
+  /** Comercial (só vendas): catálogo de acabados activos. */
+  if (salesCatalogOnly) {
+    q = q.eq("type", "finished").eq("is_active", true);
+  }
+
   /** Ex.: `type=finished` → apenas acabados (HD1, HD2, HD3, AC). */
   if (type && type !== "all") {
     q = q.eq("type", type);
+  }
+
+  const workflowPending = params.get("workflow_pending");
+  if (workflowPending === "1" && hasEngineering) {
+    q = q.eq("engineering_workflow_status", "pending_composition");
   }
   if (isActive !== null && isActive !== "") {
     q = q.eq("is_active", isActive === "true");
