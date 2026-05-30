@@ -293,6 +293,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
       b.notes === null ? null : String(b.notes).trim() || null;
   }
 
+  if (b.show_product_descriptions !== undefined) {
+    if (!canEditQuote) {
+      return apiError("Sem permissão para editar orçamentos", 403);
+    }
+    updateData.show_product_descriptions = Boolean(b.show_product_descriptions);
+  }
+
   const nextQuoteDate = updateData.quote_date ?? existing.quote_date;
   const nextValidityDays =
     updateData.validity_days ?? existing.validity_days ?? 30;

@@ -87,6 +87,7 @@ type QuoteDetail = {
   customer?: CustomerNested | CustomerNested[];
   notes: string | null;
   revision_notes: string | null;
+  show_product_descriptions?: boolean | null;
   subtotal: number;
   discount: number;
   tax: number;
@@ -264,6 +265,7 @@ export default function QuoteDetailPage() {
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [notes, setNotes] = useState("");
+  const [showProductDescriptions, setShowProductDescriptions] = useState(false);
   const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newQuoteLine(0)]);
   const [productCache, setProductCache] = useState<
     Record<string, QuoteLineProduct>
@@ -290,6 +292,7 @@ export default function QuoteDetailPage() {
     setDeliveryBusinessDays(inferDeliveryBusinessDaysFromQuote(q));
     setShippingType(q.shipping_type ?? "FOB");
     setNotes(q.notes ?? "");
+    setShowProductDescriptions(Boolean(q.show_product_descriptions));
     const apiItems = Array.isArray(q.items) ? q.items : [];
     const { lines: loadedLines, cache } = itemsToLinesAndCache(apiItems);
     setLines(loadedLines);
@@ -365,6 +368,7 @@ export default function QuoteDetailPage() {
             : null,
         shipping_type: shippingType,
         notes: notes.trim() || null,
+        show_product_descriptions: showProductDescriptions,
         items: itemsResult,
       });
     },
@@ -617,13 +621,7 @@ export default function QuoteDetailPage() {
           ) : null}
 
           {canContentEdit && hydrated ? (
-            <form
-              className="space-y-6"
-              onSubmit={(e) => {
-                e.preventDefault();
-                saveMutation.mutate();
-              }}
-            >
+            <div className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Dados do orçamento</CardTitle>
@@ -650,6 +648,8 @@ export default function QuoteDetailPage() {
                     onShippingTypeChange={setShippingType}
                     notes={notes}
                     onNotesChange={setNotes}
+                    showProductDescriptions={showProductDescriptions}
+                    onShowProductDescriptionsChange={setShowProductDescriptions}
                   />
                 </CardContent>
               </Card>
@@ -672,7 +672,11 @@ export default function QuoteDetailPage() {
               </Card>
 
               <div className="flex justify-end">
-                <Button type="submit" disabled={busy}>
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => saveMutation.mutate()}
+                >
                   {saveMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
@@ -681,7 +685,7 @@ export default function QuoteDetailPage() {
                   Guardar alterações
                 </Button>
               </div>
-            </form>
+            </div>
           ) : (
             <>
               <Card>

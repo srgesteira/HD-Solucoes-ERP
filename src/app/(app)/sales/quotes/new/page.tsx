@@ -83,6 +83,7 @@ export default function NewQuotePage() {
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [notes, setNotes] = useState("");
+  const [showProductDescriptions, setShowProductDescriptions] = useState(false);
   const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newQuoteLine(0)]);
   const [productCache, setProductCache] = useState<
     Record<string, QuoteLineProduct>
@@ -145,8 +146,7 @@ export default function NewQuotePage() {
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!isAdmin) return;
 
     const qn = quoteNumber.trim();
@@ -194,6 +194,7 @@ export default function NewQuotePage() {
           : null,
       shipping_type: shippingType,
       notes: notes.trim() || null,
+      show_product_descriptions: showProductDescriptions,
       items: itemsResult,
     };
 
@@ -245,7 +246,7 @@ export default function NewQuotePage() {
         </Button>
       </div>
 
-      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-6">
+      <div className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
@@ -279,6 +280,8 @@ export default function NewQuotePage() {
               onShippingTypeChange={setShippingType}
               notes={notes}
               onNotesChange={setNotes}
+              showProductDescriptions={showProductDescriptions}
+              onShowProductDescriptionsChange={setShowProductDescriptions}
             />
           </CardContent>
         </Card>
@@ -311,7 +314,12 @@ export default function NewQuotePage() {
               Cancelar
             </Button>
           </Link>
-          <Button type="submit" size="sm" disabled={mutation.isPending}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={mutation.isPending}
+            onClick={() => void handleSubmit()}
+          >
             {mutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -325,7 +333,7 @@ export default function NewQuotePage() {
             )}
           </Button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

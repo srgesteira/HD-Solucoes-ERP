@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -43,6 +44,7 @@ export function ProductCommercialQuickCreateModal({
   onCreated,
 }: Props) {
   const queryClient = useQueryClient();
+  const [mounted, setMounted] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [unit, setUnit] = useState("UN");
@@ -68,6 +70,10 @@ export function ProductCommercialQuickCreateModal({
     prefixCode &&
     (needsComplete || isSimplifiedClassificationSuffix(prefixCode)) &&
     !prefixCode.startsWith("MO");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -176,8 +182,11 @@ export function ProductCommercialQuickCreateModal({
     finishId,
   ]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (
+    e?: React.FormEvent | React.MouseEvent<HTMLButtonElement>
+  ) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     if (!canSubmit) return;
     setSaving(true);
     try {
@@ -232,9 +241,9 @@ export function ProductCommercialQuickCreateModal({
     }
   };
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  const modal = (
     <div
       className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 p-4"
       role="presentation"
@@ -426,7 +435,11 @@ export function ProductCommercialQuickCreateModal({
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={!canSubmit || saving}>
+              <Button
+                type="button"
+                disabled={!canSubmit || saving}
+                onClick={(e) => void handleSubmit(e)}
+              >
                 {saving ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -439,4 +452,6 @@ export function ProductCommercialQuickCreateModal({
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Check,
@@ -179,6 +180,7 @@ export function ProductCatalogPickerModal({
 }: Props) {
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
+  const [mounted, setMounted] = useState(false);
   const [commercialCreateOpen, setCommercialCreateOpen] = useState(false);
 
   const [searchInput, setSearchInput] = useState("");
@@ -197,6 +199,10 @@ export function ProductCatalogPickerModal({
     () => new Set([...excludeIds, ...(multiSelect ? pending.map((p) => p.id) : [])]),
     [excludeIds, multiSelect, pending]
   );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -294,6 +300,13 @@ export function ProductCatalogPickerModal({
   }
 
   const handleCommercialCreated = (hit: ProductSearchHit) => {
+    setCommercialCreateOpen(false);
+    if (commercialQuickCreate && onComplete) {
+      onComplete([hit]);
+      onOpenChange(false);
+      void listQuery.refetch();
+      return;
+    }
     if (multiSelect) {
       addToPending({
         id: hit.id,
@@ -312,9 +325,9 @@ export function ProductCatalogPickerModal({
     void listQuery.refetch();
   };
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  const overlay = (
     <div
       className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/55 p-2 sm:p-4"
       role="presentation"
@@ -640,4 +653,6 @@ export function ProductCatalogPickerModal({
       />
     </div>
   );
+
+  return createPortal(overlay, document.body);
 }

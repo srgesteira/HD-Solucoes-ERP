@@ -2942,6 +2942,7 @@ export type Database = {
           quote_number: string
           revision_notes: string | null
           shipping_type: string
+          show_product_descriptions: boolean
           status: string
           subtotal: number
           tax: number
@@ -2975,6 +2976,7 @@ export type Database = {
           quote_number: string
           revision_notes?: string | null
           shipping_type?: string
+          show_product_descriptions?: boolean
           status?: string
           subtotal?: number
           tax?: number
@@ -3008,6 +3010,7 @@ export type Database = {
           quote_number?: string
           revision_notes?: string | null
           shipping_type?: string
+          show_product_descriptions?: boolean
           status?: string
           subtotal?: number
           tax?: number

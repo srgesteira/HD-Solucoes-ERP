@@ -9,6 +9,7 @@ import {
   unwrapQuoteCustomer,
   quoteItemPrintDescription,
   unwrapQuoteProductCode,
+  unwrapQuoteProductDescription,
   unwrapQuoteProductName,
   type QuotePrintData,
 } from "@/modules/vendas/lib/sales/quote-display";
@@ -608,10 +609,18 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
             <tbody>
               {items.length > 0 ? (
                 items.map((line) => {
-                  const extraDesc = quoteItemPrintDescription(
-                    line.description,
-                    line.product,
+                  const showProductDesc = Boolean(
+                    quote.show_product_descriptions
                   );
+                  const productDesc = showProductDesc
+                    ? unwrapQuoteProductDescription(line.product)
+                    : null;
+                  const extraDesc = showProductDesc
+                    ? quoteItemPrintDescription(
+                        line.description,
+                        line.product
+                      )
+                    : null;
                   return (
                   <tr key={line.id}>
                     <td className="qp-code">
@@ -621,10 +630,18 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                       <span className="qp-product-name">
                         {unwrapQuoteProductName(line.product)}
                       </span>
-                      {extraDesc ? (
-                        <p className="qp-product-desc">
+                      {productDesc ? (
+                        <p className="qp-product-desc whitespace-pre-wrap">
                           <span className="qp-product-desc-label">
                             Descrição:{" "}
+                          </span>
+                          {productDesc}
+                        </p>
+                      ) : null}
+                      {extraDesc && extraDesc !== productDesc ? (
+                        <p className="qp-product-desc whitespace-pre-wrap">
+                          <span className="qp-product-desc-label">
+                            Detalhe:{" "}
                           </span>
                           {extraDesc}
                         </p>

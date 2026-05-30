@@ -238,6 +238,7 @@ export async function POST(request: NextRequest) {
     quote_number,
     status: "draft",
     created_by: profile?.id ?? null,
+    show_product_descriptions: parsedBody.data.show_product_descriptions === true,
     ...(discount !== undefined ? { discount } : {}),
     ...(tax !== undefined ? { tax } : {}),
   });

@@ -70,6 +70,8 @@ export type QuotePrintCustomer = {
 
 export type QuotePrintProduct = {
   name?: string | null;
+  description?: string | null;
+  technical_description?: string | null;
   technical_code?: string | null;
   code?: string | null;
 };
@@ -105,6 +107,7 @@ export type QuotePrintData = {
   discount: number;
   tax: number;
   total: number;
+  show_product_descriptions?: boolean | null;
   items?: QuotePrintItem[] | null;
 };
 
@@ -133,6 +136,27 @@ export function unwrapQuoteProductCode(
   const o = Array.isArray(p) ? p[0] : p;
   const code = o?.technical_code?.trim() || o?.code?.trim();
   return code || "—";
+}
+
+/** Descrição cadastrada no produto (técnica + comercial). */
+export function unwrapQuoteProductDescription(
+  p: QuotePrintItem["product"]
+): string | null {
+  if (p == null) return null;
+  const o = Array.isArray(p) ? p[0] : p;
+  if (!o || typeof o !== "object") return null;
+  const tech =
+    "technical_description" in o &&
+    typeof o.technical_description === "string"
+      ? o.technical_description.trim()
+      : "";
+  const desc =
+    "description" in o && typeof o.description === "string"
+      ? o.description.trim()
+      : "";
+  if (tech && desc && tech !== desc) return `${tech}\n${desc}`;
+  const text = tech || desc;
+  return text || null;
 }
 
 /** Texto extra de descrição na impressão (null = não exibir sob o produto). */
