@@ -22,6 +22,7 @@ export type QuoteApiItem = {
   unit_price: number;
   markup_percent?: number | null;
   client_notes?: string | null;
+  show_product_description?: boolean | null;
   product?: ApiProduct | ApiProduct[];
 };
 
@@ -65,6 +66,7 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
       unitPrice,
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       clientNotes: item.client_notes?.trim() ?? "",
+      showProductDescription: Boolean(item.show_product_description),
     });
   });
 

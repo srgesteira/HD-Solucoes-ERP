@@ -2808,6 +2808,7 @@ export type Database = {
           product_id: string | null
           quantity: number
           quote_id: string
+          show_product_description: boolean
           tenant_id: string
           total_price: number
           unit: string
@@ -2823,6 +2824,7 @@ export type Database = {
           product_id?: string | null
           quantity?: number
           quote_id: string
+          show_product_description?: boolean
           tenant_id: string
           total_price?: number
           unit?: string
@@ -2838,6 +2840,7 @@ export type Database = {
           product_id?: string | null
           quantity?: number
           quote_id?: string
+          show_product_description?: boolean
           tenant_id?: string
           total_price?: number
           unit?: string

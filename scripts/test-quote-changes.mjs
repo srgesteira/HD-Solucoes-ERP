@@ -94,7 +94,7 @@ function quoteItemPrintDescription(description, product) {
 }
 
 function testPrintLogic() {
-  console.log("\n1) Lógica de impressão (show_product_descriptions)");
+  console.log("\n1) Lógica de impressão (show_product_description por item)");
   const product = {
     name: "Caixa Filtro TEST",
     technical_code: "HD1-TEST-001",
@@ -102,16 +102,20 @@ function testPrintLogic() {
     technical_description: "Especificação técnica detalhada.",
   };
 
-  const showOn = Boolean(true);
-  const showOff = Boolean(false);
+  const lineOn = { show_product_description: true };
+  const lineOff = { show_product_description: false };
 
-  const descOn = showOn ? unwrapQuoteProductDescription(product) : null;
-  assert(descOn?.includes("Especificação técnica"), "com flag ON deve mostrar descrição");
-  ok("flag ON → descrição do produto visível");
+  const descOn = lineOn.show_product_description
+    ? unwrapQuoteProductDescription(product)
+    : null;
+  assert(descOn?.includes("Especificação técnica"), "item ON deve mostrar descrição");
+  ok("item com flag ON → descrição visível");
 
-  const descOff = showOff ? unwrapQuoteProductDescription(product) : null;
-  assert(descOff === null, "com flag OFF não deve mostrar descrição");
-  ok("flag OFF → descrição oculta");
+  const descOff = lineOff.show_product_description
+    ? unwrapQuoteProductDescription(product)
+    : null;
+  assert(descOff === null, "item OFF não deve mostrar descrição");
+  ok("item com flag OFF → descrição oculta");
 
   const extra = quoteItemPrintDescription("HD1-TEST-001 — Caixa Filtro TEST", product);
   assert(extra === null, "label padrão não deve gerar texto extra");
@@ -162,7 +166,7 @@ function testSourceFixes() {
 }
 
 async function testDatabaseColumn() {
-  console.log("\n3) Base de dados (coluna show_product_descriptions)");
+  console.log("\n3) Base de dados (coluna show_product_description por item)");
   if (!url || !serviceKey) {
     console.log("  ⚠ SUPABASE não configurado — teste de BD ignorado");
     return null;
@@ -174,7 +178,7 @@ async function testDatabaseColumn() {
 
   const { data: quote, error: qErr } = await admin
     .from("quotes")
-    .select("id, quote_number, show_product_descriptions, tenant_id")
+    .select("id, quote_number, tenant_id")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -183,45 +187,50 @@ async function testDatabaseColumn() {
   assert(quote?.id, "nenhum orçamento na base para testar");
   ok(`Orçamento encontrado: ${quote.quote_number}`);
 
-  const prev = Boolean(quote.show_product_descriptions);
-  const next = !prev;
-
-  const { error: upErr } = await admin
-    .from("quotes")
-    .update({ show_product_descriptions: next })
-    .eq("id", quote.id)
-    .eq("tenant_id", quote.tenant_id);
-
-  assert(!upErr, `update falhou: ${upErr?.message}`);
-  ok(`UPDATE show_product_descriptions → ${next}`);
-
-  const { data: reread } = await admin
-    .from("quotes")
-    .select("show_product_descriptions")
-    .eq("id", quote.id)
-    .single();
-
-  assert(Boolean(reread?.show_product_descriptions) === next, "valor não persistiu");
-  ok("Valor lido de volta correctamente");
-
-  await admin
-    .from("quotes")
-    .update({ show_product_descriptions: prev })
-    .eq("id", quote.id)
-    .eq("tenant_id", quote.tenant_id);
-  ok(`Revertido para valor original (${prev})`);
-
-  const { data: item } = await admin
+  const { data: item, error: iErr } = await admin
     .from("quote_items")
-    .select(
-      "description, product:products(name, description, technical_description, technical_code, code)"
-    )
+    .select("id, show_product_description")
     .eq("quote_id", quote.id)
     .limit(1)
     .maybeSingle();
 
-  if (item?.product) {
-    const prod = Array.isArray(item.product) ? item.product[0] : item.product;
+  assert(!iErr && item?.id, `sem itens ou erro: ${iErr?.message}`);
+  const prev = Boolean(item.show_product_description);
+  const next = !prev;
+
+  const { error: upErr } = await admin
+    .from("quote_items")
+    .update({ show_product_description: next })
+    .eq("id", item.id);
+
+  assert(!upErr, `update falhou: ${upErr?.message}`);
+  ok(`UPDATE item show_product_description → ${next}`);
+
+  const { data: reread } = await admin
+    .from("quote_items")
+    .select("show_product_description")
+    .eq("id", item.id)
+    .single();
+
+  assert(Boolean(reread?.show_product_description) === next, "valor não persistiu");
+  ok("Valor lido de volta correctamente");
+
+  await admin
+    .from("quote_items")
+    .update({ show_product_description: prev })
+    .eq("id", item.id);
+  ok(`Revertido para valor original (${prev})`);
+
+  const { data: itemFull } = await admin
+    .from("quote_items")
+    .select(
+      "description, product:products(name, description, technical_description, technical_code, code)"
+    )
+    .eq("id", item.id)
+    .maybeSingle();
+
+  if (itemFull?.product) {
+    const prod = Array.isArray(itemFull.product) ? itemFull.product[0] : itemFull.product;
     const hasCatalogDesc = Boolean(
       prod?.description?.trim() || prod?.technical_description?.trim()
     );

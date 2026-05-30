@@ -38,6 +38,8 @@ export type QuoteLineDraft = {
   unit: string;
   /** Texto livre visível ao cliente na proposta/impressão. */
   clientNotes: string;
+  /** Incluir descrição cadastrada do produto na impressão desta linha. */
+  showProductDescription: boolean;
 };
 
 export function productDisplayLabel(p: QuoteLineProduct): string {
@@ -106,6 +108,7 @@ export function newQuoteLine(index = 0): QuoteLineDraft {
     unitPrice: 0,
     unit: "UN",
     clientNotes: "",
+    showProductDescription: false,
   };
 }
 
@@ -445,6 +448,36 @@ export function QuoteItemsEditor({
                     Opcional. Aparece na impressão do orçamento sob o produto.
                   </p>
                 </div>
+
+                {prod ? (
+                  <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+                    <label
+                      htmlFor={`quote-show-desc-${index}`}
+                      className="flex items-start gap-3 cursor-pointer"
+                    >
+                      <input
+                        id={`quote-show-desc-${index}`}
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
+                        checked={line.showProductDescription}
+                        onChange={(e) =>
+                          updateLineAt(index, {
+                            showProductDescription: e.target.checked,
+                          })
+                        }
+                      />
+                      <span className="space-y-1">
+                        <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
+                          Incluir descrição do produto na impressão
+                        </span>
+                        <span className="block text-xs text-slate-500 leading-relaxed">
+                          Só afecta esta linha. Mostra a descrição técnica
+                          cadastrada no produto no PDF/impressão.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                ) : null}
               </div>
             </div>
           );
@@ -537,6 +570,8 @@ export function buildQuoteItemsPayload(
     if (notes) {
       item.client_notes = notes;
     }
+
+    item.show_product_description = line.showProductDescription;
 
     built.push(item);
   }

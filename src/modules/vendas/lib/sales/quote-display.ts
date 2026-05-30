@@ -80,6 +80,7 @@ export type QuotePrintItem = {
   id: string;
   description: string | null;
   client_notes?: string | null;
+  show_product_description?: boolean | null;
   quantity: number;
   unit?: string | null;
   unit_price: number;
@@ -107,7 +108,6 @@ export type QuotePrintData = {
   discount: number;
   tax: number;
   total: number;
-  show_product_descriptions?: boolean | null;
   items?: QuotePrintItem[] | null;
 };
 

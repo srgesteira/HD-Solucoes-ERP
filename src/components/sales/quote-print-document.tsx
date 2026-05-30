@@ -609,9 +609,7 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
             <tbody>
               {items.length > 0 ? (
                 items.map((line) => {
-                  const showProductDesc = Boolean(
-                    quote.show_product_descriptions
-                  );
+                  const showProductDesc = Boolean(line.show_product_description);
                   const productDesc = showProductDesc
                     ? unwrapQuoteProductDescription(line.product)
                     : null;

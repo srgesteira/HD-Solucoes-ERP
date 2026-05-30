@@ -36,8 +36,6 @@ export interface QuoteHeaderFormProps {
   onShippingTypeChange: (value: string) => void;
   notes: string;
   onNotesChange: (value: string) => void;
-  showProductDescriptions: boolean;
-  onShowProductDescriptionsChange: (value: boolean) => void;
   seedCustomer?: CustomerOption | null;
   quoteNumberReadOnly?: boolean;
 }
@@ -68,8 +66,6 @@ export function QuoteFormFields({
   onShippingTypeChange,
   notes,
   onNotesChange,
-  showProductDescriptions,
-  onShowProductDescriptionsChange,
   seedCustomer,
   quoteNumberReadOnly = false,
 }: QuoteHeaderFormProps) {
@@ -252,33 +248,6 @@ export function QuoteFormFields({
             placeholder="Notas internas ou condições que apareçam junto ao orçamento…"
             className="resize-y min-h-[88px]"
           />
-        </div>
-
-        <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
-          <label
-            htmlFor="quote-show-product-descriptions"
-            className="flex items-start gap-3 cursor-pointer"
-          >
-            <input
-              id="quote-show-product-descriptions"
-              type="checkbox"
-              className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
-              checked={showProductDescriptions}
-              onChange={(e) =>
-                onShowProductDescriptionsChange(e.target.checked)
-              }
-            />
-            <span className="space-y-1">
-              <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
-                Incluir descrição dos produtos na impressão
-              </span>
-              <span className="block text-xs text-slate-500 leading-relaxed">
-                Quando activo, a impressão/PDF mostra a descrição técnica
-                cadastrada em cada produto. As observações por item para o
-                cliente aparecem sempre.
-              </span>
-            </span>
-          </label>
         </div>
       </div>
 

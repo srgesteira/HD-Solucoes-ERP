@@ -16,6 +16,7 @@ export type SaleLineInput = {
   product_id?: string | null;
   description: string;
   client_notes?: string | null;
+  show_product_description?: boolean;
   quantity: number;
   unit?: string;
   unit_price: number;
@@ -349,6 +350,7 @@ export async function insertQuoteItemsFromLines(
     product_id: it.product_id,
     description: it.description,
     client_notes: it.client_notes?.trim() ? it.client_notes.trim() : null,
+    show_product_description: Boolean(it.show_product_description),
     quantity: it.quantity,
     unit: it.unit ?? "UN",
     unit_price: it.unit_price,

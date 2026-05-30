@@ -3,9 +3,8 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { QuotePrintDocument } from "@/components/sales/quote-print-document";
 import type { QuotePrintData } from "@/modules/vendas/lib/sales/quote-display";
@@ -37,24 +36,9 @@ async function fetchCompanyBranding(): Promise<Tables<"company_settings"> | null
   return json.data ?? null;
 }
 
-async function updateShowProductDescriptions(
-  id: string,
-  show: boolean
-): Promise<void> {
-  const res = await fetch(`/api/sales/quotes/${id}`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ show_product_descriptions: show }),
-  });
-  const json = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar preferência");
-}
-
 export default function QuotePrintPage() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
-  const queryClient = useQueryClient();
 
   const quoteQuery = useQuery({
     queryKey: ["sales-quote-print", id],
@@ -67,19 +51,6 @@ export default function QuotePrintPage() {
     queryFn: fetchCompanyBranding,
     enabled: Boolean(id),
     staleTime: 60_000,
-  });
-
-  const toggleMutation = useMutation({
-    mutationFn: (show: boolean) => updateShowProductDescriptions(id, show),
-    onSuccess: (_, show) => {
-      queryClient.setQueryData(
-        ["sales-quote-print", id],
-        (prev: QuotePrintData | undefined) =>
-          prev ? { ...prev, show_product_descriptions: show } : prev
-      );
-      void queryClient.invalidateQueries({ queryKey: ["sales-quote", id] });
-    },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   useEffect(() => {
@@ -99,8 +70,6 @@ export default function QuotePrintPage() {
     window.print();
   };
 
-  const showDesc = Boolean(quoteQuery.data?.show_product_descriptions);
-
   return (
     <div className="quote-print-page min-h-screen bg-slate-100 print:bg-white">
       <div className="quote-print-toolbar print:hidden sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur px-4 py-3 flex flex-wrap items-center justify-between gap-3">
@@ -110,27 +79,15 @@ export default function QuotePrintPage() {
             Voltar ao orçamento
           </Button>
         </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
-              checked={showDesc}
-              disabled={!quoteQuery.data || toggleMutation.isPending}
-              onChange={(e) => toggleMutation.mutate(e.target.checked)}
-            />
-            Descrição dos produtos
-          </label>
-          <Button
-            type="button"
-            size="sm"
-            onClick={handlePrint}
-            disabled={!quoteQuery.data}
-          >
-            <Printer className="h-4 w-4" />
-            Imprimir / Guardar PDF
-          </Button>
-        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={handlePrint}
+          disabled={!quoteQuery.data}
+        >
+          <Printer className="h-4 w-4" />
+          Imprimir / Guardar PDF
+        </Button>
       </div>
 
       <div className="p-4 lg:p-8 print:p-0">

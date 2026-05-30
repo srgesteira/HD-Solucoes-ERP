@@ -159,9 +159,6 @@ export function quoteHeaderToInsert(
     payment_days_between_installments: header.payment_days_between_installments,
     shipping_type: header.shipping_type,
     notes: header.notes,
-    ...(extra.show_product_descriptions !== undefined
-      ? { show_product_descriptions: extra.show_product_descriptions }
-      : {}),
     ...(extra.discount !== undefined ? { discount: extra.discount } : {}),
     ...(extra.tax !== undefined ? { tax: extra.tax } : {}),
   };

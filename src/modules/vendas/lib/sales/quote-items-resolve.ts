@@ -96,6 +96,7 @@ export async function resolveQuoteItemsFromPayload(
     unit?: string;
     description?: string;
     client_notes?: string | null;
+    show_product_description?: boolean;
     unit_price: number | null;
     markup_percent: number | null;
     use_markup: boolean;
@@ -149,6 +150,7 @@ export async function resolveQuoteItemsFromPayload(
       typeof r.client_notes === "string" && r.client_notes.trim()
         ? r.client_notes.trim()
         : null;
+    const show_product_description = r.show_product_description === true;
 
     productIds.push(product_id);
     drafts.push({
@@ -160,6 +162,7 @@ export async function resolveQuoteItemsFromPayload(
       use_markup,
       ...(description ? { description } : {}),
       client_notes,
+      show_product_description,
     });
   }
 
@@ -203,6 +206,7 @@ export async function resolveQuoteItemsFromPayload(
       product_id: d.product_id,
       description: d.description || productLabel(p),
       client_notes: d.client_notes ?? null,
+      show_product_description: d.show_product_description,
       quantity: d.quantity,
       unit: d.unit ?? (p.unit?.trim() || "UN"),
       unit_price,
