@@ -1,15 +1,26 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Label } from "@/shared/ui/label";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
 import { Button } from "@/shared/ui/button";
-import { QuickAddProductFamilyDialog } from "@/components/products/quick-add-product-family-dialog";
+import {
+  ClassificationSelectWithAdd,
+  type ClassificationOption,
+} from "@/components/products/classification-select-with-add";
+import {
+  QuickAddClassificationItemDialog,
+  type QuickAddClassificationConfig,
+} from "@/components/products/quick-add-classification-item-dialog";
+import {
+  validateClassificationCatalogCode,
+  validatePrefixCatalogCode,
+} from "@/modules/engenharia/lib/products/classification-catalog-codes";
 import { cn } from "@/shared/utils/cn";
 import type { ProductType } from "@/modules/core/types/product.types";
 import {
@@ -57,14 +68,31 @@ export type ProductFormShape = {
   default_production_line_id: string | null;
 };
 
-type ClassListRow = {
-  id: string;
-  code: string;
-  name: string;
-  sort_order?: number | null;
+type ClassListRow = ClassificationOption;
+
+type PrefixRow = Pick<ClassListRow, "id" | "code">;
+
+type QuickAddKind = "prefix" | "family" | "material" | "finish" | null;
+
+const FETCH_OPTS: RequestInit = {
+  credentials: "include",
+  cache: "no-store",
 };
 
-type PrefixRow = { id: string; code: string };
+async function fetchClassificationList<T>(
+  url: string,
+  errorLabel: string
+): Promise<T[]> {
+  const res = await fetch(url, FETCH_OPTS);
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: T[];
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(json.error ?? errorLabel);
+  }
+  return json.data ?? [];
+}
 
 type Props = {
   formData: ProductFormShape;
@@ -117,45 +145,102 @@ export function ProductFormFields({
     { id: string; code: string; name: string; is_active: boolean }[]
   >([]);
   const [plLoading, setPlLoading] = useState(false);
-  const [addFamilyOpen, setAddFamilyOpen] = useState(false);
+  const [quickAdd, setQuickAdd] = useState<QuickAddKind>(null);
   const [familiesLoading, setFamiliesLoading] = useState(false);
+  const [prefixesLoading, setPrefixesLoading] = useState(true);
+  const [materialsLoading, setMaterialsLoading] = useState(true);
+
+  const reloadPrefixes = useCallback(async () => {
+    setPrefixesLoading(true);
+    try {
+      const list = await fetchClassificationList<ClassListRow>(
+        "/api/products/prefixes",
+        "Erro ao carregar sufixos"
+      );
+      setPrefixes(list);
+      return list;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao carregar sufixos");
+      return [];
+    } finally {
+      setPrefixesLoading(false);
+    }
+  }, []);
+
+  const reloadMaterials = useCallback(async () => {
+    setMaterialsLoading(true);
+    try {
+      const list = await fetchClassificationList<ClassListRow>(
+        "/api/products/materials",
+        "Erro ao carregar materiais"
+      );
+      setMaterials(list);
+      return list;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao carregar materiais");
+      return [];
+    } finally {
+      setMaterialsLoading(false);
+    }
+  }, []);
+
+  const reloadFamilies = useCallback(async (prefixId: string) => {
+    if (!prefixId) {
+      setFamilies([]);
+      return [];
+    }
+    setFamiliesLoading(true);
+    try {
+      const list = await fetchClassificationList<ClassListRow>(
+        `/api/products/families?prefix_id=${encodeURIComponent(prefixId)}`,
+        "Erro ao carregar famílias deste sufixo"
+      );
+      setFamilies(list);
+      return list;
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Erro ao carregar famílias deste sufixo"
+      );
+      setFamilies([]);
+      return [];
+    } finally {
+      setFamiliesLoading(false);
+    }
+  }, []);
+
+  const reloadFinishes = useCallback(async (materialId: string) => {
+    if (!materialId) {
+      setFinishes([]);
+      return [];
+    }
+    setFinLoading(true);
+    try {
+      const list = await fetchClassificationList<ClassListRow>(
+        `/api/products/finishes?material_id=${encodeURIComponent(materialId)}`,
+        "Erro ao carregar acabamentos"
+      );
+      setFinishes(list);
+      return list;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao carregar acabamentos");
+      setFinishes([]);
+      return [];
+    } finally {
+      setFinLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setBaseLoading(true);
-      const fetchOpts: RequestInit = {
-        credentials: "include",
-        cache: "no-store",
-      };
-      try {
-        const [pr, ma] = await Promise.all([
-          fetch("/api/products/prefixes", fetchOpts),
-          fetch("/api/products/materials", fetchOpts),
-        ]);
-        let jpr: { data?: ClassListRow[] } = {};
-        let jma: { data?: ClassListRow[] } = {};
-        try {
-          jpr = (await pr.json()) as { data?: ClassListRow[] };
-        } catch {
-          /* ignore */
-        }
-        try {
-          jma = (await ma.json()) as { data?: ClassListRow[] };
-        } catch {
-          /* ignore */
-        }
-        if (cancelled) return;
-        if (pr.ok) setPrefixes(jpr.data ?? []);
-        if (ma.ok) setMaterials(jma.data ?? []);
-      } finally {
-        if (!cancelled) setBaseLoading(false);
-      }
+      await Promise.all([reloadPrefixes(), reloadMaterials()]);
+      if (!cancelled) setBaseLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadPrefixes, reloadMaterials]);
 
   useEffect(() => {
     const prefixId = formData.prefix_id?.trim();
@@ -166,42 +251,21 @@ export function ProductFormFields({
     }
     let cancelled = false;
     (async () => {
-      setFamiliesLoading(true);
-      try {
-        const res = await fetch(
-          `/api/products/families?prefix_id=${encodeURIComponent(prefixId)}`,
-          { credentials: "include", cache: "no-store" }
-        );
-        let json: { data?: ClassListRow[]; error?: string } = {};
-        try {
-          json = (await res.json()) as { data?: ClassListRow[]; error?: string };
-        } catch {
-          /* ignore */
-        }
-        if (cancelled) return;
-        if (!res.ok) {
-          toast.error(json.error ?? "Erro ao carregar famílias deste sufixo");
-          setFamilies([]);
-          return;
-        }
-        const list = json.data ?? [];
-        setFamilies(list);
-        if (
-          formData.family_id &&
-          !list.some((f) => f.id === formData.family_id)
-        ) {
-          onChange("family_id", "");
-          onChange("subfamily_id", "");
-        }
-      } finally {
-        if (!cancelled) setFamiliesLoading(false);
+      const list = await reloadFamilies(prefixId);
+      if (cancelled) return;
+      if (
+        formData.family_id &&
+        !list.some((f) => f.id === formData.family_id)
+      ) {
+        onChange("family_id", "");
+        onChange("subfamily_id", "");
       }
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset só ao mudar sufixo
-  }, [formData.prefix_id]);
+  }, [formData.prefix_id, reloadFamilies]);
 
   useEffect(() => {
     const fid = formData.family_id?.trim();
@@ -243,32 +307,105 @@ export function ProductFormFields({
     }
     let cancelled = false;
     (async () => {
-      setFinLoading(true);
-      try {
-        const res = await fetch(
-          `/api/products/finishes?material_id=${encodeURIComponent(mid)}`,
-          { credentials: "include", cache: "no-store" }
-        );
-        let json: { data?: ClassListRow[] } = {};
-        try {
-          json = (await res.json()) as { data?: ClassListRow[] };
-        } catch {
-          /* ignore */
-        }
-        if (!cancelled && res.ok) setFinishes(json.data ?? []);
-      } finally {
-        if (!cancelled) setFinLoading(false);
+      const list = await reloadFinishes(mid);
+      if (cancelled) return;
+      if (formData.finish_id && !list.some((f) => f.id === formData.finish_id)) {
+        onChange("finish_id", "");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [formData.material_id]);
+  }, [formData.material_id, reloadFinishes]);
 
-  const classBusy = baseLoading;
+  const classBusy =
+    baseLoading || prefixesLoading || materialsLoading;
   const classFieldsDisabled = classBusy || classificationLocked;
   const selectedPrefix = prefixes.find((p) => p.id === formData.prefix_id);
   const prefixCode = selectedPrefix?.code ?? "";
+  const selectedMaterial = materials.find((m) => m.id === formData.material_id);
+
+  function handlePrefixChange(prefixId: string) {
+    onChange("prefix_id", prefixId);
+    onChange("family_id", "");
+    onChange("subfamily_id", "");
+    const nextP = prefixes.find((x) => x.id === prefixId);
+    const nextCode = nextP?.code ?? "";
+    if (isSimplifiedClassificationSuffix(nextCode)) {
+      onChange("subfamily_id", "");
+      if (isMoClassificationSuffix(nextCode)) {
+        onChange("material_id", "");
+        onChange("finish_id", "");
+      }
+    } else {
+      onChange("default_is_external_labor", false);
+      onChange("default_work_center_id", null);
+      onChange("default_labor_cost", null);
+    }
+  }
+
+  const quickAddFamilyConfig: QuickAddClassificationConfig | null =
+    formData.prefix_id.trim()
+      ? {
+          title: "Nova família",
+          contextHint: selectedPrefix
+            ? `Será criada só para o sufixo ${selectedPrefix.code} — ${selectedPrefix.name}.`
+            : undefined,
+          validateCode: validateClassificationCatalogCode,
+          postUrl: "/api/products/families",
+          buildBody: ({ code, name, description }) => ({
+            prefix_id: formData.prefix_id.trim(),
+            code,
+            name,
+            description,
+          }),
+        }
+      : null;
+
+  const quickAddPrefixConfig: QuickAddClassificationConfig = {
+    title: "Novo sufixo / prefixo",
+    contextHint:
+      "Sufixo global da empresa (ex.: PN — Pneumática). Código técnico no formato simplificado (material + acabamento).",
+    codeLabel: "Código do sufixo *",
+    codePlaceholder: "Ex.: PN",
+    validateCode: validatePrefixCatalogCode,
+    postUrl: "/api/products/prefixes",
+    buildBody: ({ code, name, description }) => ({
+      code,
+      name,
+      description,
+    }),
+  };
+
+  const quickAddMaterialConfig: QuickAddClassificationConfig = {
+    title: "Novo material",
+    contextHint: "Material global — disponível em todos os sufixos.",
+    validateCode: validateClassificationCatalogCode,
+    postUrl: "/api/products/materials",
+    buildBody: ({ code, name, description }) => ({
+      code,
+      name,
+      description,
+    }),
+  };
+
+  const quickAddFinishConfig: QuickAddClassificationConfig | null =
+    formData.material_id.trim()
+      ? {
+          title: "Novo acabamento",
+          contextHint: selectedMaterial
+            ? `Amarrado ao material ${selectedMaterial.code} — ${selectedMaterial.name}.`
+            : undefined,
+          validateCode: validateClassificationCatalogCode,
+          postUrl: "/api/products/finishes",
+          buildBody: ({ code, name, description }) => ({
+            material_id: formData.material_id.trim(),
+            code,
+            name,
+            description,
+          }),
+        }
+      : null;
   const isMO = isMoClassificationSuffix(prefixCode);
   const needsCompleteClassification =
     isCompleteClassificationSuffix(prefixCode);
@@ -355,22 +492,9 @@ export function ProductFormFields({
           <p className="text-sm font-medium text-slate-800">
             Classificação técnica
           </p>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-xs shrink-0"
-              disabled={classFieldsDisabled || !formData.prefix_id}
-              onClick={() => setAddFamilyOpen(true)}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" aria-hidden />
-              Adicionar família
-            </Button>
-            {classBusy ? (
-              <Loader2 className="h-4 w-4 animate-spin text-slate-400" aria-hidden />
-            ) : null}
-          </div>
+          {classBusy ? (
+            <Loader2 className="h-4 w-4 animate-spin text-slate-400" aria-hidden />
+          ) : null}
         </div>
         <div
           role="note"
@@ -391,8 +515,7 @@ export function ProductFormFields({
             derivada automaticamente do prefixo seleccionado. As famílias são{" "}
             <strong>por sufixo</strong> (HD1–HD3/AC partilham um catálogo; MP e
             outros sufixos simplificados têm o seu). Use{" "}
-            <strong>Adicionar família</strong> no sufixo seleccionado. Ou
-            cadastre em{" "}
+            Use <strong>+ Adicionar</strong> dentro de cada lista. Ou cadastre em{" "}
             <Link
               href="/settings/product-families"
               className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
@@ -403,88 +526,55 @@ export function ProductFormFields({
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="prefix_id">Sufixo / prefixo *</Label>
-            <select
-              id="prefix_id"
-              className={SELECT_CLASS}
-              required
-              disabled={classFieldsDisabled}
-              value={formData.prefix_id}
-              onChange={(e) => {
-                const v = e.target.value;
-                onChange("prefix_id", v);
-                onChange("family_id", "");
-                onChange("subfamily_id", "");
-                const nextP = prefixes.find((x) => x.id === v);
-                const nextCode = nextP?.code ?? "";
-                if (isSimplifiedClassificationSuffix(nextCode)) {
-                  onChange("subfamily_id", "");
-                  if (isMoClassificationSuffix(nextCode)) {
-                    onChange("material_id", "");
-                    onChange("finish_id", "");
-                  }
-                } else {
-                  onChange("default_is_external_labor", false);
-                  onChange("default_work_center_id", null);
-                  onChange("default_labor_cost", null);
-                }
-              }}
-            >
-              <option value="">Selecionar…</option>
-              {prefixes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-slate-500">
-              Completo: HD1–HD3, AC. Simplificado: MP, SE, EB, MC, RV, MO.
-            </p>
-          </div>
+          <ClassificationSelectWithAdd
+            id="prefix_id"
+            label="Sufixo / prefixo"
+            required
+            value={formData.prefix_id}
+            options={prefixes}
+            loading={prefixesLoading}
+            disabled={classFieldsDisabled}
+            placeholder="Selecionar…"
+            emptyLabel="Nenhum sufixo cadastrado"
+            addLabel="+ Adicionar sufixo"
+            onChange={handlePrefixChange}
+            onAddClick={() => setQuickAdd("prefix")}
+          />
+          <p className="text-xs text-slate-500 md:col-span-2 -mt-2">
+            Completo: HD1–HD3, AC. Simplificado: MP, SE, EB, MC, RV, MO e sufixos
+            personalizados.
+          </p>
 
           {formData.prefix_id ? (
-            <div className="space-y-2">
-              <Label htmlFor="family_id">
-                Família{needsCompleteClassification ? " *" : ""}
-              </Label>
-              <select
+            <>
+              <ClassificationSelectWithAdd
                 id="family_id"
-                className={SELECT_CLASS}
+                label={`Família${needsCompleteClassification ? " *" : ""}`}
                 required={needsCompleteClassification}
-                disabled={
-                  classFieldsDisabled || familiesLoading || !formData.prefix_id
-                }
                 value={formData.family_id}
-                onChange={(e) => {
-                  onChange("family_id", e.target.value);
+                options={families}
+                loading={familiesLoading}
+                disabled={classFieldsDisabled || !formData.prefix_id}
+                placeholder="Selecionar…"
+                emptyLabel="Nenhuma família neste sufixo"
+                addLabel="+ Adicionar família"
+                onChange={(id) => {
+                  onChange("family_id", id);
                   onChange("subfamily_id", "");
                 }}
-              >
-                <option value="">
-                  {familiesLoading
-                    ? "A carregar famílias…"
-                    : families.length === 0
-                      ? "Nenhuma família — use Adicionar família"
-                      : "Selecionar…"}
-                </option>
-                {families.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.code} — {p.name}
-                  </option>
-                ))}
-              </select>
+                onAddClick={() => setQuickAdd("family")}
+              />
               {!needsCompleteClassification ? (
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 md:col-span-2 -mt-2">
                   Catálogo só deste sufixo (ex.: MP). Opcional no código técnico
                   (material + acabamento).
                 </p>
               ) : (
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 md:col-span-2 -mt-2">
                   Catálogo HD1 / HD2 / HD3 / AC (partilhado).
                 </p>
               )}
-            </div>
+            </>
           ) : null}
 
           {needsCompleteClassification ? (
@@ -518,50 +608,43 @@ export function ProductFormFields({
 
           {showClassificationFields ? (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="classification_material_id">Material *</Label>
-                <select
-                  id="classification_material_id"
-                  className={SELECT_CLASS}
-                  required
-                  disabled={classFieldsDisabled}
-                  value={formData.material_id}
-                  onChange={(e) => onChange("material_id", e.target.value)}
-                >
-                  <option value="">Selecionar…</option>
-                  {materials.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.code} — {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="finish_id">Acabamento *</Label>
-                <select
-                  id="finish_id"
-                  className={SELECT_CLASS}
-                  required
-                  disabled={
-                    classFieldsDisabled || !formData.material_id || finLoading
-                  }
-                  value={formData.finish_id}
-                  onChange={(e) => onChange("finish_id", e.target.value)}
-                >
-                  <option value="">
-                    {formData.material_id
-                      ? finLoading
-                        ? "A carregar…"
-                        : "Selecionar…"
-                      : "Escolha primeiro o material"}
-                  </option>
-                  {finishes.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.code} — {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <ClassificationSelectWithAdd
+                id="classification_material_id"
+                label="Material"
+                required
+                value={formData.material_id}
+                options={materials}
+                loading={materialsLoading}
+                disabled={classFieldsDisabled}
+                placeholder="Selecionar…"
+                emptyLabel="Nenhum material cadastrado"
+                addLabel="+ Adicionar material"
+                onChange={(id) => {
+                  onChange("material_id", id);
+                  onChange("finish_id", "");
+                }}
+                onAddClick={() => setQuickAdd("material")}
+              />
+              <ClassificationSelectWithAdd
+                id="finish_id"
+                label="Acabamento"
+                required
+                value={formData.finish_id}
+                options={finishes}
+                loading={finLoading}
+                disabled={
+                  classFieldsDisabled || !formData.material_id.trim()
+                }
+                placeholder={
+                  formData.material_id ? "Selecionar…" : "Escolha primeiro o material"
+                }
+                emptyLabel="Nenhum acabamento para este material"
+                addLabel="+ Adicionar acabamento"
+                addDisabled={!formData.material_id.trim()}
+                addDisabledHint="Escolha primeiro o material para adicionar acabamento."
+                onChange={(id) => onChange("finish_id", id)}
+                onAddClick={() => setQuickAdd("finish")}
+              />
             </>
           ) : null}
 
@@ -852,28 +935,52 @@ export function ProductFormFields({
         </Label>
       </div>
 
-      <QuickAddProductFamilyDialog
-        open={addFamilyOpen}
-        prefixId={formData.prefix_id}
-        prefixLabel={
-          selectedPrefix
-            ? `${selectedPrefix.code} — ${selectedPrefix.name}`
-            : "—"
-        }
-        onClose={() => setAddFamilyOpen(false)}
-        onCreated={(row) => {
-          setFamilies((prev) => {
-            const next = [...prev, row];
-            next.sort((a, b) =>
-              (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
-              a.code.localeCompare(b.code)
-            );
-            return next;
-          });
-          onChange("family_id", row.id);
-          onChange("subfamily_id", "");
+      <QuickAddClassificationItemDialog
+        open={quickAdd === "prefix"}
+        config={quickAddPrefixConfig}
+        onClose={() => setQuickAdd(null)}
+        onCreated={async (row) => {
+          await reloadPrefixes();
+          handlePrefixChange(row.id);
         }}
       />
+      {quickAddFamilyConfig ? (
+        <QuickAddClassificationItemDialog
+          open={quickAdd === "family"}
+          config={quickAddFamilyConfig}
+          onClose={() => setQuickAdd(null)}
+          onCreated={async (row) => {
+            const pid = formData.prefix_id.trim();
+            if (!pid) return;
+            await reloadFamilies(pid);
+            onChange("family_id", row.id);
+            onChange("subfamily_id", "");
+          }}
+        />
+      ) : null}
+      <QuickAddClassificationItemDialog
+        open={quickAdd === "material"}
+        config={quickAddMaterialConfig}
+        onClose={() => setQuickAdd(null)}
+        onCreated={async (row) => {
+          await reloadMaterials();
+          onChange("material_id", row.id);
+          onChange("finish_id", "");
+        }}
+      />
+      {quickAddFinishConfig ? (
+        <QuickAddClassificationItemDialog
+          open={quickAdd === "finish"}
+          config={quickAddFinishConfig}
+          onClose={() => setQuickAdd(null)}
+          onCreated={async (row) => {
+            const mid = formData.material_id.trim();
+            if (!mid) return;
+            await reloadFinishes(mid);
+            onChange("finish_id", row.id);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
