@@ -2254,6 +2254,77 @@ export type Database = {
           },
         ]
       }
+      production_quality_finish_blocks: {
+        Row: {
+          block_reason: string
+          blocked_at: string
+          blocked_by: string | null
+          created_at: string
+          id: string
+          order_item_id: string
+          release_action: string | null
+          released_at: string | null
+          released_by: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          block_reason: string
+          blocked_at?: string
+          blocked_by?: string | null
+          created_at?: string
+          id?: string
+          order_item_id: string
+          release_action?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          block_reason?: string
+          blocked_at?: string
+          blocked_by?: string | null
+          created_at?: string
+          id?: string
+          order_item_id?: string
+          release_action?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_quality_finish_blocks_blocked_by_fkey"
+            columns: ["blocked_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_quality_finish_blocks_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_quality_finish_blocks_released_by_fkey"
+            columns: ["released_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_quality_finish_blocks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       production_orders: {
         Row: {
           client_document: string | null

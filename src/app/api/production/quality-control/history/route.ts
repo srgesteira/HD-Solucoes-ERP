@@ -4,17 +4,17 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { requireAnyMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { fetchPcpPlanning } from "@/modules/pcp/lib/pcp-planning";
-import { syncSalesOrderReadyForInvoice } from "@/modules/vendas/lib/sales/sales-order-ready-for-invoice";
+import { loadQualityFinishBlockSummaries } from "@/modules/producao/lib/quality-finish-blocks";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
+
   const moduleDenied = await requireAnyMenuModule([
     "producao",
     "pcp",
@@ -25,24 +25,23 @@ export async function GET(_request: NextRequest) {
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
+  const orderItemId = request.nextUrl.searchParams.get("order_item_id");
+  if (!orderItemId) return apiError("order_item_id é obrigatório", 400);
+
   const admin = createSupabaseAdminClient();
 
   try {
-    const orders = await fetchPcpPlanning(admin, tenantId);
-    for (const order of orders) {
-      try {
-        order.ready_for_invoice = await syncSalesOrderReadyForInvoice(
-          admin,
-          tenantId,
-          order.id
-        );
-      } catch {
-        /* mantém valor da BD */
-      }
-    }
-    return apiOk({ orders });
+    const map = await loadQualityFinishBlockSummaries(admin, tenantId, [
+      orderItemId,
+    ]);
+    const summary = map.get(orderItemId) ?? {
+      active: null,
+      released_count: 0,
+      history: [],
+    };
+    return apiOk({ summary });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Erro ao carregar planeamento PCP.";
+    const msg = e instanceof Error ? e.message : "Erro ao carregar histórico";
     return apiError(msg, 400);
   }
 }
