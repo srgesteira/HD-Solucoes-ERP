@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit,
-  Loader2,
   Plus,
   Search,
   Truck,
@@ -20,6 +19,10 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import {
@@ -150,6 +153,92 @@ export default function SuppliersPage() {
     return `${start}â€“${end} de ${total}`;
   }, [data?.pagination, filters.page, filters.limit]);
 
+  const tableColumns = useMemo((): SortableTableColumn<SupplierRow>[] => {
+    return [
+      {
+        key: "code",
+        label: "Código",
+        type: "text",
+        width: "w-[10%]",
+        accessor: (row) => row.code,
+        truncate: false,
+        render: (row) => (
+          <span className="font-medium text-slate-900 whitespace-nowrap">
+            {row.code}
+          </span>
+        ),
+      },
+      {
+        key: "name",
+        label: "Nome",
+        type: "text",
+        width: "w-[20%]",
+        accessor: (row) => row.name,
+        render: (row) => (
+          <span className="text-slate-800 line-clamp-2">{row.name}</span>
+        ),
+      },
+      {
+        key: "document",
+        label: "Documento",
+        type: "text",
+        width: "w-[14%]",
+        accessor: (row) => row.document,
+        truncate: false,
+        render: (row) => (
+          <span className="text-slate-700 whitespace-nowrap">
+            {row.document?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "email",
+        label: "E-mail",
+        type: "text",
+        width: "w-[18%]",
+        accessor: (row) => row.email,
+        render: (row) => (
+          <span className="text-slate-700 line-clamp-1">
+            {row.email?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "phone",
+        label: "Telefone",
+        type: "text",
+        width: "w-[13%]",
+        accessor: (row) => row.phone,
+        truncate: false,
+        render: (row) => (
+          <span className="text-slate-700 whitespace-nowrap">
+            {row.phone?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "is_active",
+        label: "Estado",
+        type: "text",
+        width: "w-[10%]",
+        accessor: (row) => (row.is_active ? "Ativo" : "Inativo"),
+        truncate: false,
+        render: (row) => (
+          <span
+            className={cn(
+              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
+              row.is_active
+                ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
+            )}
+          >
+            {row.is_active ? "Ativo" : "Inativo"}
+          </span>
+        ),
+      },
+    ];
+  }, []);
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -225,110 +314,46 @@ export default function SuppliersPage() {
             </div>
           ) : null}
 
-          <div className="rounded-lg border border-slate-200 overflow-x-auto bg-white">
-            <table className="w-full text-sm text-left min-w-[880px]">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-3 py-2.5 font-medium text-slate-700">CÃ³digo</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">Nome</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">Documento</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">E-mail</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">Telefone</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">Estado</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right w-[8rem]">
-                    AÃ§Ãµes
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        A carregarâ€¦
-                      </span>
-                    </td>
-                  </tr>
-                ) : !data?.data?.length ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                      Nenhum fornecedor encontrado para estes filtros.
-                    </td>
-                  </tr>
-                ) : (
-                  data.data.map((supplier) => (
-                    <tr
-                      key={supplier.id}
-                      className="border-b border-slate-100 last:border-0"
-                    >
-                      <td className="px-3 py-2.5 font-medium text-slate-900 whitespace-nowrap">
-                        {supplier.code}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-800 max-w-[14rem]">
-                        <span className="line-clamp-2">{supplier.name}</span>
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
-                        {supplier.document?.trim() || "â€”"}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-700 max-w-[14rem]">
-                        <span className="line-clamp-1">
-                          {supplier.email?.trim() || "â€”"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
-                        {supplier.phone?.trim() || "â€”"}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span
-                          className={cn(
-                            "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-                            supplier.is_active
-                              ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
-                              : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
-                          )}
-                        >
-                          {supplier.is_active ? "Ativo" : "Inativo"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        {isAdmin ? (
-                          <RowActionsMenu
-                            items={[
-                              {
-                                id: "edit",
-                                label: "Editar",
-                                icon: <Edit className="h-4 w-4" />,
-                                onClick: () =>
-                                  router.push(
-                                    `/purchasing/suppliers/${supplier.id}/edit`
-                                  ),
-                              },
-                              {
-                                id: "toggle",
-                                label: supplier.is_active
-                                  ? "Desativar"
-                                  : "Reativar",
-                                icon: supplier.is_active ? (
-                                  <UserX className="h-4 w-4" />
-                                ) : (
-                                  <User className="h-4 w-4" />
-                                ),
-                                disabled: toggleBusy === supplier.id,
-                                onClick: () => void handleToggleActive(supplier),
-                              },
-                            ]}
-                          />
+          <SortableTable
+            columns={tableColumns}
+            data={data?.data ?? []}
+            getRowKey={(row) => row.id}
+            isLoading={isLoading}
+            emptyMessage="Nenhum fornecedor encontrado para estes filtros."
+            actionsColumn={{
+              label: "Ações",
+              width: "w-[5rem]",
+              render: (supplier) =>
+                isAdmin ? (
+                  <RowActionsMenu
+                    items={[
+                      {
+                        id: "edit",
+                        label: "Editar",
+                        icon: <Edit className="h-4 w-4" />,
+                        onClick: () =>
+                          router.push(
+                            `/purchasing/suppliers/${supplier.id}/edit`
+                          ),
+                      },
+                      {
+                        id: "toggle",
+                        label: supplier.is_active ? "Desativar" : "Reativar",
+                        icon: supplier.is_active ? (
+                          <UserX className="h-4 w-4" />
                         ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                          <User className="h-4 w-4" />
+                        ),
+                        disabled: toggleBusy === supplier.id,
+                        onClick: () => void handleToggleActive(supplier),
+                      },
+                    ]}
+                  />
+                ) : (
+                  <span className="text-xs text-slate-400">—</span>
+                ),
+            }}
+          />
 
           {data?.pagination?.total !== undefined && data.pagination.total > 0 ? (
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">

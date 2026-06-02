@@ -6,6 +6,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileOutput, Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { cn } from "@/shared/utils/cn";
 import type { PurchaseRequisitionRow } from "@/modules/compras/lib/purchasing-requisitions";
 import {
@@ -202,6 +206,184 @@ export function RequisitionsTab() {
     });
   };
 
+  const tableColumns = useMemo((): SortableTableColumn<PurchaseRequisitionRow>[] => {
+    return [
+      {
+        key: "select",
+        label: "",
+        type: "text",
+        width: "w-[4%]",
+        sortable: false,
+        truncate: false,
+        render: (row) => (
+          <input
+            type="checkbox"
+            checked={selectedIds.has(row.id)}
+            onChange={() => toggleOne(row.id)}
+            aria-label={`Seleccionar ${row.product_name ?? row.description}`}
+          />
+        ),
+      },
+      {
+        key: "product",
+        label: "Produto",
+        type: "text",
+        width: "w-[22%]",
+        accessor: (row) => row.product_name ?? row.description,
+        truncate: false,
+        render: (row) => (
+          <>
+            <span className="font-medium text-slate-900">
+              {row.product_name ?? row.description}
+            </span>
+            {row.sales_order_number ? (
+              <span className="block text-xs text-slate-500">
+                PV {row.sales_order_number}
+              </span>
+            ) : null}
+          </>
+        ),
+      },
+      {
+        key: "quantity",
+        label: "Qtd",
+        type: "number",
+        width: "w-[8%]",
+        align: "right",
+        accessor: (row) => row.quantity,
+        truncate: false,
+        render: (row) => (
+          <span className="tabular-nums">
+            {row.quantity} {row.unit}
+          </span>
+        ),
+      },
+      {
+        key: "suggested_supplier",
+        label: "Fornecedor sugerido",
+        type: "text",
+        width: "w-[18%]",
+        accessor: (row) =>
+          suppliers.find((s) => s.id === row.suggested_supplier_id)?.name ?? "",
+        truncate: false,
+        render: (row) => (
+          <select
+            className="h-8 w-full max-w-[200px] rounded-md border border-slate-300 bg-white px-2 text-xs"
+            value={row.suggested_supplier_id ?? ""}
+            disabled={supplierMut.isPending}
+            onChange={(e) => {
+              const v = e.target.value || null;
+              supplierMut.mutate({
+                id: row.id,
+                suggested_supplier_id: v,
+              });
+            }}
+          >
+            <option value="">— Seleccionar —</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        ),
+      },
+      {
+        key: "need_date",
+        label: "Data necessidade",
+        type: "date",
+        width: "w-[11%]",
+        accessor: (row) => row.need_date,
+        truncate: false,
+        render: (row) => (
+          <span className="text-xs tabular-nums whitespace-nowrap">
+            {formatDate(row.need_date)}
+          </span>
+        ),
+      },
+      {
+        key: "status",
+        label: "Status",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => requisitionStatusLabel(row),
+        truncate: false,
+        render: (row) => (
+          <span
+            className={cn(
+              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1",
+              row.quotation_sent_at
+                ? "bg-blue-50 text-blue-800 ring-blue-200"
+                : "bg-amber-50 text-amber-900 ring-amber-200"
+            )}
+          >
+            {requisitionStatusLabel(row)}
+          </span>
+        ),
+      },
+      {
+        key: "actions",
+        label: "Ações",
+        type: "text",
+        width: "w-[15%]",
+        sortable: false,
+        align: "right",
+        truncate: false,
+        render: (row) => (
+          <div className="flex flex-wrap justify-end gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              disabled={issuingId === row.id || !row.suggested_supplier_id}
+              title={
+                !row.suggested_supplier_id
+                  ? "Defina o fornecedor sugerido"
+                  : undefined
+              }
+              onClick={() => {
+                setIssuingId(row.id);
+                issueMut.mutate(row.id);
+              }}
+            >
+              {issuingId === row.id ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileOutput className="h-3.5 w-3.5" />
+              )}
+              Emitir PC
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              disabled={quoteMut.isPending || !row.suggested_supplier_id}
+              title={
+                !row.suggested_supplier_id
+                  ? "Defina o fornecedor sugerido"
+                  : undefined
+              }
+              onClick={() => quoteMut.mutate(row.id)}
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Solicitar orçamento
+            </Button>
+          </div>
+        ),
+      },
+    ];
+  }, [
+    allSelected,
+    selectedIds,
+    suppliers,
+    supplierMut.isPending,
+    issuingId,
+    issueMut,
+    quoteMut.isPending,
+  ]);
+
   if (q.isLoading) {
     return (
       <p className="text-sm text-slate-500 flex items-center gap-2 py-12 justify-center">
@@ -231,145 +413,24 @@ export function RequisitionsTab() {
         onSuccess={invalidate}
       />
 
-      <div className="rounded-lg border border-slate-200 overflow-x-auto bg-white">
-        <table className="w-full text-sm min-w-[880px]">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold text-slate-600">
-              <th className="px-2 py-2.5 w-10">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  aria-label="Seleccionar todas as requisições"
-                />
-              </th>
-              <th className="px-3 py-2.5">Produto</th>
-              <th className="px-3 py-2.5 text-right w-20">Qtd</th>
-              <th className="px-3 py-2.5 min-w-[160px]">Fornecedor sugerido</th>
-              <th className="px-3 py-2.5 w-[120px]">Data necessidade</th>
-              <th className="px-3 py-2.5 w-[140px]">Status</th>
-              <th className="px-3 py-2.5 w-[200px] text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                  Sem requisições MRP pendentes.
-                </td>
-              </tr>
-            ) : (
-              sorted.map((row) => (
-                <tr key={row.id} className="border-b border-slate-100">
-                  <td className="px-2 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(row.id)}
-                      onChange={() => toggleOne(row.id)}
-                      aria-label={`Seleccionar ${row.product_name ?? row.description}`}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className="font-medium text-slate-900">
-                      {row.product_name ?? row.description}
-                    </span>
-                    {row.sales_order_number ? (
-                      <span className="block text-xs text-slate-500">
-                        PV {row.sales_order_number}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {row.quantity} {row.unit}
-                  </td>
-                  <td className="px-3 py-2">
-                    <select
-                      className="h-8 w-full max-w-[200px] rounded-md border border-slate-300 bg-white px-2 text-xs"
-                      value={row.suggested_supplier_id ?? ""}
-                      disabled={supplierMut.isPending}
-                      onChange={(e) => {
-                        const v = e.target.value || null;
-                        supplierMut.mutate({
-                          id: row.id,
-                          suggested_supplier_id: v,
-                        });
-                      }}
-                    >
-                      <option value="">— Seleccionar —</option>
-                      {suppliers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap">
-                    {formatDate(row.need_date)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={cn(
-                        "inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1",
-                        row.quotation_sent_at
-                          ? "bg-blue-50 text-blue-800 ring-blue-200"
-                          : "bg-amber-50 text-amber-900 ring-amber-200"
-                      )}
-                    >
-                      {requisitionStatusLabel(row)}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs"
-                        disabled={
-                          issuingId === row.id ||
-                          !row.suggested_supplier_id
-                        }
-                        title={
-                          !row.suggested_supplier_id
-                            ? "Defina o fornecedor sugerido"
-                            : undefined
-                        }
-                        onClick={() => {
-                          setIssuingId(row.id);
-                          issueMut.mutate(row.id);
-                        }}
-                      >
-                        {issuingId === row.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <FileOutput className="h-3.5 w-3.5" />
-                        )}
-                        Emitir PC
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs"
-                        disabled={quoteMut.isPending || !row.suggested_supplier_id}
-                        title={
-                          !row.suggested_supplier_id
-                            ? "Defina o fornecedor sugerido"
-                            : undefined
-                        }
-                        onClick={() => quoteMut.mutate(row.id)}
-                      >
-                        <Mail className="h-3.5 w-3.5" />
-                        Solicitar orçamento
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {sorted.length > 0 ? (
+        <label className="flex items-center gap-2 text-xs text-slate-600 px-1 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={toggleAll}
+            aria-label="Seleccionar todas as requisições"
+          />
+          Seleccionar todas
+        </label>
+      ) : null}
+      <SortableTable
+        columns={tableColumns}
+        data={sorted}
+        getRowKey={(row) => row.id}
+        emptyMessage="Sem requisições MRP pendentes."
+        tableClassName="text-sm"
+      />
     </div>
   );
 }

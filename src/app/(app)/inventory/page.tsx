@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Package } from "lucide-react";
+import { ArrowLeft, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -70,6 +74,55 @@ export default function InventoryPage() {
     return null;
   }
 
+  const tableColumns = useMemo((): SortableTableColumn<InvRow>[] => {
+    return [
+      {
+        key: "product",
+        label: "Produto",
+        type: "text",
+        width: "w-[50%]",
+        accessor: (row) => {
+          const p = Array.isArray(row.product) ? row.product[0] : row.product;
+          return p?.technical_code && p?.name
+            ? `${p.technical_code} — ${p.name}`
+            : p?.name ?? row.product_id;
+        },
+        render: (row) => {
+          const p = Array.isArray(row.product) ? row.product[0] : row.product;
+          const label =
+            p?.technical_code && p?.name
+              ? `${p.technical_code} — ${p.name}`
+              : p?.name ?? row.product_id.slice(0, 8);
+          return <span className="text-slate-800">{label}</span>;
+        },
+      },
+      {
+        key: "quantity_on_hand",
+        label: "Em mão",
+        type: "number",
+        width: "w-[25%]",
+        align: "right",
+        accessor: (row) => row.quantity_on_hand,
+        truncate: false,
+        render: (row) => (
+          <span className="tabular-nums">{Number(row.quantity_on_hand)}</span>
+        ),
+      },
+      {
+        key: "reserved_quantity",
+        label: "Reservado",
+        type: "number",
+        width: "w-[25%]",
+        align: "right",
+        accessor: (row) => row.reserved_quantity,
+        truncate: false,
+        render: (row) => (
+          <span className="tabular-nums">{Number(row.reserved_quantity)}</span>
+        ),
+      },
+    ];
+  }, []);
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex flex-wrap items-center gap-2">
@@ -96,12 +149,7 @@ export default function InventoryPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center gap-2 text-slate-600 py-10">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              A carregar…
-            </div>
-          ) : rows.length === 0 ? (
+          {rows.length === 0 && !loading ? (
             <p className="text-sm text-slate-500 py-6">
               Sem linhas de estoque. Os administradores podem registar saldos
               via API{" "}
@@ -111,42 +159,13 @@ export default function InventoryPage() {
               .
             </p>
           ) : (
-            <div className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
-              <table className="w-full text-sm min-w-[640px]">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
-                    <th className="px-3 py-2 text-left font-medium">Produto</th>
-                    <th className="px-3 py-2 text-right font-medium">Em mão</th>
-                    <th className="px-3 py-2 text-right font-medium">
-                      Reservado
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const p = Array.isArray(r.product) ? r.product[0] : r.product;
-                    const label =
-                      p?.technical_code && p?.name ?
-                        `${p.technical_code} — ${p.name}`
-                      : p?.name ?? r.product_id.slice(0, 8);
-                    return (
-                      <tr
-                        key={r.id}
-                        className="border-b border-slate-100 dark:border-slate-800"
-                      >
-                        <td className="px-3 py-2">{label}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {Number(r.quantity_on_hand)}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {Number(r.reserved_quantity)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <SortableTable
+              columns={tableColumns}
+              data={rows}
+              getRowKey={(row) => row.id}
+              isLoading={loading}
+              emptyMessage="Sem linhas de estoque."
+            />
           )}
         </CardContent>
       </Card>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -8,6 +8,10 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Label } from "@/shared/ui/label";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { usePermissions } from "@/hooks/use-permissions";
 
 type Row = Record<string, unknown>;
@@ -18,6 +22,13 @@ function fmtBrl(n: number) {
     currency: "BRL",
   }).format(n);
 }
+
+const RECEIVABLE_STATUS_LABELS: Record<string, string> = {
+  pending: "Pendente",
+  partial: "Parcial",
+  paid: "Pago",
+  cancelled: "Cancelado",
+};
 
 export default function FinanceReceivablesPage() {
   const router = useRouter();
@@ -69,6 +80,72 @@ export default function FinanceReceivablesPage() {
     if (permLoading || !can("finance")) return;
     void load();
   }, [permLoading, can, load]);
+
+  const tableColumns = useMemo((): SortableTableColumn<Row>[] => {
+    return [
+      {
+        key: "client_name",
+        label: "Cliente",
+        type: "text",
+        width: "w-[24%]",
+        accessor: (row) => String(row.client_name ?? ""),
+        render: (row) => (
+          <span>{String(row.client_name ?? "—")}</span>
+        ),
+      },
+      {
+        key: "due_date",
+        label: "Vencimento",
+        type: "date",
+        width: "w-[14%]",
+        accessor: (row) => row.due_date,
+        truncate: false,
+        render: (row) => (
+          <span className="whitespace-nowrap">{String(row.due_date ?? "")}</span>
+        ),
+      },
+      {
+        key: "current_amount",
+        label: "Valor",
+        type: "number",
+        width: "w-[14%]",
+        accessor: (row) => Number(row.current_amount ?? 0),
+        truncate: false,
+        render: (row) => (
+          <span>{fmtBrl(Number(row.current_amount ?? 0))}</span>
+        ),
+      },
+      {
+        key: "status",
+        label: "Estado",
+        type: "text",
+        width: "w-[14%]",
+        accessor: (row) =>
+          RECEIVABLE_STATUS_LABELS[String(row.status ?? "")] ??
+          String(row.status ?? ""),
+      },
+      {
+        key: "document",
+        label: "Documento",
+        type: "text",
+        width: "w-[29%]",
+        accessor: (row) =>
+          row.sales_order_id ? "Ver pedido" : "—",
+        truncate: false,
+        render: (row) =>
+          row.sales_order_id ? (
+            <Link
+              href={`/sales/orders/${String(row.sales_order_id)}`}
+              className="text-brand-700 hover:underline"
+            >
+              Ver pedido
+            </Link>
+          ) : (
+            "—"
+          ),
+      },
+    ];
+  }, []);
 
   if (permLoading || (!permLoading && !can("finance"))) {
     return (
@@ -136,57 +213,13 @@ export default function FinanceReceivablesPage() {
           <CardTitle className="text-base">Listagem ({total})</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-12 text-slate-500 gap-2">
-              <Loader2 className="h-5 w-5 animate-spin" /> A carregar…
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="text-left px-3 py-2">Cliente</th>
-                    <th className="text-left px-3 py-2">Vencimento</th>
-                    <th className="text-left px-3 py-2">Valor</th>
-                    <th className="text-left px-3 py-2">Estado</th>
-                    <th className="text-left px-3 py-2">Documento</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-3 py-8 text-center text-slate-500">
-                        Sem registos.
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((r) => (
-                      <tr key={String(r.id)} className="border-b border-slate-100">
-                        <td className="px-3 py-2">{String(r.client_name ?? "—")}</td>
-                        <td className="px-3 py-2">{String(r.due_date ?? "")}</td>
-                        <td className="px-3 py-2">
-                          {fmtBrl(Number(r.current_amount ?? 0))}
-                        </td>
-                        <td className="px-3 py-2">{String(r.status ?? "")}</td>
-                        <td className="px-3 py-2">
-                          {r.sales_order_id ? (
-                            <Link
-                              href={`/sales/orders/${String(r.sales_order_id)}`}
-                              className="text-brand-700 hover:underline"
-                            >
-                              Ver pedido
-                            </Link>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <SortableTable
+            columns={tableColumns}
+            data={rows}
+            getRowKey={(row) => String(row.id)}
+            isLoading={loading}
+            emptyMessage="Sem registos."
+          />
           {total > 25 ? (
             <div className="flex justify-end gap-2 mt-4">
               <Button

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, FileText, Loader2, Plus, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Plus, Search } from "lucide-react";
 import {
   QuoteRowActionsMenu,
   type QuoteRowActionsQuote,
@@ -15,6 +15,10 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
@@ -290,6 +294,105 @@ export default function QuotesListPage() {
     }
   };
 
+  const tableColumns = useMemo((): SortableTableColumn<QuoteRow>[] => {
+    return [
+      {
+        key: "quote_number",
+        label: "Nº orçamento",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => row.quote_number,
+        truncate: false,
+        render: (row) => {
+          const needsCommercial = Boolean(row.awaiting_commercial_finalize);
+          return (
+            <>
+              <span className="font-medium text-slate-900 whitespace-nowrap">
+                {row.quote_number}
+              </span>
+              {needsCommercial ? (
+                <span className="mt-1 block text-xs font-medium text-brand-800">
+                  Custo disponível — rever markup
+                </span>
+              ) : null}
+            </>
+          );
+        },
+      },
+      {
+        key: "client_name",
+        label: "Cliente",
+        type: "text",
+        width: "w-[22%]",
+        accessor: (row) => row.client_name,
+        render: (row) => (
+          <span className="text-slate-800 line-clamp-2">{row.client_name}</span>
+        ),
+      },
+      {
+        key: "quote_date",
+        label: "Data",
+        type: "date",
+        width: "w-[10%]",
+        accessor: (row) => row.quote_date,
+        render: (row) => (
+          <span className="text-slate-700 tabular-nums whitespace-nowrap">
+            {formatDate(row.quote_date)}
+          </span>
+        ),
+      },
+      {
+        key: "valid_until",
+        label: "Validade",
+        type: "date",
+        width: "w-[10%]",
+        accessor: (row) => row.valid_until,
+        render: (row) => (
+          <span className="text-slate-700 tabular-nums whitespace-nowrap">
+            {formatDate(row.valid_until)}
+          </span>
+        ),
+      },
+      {
+        key: "total",
+        label: "Total",
+        type: "number",
+        width: "w-[11%]",
+        align: "right",
+        accessor: (row) => row.total,
+        truncate: false,
+        render: (row) => (
+          <span className="tabular-nums text-slate-800">
+            {formatCurrency(row.total)}
+          </span>
+        ),
+      },
+      {
+        key: "status",
+        label: "Estado",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => quoteStatusBadge(row.status).label,
+        truncate: false,
+        render: (row) => {
+          const sb = quoteStatusBadge(row.status);
+          return (
+            <span
+              className={cn(
+                "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
+                sb.className
+              )}
+            >
+              {sb.label}
+            </span>
+          );
+        },
+      },
+    ];
+  }, []);
+
+  const emptyMessage = "Nenhum orçamento encontrado para estes filtros.";
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -414,111 +517,32 @@ export default function QuotesListPage() {
                   </div>
                 ) : null}
 
-                <div className="rounded-lg border border-slate-200 overflow-x-auto bg-white dark:bg-slate-950 dark:border-slate-800">
-                  <table className="w-full text-sm text-left min-w-[880px]">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50 dark:border-slate-800">
-                        <th className="px-3 py-2.5 font-medium text-slate-700">
-                          Nº orçamento
-                        </th>
-                        <th className="px-3 py-2.5 font-medium text-slate-700">
-                          Cliente
-                        </th>
-                        <th className="px-3 py-2.5 font-medium text-slate-700">
-                          Data
-                        </th>
-                        <th className="px-3 py-2.5 font-medium text-slate-700">
-                          Validade
-                        </th>
-                        <th className="px-3 py-2.5 font-medium text-slate-700 text-right">
-                          Total
-                        </th>
-                        <th className="px-3 py-2.5 font-medium text-slate-700">
-                          Estado
-                        </th>
-                        <th className="px-3 py-2.5 font-medium text-slate-700 text-right w-[8rem]">
-                          Ações
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {isLoading ? (
-                        <tr>
-                          <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                            <span className="inline-flex items-center gap-2">
-                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                              A carregar…
-                            </span>
-                          </td>
-                        </tr>
-                      ) : !data?.data?.length ? (
-                        <tr>
-                          <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                            Nenhum orçamento encontrado para estes filtros.
-                          </td>
-                        </tr>
-                      ) : (
-                        data.data.map((row) => {
-                          const sb = quoteStatusBadge(row.status);
-                          const needsCommercial = Boolean(
-                            row.awaiting_commercial_finalize
-                          );
-                          return (
-                            <tr
-                              key={row.id}
-                              className={cn(
-                                "border-b border-slate-100 last:border-0 dark:border-slate-800",
-                                needsCommercial &&
-                                  "bg-brand-50/80 animate-pulse ring-1 ring-inset ring-brand-400/60"
-                              )}
-                            >
-                              <td className="px-3 py-2.5 font-medium text-slate-900 whitespace-nowrap">
-                                {row.quote_number}
-                                {needsCommercial ? (
-                                  <span className="mt-1 block text-xs font-medium text-brand-800">
-                                    Custo disponível — rever markup
-                                  </span>
-                                ) : null}
-                              </td>
-                              <td className="px-3 py-2.5 text-slate-800 max-w-[14rem]">
-                                <span className="line-clamp-2">{row.client_name}</span>
-                              </td>
-                              <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap tabular-nums">
-                                {formatDate(row.quote_date)}
-                              </td>
-                              <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap tabular-nums">
-                                {formatDate(row.valid_until)}
-                              </td>
-                              <td className="px-3 py-2.5 text-right tabular-nums text-slate-800">
-                                {formatCurrency(row.total)}
-                              </td>
-                              <td className="px-3 py-2.5">
-                                <span
-                                  className={cn(
-                                    "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-                                    sb.className
-                                  )}
-                                >
-                                  {sb.label}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2.5 text-right">
-                                <QuoteRowActionsMenu
-                                  row={row}
-                                  isAdmin={isAdmin}
-                                  canEditQuotes={canEditQuotes}
-                                  onStatusAction={handleStatusAction}
-                                  onApprove={handleApprove}
-                                  onReject={(r) => setRejectTarget(r as QuoteRow)}
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <SortableTable
+                  columns={tableColumns}
+                  data={data?.data ?? []}
+                  getRowKey={(row) => row.id}
+                  isLoading={isLoading}
+                  emptyMessage={emptyMessage}
+                  rowClassName={(row) =>
+                    Boolean(row.awaiting_commercial_finalize)
+                      ? "bg-brand-50/80 animate-pulse ring-1 ring-inset ring-brand-400/60"
+                      : ""
+                  }
+                  actionsColumn={{
+                    label: "Ações",
+                    width: "w-[5rem]",
+                    render: (row) => (
+                      <QuoteRowActionsMenu
+                        row={row}
+                        isAdmin={isAdmin}
+                        canEditQuotes={canEditQuotes}
+                        onStatusAction={handleStatusAction}
+                        onApprove={handleApprove}
+                        onReject={(r) => setRejectTarget(r as QuoteRow)}
+                      />
+                    ),
+                  }}
+                />
 
                 {data?.pagination?.total !== undefined && data.pagination.total > 0 ? (
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">

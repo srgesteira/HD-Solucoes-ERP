@@ -1,11 +1,23 @@
 "use client";
 
+import { useMemo } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import {
+  SortableTable,
+  type SortableColumnType,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { downloadCsv, rowsToCsv } from "@/shared/utils/export-csv";
 import { cn } from "@/shared/utils/cn";
 
-export type ReportColumn = { key: string; header: string };
+export type ReportColumn = {
+  key: string;
+  header: string;
+  type?: SortableColumnType;
+  align?: "left" | "right" | "center";
+  width?: string;
+};
 
 export type ReportTableProps = {
   columns: ReportColumn[];
@@ -14,6 +26,30 @@ export type ReportTableProps = {
   emptyMessage?: string;
   className?: string;
 };
+
+type ReportRow = Record<string, unknown> & { __rowId: string };
+
+function formatCell(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "—";
+  if (typeof v === "boolean") return v ? "Sim" : "Não";
+  return String(v);
+}
+
+function inferColumnType(
+  rows: Record<string, unknown>[],
+  key: string
+): SortableColumnType {
+  for (const row of rows) {
+    const v = row[key];
+    if (typeof v === "number") return "number";
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) return "date";
+    if (typeof v === "string" && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v.trim())) {
+      return "date";
+    }
+  }
+  return "text";
+}
 
 export function ReportTable({
   columns,
@@ -26,6 +62,34 @@ export function ReportTable({
     const csv = rowsToCsv(rows, columns);
     downloadCsv(csvFilename, csv);
   }
+
+  const tableRows = useMemo(
+    (): ReportRow[] =>
+      rows.map((row, index) => ({
+        ...row,
+        __rowId: `${index}-${String(row[columns[0]?.key ?? ""])}`,
+      })),
+    [rows, columns]
+  );
+
+  const defaultWidth =
+    columns.length > 0
+      ? `w-[${Math.max(8, Math.floor(100 / columns.length))}%]`
+      : "w-auto";
+
+  const tableColumns = useMemo((): SortableTableColumn<ReportRow>[] => {
+    return columns.map((c) => ({
+      key: c.key,
+      label: c.header,
+      type: c.type ?? inferColumnType(rows, c.key),
+      align: c.align,
+      width: c.width ?? defaultWidth,
+      accessor: (row) => row[c.key],
+      render: (row) => (
+        <span className="text-slate-800">{formatCell(row[c.key])}</span>
+      ),
+    }));
+  }, [columns, rows, defaultWidth]);
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -42,54 +106,12 @@ export function ReportTable({
         </Button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              {columns.map((c) => (
-                <th
-                  key={c.key}
-                  className="text-left font-medium text-slate-700 px-3 py-2 whitespace-nowrap"
-                >
-                  {c.header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={columns.length}
-                  className="px-3 py-8 text-center text-slate-500"
-                >
-                  {emptyMessage}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row, i) => (
-                <tr
-                  key={i}
-                  className="border-b border-slate-100 last:border-0 hover:bg-slate-50/80"
-                >
-                  {columns.map((c) => (
-                    <td key={c.key} className="px-3 py-2 text-slate-800">
-                      {formatCell(row[c.key])}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <SortableTable
+        columns={tableColumns}
+        data={tableRows}
+        getRowKey={(row) => row.__rowId}
+        emptyMessage={emptyMessage}
+      />
     </div>
   );
-}
-
-function formatCell(v: unknown): string {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "—";
-  if (typeof v === "boolean") return v ? "Sim" : "Não";
-  return String(v);
 }

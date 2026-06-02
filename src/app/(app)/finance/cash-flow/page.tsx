@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,10 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { usePermissions } from "@/hooks/use-permissions";
 
 type Entry = {
@@ -108,6 +112,55 @@ export default function FinanceCashFlowEntriesPage() {
     void load();
   }
 
+  const tableColumns = useMemo((): SortableTableColumn<Entry>[] => {
+    return [
+      {
+        key: "date",
+        label: "Data",
+        type: "date",
+        width: "w-[14%]",
+        accessor: (row) => row.date,
+        truncate: false,
+        render: (row) => (
+          <span className="whitespace-nowrap">{row.date}</span>
+        ),
+      },
+      {
+        key: "type",
+        label: "Tipo",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => (row.type === "in" ? "Entrada" : "Saída"),
+      },
+      {
+        key: "description",
+        label: "Descrição",
+        type: "text",
+        width: "w-[44%]",
+        accessor: (row) => row.description,
+      },
+      {
+        key: "amount",
+        label: "Valor",
+        type: "number",
+        width: "w-[30%]",
+        align: "right",
+        accessor: (row) => row.amount,
+        truncate: false,
+        render: (row) => (
+          <span
+            className={`font-medium ${
+              row.type === "in" ? "text-green-800" : "text-red-700"
+            }`}
+          >
+            {row.type === "in" ? "+" : "−"}
+            {fmtBrl(row.amount)}
+          </span>
+        ),
+      },
+    ];
+  }, []);
+
   if (permLoading || (!permLoading && !can("finance"))) {
     return (
       <div className="flex justify-center items-center gap-2 py-20 text-slate-500">
@@ -194,41 +247,13 @@ export default function FinanceCashFlowEntriesPage() {
           <CardTitle className="text-base">Lançamentos</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-12 gap-2 text-slate-500">
-              <Loader2 className="h-5 w-5 animate-spin" /> A carregar…
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="text-left px-3 py-2">Data</th>
-                    <th className="text-left px-3 py-2">Tipo</th>
-                    <th className="text-left px-3 py-2">Descrição</th>
-                    <th className="text-right px-3 py-2">Valor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-100">
-                      <td className="px-3 py-2">{r.date}</td>
-                      <td className="px-3 py-2">{r.type === "in" ? "Entrada" : "Saída"}</td>
-                      <td className="px-3 py-2">{r.description}</td>
-                      <td
-                        className={`px-3 py-2 text-right font-medium ${
-                          r.type === "in" ? "text-green-800" : "text-red-700"
-                        }`}
-                      >
-                        {r.type === "in" ? "+" : "−"}
-                        {fmtBrl(r.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <SortableTable
+            columns={tableColumns}
+            data={rows}
+            getRowKey={(row) => row.id}
+            isLoading={loading}
+            emptyMessage="Sem lançamentos."
+          />
         </CardContent>
       </Card>
     </div>

@@ -7,6 +7,10 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import type { WorkArea } from "@/modules/core/types/kanban";
 import { workAreasQueryKey } from "@/hooks/use-work-areas";
 
@@ -89,6 +93,84 @@ export function WorkAreasAdmin() {
     [areas]
   );
 
+  const tableColumns = useMemo((): SortableTableColumn<WorkArea>[] => {
+    return [
+      {
+        key: "code",
+        label: "Código",
+        type: "text",
+        width: "w-[15%]",
+        accessor: (row) => row.code,
+        truncate: false,
+        render: (row) => (
+          <span className="font-mono text-xs">{row.code}</span>
+        ),
+      },
+      {
+        key: "name",
+        label: "Nome",
+        type: "text",
+        width: "w-[40%]",
+        accessor: (row) => row.name,
+        truncate: false,
+        render: (row) => (
+          <>
+            <span className="font-medium text-slate-900">{row.name}</span>
+            {row.description ? (
+              <p className="text-xs text-slate-500 mt-0.5">{row.description}</p>
+            ) : null}
+          </>
+        ),
+      },
+      {
+        key: "sort_order",
+        label: "Ordem",
+        type: "number",
+        width: "w-[12%]",
+        accessor: (row) => row.sort_order,
+        render: (row) => (
+          <span className="text-slate-600">{row.sort_order}</span>
+        ),
+      },
+      {
+        key: "state",
+        label: "Estado",
+        type: "text",
+        width: "w-[18%]",
+        accessor: (row) => (row.is_archived ? "Arquivada" : "Activa"),
+        truncate: false,
+        render: (row) =>
+          row.is_archived ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              disabled={patchMut.isPending}
+              onClick={() =>
+                void patchMut.mutate({ id: row.id, is_archived: false })
+              }
+            >
+              Reativar
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-xs text-amber-700"
+              disabled={patchMut.isPending}
+              onClick={() =>
+                void patchMut.mutate({ id: row.id, is_archived: true })
+              }
+            >
+              Arquivar
+            </Button>
+          ),
+      },
+    ];
+  }, [patchMut.isPending]);
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -112,69 +194,13 @@ export function WorkAreasAdmin() {
           Carregando…
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200 text-left">
-              <tr>
-                <th className="p-3 font-medium text-slate-700">Código</th>
-                <th className="p-3 font-medium text-slate-700">Nome</th>
-                <th className="p-3 font-medium text-slate-700 w-36">Ordem</th>
-                <th className="p-3 font-medium text-slate-700 w-40">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="p-6 text-center text-slate-500 italic">
-                    Nenhuma área. A migration semeia áreas típicas; execute o SQL se a lista estiver vazia.
-                  </td>
-                </tr>
-              ) : (
-                sorted.map((a) => (
-                  <tr key={a.id} className="border-t border-slate-100">
-                    <td className="p-3 font-mono text-xs">{a.code}</td>
-                    <td className="p-3">
-                      <span className="font-medium text-slate-900">{a.name}</span>
-                      {a.description ? (
-                        <p className="text-xs text-slate-500 mt-0.5">{a.description}</p>
-                      ) : null}
-                    </td>
-                    <td className="p-3 text-slate-600">{a.sort_order}</td>
-                    <td className="p-3">
-                      {a.is_archived ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="text-xs"
-                          disabled={patchMut.isPending}
-                          onClick={() =>
-                            void patchMut.mutate({ id: a.id, is_archived: false })
-                          }
-                        >
-                          Reativar
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs text-amber-700"
-                          disabled={patchMut.isPending}
-                          onClick={() =>
-                            void patchMut.mutate({ id: a.id, is_archived: true })
-                          }
-                        >
-                          Arquivar
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <SortableTable
+          columns={tableColumns}
+          data={sorted}
+          getRowKey={(row) => row.id}
+          emptyMessage="Nenhuma área. A migration semeia áreas típicas; execute o SQL se a lista estiver vazia."
+          className="shadow-sm"
+        />
       )}
 
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm space-y-3">

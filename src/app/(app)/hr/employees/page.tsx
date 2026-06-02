@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarClock, Loader2, Plus, Users } from "lucide-react";
@@ -9,6 +9,10 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useMe } from "@/hooks/use-me";
 
@@ -209,6 +213,92 @@ export default function HrEmployeesPage() {
     return departments.find((d) => d.id === id)?.name ?? id;
   };
 
+  const employeeStatusLabel: Record<string, string> = {
+    active: "Ativo",
+    inactive: "Inativo",
+    vacation: "Férias",
+    terminated: "Desligado",
+  };
+
+  const tableColumns = useMemo((): SortableTableColumn<Employee>[] => {
+    return [
+      {
+        key: "name",
+        label: "Nome",
+        type: "text",
+        width: "w-[18%]",
+        accessor: (row) => row.name,
+        truncate: false,
+        render: (row) => (
+          <span className="inline-flex items-center gap-1.5 font-medium">
+            {row.name}
+            {row.has_period_allocations ? (
+              <span title="Alocações temporárias por período">
+                <CalendarClock className="h-4 w-4 text-amber-600 shrink-0" />
+              </span>
+            ) : null}
+          </span>
+        ),
+      },
+      {
+        key: "position",
+        label: "Cargo",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => row.position,
+        render: (row) => <span>{row.position ?? "—"}</span>,
+      },
+      {
+        key: "department",
+        label: "Departamento",
+        type: "text",
+        width: "w-[14%]",
+        accessor: (row) => deptName(row.department_id),
+      },
+      {
+        key: "work_center",
+        label: "Linha",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => centerName(row.work_center_id),
+      },
+      {
+        key: "allocation_percentage",
+        label: "% aloc.",
+        type: "number",
+        width: "w-[8%]",
+        align: "right",
+        accessor: (row) =>
+          row.allocation_percentage != null ? row.allocation_percentage : 100,
+        truncate: false,
+        render: (row) => (
+          <span className="tabular-nums">
+            {row.allocation_percentage != null
+              ? `${row.allocation_percentage}%`
+              : "100%"}
+          </span>
+        ),
+      },
+      {
+        key: "monthly_salary",
+        label: "Salário",
+        type: "number",
+        width: "w-[12%]",
+        accessor: (row) => row.monthly_salary,
+        truncate: false,
+        render: (row) => <span>{fmtBrl(row.monthly_salary)}</span>,
+      },
+      {
+        key: "status",
+        label: "Situação",
+        type: "text",
+        width: "w-[10%]",
+        accessor: (row) =>
+          employeeStatusLabel[row.status] ?? row.status,
+      },
+    ];
+  }, [centers, departments]);
+
   if (permLoading || (!permLoading && !can("hr"))) {
     return (
       <div className="flex justify-center items-center gap-2 py-20 text-slate-500">
@@ -406,72 +496,37 @@ export default function HrEmployeesPage() {
           <CardTitle className="text-base">Listagem</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-12 gap-2 text-slate-500">
-              <Loader2 className="h-5 w-5 animate-spin" /> A carregar…
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="text-left px-3 py-2">Nome</th>
-                    <th className="text-left px-3 py-2">Cargo</th>
-                    <th className="text-left px-3 py-2">Departamento</th>
-                    <th className="text-left px-3 py-2">Linha</th>
-                    <th className="text-right px-3 py-2">% aloc.</th>
-                    <th className="text-left px-3 py-2">Salário</th>
-                    <th className="text-left px-3 py-2">Situação</th>
-                    <th className="text-right px-3 py-2">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-100">
-                      <td className="px-3 py-2 font-medium">
-                        <span className="inline-flex items-center gap-1.5">
-                          {r.name}
-                          {r.has_period_allocations ? (
-                            <span title="Alocações temporárias por período">
-                              <CalendarClock className="h-4 w-4 text-amber-600 shrink-0" />
-                            </span>
-                          ) : null}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">{r.position ?? "—"}</td>
-                      <td className="px-3 py-2">{deptName(r.department_id)}</td>
-                      <td className="px-3 py-2">{centerName(r.work_center_id)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {r.allocation_percentage != null
-                          ? `${r.allocation_percentage}%`
-                          : "100%"}
-                      </td>
-                      <td className="px-3 py-2">{fmtBrl(r.monthly_salary)}</td>
-                      <td className="px-3 py-2">{r.status}</td>
-                      <td className="px-3 py-2 text-right space-x-2">
-                        <Link href={`/hr/employees/${r.id}/edit`}>
-                          <Button type="button" size="sm" variant="outline">
-                            Editar
-                          </Button>
-                        </Link>
-                        {isAdmin ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-700"
-                            onClick={() => void remove(r.id)}
-                          >
-                            Excluir
-                          </Button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <SortableTable
+            columns={tableColumns}
+            data={rows}
+            getRowKey={(row) => row.id}
+            isLoading={loading}
+            emptyMessage="Nenhum colaborador cadastrado."
+            actionsColumn={{
+              label: "Ações",
+              width: "w-[5rem]",
+              render: (r) => (
+                <div className="flex flex-col items-end gap-1 sm:flex-row sm:justify-end">
+                  <Link href={`/hr/employees/${r.id}/edit`}>
+                    <Button type="button" size="sm" variant="outline">
+                      Editar
+                    </Button>
+                  </Link>
+                  {isAdmin ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-700"
+                      onClick={() => void remove(r.id)}
+                    >
+                      Excluir
+                    </Button>
+                  ) : null}
+                </div>
+              ),
+            }}
+          />
         </CardContent>
       </Card>
     </div>

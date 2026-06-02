@@ -8,6 +8,10 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useMe } from "@/hooks/use-me";
 
@@ -31,6 +35,13 @@ function fmtBrl(n: number) {
     currency: "BRL",
   }).format(n);
 }
+
+const PAYABLE_STATUS_LABELS: Record<string, string> = {
+  pending: "Pendente",
+  partial: "Parcial",
+  paid: "Pago",
+  cancelled: "Cancelado",
+};
 
 export default function FinancePayablesPage() {
   const router = useRouter();
@@ -184,6 +195,53 @@ export default function FinancePayablesPage() {
     return (id: string | null) => (id ? m.get(id) ?? id : "—");
   }, [suppliers]);
 
+  const tableColumns = useMemo((): SortableTableColumn<Payable>[] => {
+    return [
+      {
+        key: "description",
+        label: "Descrição",
+        type: "text",
+        width: "w-[22%]",
+        accessor: (row) => row.description,
+      },
+      {
+        key: "supplier",
+        label: "Fornecedor",
+        type: "text",
+        width: "w-[18%]",
+        accessor: (row) => supplierName(row.supplier_id),
+      },
+      {
+        key: "due_date",
+        label: "Vencimento",
+        type: "date",
+        width: "w-[12%]",
+        accessor: (row) => row.due_date,
+        truncate: false,
+        render: (row) => (
+          <span className="whitespace-nowrap">{row.due_date}</span>
+        ),
+      },
+      {
+        key: "current_amount",
+        label: "Saldo",
+        type: "number",
+        width: "w-[12%]",
+        accessor: (row) => row.current_amount,
+        truncate: false,
+        render: (row) => <span>{fmtBrl(row.current_amount)}</span>,
+      },
+      {
+        key: "status",
+        label: "Estado",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) =>
+          PAYABLE_STATUS_LABELS[row.status] ?? row.status,
+      },
+    ];
+  }, [supplierName]);
+
   if (permLoading || (!permLoading && !can("finance"))) {
     return (
       <div className="flex justify-center items-center gap-2 py-20 text-slate-500">
@@ -332,63 +390,45 @@ export default function FinancePayablesPage() {
           <CardTitle className="text-base">Listagem</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-12 gap-2 text-slate-500">
-              <Loader2 className="h-5 w-5 animate-spin" /> A carregar…
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="text-left px-3 py-2">Descrição</th>
-                    <th className="text-left px-3 py-2">Fornecedor</th>
-                    <th className="text-left px-3 py-2">Vencimento</th>
-                    <th className="text-left px-3 py-2">Saldo</th>
-                    <th className="text-left px-3 py-2">Estado</th>
-                    <th className="text-right px-3 py-2">Acções</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-100">
-                      <td className="px-3 py-2">{r.description}</td>
-                      <td className="px-3 py-2">{supplierName(r.supplier_id)}</td>
-                      <td className="px-3 py-2">{r.due_date}</td>
-                      <td className="px-3 py-2">{fmtBrl(r.current_amount)}</td>
-                      <td className="px-3 py-2">{r.status}</td>
-                      <td className="px-3 py-2 text-right space-x-2">
-                        {r.status !== "paid" && r.status !== "cancelled" ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setPayOpen(r);
-                              setPayAmount(String(r.current_amount));
-                            }}
-                          >
-                            Registrar pagamento
-                          </Button>
-                        ) : null}
-                        {isAdmin ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-700"
-                            onClick={() => void removeRow(r.id)}
-                          >
-                            Eliminar
-                          </Button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <SortableTable
+            columns={tableColumns}
+            data={rows}
+            getRowKey={(row) => row.id}
+            isLoading={loading}
+            emptyMessage="Sem contas a pagar."
+            actionsColumn={{
+              label: "Acções",
+              width: "w-[5rem]",
+              render: (r) => (
+                <div className="flex flex-col items-end gap-1">
+                  {r.status !== "paid" && r.status !== "cancelled" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setPayOpen(r);
+                        setPayAmount(String(r.current_amount));
+                      }}
+                    >
+                      Registrar pagamento
+                    </Button>
+                  ) : null}
+                  {isAdmin ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-700"
+                      onClick={() => void removeRow(r.id)}
+                    >
+                      Eliminar
+                    </Button>
+                  ) : null}
+                </div>
+              ),
+            }}
+          />
         </CardContent>
       </Card>
 

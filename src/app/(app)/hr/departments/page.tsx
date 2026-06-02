@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,10 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useMe } from "@/hooks/use-me";
 
@@ -125,6 +129,76 @@ export default function HrDepartmentsPage() {
     toast.success("Direcionador actualizado.");
   }
 
+  const tableColumns = useMemo((): SortableTableColumn<Department>[] => {
+    return [
+      {
+        key: "code",
+        label: "Código",
+        type: "text",
+        width: "w-[15%]",
+        accessor: (row) => row.code,
+        truncate: false,
+        render: (row) => (
+          <span className="font-mono text-xs">{row.code}</span>
+        ),
+      },
+      {
+        key: "name",
+        label: "Nome",
+        type: "text",
+        width: "w-[30%]",
+        accessor: (row) => row.name,
+      },
+      {
+        key: "is_support",
+        label: "Apoio",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => (row.is_support ? "Sim" : "Não"),
+      },
+      {
+        key: "allocation_driver",
+        label: "Direcionador de rateio",
+        type: "text",
+        width: "w-[38%]",
+        accessor: (row) =>
+          row.is_support
+            ? DRIVER_LABELS[row.allocation_driver ?? "hours"]
+            : "—",
+        truncate: false,
+        render: (row) =>
+          row.is_support && isAdmin ? (
+            <select
+              className="flex h-9 w-full max-w-[220px] rounded-md border border-slate-300 px-2 text-sm bg-white"
+              value={row.allocation_driver ?? "hours"}
+              onChange={(e) =>
+                void updateDriver(
+                  row.id,
+                  e.target.value as AllocationDriver
+                )
+              }
+            >
+              {(Object.keys(DRIVER_LABELS) as AllocationDriver[]).map((d) => (
+                <option
+                  key={d}
+                  value={d}
+                  disabled={
+                    d === "shipped_weight" || d === "movements_count"
+                  }
+                >
+                  {DRIVER_LABELS[d]}
+                </option>
+              ))}
+            </select>
+          ) : row.is_support ? (
+            DRIVER_LABELS[row.allocation_driver ?? "hours"]
+          ) : (
+            "—"
+          ),
+      },
+    ];
+  }, [isAdmin]);
+
   if (permLoading || (!permLoading && !can("hr"))) {
     return (
       <div className="flex justify-center items-center gap-2 py-20 text-slate-500">
@@ -217,70 +291,13 @@ export default function HrDepartmentsPage() {
           <CardTitle className="text-base">Listagem</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-12 gap-2 text-slate-500">
-              <Loader2 className="h-5 w-5 animate-spin" /> A carregar…
-            </div>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-slate-600 py-6 text-center">
-              Nenhum departamento cadastrado.
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="text-left px-3 py-2">Código</th>
-                    <th className="text-left px-3 py-2">Nome</th>
-                    <th className="text-left px-3 py-2">Apoio</th>
-                    <th className="text-left px-3 py-2">Direcionador de rateio</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-100">
-                      <td className="px-3 py-2 font-mono text-xs">{r.code}</td>
-                      <td className="px-3 py-2">{r.name}</td>
-                      <td className="px-3 py-2">{r.is_support ? "Sim" : "Não"}</td>
-                      <td className="px-3 py-2">
-                        {r.is_support && isAdmin ? (
-                          <select
-                            className="flex h-9 min-w-[220px] rounded-md border border-slate-300 px-2 text-sm bg-white"
-                            value={r.allocation_driver ?? "hours"}
-                            onChange={(e) =>
-                              void updateDriver(
-                                r.id,
-                                e.target.value as AllocationDriver
-                              )
-                            }
-                          >
-                            {(Object.keys(DRIVER_LABELS) as AllocationDriver[]).map(
-                              (d) => (
-                                <option
-                                  key={d}
-                                  value={d}
-                                  disabled={
-                                    d === "shipped_weight" ||
-                                    d === "movements_count"
-                                  }
-                                >
-                                  {DRIVER_LABELS[d]}
-                                </option>
-                              )
-                            )}
-                          </select>
-                        ) : r.is_support ? (
-                          DRIVER_LABELS[r.allocation_driver ?? "hours"]
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <SortableTable
+            columns={tableColumns}
+            data={rows}
+            getRowKey={(row) => row.id}
+            isLoading={loading}
+            emptyMessage="Nenhum departamento cadastrado."
+          />
         </CardContent>
       </Card>
     </div>

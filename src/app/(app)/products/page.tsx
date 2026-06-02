@@ -16,6 +16,10 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { ProductPrefixTabs } from "@/components/products/product-prefix-tabs";
@@ -255,6 +259,114 @@ export default function ProductsPage() {
     return `${start}–${end} de ${total}`;
   }, [data?.pagination, filters.page, filters.limit]);
 
+  const tableColumns = useMemo((): SortableTableColumn<ProductRow>[] => {
+    return [
+      {
+        key: "technical_code",
+        label: "Código técnico",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => row.technical_code,
+        truncate: false,
+        render: (row) => (
+          <span className="font-mono text-xs font-medium text-slate-900 whitespace-nowrap">
+            {row.technical_code?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "name",
+        label: "Nome",
+        type: "text",
+        width: "w-[24%]",
+        accessor: (row) => row.name,
+        truncate: false,
+        render: (row) => {
+          const pendingStructure =
+            row.engineering_workflow_status === "pending_composition";
+          return (
+            <>
+              <span className="text-slate-800 line-clamp-2">{row.name}</span>
+              {pendingStructure ? (
+                <span className="mt-1 block text-xs font-medium text-amber-800">
+                  Aguarda estrutura (comercial)
+                </span>
+              ) : null}
+            </>
+          );
+        },
+      },
+      {
+        key: "type",
+        label: "Tipo",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => typeBadgeClasses(row.type).label,
+        truncate: false,
+        render: (row) => {
+          const tb = typeBadgeClasses(row.type);
+          return (
+            <span
+              className={cn(
+                "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
+                tb.className
+              )}
+            >
+              {tb.label}
+            </span>
+          );
+        },
+      },
+      {
+        key: "unit",
+        label: "Und.",
+        type: "text",
+        width: "w-[8%]",
+        accessor: (row) => row.unit,
+        truncate: false,
+        render: (row) => (
+          <span className="text-slate-700 whitespace-nowrap">
+            {row.unit?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "cost_price",
+        label: "Custo lista",
+        type: "number",
+        width: "w-[12%]",
+        align: "right",
+        accessor: (row) => row.cost_price,
+        truncate: false,
+        render: (row) => (
+          <span className="tabular-nums text-slate-800">
+            {formatCurrency(row.cost_price)}
+          </span>
+        ),
+      },
+      {
+        key: "is_active",
+        label: "Estado",
+        type: "text",
+        width: "w-[10%]",
+        accessor: (row) => (row.is_active ? "Ativo" : "Inativo"),
+        truncate: false,
+        render: (row) => (
+          <span
+            className={cn(
+              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
+              row.is_active
+                ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
+            )}
+          >
+            {row.is_active ? "Ativo" : "Inativo"}
+          </span>
+        ),
+      },
+    ];
+  }, []);
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -371,113 +483,33 @@ export default function ProductsPage() {
             </div>
           ) : null}
 
-          <div className="rounded-lg border border-slate-200 overflow-x-auto bg-white">
-            <table className="w-full text-sm text-left min-w-[720px]">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-3 py-2.5 font-medium text-slate-700 whitespace-nowrap">
-                    Código técnico
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">Nome</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">Tipo</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">Und.</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right">
-                    Custo lista
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">Estado</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right w-[8rem]">
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        A carregar…
-                      </span>
-                    </td>
-                  </tr>
-                ) : !data?.data?.length ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                      Nenhum produto encontrado para estes filtros.
-                    </td>
-                  </tr>
+          <SortableTable
+            columns={tableColumns}
+            data={data?.data ?? []}
+            getRowKey={(row) => row.id}
+            isLoading={isLoading}
+            emptyMessage="Nenhum produto encontrado para estes filtros."
+            rowClassName={(row) =>
+              row.engineering_workflow_status === "pending_composition"
+                ? "bg-amber-50/90 animate-pulse ring-1 ring-inset ring-amber-300/80"
+                : ""
+            }
+            actionsColumn={{
+              label: "Ações",
+              width: "w-[5rem]",
+              render: (product) =>
+                isAdmin ? (
+                  <ProductRowActionsMenu
+                    productId={product.id}
+                    productType={product.type}
+                    onDeactivate={() => setDeactivateTarget(product)}
+                    onHardDelete={() => setHardDeleteTarget(product)}
+                  />
                 ) : (
-                  data.data.map((product) => {
-                    const tb = typeBadgeClasses(product.type);
-                    const pendingStructure =
-                      product.engineering_workflow_status === "pending_composition";
-                    return (
-                      <tr
-                        key={product.id}
-                        className={cn(
-                          "border-b border-slate-100 last:border-0",
-                          pendingStructure &&
-                            "bg-amber-50/90 animate-pulse ring-1 ring-inset ring-amber-300/80"
-                        )}
-                      >
-                        <td className="px-3 py-2.5 font-mono text-xs font-medium text-slate-900 whitespace-nowrap">
-                          {product.technical_code?.trim() || "—"}
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-800 max-w-[16rem]">
-                          <span className="line-clamp-2">{product.name}</span>
-                          {pendingStructure ? (
-                            <span className="mt-1 block text-xs font-medium text-amber-800">
-                              Aguarda estrutura (comercial)
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <span
-                            className={cn(
-                              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-                              tb.className
-                            )}
-                          >
-                            {tb.label}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
-                          {product.unit?.trim() || "—"}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-800">
-                          {formatCurrency(product.cost_price)}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <span
-                            className={cn(
-                              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-                              product.is_active
-                                ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
-                                : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
-                            )}
-                          >
-                            {product.is_active ? "Ativo" : "Inativo"}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          {isAdmin ? (
-                            <ProductRowActionsMenu
-                              productId={product.id}
-                              productType={product.type}
-                              onDeactivate={() => setDeactivateTarget(product)}
-                              onHardDelete={() => setHardDeleteTarget(product)}
-                            />
-                          ) : (
-                            <span className="text-xs text-slate-400">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                  <span className="text-xs text-slate-400">—</span>
+                ),
+            }}
+          />
 
           {data?.pagination?.total !== undefined &&
           data.pagination.total > 0 ? (

@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { cn } from "@/shared/utils/cn";
 import { InlineDateEdit } from "@/shared/ui/inline-date-edit";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import {
   computeOrderSituation,
   type PurchaseOrderBoardRow,
@@ -80,6 +85,12 @@ function situationBadge(situation: OrderSituation) {
   );
 }
 
+function situationSortLabel(situation: OrderSituation): string {
+  if (situation === "late") return "Atrasado";
+  if (situation === "pending") return "Pendente";
+  return "No prazo";
+}
+
 type Props = {
   rows: PurchaseOrderBoardRow[];
   editableDelivery: boolean;
@@ -97,91 +108,129 @@ export function PurchaseOrdersBoardTable({
   showActions = true,
   canPurchasing = false,
 }: Props) {
-  const colCount = showActions ? 8 : 7;
+  const tableColumns = useMemo((): SortableTableColumn<PurchaseOrderBoardRow>[] => {
+    const cols: SortableTableColumn<PurchaseOrderBoardRow>[] = [
+      {
+        key: "po_number",
+        label: "Pedido",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => row.po_number,
+        truncate: false,
+        render: (row) => (
+          <Link
+            href={`/purchasing/orders/${row.id}`}
+            className="font-mono text-xs text-brand-700 hover:underline"
+          >
+            {row.po_number}
+          </Link>
+        ),
+      },
+      {
+        key: "supplier_name",
+        label: "Fornecedor",
+        type: "text",
+        width: "w-[18%]",
+        accessor: (row) => row.supplier_name,
+        render: (row) => (
+          <span className="text-xs text-slate-800">{row.supplier_name}</span>
+        ),
+      },
+      {
+        key: "order_date",
+        label: "Data pedido",
+        type: "date",
+        width: "w-[11%]",
+        accessor: (row) => row.order_date,
+        truncate: false,
+        render: (row) => (
+          <span className="text-xs tabular-nums whitespace-nowrap">
+            {formatDate(row.order_date)}
+          </span>
+        ),
+      },
+      {
+        key: "expected_delivery",
+        label: "Prazo entrega",
+        type: "date",
+        width: "w-[13%]",
+        accessor: (row) => row.expected_delivery,
+        truncate: false,
+        render: (row) =>
+          editableDelivery && onDeliveryChange ? (
+            <InlineDateEdit
+              value={row.expected_delivery}
+              onSave={(v) => onDeliveryChange(row.id, v)}
+            />
+          ) : (
+            <span className="text-xs tabular-nums whitespace-nowrap">
+              {formatDate(row.expected_delivery)}
+            </span>
+          ),
+      },
+      {
+        key: "total_value",
+        label: "Valor total",
+        type: "number",
+        width: "w-[12%]",
+        align: "right",
+        accessor: (row) => row.total_value,
+        truncate: false,
+        render: (row) => (
+          <span className="text-xs tabular-nums font-medium">
+            {formatBRL(row.total_value)}
+          </span>
+        ),
+      },
+      {
+        key: "status",
+        label: "Status",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => STATUS_LABELS[row.status] ?? row.status,
+        truncate: false,
+        render: (row) => statusBadge(row.status),
+      },
+      {
+        key: "situation",
+        label: "Situação",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) =>
+          situationSortLabel(
+            computeOrderSituation(row.status, row.expected_delivery)
+          ),
+        truncate: false,
+        render: (row) =>
+          situationBadge(
+            computeOrderSituation(row.status, row.expected_delivery)
+          ),
+      },
+    ];
+    return cols;
+  }, [editableDelivery, onDeliveryChange]);
 
   return (
-    <div className="rounded-lg border border-slate-200 overflow-x-auto bg-white">
-      <table className="w-full text-sm min-w-[720px]">
-        <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold text-slate-600">
-            <th className="sticky left-0 z-10 bg-slate-50 px-3 py-2.5 w-[140px]">
-              Pedido
-            </th>
-            <th className="px-3 py-2.5 min-w-[140px]">Fornecedor</th>
-            <th className="px-3 py-2.5 w-[110px]">Data pedido</th>
-            <th className="px-3 py-2.5 w-[130px]">Prazo entrega</th>
-            <th className="px-3 py-2.5 w-[130px] text-right">Valor total</th>
-            <th className="px-3 py-2.5 w-[120px]">Status</th>
-            <th className="px-3 py-2.5 w-[110px]">Situação</th>
-            {showActions ? (
-              <th className="px-3 py-2.5 w-[52px] text-center">Ações</th>
-            ) : null}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={colCount} className="px-3 py-10 text-center text-slate-500">
-                {emptyMessage}
-              </td>
-            </tr>
-          ) : (
-            rows.map((row) => {
-              const situation = computeOrderSituation(
-                row.status,
-                row.expected_delivery
-              );
-              return (
-                <tr
-                  key={row.id}
-                  className="border-b border-slate-100 hover:bg-slate-50/60"
-                >
-                  <td className="sticky left-0 z-[1] bg-white px-3 py-2 font-mono text-xs">
-                    <Link
-                      href={`/purchasing/orders/${row.id}`}
-                      className="text-brand-700 hover:underline"
-                    >
-                      {row.po_number}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-xs text-slate-800 truncate max-w-[200px]">
-                    {row.supplier_name}
-                  </td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap tabular-nums">
-                    {formatDate(row.order_date)}
-                  </td>
-                  <td className="px-3 py-2">
-                    {editableDelivery && onDeliveryChange ? (
-                      <InlineDateEdit
-                        value={row.expected_delivery}
-                        onSave={(v) => onDeliveryChange(row.id, v)}
-                      />
-                    ) : (
-                      <span className="text-xs tabular-nums">
-                        {formatDate(row.expected_delivery)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs tabular-nums font-medium">
-                    {formatBRL(row.total_value)}
-                  </td>
-                  <td className="px-3 py-2">{statusBadge(row.status)}</td>
-                  <td className="px-3 py-2">{situationBadge(situation)}</td>
-                  {showActions ? (
-                    <td className="px-2 py-2 text-center">
-                      <PurchaseOrderBoardActionsMenu
-                        orderId={row.id}
-                        poNumber={row.po_number}
-                        canPurchasing={canPurchasing}
-                      />
-                    </td>
-                  ) : null}
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-    </div>
+    <SortableTable
+      columns={tableColumns}
+      data={rows}
+      getRowKey={(row) => row.id}
+      emptyMessage={emptyMessage}
+      actionsColumn={
+        showActions
+          ? {
+              label: "Ações",
+              width: "w-[5rem]",
+              render: (row) => (
+                <PurchaseOrderBoardActionsMenu
+                  orderId={row.id}
+                  poNumber={row.po_number}
+                  canPurchasing={canPurchasing}
+                />
+              ),
+            }
+          : undefined
+      }
+    />
   );
 }

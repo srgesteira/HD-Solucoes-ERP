@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -19,6 +19,10 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 
@@ -165,6 +169,99 @@ export default function ProductionOrdersPage() {
   const totalPages =
     filters.limit > 0 ? Math.max(1, Math.ceil(total / filters.limit)) : 1;
 
+  const tableColumns = useMemo((): SortableTableColumn<ProductionOrder>[] => {
+    return [
+      {
+        key: "order_number",
+        label: "Nº pedido",
+        type: "text",
+        width: "w-[14%]",
+        accessor: (row) => row.order_number,
+        truncate: false,
+        render: (row) => (
+          <span className="font-mono font-medium text-slate-900">
+            {row.order_number}
+          </span>
+        ),
+      },
+      {
+        key: "client_name",
+        label: "Cliente",
+        type: "text",
+        width: "w-[22%]",
+        accessor: (row) => row.client_name,
+        render: (row) => (
+          <span className="text-slate-800">{row.client_name ?? "—"}</span>
+        ),
+      },
+      {
+        key: "status",
+        label: "Estado",
+        type: "text",
+        width: "w-[14%]",
+        accessor: (row) => statusLabel[row.status] ?? row.status,
+        truncate: false,
+        render: (row) => {
+          const overdue = isDeliveryOverdue(row);
+          const pillClass =
+            statusPillClass[row.status] ??
+            "bg-slate-100 text-slate-700 border-slate-200";
+          const label = statusLabel[row.status] ?? row.status;
+          return (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                pillClass
+              )}
+            >
+              {(overdue || row.status === "delayed") && (
+                <AlertCircle className="h-3 w-3 shrink-0" aria-hidden />
+              )}
+              {label}
+            </span>
+          );
+        },
+      },
+      {
+        key: "delivery_deadline",
+        label: "Entrega prevista",
+        type: "date",
+        width: "w-[14%]",
+        accessor: (row) => row.delivery_deadline,
+        truncate: false,
+        render: (row) => {
+          const overdue = isDeliveryOverdue(row);
+          return (
+            <div className="flex items-center gap-1.5">
+              {overdue ? (
+                <AlertCircle
+                  className="h-4 w-4 shrink-0 text-red-600"
+                  aria-hidden
+                />
+              ) : null}
+              <span className={cn(overdue && "text-red-700 font-medium")}>
+                {formatDate(row.delivery_deadline)}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        key: "created_at",
+        label: "Criação",
+        type: "date",
+        width: "w-[12%]",
+        accessor: (row) => row.created_at,
+        truncate: false,
+        render: (row) => (
+          <span className="text-slate-600 whitespace-nowrap">
+            {formatDate(row.created_at)}
+          </span>
+        ),
+      },
+    ];
+  }, []);
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -248,148 +345,63 @@ export default function ProductionOrdersPage() {
             </p>
           ) : null}
 
-          <div className="rounded-lg border border-slate-200 overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  <th className="p-3">Nº pedido</th>
-                  <th className="p-3">Cliente</th>
-                  <th className="p-3">Estado</th>
-                  <th className="p-3">Entrega prevista</th>
-                  <th className="p-3">Criação</th>
-                  <th className="p-3 text-right w-[140px]">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={6} className="p-10 text-center text-slate-500">
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-                        A carregar…
-                      </span>
-                    </td>
-                  </tr>
-                ) : !data?.data?.length ? (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="p-10 text-center text-slate-500"
+          <SortableTable
+            columns={tableColumns}
+            data={data?.data ?? []}
+            getRowKey={(row) => row.id}
+            isLoading={isLoading}
+            emptyMessage="Nenhum pedido encontrado."
+            actionsColumn={{
+              label: "Ações",
+              width: "w-[5rem]",
+              render: (order) => (
+                <div className="flex justify-end gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    title="Ver"
+                    aria-label={`Ver pedido ${order.order_number}`}
+                    onClick={() =>
+                      router.push(`/production/orders/${order.id}`)
+                    }
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    title="Editar"
+                    aria-label={`Editar pedido ${order.order_number}`}
+                    onClick={() =>
+                      router.push(`/production/orders/${order.id}/edit`)
+                    }
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  {isAdmin ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0 border-red-200 text-red-700 hover:bg-red-50"
+                      title="Remover"
+                      aria-label={`Remover pedido ${order.order_number}`}
+                      disabled={isFetching}
+                      onClick={() =>
+                        void handleDelete(order.id, order.order_number)
+                      }
                     >
-                      Nenhum pedido encontrado.
-                    </td>
-                  </tr>
-                ) : (
-                  data.data.map((order) => {
-                    const overdue = isDeliveryOverdue(order);
-                    const pillClass =
-                      statusPillClass[order.status] ??
-                      "bg-slate-100 text-slate-700 border-slate-200";
-                    const label =
-                      statusLabel[order.status] ?? order.status;
-
-                    return (
-                      <tr
-                        key={order.id}
-                        className="hover:bg-slate-50/80 transition-colors"
-                      >
-                        <td className="p-3 font-mono font-medium text-slate-900">
-                          {order.order_number}
-                        </td>
-                        <td className="p-3 text-slate-800">
-                          {order.client_name ?? "—"}
-                        </td>
-                        <td className="p-3">
-                          <span
-                            className={cn(
-                              "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                              pillClass
-                            )}
-                          >
-                            {(overdue || order.status === "delayed") && (
-                              <AlertCircle
-                                className="h-3 w-3 shrink-0"
-                                aria-hidden
-                              />
-                            )}
-                            {label}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-1.5">
-                            {overdue ? (
-                              <AlertCircle
-                                className="h-4 w-4 shrink-0 text-red-600"
-                                aria-hidden
-                              />
-                            ) : null}
-                            <span
-                              className={cn(
-                                overdue && "text-red-700 font-medium"
-                              )}
-                            >
-                              {formatDate(order.delivery_deadline)}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-3 text-slate-600 whitespace-nowrap">
-                          {formatDate(order.created_at)}
-                        </td>
-                        <td className="p-3 text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              title="Ver"
-                              aria-label={`Ver pedido ${order.order_number}`}
-                              onClick={() =>
-                                router.push(`/production/orders/${order.id}`)
-                              }
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              title="Editar"
-                              aria-label={`Editar pedido ${order.order_number}`}
-                              onClick={() =>
-                                router.push(
-                                  `/production/orders/${order.id}/edit`
-                                )
-                              }
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            {isAdmin ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0 border-red-200 text-red-700 hover:bg-red-50"
-                                title="Remover"
-                                aria-label={`Remover pedido ${order.order_number}`}
-                                disabled={isFetching}
-                                onClick={() =>
-                                  void handleDelete(order.id, order.order_number)
-                                }
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  ) : null}
+                </div>
+              ),
+            }}
+          />
 
           {total > 0 ? (
             <div className="flex flex-col sm:flex-row justify-between gap-4 items-center text-sm">

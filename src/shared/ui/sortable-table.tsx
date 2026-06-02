@@ -121,7 +121,7 @@ export function SortableTable<T>({
     if (sort?.key !== columnKey) {
       return (
         <ChevronsUpDown
-          className="h-3.5 w-3.5 shrink-0 text-slate-400"
+          className="h-4 w-4 shrink-0 text-slate-500"
           aria-hidden
         />
       );
@@ -129,14 +129,14 @@ export function SortableTable<T>({
     if (sort.direction === "asc") {
       return (
         <ChevronUp
-          className="h-3.5 w-3.5 shrink-0 text-brand-700"
+          className="h-4 w-4 shrink-0 text-brand-700"
           aria-hidden
         />
       );
     }
     return (
       <ChevronDown
-        className="h-3.5 w-3.5 shrink-0 text-brand-700"
+        className="h-4 w-4 shrink-0 text-brand-700"
         aria-hidden
       />
     );
@@ -147,7 +147,7 @@ export function SortableTable<T>({
   return (
     <div
       className={cn(
-        "rounded-lg border border-slate-200 bg-white w-full overflow-hidden dark:bg-slate-950 dark:border-slate-800",
+        "rounded-lg border border-slate-200 bg-white w-full dark:bg-slate-950 dark:border-slate-800",
         className
       )}
     >
@@ -181,11 +181,13 @@ export function SortableTable<T>({
                     <button
                       type="button"
                       className={cn(
-                        "inline-flex w-full items-center gap-1 min-w-0",
+                        "inline-flex w-full max-w-full items-center gap-1 min-w-0 cursor-pointer",
                         headerAlignClass(col.align),
-                        "hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 rounded-sm"
+                        "text-slate-700 hover:text-brand-800",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 rounded-sm"
                       )}
                       onClick={() => cycleSort(col.key)}
+                      title={`Ordenar por ${col.label}`}
                       aria-label={`Ordenar por ${col.label}${
                         isActive
                           ? sort?.direction === "asc"
@@ -194,8 +196,8 @@ export function SortableTable<T>({
                           : ""
                       }`}
                     >
-                      <span className="truncate">{col.label}</span>
                       {sortIcon(col.key)}
+                      <span className="truncate">{col.label}</span>
                     </button>
                   ) : (
                     <span className="truncate">{col.label}</span>

@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit,
-  Loader2,
   Plus,
   Search,
   User,
@@ -16,6 +15,10 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { cn } from "@/shared/utils/cn";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { useMe } from "@/hooks/use-me";
@@ -165,6 +168,79 @@ export default function CustomersPage() {
     setModalOpen(true);
   };
 
+  const tableColumns = useMemo((): SortableTableColumn<CustomerRow>[] => {
+    return [
+      {
+        key: "name",
+        label: "Nome",
+        type: "text",
+        width: "w-[22%]",
+        accessor: (row) => row.name,
+        render: (row) => (
+          <span className="font-medium text-slate-900 line-clamp-2">{row.name}</span>
+        ),
+      },
+      {
+        key: "document",
+        label: "Documento",
+        type: "text",
+        width: "w-[14%]",
+        accessor: (row) => row.document,
+        truncate: false,
+        render: (row) => (
+          <span className="text-slate-700 whitespace-nowrap">
+            {row.document?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "email",
+        label: "E-mail",
+        type: "text",
+        width: "w-[20%]",
+        accessor: (row) => row.email,
+        render: (row) => (
+          <span className="text-slate-700 line-clamp-1">
+            {row.email?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "phone",
+        label: "Telefone",
+        type: "text",
+        width: "w-[14%]",
+        accessor: (row) => row.phone,
+        truncate: false,
+        render: (row) => (
+          <span className="text-slate-700 whitespace-nowrap">
+            {row.phone?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "is_active",
+        label: "Estado",
+        type: "text",
+        width: "w-[10%]",
+        accessor: (row) => (row.is_active ? "Ativo" : "Inativo"),
+        truncate: false,
+        render: (row) => (
+          <span
+            className={cn(
+              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
+              row.is_active
+                ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
+            )}
+          >
+            {row.is_active ? "Ativo" : "Inativo"}
+          </span>
+        ),
+      },
+    ];
+  }, []);
+
   if (!canManage) {
     return (
       <div className="max-w-xl mx-auto py-12">
@@ -242,116 +318,43 @@ export default function CustomersPage() {
             </div>
           ) : null}
 
-          <div className="rounded-lg border border-slate-200 overflow-x-auto bg-white">
-            <table className="w-full text-sm text-left min-w-[720px]">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-3 py-2.5 font-medium text-slate-700">Nome</th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">
-                    Documento
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">
-                    E-mail
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">
-                    Telefone
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">
-                    Estado
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right w-[8rem]">
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-3 py-10 text-center text-slate-500"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        A carregar…
-                      </span>
-                    </td>
-                  </tr>
-                ) : !data?.data?.length ? (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-3 py-10 text-center text-slate-500"
-                    >
-                      Nenhum cliente encontrado para estes filtros.
-                    </td>
-                  </tr>
-                ) : (
-                  data.data.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="border-b border-slate-100 last:border-0"
-                    >
-                      <td className="px-3 py-2.5 font-medium text-slate-900 max-w-[14rem]">
-                        <span className="line-clamp-2">{row.name}</span>
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
-                        {row.document?.trim() || "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-700 max-w-[12rem]">
-                        <span className="line-clamp-1">
-                          {row.email?.trim() || "—"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
-                        {row.phone?.trim() || "—"}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span
-                          className={cn(
-                            "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-                            row.is_active
-                              ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
-                              : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
-                          )}
-                        >
-                          {row.is_active ? "Ativo" : "Inativo"}
-                        </span>
-                      </td>
-                                            <td className="px-3 py-2.5 text-right">
-                        {canManage ? (
-                          <RowActionsMenu
-                            items={[
-                              {
-                                id: "edit",
-                                label: "Editar",
-                                icon: <Edit className="h-4 w-4" />,
-                                onClick: () => openEdit(row),
-                              },
-                              {
-                                id: "toggle",
-                                label: row.is_active ? "Desativar" : "Reativar",
-                                icon:
-                                  row.is_active ? (
-                                    <UserX className="h-4 w-4" />
-                                  ) : (
-                                    <User className="h-4 w-4" />
-                                  ),
-                                disabled: toggleBusy === row.id,
-                                onClick: () => void handleToggleActive(row),
-                              },
-                            ]}
-                          />
+          <SortableTable
+            columns={tableColumns}
+            data={data?.data ?? []}
+            getRowKey={(row) => row.id}
+            isLoading={isLoading}
+            emptyMessage="Nenhum cliente encontrado para estes filtros."
+            actionsColumn={{
+              label: "Ações",
+              width: "w-[5rem]",
+              render: (row) =>
+                canManage ? (
+                  <RowActionsMenu
+                    items={[
+                      {
+                        id: "edit",
+                        label: "Editar",
+                        icon: <Edit className="h-4 w-4" />,
+                        onClick: () => openEdit(row),
+                      },
+                      {
+                        id: "toggle",
+                        label: row.is_active ? "Desativar" : "Reativar",
+                        icon: row.is_active ? (
+                          <UserX className="h-4 w-4" />
                         ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                          <User className="h-4 w-4" />
+                        ),
+                        disabled: toggleBusy === row.id,
+                        onClick: () => void handleToggleActive(row),
+                      },
+                    ]}
+                  />
+                ) : (
+                  <span className="text-xs text-slate-400">—</span>
+                ),
+            }}
+          />
 
           {data?.pagination && data.pagination.total > 0 ? (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-600">
