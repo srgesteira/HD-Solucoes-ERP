@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +34,7 @@ export type PurchaseOrderFormData = {
   status: string;
   order_date: string;
   expected_delivery: string | null;
+  actual_delivery?: string | null;
   notes: string | null;
   supplier_id: string | null;
   subtotal: number;
@@ -89,6 +90,11 @@ type Props = {
   orderId?: string;
   cancelHref: string;
   onSaved: (orderId: string) => void;
+  /** Integrado na página única de detalhe (sem duplicar cabeçalho/listagem). */
+  embedded?: boolean;
+  /** Ex.: botão de recebimento (só na página de detalhe). */
+  totalsFooter?: ReactNode;
+  canSave?: boolean;
 };
 
 function fmtBRL(n: number): string {
@@ -205,7 +211,23 @@ async function fetchOrder(id: string): Promise<PurchaseOrderFormData> {
   return json.data;
 }
 
-export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props) {
+function formatDisplayDate(iso: string | null | undefined): string {
+  if (iso == null || iso === "") return "—";
+  const d = String(iso).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return String(iso);
+  const [y, m, day] = d.split("-");
+  return `${day}/${m}/${y}`;
+}
+
+export function PurchaseOrderForm({
+  mode,
+  orderId,
+  cancelHref,
+  onSaved,
+  embedded = false,
+  totalsFooter,
+  canSave = true,
+}: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const isEdit = mode === "edit";
@@ -241,7 +263,23 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
   const order = orderQuery.data;
   const canEditItems =
     !isEdit || Boolean(order && canEditPurchaseOrderItems(order.status));
-  const canEditExtras = isEdit ? order?.status !== "received" : true;
+  const canEditExtras = !isEdit || canEditItems;
+  const fieldsDisabled = isEdit && !canEditItems;
+  const showSave = canSave && canEditItems;
+
+  const prevStatusRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!isEdit) return;
+    const st = order?.status;
+    if (st === undefined) return;
+    if (
+      prevStatusRef.current !== undefined &&
+      st !== prevStatusRef.current
+    ) {
+      setHydrated(false);
+    }
+    prevStatusRef.current = st;
+  }, [order?.status, isEdit]);
 
   const suppliersQuery = useQuery({
     queryKey: [...SUPPLIERS_ACTIVE_QUERY_KEY, isEdit ? "po-edit" : "po-new"],
@@ -284,11 +322,16 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
   }, [orderQuery.data, hydrated, isEdit]);
 
   useEffect(() => {
-    if (isEdit && order?.status === "cancelled" && orderId) {
+    if (
+      isEdit &&
+      !embedded &&
+      order?.status === "cancelled" &&
+      orderId
+    ) {
       toast.error("Pedido cancelado não pode ser editado.");
       router.replace(`/purchasing/orders/${orderId}`);
     }
-  }, [order?.status, orderId, router, isEdit]);
+  }, [order?.status, orderId, router, isEdit, embedded]);
 
   const mergedSupplierOptions = useMemo(() => {
     const map = new Map<string, SupplierOption>();
@@ -383,30 +426,28 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
       );
     }
 
-    const body: Record<string, unknown> = {
-      po_number: pn || "",
-      supplier_id: supplierId.trim() ? supplierId.trim() : null,
-      order_date: od.slice(0, 10),
-      expected_delivery: expectedDelivery.trim()
-        ? expectedDelivery.slice(0, 10)
-        : null,
-      notes: notes.trim() ? notes.trim() : null,
-      discount,
-      tax,
-      payment_installments: paymentParsed.data.payment_installments,
-      payment_days_to_first_due: paymentParsed.data.payment_days_to_first_due,
-      payment_days_between_installments:
-        paymentParsed.data.payment_days_between_installments,
-    };
+    const body: Record<string, unknown> = {};
 
-    if (canEditExtras) {
+    if (!isEdit || canEditItems) {
+      body.po_number = pn || "";
+      body.supplier_id = supplierId.trim() ? supplierId.trim() : null;
+      body.order_date = od.slice(0, 10);
+      body.expected_delivery = expectedDelivery.trim()
+        ? expectedDelivery.slice(0, 10)
+        : null;
+      body.notes = notes.trim() ? notes.trim() : null;
+      body.discount = discount;
+      body.tax = tax;
+      body.payment_installments = paymentParsed.data.payment_installments;
+      body.payment_days_to_first_due =
+        paymentParsed.data.payment_days_to_first_due;
+      body.payment_days_between_installments =
+        paymentParsed.data.payment_days_between_installments;
       body.freight_cost = freightCost;
       body.insurance_cost = insuranceCost;
       body.other_costs = otherCosts;
       body.total_tax_non_creditable = taxNonCreditable;
-    }
 
-    if (canEditItems) {
       const itemsResult = buildPurchaseOrderItemsPayload(lines);
       if ("error" in itemsResult) throw new Error(itemsResult.error);
       body.items = itemsResult;
@@ -485,10 +526,20 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
       }}
     >
       {isEdit && !canEditItems ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          {order?.status === "received"
-            ? "Pedido já recebido: não é possível alterar itens nem custos adicionais."
-            : "Os itens deste pedido não podem ser alterados no estado actual."}
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          {order?.status === "received" || order?.status === "cancelled" ? (
+            order?.status === "cancelled" ? (
+              "Pedido cancelado: visualização apenas."
+            ) : (
+              "Pedido já recebido: visualização apenas."
+            )
+          ) : (
+            <>
+              Alteração bloqueada neste estado. Mude o estado para{" "}
+              <strong>Rascunho</strong> ou <strong>Enviado</strong> (acção
+              «Aplicar estado» acima) para editar itens, pagamento e valores.
+            </>
+          )}
         </div>
       ) : null}
 
@@ -510,6 +561,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                 placeholder="Ex.: PC-2026-001"
                 required
                 autoComplete="off"
+                disabled={fieldsDisabled}
               />
             </div>
 
@@ -518,6 +570,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
               className="md:col-span-2"
               value={supplierId}
               onChange={setSupplierId}
+              disabled={fieldsDisabled}
               suppliers={mergedSupplierOptions}
               loading={suppliersQuery.isLoading}
               errorMessage={
@@ -542,6 +595,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                 value={orderDate}
                 onChange={(e) => setOrderDate(e.target.value)}
                 required
+                disabled={fieldsDisabled}
               />
             </div>
 
@@ -552,8 +606,20 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                 type="date"
                 value={expectedDelivery}
                 onChange={(e) => setExpectedDelivery(e.target.value)}
+                disabled={fieldsDisabled}
               />
             </div>
+
+            {embedded && isEdit && order?.actual_delivery ? (
+              <div className="space-y-1 sm:col-span-2">
+                <p className="text-xs font-medium text-slate-500">
+                  Data de recebimento
+                </p>
+                <p className="text-sm font-medium text-slate-900 tabular-nums">
+                  {formatDisplayDate(order.actual_delivery)}
+                </p>
+              </div>
+            ) : null}
 
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="notes">Observações</Label>
@@ -564,6 +630,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                 rows={4}
                 className="resize-y min-h-[5rem]"
                 placeholder="Opcional…"
+                disabled={fieldsDisabled}
               />
             </div>
           </div>
@@ -600,6 +667,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
             onPaymentDaysFirstChange={setPaymentDaysFirst}
             paymentDaysBetween={paymentDaysBetween}
             onPaymentDaysBetweenChange={setPaymentDaysBetween}
+            disabled={fieldsDisabled}
           />
         </CardContent>
       </Card>
@@ -617,6 +685,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                 value={discount}
                 onChange={setDiscount}
                 maxDecimals={2}
+                disabled={fieldsDisabled}
               />
             </div>
             <div className="space-y-2">
@@ -626,6 +695,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                 value={tax}
                 onChange={setTax}
                 maxDecimals={2}
+                disabled={fieldsDisabled}
               />
             </div>
           </div>
@@ -639,6 +709,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                   value={freightCost}
                   onChange={setFreightCost}
                   maxDecimals={2}
+                  disabled={fieldsDisabled}
                 />
               </div>
               <div className="space-y-2">
@@ -648,6 +719,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                   value={insuranceCost}
                   onChange={setInsuranceCost}
                   maxDecimals={2}
+                  disabled={fieldsDisabled}
                 />
               </div>
               <div className="space-y-2">
@@ -657,6 +729,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                   value={otherCosts}
                   onChange={setOtherCosts}
                   maxDecimals={2}
+                  disabled={fieldsDisabled}
                 />
               </div>
               <div className="space-y-2">
@@ -666,6 +739,7 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
                   value={taxNonCreditable}
                   onChange={setTaxNonCreditable}
                   maxDecimals={2}
+                  disabled={fieldsDisabled}
                 />
               </div>
             </div>
@@ -703,29 +777,38 @@ export function PurchaseOrderForm({ mode, orderId, cancelHref, onSaved }: Props)
               <span className="tabular-nums">{fmtBRL(previewTotal)}</span>
             </p>
           </div>
+          {totalsFooter ? (
+            <div className="border-t border-slate-200 pt-4">{totalsFooter}</div>
+          ) : null}
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-3">
-        <Link href={cancelHref}>
-          <Button type="button" variant="outline">
-            Cancelar
-          </Button>
-        </Link>
-        <Button type="submit" disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              A gravar…
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" aria-hidden />
-              Guardar
-            </>
-          )}
-        </Button>
-      </div>
+      {showSave || !embedded ? (
+        <div className="flex justify-end gap-3">
+          {!embedded ? (
+            <Link href={cancelHref}>
+              <Button type="button" variant="outline">
+                Cancelar
+              </Button>
+            </Link>
+          ) : null}
+          {showSave ? (
+            <Button type="submit" disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  A gravar…
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" aria-hidden />
+                  Guardar alterações
+                </>
+              )}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </form>
   );
 }

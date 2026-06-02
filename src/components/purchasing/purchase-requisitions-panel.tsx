@@ -158,7 +158,7 @@ export function PurchaseRequisitionsPanel() {
       invalidate();
       setSelected(new Set());
       if (data.purchase_order_id) {
-        router.push(`/purchasing/orders/${data.purchase_order_id}/edit`);
+        router.push(`/purchasing/orders/${data.purchase_order_id}`);
       }
     },
     onError: (e) =>
@@ -191,7 +191,7 @@ export function PurchaseRequisitionsPanel() {
       setBulkOpen(false);
       setSelected(new Set());
       invalidate();
-      router.push(`/purchasing/orders/${data.purchase_order_id}/edit`);
+      router.push(`/purchasing/orders/${data.purchase_order_id}`);
     },
     onError: (e) =>
       toast.error(e instanceof Error ? e.message : "Erro ao emitir PC"),

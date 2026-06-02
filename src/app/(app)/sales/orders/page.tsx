@@ -17,6 +17,10 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import {
+  SortableTable,
+  type SortableTableColumn,
+} from "@/shared/ui/sortable-table";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -231,6 +235,149 @@ export default function SalesOrdersListPage() {
     setFilters((f) => ({ ...f, page: 1 }));
   }
 
+  const tableColumns = useMemo((): SortableTableColumn<SalesOrderListRow>[] => {
+    return [
+      {
+        key: "order_number",
+        label: "Nº pedido",
+        type: "text",
+        width: "w-[10%]",
+        accessor: (row) => row.order_number,
+        truncate: false,
+        render: (row) => (
+          <>
+            <Link
+              href={`/sales/orders/${row.id}`}
+              className="text-brand-800 hover:underline font-mono"
+            >
+              {row.order_number}
+            </Link>
+            {row.ready_for_invoice && tab !== "ready" ? (
+              <span
+                className="ml-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium bg-teal-50 text-teal-900 ring-1 ring-teal-200"
+                title="Liberado para faturamento"
+              >
+                Faturar
+              </span>
+            ) : null}
+          </>
+        ),
+      },
+      {
+        key: "client_name",
+        label: "Cliente",
+        type: "text",
+        width: "w-[18%]",
+        accessor: (row) => row.client_name,
+        render: (row) => (
+          <span className="text-slate-800">{row.client_name}</span>
+        ),
+      },
+      {
+        key: "order_date",
+        label: "Data",
+        type: "date",
+        width: "w-[8%]",
+        accessor: (row) => row.order_date,
+        render: (row) => (
+          <span className="text-slate-700 tabular-nums whitespace-nowrap">
+            {formatSalesListDate(row.order_date)}
+          </span>
+        ),
+      },
+      {
+        key: "expected_delivery",
+        label: "Prazo entrega",
+        type: "date",
+        width: "w-[9%]",
+        accessor: (row) => row.expected_delivery,
+        render: (row) => (
+          <span className="text-slate-700 tabular-nums whitespace-nowrap">
+            {formatSalesListDate(row.expected_delivery)}
+          </span>
+        ),
+      },
+      {
+        key: "production_deadline",
+        label: "Prazo produção",
+        type: "date",
+        width: "w-[9%]",
+        accessor: (row) => row.production_deadline,
+        render: (row) => (
+          <span className="text-slate-700 tabular-nums whitespace-nowrap">
+            {formatSalesListDate(row.production_deadline)}
+          </span>
+        ),
+      },
+      {
+        key: "status",
+        label: "Status",
+        type: "text",
+        width: "w-[10%]",
+        accessor: (row) => salesOrderStatusPill(row.status).label,
+        truncate: false,
+        render: (row) => {
+          const sb = salesOrderStatusPill(row.status);
+          return (
+            <span
+              className={cn(
+                "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
+                sb.className
+              )}
+            >
+              {sb.label}
+            </span>
+          );
+        },
+      },
+      {
+        key: "production_situation",
+        label: "Situação produção",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) =>
+          productionSituationPill(row.production_situation ?? "none").label,
+        truncate: false,
+        render: (row) => {
+          if (row.production_situation === "none") {
+            return <span className="text-slate-400">—</span>;
+          }
+          const prod = productionSituationPill(
+            row.production_situation ?? "none"
+          );
+          return (
+            <span
+              className={cn(
+                "inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1",
+                prod.className
+              )}
+            >
+              {prod.label}
+            </span>
+          );
+        },
+      },
+      {
+        key: "total",
+        label: "Valor total",
+        type: "number",
+        width: "w-[9%]",
+        align: "right",
+        accessor: (row) => row.total,
+        truncate: false,
+        render: (row) => (
+          <span className="tabular-nums text-slate-800">
+            {formatCurrency(row.total)}
+          </span>
+        ),
+      },
+    ];
+  }, [tab]);
+
+  const emptyMessage = `Nenhum pedido em «${SALES_ORDER_LIST_TAB_LABELS[tab]}»${
+    filters.search ? " para esta busca." : "."
+  }`;
+
   return (
     <div className="max-w-[90rem] mx-auto space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -344,151 +491,35 @@ export default function SalesOrdersListPage() {
             </div>
           ) : null}
 
-          <div className="rounded-lg border border-slate-200 overflow-x-auto bg-white dark:bg-slate-950 dark:border-slate-800">
-            <table className="w-full text-sm text-left min-w-[1200px]">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50 dark:border-slate-800">
-                  <th className="px-3 py-2.5 font-medium text-slate-700 whitespace-nowrap">
-                    Nº pedido
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">
-                    Cliente
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 whitespace-nowrap">
-                    Data
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 whitespace-nowrap">
-                    Prazo entrega
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 whitespace-nowrap">
-                    Prazo produção
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">
-                    Status
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700">
-                    Situação produção
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right whitespace-nowrap">
-                    Valor total
-                  </th>
-                  <th className="px-3 py-2.5 font-medium text-slate-700 text-right w-[8rem]">
-                    Acções
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan={9}
-                      className="px-3 py-10 text-center text-slate-500"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        A carregar…
-                      </span>
-                    </td>
-                  </tr>
-                ) : !data?.data?.length ? (
-                  <tr>
-                    <td
-                      colSpan={9}
-                      className="px-3 py-10 text-center text-slate-500"
-                    >
-                      Nenhum pedido em «{SALES_ORDER_LIST_TAB_LABELS[tab]}»
-                      {filters.search ? " para esta busca." : "."}
-                    </td>
-                  </tr>
-                ) : (
-                  data.data.map((row) => {
-                    const sb = salesOrderStatusPill(row.status);
-                    const prod = productionSituationPill(
-                      row.production_situation ?? "none"
-                    );
-                    const st = row.status as SalesOrderStatus;
-                    const canCancel =
-                      isAdmin && st !== "delivered" && st !== "cancelled";
-                    const canReactivate = isAdmin && st === "cancelled";
-                    return (
-                      <tr
-                        key={row.id}
-                        className="border-b border-slate-100 last:border-0 dark:border-slate-800 hover:bg-slate-50/60"
-                      >
-                        <td className="px-3 py-2.5 font-medium whitespace-nowrap">
-                          <Link
-                            href={`/sales/orders/${row.id}`}
-                            className="text-brand-800 hover:underline font-mono"
-                          >
-                            {row.order_number}
-                          </Link>
-                          {row.ready_for_invoice && tab !== "ready" ? (
-                            <span
-                              className="ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium bg-teal-50 text-teal-900 ring-1 ring-teal-200"
-                              title="Liberado para faturamento"
-                            >
-                              Faturar
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-800 max-w-[14rem]">
-                          <span className="line-clamp-2">{row.client_name}</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap tabular-nums">
-                          {formatSalesListDate(row.order_date)}
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap tabular-nums">
-                          {formatSalesListDate(row.expected_delivery)}
-                        </td>
-                        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap tabular-nums">
-                          {formatSalesListDate(row.production_deadline)}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <span
-                            className={cn(
-                              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-                              sb.className
-                            )}
-                          >
-                            {sb.label}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {row.production_situation === "none" ? (
-                            <span className="text-slate-400">—</span>
-                          ) : (
-                            <span
-                              className={cn(
-                                "inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1",
-                                prod.className
-                              )}
-                            >
-                              {prod.label}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-800">
-                          {formatCurrency(row.total)}
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <SalesOrderRowActionsMenu
-                            orderId={row.id}
-                            canEdit={canSales}
-                            canCancel={canCancel}
-                            canDelete={isAdmin}
-                            canReactivate={canReactivate}
-                            onCancel={() => setCancelTarget(row)}
-                            onDelete={() => setDeleteTarget(row)}
-                            onReactivate={() => setReactivateTarget(row)}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          <SortableTable
+            columns={tableColumns}
+            data={data?.data ?? []}
+            getRowKey={(row) => row.id}
+            isLoading={isLoading}
+            emptyMessage={emptyMessage}
+            actionsColumn={{
+              label: "Acções",
+              width: "w-[5rem]",
+              render: (row) => {
+                const st = row.status as SalesOrderStatus;
+                const canCancel =
+                  isAdmin && st !== "delivered" && st !== "cancelled";
+                const canReactivate = isAdmin && st === "cancelled";
+                return (
+                  <SalesOrderRowActionsMenu
+                    orderId={row.id}
+                    canEdit={canSales}
+                    canCancel={canCancel}
+                    canDelete={isAdmin}
+                    canReactivate={canReactivate}
+                    onCancel={() => setCancelTarget(row)}
+                    onDelete={() => setDeleteTarget(row)}
+                    onReactivate={() => setReactivateTarget(row)}
+                  />
+                );
+              },
+            }}
+          />
 
           {data?.pagination?.total !== undefined && data.pagination.total > 0 ? (
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">

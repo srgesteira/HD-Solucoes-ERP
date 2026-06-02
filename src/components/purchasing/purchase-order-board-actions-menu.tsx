@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Edit, FileDown, Mail } from "lucide-react";
+import { Eye, FileDown, Mail } from "lucide-react";
 import { toast } from "sonner";
 import {
   RowActionsMenu,
@@ -75,10 +75,10 @@ export function PurchaseOrderBoardActionsMenu({
 
   const items: RowActionItem[] = [
     {
-      id: "edit",
-      label: "Editar pedido",
-      icon: <Edit className="h-4 w-4" />,
-      onClick: () => router.push(`/purchasing/orders/${orderId}/edit`),
+      id: "view",
+      label: "Abrir pedido",
+      icon: <Eye className="h-4 w-4" />,
+      onClick: () => router.push(`/purchasing/orders/${orderId}`),
     },
     {
       id: "pdf",

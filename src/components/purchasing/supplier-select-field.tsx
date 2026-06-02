@@ -25,6 +25,7 @@ type Props = {
   onSupplierCreated?: (supplier: SupplierOption) => void;
   emptyOptionLabel?: string;
   className?: string;
+  disabled?: boolean;
 };
 
 export function SupplierSelectField({
@@ -39,6 +40,7 @@ export function SupplierSelectField({
   onSupplierCreated,
   emptyOptionLabel = "Sem fornecedor",
   className,
+  disabled = false,
 }: Props) {
   const [quickOpen, setQuickOpen] = useState(false);
   const [extra, setExtra] = useState<SupplierOption[]>([]);
@@ -61,7 +63,7 @@ export function SupplierSelectField({
     <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between gap-2">
         <Label htmlFor={id}>{label}</Label>
-        {allowQuickCreate ? (
+        {allowQuickCreate && !disabled ? (
           <Button
             type="button"
             variant="outline"
@@ -79,7 +81,7 @@ export function SupplierSelectField({
         className={cn(SELECT_CLASS)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        disabled={loading}
+        disabled={disabled || loading}
         aria-busy={loading}
       >
         <option value="">{emptyOptionLabel}</option>
