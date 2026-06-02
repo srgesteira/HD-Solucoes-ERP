@@ -8,6 +8,7 @@ import {
   parseTaxValueField,
   roundMoney,
 } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
+import { computePurchaseOrderTotal } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 
 type AdminClient = SupabaseClient<Database>;
 
@@ -298,6 +299,29 @@ export async function syncPurchaseOrderItems(
     }))
   );
 
+  const { data: orderHdr, error: hdrErr } = await admin
+    .from("purchase_orders")
+    .select(
+      "discount, tax, freight_cost, insurance_cost, other_costs, total_tax_non_creditable"
+    )
+    .eq("id", orderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (hdrErr) return { ok: false, message: hdrErr.message };
+  if (!orderHdr) return { ok: false, message: "Pedido não encontrado." };
+
+  const computedTotal = computePurchaseOrderTotal({
+    subtotal: totals.subtotal,
+    discount: orderHdr.discount,
+    tax: orderHdr.tax,
+    total_ipi: totals.totalIpi,
+    freight_cost: orderHdr.freight_cost,
+    insurance_cost: orderHdr.insurance_cost,
+    other_costs: orderHdr.other_costs,
+    total_tax_non_creditable: orderHdr.total_tax_non_creditable,
+  });
+
   const { error: poUpErr } = await admin
     .from("purchase_orders")
     .update({
@@ -305,6 +329,7 @@ export async function syncPurchaseOrderItems(
       total_icms: totals.totalIcms,
       total_ipi: totals.totalIpi,
       total_tax_base: totals.totalTaxBase,
+      total: computedTotal,
     })
     .eq("id", orderId)
     .eq("tenant_id", tenantId);

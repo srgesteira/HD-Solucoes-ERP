@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
-import { purchaseOrderExtrasTotal, num } from "@/modules/compras/lib/purchasing/purchase-order-totals";
+import { computeLandedUnitCost } from "@/modules/compras/lib/purchasing/landed-unit-cost";
+import { num } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 
 type Admin = SupabaseClient<Database>;
 
@@ -10,6 +11,7 @@ type PoItem = {
   product_id: string | null;
   quantity: number;
   total_price: number;
+  ipi_value: number;
   received_quantity: number;
 };
 
@@ -29,8 +31,9 @@ export type ReceivePurchaseOrderResult = {
 };
 
 /**
- * Rateia custos extras do pedido pelos itens (proporção do total_price)
- * e actualiza cost_price + histórico (purchase) dos produtos ligados.
+ * Custo pousado no recebimento:
+ * subtotal da linha + IPI da linha + fatia rateada de frete/seguro/outros/imp. não creditáveis.
+ * ICMS não entra (embutido no preço; evita duplicar).
  */
 export async function applyPurchaseOrderReceive(
   admin: Admin,
@@ -51,15 +54,24 @@ export async function applyPurchaseOrderReceive(
 
   const { data: items, error: itemsErr } = await admin
     .from("purchase_order_items")
-    .select("id, product_id, quantity, total_price, received_quantity")
+    .select("id, product_id, quantity, total_price, ipi_value, received_quantity")
     .eq("purchase_order_id", orderId)
     .eq("tenant_id", tenantId);
 
   if (itemsErr) throw new Error(itemsErr.message);
 
   const rows = (items ?? []) as PoItem[];
-  const subtotal = rows.reduce((s, it) => s + num(it.total_price), 0);
-  const totalExtras = purchaseOrderExtrasTotal(order as PoRow);
+  const orderSubtotal =
+    num(order.subtotal) > 0
+      ? num(order.subtotal)
+      : rows.reduce((s, it) => s + num(it.total_price), 0);
+
+  const orderExtras = {
+    freight_cost: order.freight_cost,
+    insurance_cost: order.insurance_cost,
+    other_costs: order.other_costs,
+    total_tax_non_creditable: order.total_tax_non_creditable,
+  };
 
   let productsCostUpdated = 0;
 
@@ -67,14 +79,15 @@ export async function applyPurchaseOrderReceive(
     const qty = num(item.quantity);
     if (qty <= 0) continue;
 
-    let extraForItem = 0;
-    if (subtotal > 0 && totalExtras > 0) {
-      const share = num(item.total_price) / subtotal;
-      extraForItem = totalExtras * share;
-    }
-
-    const landedLineTotal = num(item.total_price) + extraForItem;
-    const newUnitCost = landedLineTotal / qty;
+    const newUnitCost = computeLandedUnitCost(
+      {
+        quantity: qty,
+        totalPrice: num(item.total_price),
+        ipiValue: num(item.ipi_value),
+      },
+      orderSubtotal,
+      orderExtras
+    );
 
     await admin
       .from("purchase_order_items")
@@ -88,7 +101,7 @@ export async function applyPurchaseOrderReceive(
       await recordProductPriceHistory(admin, tenantId, item.product_id, {
         priceType: "purchase",
         value: newUnitCost,
-        notes: `Recebimento pedido de compra (${orderId})`,
+        notes: `Recebimento pedido de compra (${orderId}) — custo com IPI e despesas rateadas`,
       });
       productsCostUpdated += 1;
     }
@@ -98,4 +111,37 @@ export async function applyPurchaseOrderReceive(
     itemsUpdated: rows.length,
     productsCostUpdated,
   };
+}
+
+/** Exposto para testes e scripts de backfill. */
+export function previewLandedUnitCostForItem(
+  item: Pick<PoItem, "quantity" | "total_price" | "ipi_value">,
+  order: Pick<
+    PoRow,
+    | "subtotal"
+    | "freight_cost"
+    | "insurance_cost"
+    | "other_costs"
+    | "total_tax_non_creditable"
+  >,
+  itemsSubtotal?: number
+): number {
+  const orderSubtotal =
+    num(order.subtotal) > 0
+      ? num(order.subtotal)
+      : num(itemsSubtotal ?? 0);
+  return computeLandedUnitCost(
+    {
+      quantity: num(item.quantity),
+      totalPrice: num(item.total_price),
+      ipiValue: num(item.ipi_value),
+    },
+    orderSubtotal,
+    {
+      freight_cost: order.freight_cost,
+      insurance_cost: order.insurance_cost,
+      other_costs: order.other_costs,
+      total_tax_non_creditable: order.total_tax_non_creditable,
+    }
+  );
 }
