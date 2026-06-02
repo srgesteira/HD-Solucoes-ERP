@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
-import { familyCatalogUsesSharedCompletePrefix } from "@/modules/engenharia/lib/products/family-prefix-scope";
+import { familyBelongsToProductPrefix } from "@/modules/engenharia/lib/products/product-families-catalog";
 import {
   isCompleteClassificationSuffix,
   isMoClassificationSuffix,
@@ -91,19 +91,14 @@ export async function assertFamilyMatchesProductPrefix(
     .maybeSingle();
   if (!p) return "Prefixo inválido ou inactivo para este tenant.";
 
-  let famQ = admin
-    .from("product_families")
-    .select("id")
-    .eq("id", familyId)
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true);
-
-  famQ = familyCatalogUsesSharedCompletePrefix(p.code)
-    ? famQ.is("prefix_id", null)
-    : famQ.eq("prefix_id", prefixId);
-
-  const { data: fam } = await famQ.maybeSingle();
-  if (!fam) {
+  const ok = await familyBelongsToProductPrefix(
+    admin,
+    tenantId,
+    prefixId,
+    p.code,
+    familyId
+  );
+  if (!ok) {
     return "Família inválida, inactiva ou não pertence a este sufixo.";
   }
   return null;
@@ -211,20 +206,14 @@ export async function assertProductClassificationTenant(
     return null;
   }
 
-  let famQ = admin
-    .from("product_families")
-    .select("id,prefix_id")
-    .eq("id", ids.family_id)
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true);
-
-  famQ = familyCatalogUsesSharedCompletePrefix(p.code)
-    ? famQ.is("prefix_id", null)
-    : famQ.eq("prefix_id", ids.prefix_id);
-
-  const { data: fam } = await famQ.maybeSingle();
-
-  if (!fam) {
+  const famOk = await familyBelongsToProductPrefix(
+    admin,
+    tenantId,
+    ids.prefix_id,
+    p.code,
+    ids.family_id
+  );
+  if (!famOk) {
     return "Família inválida, inactiva ou não pertence a este sufixo.";
   }
 

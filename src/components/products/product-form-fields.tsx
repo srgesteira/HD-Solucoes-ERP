@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { Label } from "@/shared/ui/label";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
@@ -171,14 +172,19 @@ export function ProductFormFields({
           `/api/products/families?prefix_id=${encodeURIComponent(prefixId)}`,
           { credentials: "include", cache: "no-store" }
         );
-        let json: { data?: ClassListRow[] } = {};
+        let json: { data?: ClassListRow[]; error?: string } = {};
         try {
-          json = (await res.json()) as { data?: ClassListRow[] };
+          json = (await res.json()) as { data?: ClassListRow[]; error?: string };
         } catch {
           /* ignore */
         }
         if (cancelled) return;
-        const list = res.ok ? (json.data ?? []) : [];
+        if (!res.ok) {
+          toast.error(json.error ?? "Erro ao carregar famílias deste sufixo");
+          setFamilies([]);
+          return;
+        }
+        const list = json.data ?? [];
         setFamilies(list);
         if (
           formData.family_id &&

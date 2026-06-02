@@ -8,6 +8,7 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
 import { familyCatalogUsesSharedCompletePrefix } from "@/modules/engenharia/lib/products/family-prefix-scope";
+import { listProductFamiliesForPrefix } from "@/modules/engenharia/lib/products/product-families-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -44,27 +45,15 @@ export async function GET(request: NextRequest) {
   }
   if (!prefix) return apiError("Prefixo inválido ou inactivo", 400);
 
-  let query = admin
-    .from("product_families")
-    .select("id,code,name,sort_order,prefix_id")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true);
-
-  if (familyCatalogUsesSharedCompletePrefix(prefix.code)) {
-    query = query.is("prefix_id", null);
-  } else {
-    query = query.eq("prefix_id", prefixId);
-  }
-
-  const { data, error } = await query
-    .order("sort_order", { ascending: true })
-    .order("code", { ascending: true });
+  const { data, error } = await listProductFamiliesForPrefix(
+    admin,
+    tenantId,
+    prefixId,
+    prefix.code
+  );
 
   if (error) {
-    return apiError(
-      "Erro ao listar famílias: " + error.message,
-      supabaseErrorToHttp(error.code)
-    );
+    return apiError("Erro ao listar famílias: " + error, 400);
   }
 
   return apiOk({ data: data ?? [] });
