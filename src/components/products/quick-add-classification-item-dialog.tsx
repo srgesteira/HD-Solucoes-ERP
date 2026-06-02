@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
@@ -42,6 +43,11 @@ export function QuickAddClassificationItemDialog({
   const [description, setDescription] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -53,10 +59,11 @@ export function QuickAddClassificationItemDialog({
     }
   }, [open, config.title]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    e.stopPropagation();
     setError(null);
 
     const codeErr = config.validateCode(code);
@@ -116,15 +123,16 @@ export function QuickAddClassificationItemDialog({
     }
   }
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/50"
       role="dialog"
       aria-modal="true"
       aria-labelledby="quick-add-classification-title"
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(e) => void handleSubmit(e)}
         className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl space-y-4"
       >
         <h3
@@ -208,6 +216,7 @@ export function QuickAddClassificationItemDialog({
           </Button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body
   );
 }

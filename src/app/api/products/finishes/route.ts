@@ -3,10 +3,7 @@ import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { requireAnyMenuModule } from "@/modules/core/lib/api-guards";
-import {
-  getCurrentTenantId,
-  isCurrentUserTenantAdmin,
-} from "@/modules/core/lib/tenant";
+import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import {
   normalizeClassificationCatalogCode,
   validateClassificationCatalogCode,
@@ -70,12 +67,6 @@ export async function POST(request: NextRequest) {
   if (!user) return apiError("Não autenticado", 401);
   const moduleDenied = await requireAnyMenuModule(["engenharia", "vendas"]);
   if (moduleDenied) return moduleDenied;
-  if (!(await isCurrentUserTenantAdmin())) {
-    return apiError(
-      "Sem permissão para cadastrar acabamentos. Contacte um administrador.",
-      403
-    );
-  }
 
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
