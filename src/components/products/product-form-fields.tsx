@@ -311,13 +311,26 @@ export function ProductFormFields({
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm space-y-4">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm font-medium text-slate-800">
             Classificação técnica
           </p>
-          {classBusy ? (
-            <Loader2 className="h-4 w-4 animate-spin text-slate-400" aria-hidden />
-          ) : null}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs shrink-0"
+              disabled={classFieldsDisabled}
+              onClick={() => setAddFamilyOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" aria-hidden />
+              Adicionar família
+            </Button>
+            {classBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin text-slate-400" aria-hidden />
+            ) : null}
+          </div>
         </div>
         <div
           role="note"
@@ -335,9 +348,10 @@ export function ProductFormFields({
             ou <span className="font-mono text-slate-900">MO-A10-001</span>. A
             parte <span className="font-mono">-001</span> é a{" "}
             <strong>sequência</strong>, gerada ao guardar. A natureza MRP é
-            derivada automaticamente do prefixo seleccionado. Para prefixos
-            completos (HD1–HD3, AC), use <strong>Adicionar</strong> ao lado de
-            Família ou cadastre em{" "}
+            derivada automaticamente do prefixo seleccionado. Use{" "}
+            <strong>Adicionar família</strong> para cadastrar famílias de qualquer
+            sufixo; em HD1–HD3/AC também seleccione família e sub-família. Ou
+            cadastre em{" "}
             <Link
               href="/settings/product-families"
               className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
@@ -362,7 +376,6 @@ export function ProductFormFields({
                 const nextP = prefixes.find((x) => x.id === v);
                 const nextCode = nextP?.code ?? "";
                 if (isSimplifiedClassificationSuffix(nextCode)) {
-                  onChange("family_id", "");
                   onChange("subfamily_id", "");
                   if (isMoClassificationSuffix(nextCode)) {
                     onChange("material_id", "");
@@ -387,26 +400,15 @@ export function ProductFormFields({
             </p>
           </div>
 
-          {needsCompleteClassification ? (
+          {formData.prefix_id ? (
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="family_id">Família *</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-xs shrink-0"
-                  disabled={classFieldsDisabled}
-                  onClick={() => setAddFamilyOpen(true)}
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1" aria-hidden />
-                  Adicionar
-                </Button>
-              </div>
+              <Label htmlFor="family_id">
+                Família{needsCompleteClassification ? " *" : ""}
+              </Label>
               <select
                 id="family_id"
                 className={SELECT_CLASS}
-                required
+                required={needsCompleteClassification}
                 disabled={classFieldsDisabled}
                 value={formData.family_id}
                 onChange={(e) => {
@@ -421,6 +423,11 @@ export function ProductFormFields({
                   </option>
                 ))}
               </select>
+              {!needsCompleteClassification ? (
+                <p className="text-xs text-slate-500">
+                  Opcional neste sufixo (código usa material + acabamento).
+                </p>
+              ) : null}
             </div>
           ) : null}
 

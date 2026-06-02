@@ -309,7 +309,9 @@ export async function POST(request: NextRequest) {
           ? validated.custom_profit_margin
           : null,
       prefix_id: validated.prefix_id,
-      family_id: isCompletePrefix ? validated.family_id ?? null : null,
+      family_id: isCompletePrefix
+        ? validated.family_id ?? null
+        : validated.family_id?.trim() || null,
       subfamily_id: isCompletePrefix ? validated.subfamily_id ?? null : null,
       material_id: validated.material_id ?? null,
       finish_id: validated.finish_id ?? null,
