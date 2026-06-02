@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
+import { resolveTenantUserStatus } from "@/shared/auth/user-auth-status";
 
 export const dynamic = "force-dynamic";
 
@@ -48,32 +49,23 @@ export async function GET() {
     (rows ?? []).map(async (p) => {
       const { data } = await admin.auth.admin.getUserById(p.id);
       const au = data?.user ?? null;
-      const bannedUntil = au?.banned_until ?? null;
       const invitedAt = au?.invited_at ?? null;
-      const confirmedAt = au?.confirmed_at ?? null;
+      const confirmedAt = au?.confirmed_at ?? au?.email_confirmed_at ?? null;
       const lastSignIn = au?.last_sign_in_at ?? null;
+      const bannedUntil = au?.banned_until ?? null;
 
-      const isBanned =
-        typeof bannedUntil === "string" && bannedUntil.length > 0
-          ? new Date(bannedUntil).getTime() > Date.now()
-          : false;
-
-      const invitePending =
-        typeof invitedAt === "string" &&
-        invitedAt.length > 0 &&
-        (lastSignIn == null || lastSignIn === "") &&
-        (confirmedAt == null || confirmedAt === "");
-
-      const status = isBanned || p.is_active === false
-        ? "suspended"
-        : invitePending
-          ? "invite_pending"
-          : "active";
+      const status = resolveTenantUserStatus(p.is_active, au
+        ? {
+            ...au,
+            user_metadata: (au.user_metadata ?? null) as Record<string, unknown> | null,
+          }
+        : null);
 
       return {
         ...p,
         auth: {
           invited_at: invitedAt,
+          confirmed_at: confirmedAt,
           last_sign_in_at: lastSignIn,
           banned_until: bannedUntil,
         },

@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
-import { buildInviteActivationLink } from "@/shared/auth/activation-link";
+import { generateActivationLinkForEmail } from "@/shared/auth/generate-activation-link";
 
 export const dynamic = "force-dynamic";
 
@@ -66,27 +66,30 @@ export async function POST(request: NextRequest) {
   const admin_all = enabled_modules.includes("*");
   const email = profile.email;
 
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: "invite",
-    email,
-    options: {
-      redirectTo,
-      data: {
-        tenant_id: tenantId,
-        admin_all,
-        enabled_modules,
-        role_key,
-        full_name: profile?.full_name ?? null,
-        must_set_password: true,
-      },
-    },
-  });
-
-  const hashedToken = data?.properties?.hashed_token;
-  if (error || !hashedToken) return apiError(error?.message ?? "Erro", 400);
-  return apiOk({
-    user: { id: data?.user?.id ?? profile.id, email },
-    activation_link: buildInviteActivationLink(origin, hashedToken),
-  });
+  try {
+    const { activation_link, link_type } = await generateActivationLinkForEmail(
+      admin,
+      {
+        email,
+        origin,
+        redirectTo,
+        metadata: {
+          tenant_id: tenantId,
+          admin_all,
+          enabled_modules,
+          role_key,
+          full_name: profile?.full_name ?? null,
+          must_set_password: true,
+        },
+      }
+    );
+    return apiOk({
+      user: { id: profile.id, email },
+      activation_link,
+      link_type,
+    });
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : "Erro", 400);
+  }
 }
 

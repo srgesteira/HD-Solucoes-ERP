@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
-import { buildInviteActivationLink } from "@/shared/auth/activation-link";
+import { buildActivationLink } from "@/shared/auth/activation-link";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
 
   return apiOk({
     user: { id: uid, email },
-    activation_link: buildInviteActivationLink(origin, hashedToken),
+    activation_link: buildActivationLink(origin, hashedToken, "invite"),
   });
 }
 
