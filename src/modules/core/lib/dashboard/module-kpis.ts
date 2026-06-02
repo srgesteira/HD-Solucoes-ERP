@@ -91,6 +91,7 @@ export async function getComprasKpis(
     .from("purchase_orders")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .in("status", ["open", "partial", "sent"]);
 
   return buildDashboardPayload("compras", [
@@ -119,6 +120,7 @@ const KPI_FETCHERS: Record<
       .from("production_orders")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
       .neq("status", "completed");
     return buildDashboardPayload("producao", [
       { key: "active_op", label: "OPs activas", value: count ?? 0 },

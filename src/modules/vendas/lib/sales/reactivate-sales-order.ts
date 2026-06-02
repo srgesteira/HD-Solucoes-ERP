@@ -21,6 +21,7 @@ export async function salesOrderHasProductionStart(
     .from("order_items")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .in("sales_order_item_id", soiIds)
     .not("production_start", "is", null);
 
@@ -49,6 +50,7 @@ export async function salesOrderHasLinkedPurchaseOrderItems(
     .from("purchase_order_items")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .in("sales_order_item_id", soiIds);
 
   if (poiErr) throw new Error(poiErr.message);

@@ -33,6 +33,7 @@ async function resolveOrderTenant(
     .select("id")
     .eq("id", orderId)
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .maybeSingle();
   return { order: data, error };
 }
@@ -70,6 +71,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     .select(ITEM_SELECT)
     .eq("order_id", orderId)
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .order("item_number", { ascending: true, nullsFirst: false });
 
   if (error) {

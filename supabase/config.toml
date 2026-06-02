@@ -1,0 +1,48 @@
+# Supabase local development config (versionado).
+#
+# IMPORTANTE:
+# - Para produção (Supabase Cloud), muitas dessas configs (SMTP/templates/URLs)
+#   precisam ser aplicadas no Dashboard do Supabase.
+# - Segredos devem ficar em env vars (NUNCA comitar chaves).
+
+project_id = "hd-solucoes-erp"
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = [
+  "http://localhost:3000/auth/callback",
+  "http://localhost:3000/activate",
+  "http://localhost:3000/set-password",
+  "http://localhost:3000/update-password",
+  "https://hd-solucoes-erp.vercel.app/auth/callback",
+  "https://hd-solucoes-erp.vercel.app/activate",
+  "https://hd-solucoes-erp.vercel.app/set-password",
+  "https://hd-solucoes-erp.vercel.app/update-password",
+]
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+# SMTP (Resend) — use env vars no ambiente local/CI:
+# - SUPABASE_SMTP_HOST
+# - SUPABASE_SMTP_PORT
+# - SUPABASE_SMTP_USER
+# - SUPABASE_SMTP_PASS
+# - SUPABASE_SMTP_SENDER_NAME
+# - SUPABASE_SMTP_SENDER_EMAIL
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 587
+user = "${SUPABASE_SMTP_USER}"
+pass = "${SUPABASE_SMTP_PASS}"
+sender_name = "${SUPABASE_SMTP_SENDER_NAME}"
+sender_email = "${SUPABASE_SMTP_SENDER_EMAIL}"
+
+# Templates de e-mail (convite) — para Supabase Cloud, versionar aqui ajuda a
+# manter o conteúdo, mas a aplicação final pode exigir ajuste no Dashboard.
+[auth.email.template.invite]
+subject = "Convite para acessar o HD Soluções ERP"
+content_path = "./templates/invite.html"
+

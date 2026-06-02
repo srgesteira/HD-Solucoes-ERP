@@ -37,12 +37,50 @@ export async function GET() {
       "id, email, full_name, role, is_active, avatar_url, permissions, enabled_modules, role_keys"
     )
     .eq("tenant_id", me.tenant_id)
-    .eq("is_active", true)
     .order("full_name", { ascending: true });
 
   if (error) {
     return apiError("Falha ao listar utilizadores: " + error.message, 500);
   }
 
-  return apiOk({ users: rows ?? [] });
+  // Enriquecer estado via Auth: convite pendente / suspenso
+  const enriched = await Promise.all(
+    (rows ?? []).map(async (p) => {
+      const { data } = await admin.auth.admin.getUserById(p.id);
+      const au = data?.user ?? null;
+      const bannedUntil = au?.banned_until ?? null;
+      const invitedAt = au?.invited_at ?? null;
+      const confirmedAt = au?.confirmed_at ?? null;
+      const lastSignIn = au?.last_sign_in_at ?? null;
+
+      const isBanned =
+        typeof bannedUntil === "string" && bannedUntil.length > 0
+          ? new Date(bannedUntil).getTime() > Date.now()
+          : false;
+
+      const invitePending =
+        typeof invitedAt === "string" &&
+        invitedAt.length > 0 &&
+        (lastSignIn == null || lastSignIn === "") &&
+        (confirmedAt == null || confirmedAt === "");
+
+      const status = isBanned || p.is_active === false
+        ? "suspended"
+        : invitePending
+          ? "invite_pending"
+          : "active";
+
+      return {
+        ...p,
+        auth: {
+          invited_at: invitedAt,
+          last_sign_in_at: lastSignIn,
+          banned_until: bannedUntil,
+        },
+        status,
+      };
+    })
+  );
+
+  return apiOk({ users: enriched });
 }

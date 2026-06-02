@@ -91,7 +91,8 @@ export async function GET(request: NextRequest) {
   let query = admin
     .from("purchase_orders")
     .select(LIST_SELECT, { count: "exact" })
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false);
 
   if (status && status !== "all") {
     if (!PO_STATUSES.has(status)) {

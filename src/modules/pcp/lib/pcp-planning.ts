@@ -288,6 +288,7 @@ export async function fetchPcpPlanning(
           "id, sales_order_item_id, line_id, status, production_start, production_end, completed_at, quality_control, production_notes, pcp_deadline"
         )
         .eq("tenant_id", tenantId)
+        .eq("is_suggestion", false)
         .in("sales_order_item_id", itemIds);
       if (oiErr) throw new Error(oiErr.message);
       for (const oi of oiRows ?? []) {
@@ -326,6 +327,7 @@ export async function fetchPcpPlanning(
           "id, sales_order_item_id, purchase_order_id, quantity, received_quantity, expected_delivery_date, follow_up_date, actual_delivery_date, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(status, expected_delivery)"
         )
         .eq("tenant_id", tenantId)
+        .eq("is_suggestion", false)
         .in("sales_order_item_id", itemIds);
       if (poiErr) throw new Error(poiErr.message);
 
@@ -383,6 +385,7 @@ export async function fetchPcpPlanning(
         .from("production_orders")
         .select("id, order_number")
         .eq("tenant_id", tenantId)
+        .eq("is_suggestion", false)
         .in("id", opIds);
       if (prErr) throw new Error(prErr.message);
       for (const p of prRows ?? []) {

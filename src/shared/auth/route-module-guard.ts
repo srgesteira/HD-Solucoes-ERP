@@ -11,6 +11,7 @@ export type MiddlewareAccessProfile = {
   role: string | null;
   enabled_modules: string[] | null;
   permissions: Json | null;
+  is_active?: boolean | null;
 };
 
 /** Prefixo de rota → chave PT em `enabled_modules` (ordem: prefixos mais longos primeiro). */

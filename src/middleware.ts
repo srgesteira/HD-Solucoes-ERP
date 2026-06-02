@@ -9,8 +9,10 @@ import {
 const PUBLIC_PATHS = new Set<string>([
   "/login",
   "/auth/callback",
+  "/activate",
   "/reset-password",
   "/update-password",
+  "/set-password",
   "/privacy",
 ]);
 
@@ -73,6 +75,9 @@ export async function middleware(request: NextRequest) {
     const requiredModule = requiredMenuModuleForPath(pathname);
     if (requiredModule) {
       const profile = await loadMiddlewareAccessProfile(user.id);
+      if (profile && profile.is_active === false) {
+        return NextResponse.redirect(`${origin}/login?suspended=1`);
+      }
       if (
         profile &&
         !profileCanAccessMenuModule(profile, requiredModule)

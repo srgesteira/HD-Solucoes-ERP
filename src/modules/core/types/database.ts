@@ -1573,6 +1573,7 @@ export type Database = {
           description: string
           estimated_hours: number | null
           id: string
+          is_suggestion: boolean
           item_number: number | null
           line_id: string | null
           notes: string | null
@@ -1598,6 +1599,7 @@ export type Database = {
           description: string
           estimated_hours?: number | null
           id?: string
+          is_suggestion?: boolean
           item_number?: number | null
           line_id?: string | null
           notes?: string | null
@@ -1623,6 +1625,7 @@ export type Database = {
           description?: string
           estimated_hours?: number | null
           id?: string
+          is_suggestion?: boolean
           item_number?: number | null
           line_id?: string | null
           notes?: string | null
@@ -2256,11 +2259,13 @@ export type Database = {
           finished_at: string | null
           folder_path: string | null
           id: string
+          is_suggestion: boolean
           notes: string | null
           order_number: string
           pcp_deadline: string | null
           pdf_path: string | null
           production_deadline: string | null
+          source_kind: string
           status: string
           tenant_id: string
           updated_at: string
@@ -2275,11 +2280,13 @@ export type Database = {
           finished_at?: string | null
           folder_path?: string | null
           id?: string
+          is_suggestion?: boolean
           notes?: string | null
           order_number: string
           pcp_deadline?: string | null
           pdf_path?: string | null
           production_deadline?: string | null
+          source_kind?: string
           status?: string
           tenant_id: string
           updated_at?: string
@@ -2294,11 +2301,13 @@ export type Database = {
           finished_at?: string | null
           folder_path?: string | null
           id?: string
+          is_suggestion?: boolean
           notes?: string | null
           order_number?: string
           pcp_deadline?: string | null
           pdf_path?: string | null
           production_deadline?: string | null
+          source_kind?: string
           status?: string
           tenant_id?: string
           updated_at?: string
@@ -2521,6 +2530,7 @@ export type Database = {
           icms_rate: number
           icms_value: number
           id: string
+          is_suggestion: boolean
           ipi_rate: number
           ipi_value: number
           need_date: string | null
@@ -2552,6 +2562,7 @@ export type Database = {
           icms_rate?: number
           icms_value?: number
           id?: string
+          is_suggestion?: boolean
           ipi_rate?: number
           ipi_value?: number
           need_date?: string | null
@@ -2583,6 +2594,7 @@ export type Database = {
           icms_rate?: number
           icms_value?: number
           id?: string
+          is_suggestion?: boolean
           ipi_rate?: number
           ipi_value?: number
           need_date?: string | null
@@ -2680,6 +2692,7 @@ export type Database = {
           id: string
           insurance_cost: number
           internal_notes: string | null
+          is_suggestion: boolean
           notes: string | null
           order_date: string
           other_costs: number
@@ -2715,6 +2728,7 @@ export type Database = {
           id?: string
           insurance_cost?: number
           internal_notes?: string | null
+          is_suggestion?: boolean
           notes?: string | null
           order_date?: string
           other_costs?: number
@@ -2750,6 +2764,7 @@ export type Database = {
           id?: string
           insurance_cost?: number
           internal_notes?: string | null
+          is_suggestion?: boolean
           notes?: string | null
           order_date?: string
           other_costs?: number

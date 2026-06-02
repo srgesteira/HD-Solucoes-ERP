@@ -89,6 +89,7 @@ export async function issueRequisitionsAsPurchaseOrder(
       "id, product_id, description, quantity, unit, unit_price, trace_key, follow_up_date, purchase_order_id, status"
     )
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .in("id", ids);
 
   if (itemErr) throw new Error(itemErr.message);

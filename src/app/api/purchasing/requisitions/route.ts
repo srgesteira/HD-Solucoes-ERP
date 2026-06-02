@@ -72,6 +72,7 @@ export async function PATCH(request: NextRequest) {
     .update({ follow_up_date: followUp })
     .eq("id", id)
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .eq("status", "draft")
     .is("purchase_order_id", null)
     .select("id, follow_up_date")

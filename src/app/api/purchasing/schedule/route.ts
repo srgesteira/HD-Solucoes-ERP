@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
          )`
       )
       .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
       .is("purchase_order_id", null)
       .eq("status", "draft")
       .not("sales_order_item_id", "is", null)
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest) {
        )`
     )
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .not("purchase_order_id", "is", null)
     .order("created_at", { ascending: false })
     .limit(500);

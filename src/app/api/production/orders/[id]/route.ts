@@ -57,6 +57,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     .select(ORDER_DETAIL_SELECT)
     .eq("id", id)
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .maybeSingle();
 
   if (orderError) {

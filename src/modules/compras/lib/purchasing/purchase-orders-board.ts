@@ -58,6 +58,7 @@ export async function fetchPurchaseOrdersBoard(
     `
     )
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .order("order_date", { ascending: false });
 
   if (bucket === "open") {
