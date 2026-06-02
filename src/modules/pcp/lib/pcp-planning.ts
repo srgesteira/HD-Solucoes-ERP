@@ -4,6 +4,12 @@ import type { PcpItemOriginKind } from "@/modules/pcp/lib/pcp-item-origin";
 import { resolvePcpItemOrigin } from "@/modules/pcp/lib/pcp-item-origin";
 import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-production-status";
 import { subtractDays } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
+import {
+  EMPTY_PLANNING_QUALITY_FINISH,
+  loadQualityFinishBlockSummaries,
+  planningFieldsFromSummary,
+  type PlanningQualityFinishFields,
+} from "@/modules/producao/lib/quality-finish-blocks";
 
 type Admin = SupabaseClient<Database>;
 
@@ -56,7 +62,7 @@ export type PcpPlanningItem = {
   origin: string;
   origin_kind: PcpItemOriginKind;
   origin_label: string;
-};
+} & PlanningQualityFinishFields;
 
 export type PcpPlanningOrder = {
   id: string;
@@ -509,6 +515,7 @@ export async function fetchPcpPlanning(
         origin: origin.origin,
         origin_kind: origin.kind,
         origin_label: origin.label,
+        ...EMPTY_PLANNING_QUALITY_FINISH,
       });
     }
 
@@ -552,7 +559,43 @@ export async function fetchPcpPlanning(
   );
   result.push(...stockOrders);
 
+  await enrichPlanningOrdersWithQualityFinishBlocks(admin, tenantId, result);
+
   return result;
+}
+
+async function enrichPlanningOrdersWithQualityFinishBlocks(
+  admin: Admin,
+  tenantId: string,
+  orders: PcpPlanningOrder[]
+): Promise<void> {
+  const orderItemIds: string[] = [];
+  for (const ord of orders) {
+    for (const it of ord.items) {
+      if (it.order_item_id) orderItemIds.push(it.order_item_id);
+    }
+  }
+  if (orderItemIds.length === 0) return;
+
+  const summaries = await loadQualityFinishBlockSummaries(
+    admin,
+    tenantId,
+    orderItemIds
+  );
+
+  for (const ord of orders) {
+    for (let i = 0; i < ord.items.length; i++) {
+      const it = ord.items[i];
+      if (!it.order_item_id) {
+        ord.items[i] = { ...it, ...EMPTY_PLANNING_QUALITY_FINISH };
+        continue;
+      }
+      const fields = planningFieldsFromSummary(
+        summaries.get(it.order_item_id)
+      );
+      ord.items[i] = { ...it, ...fields };
+    }
+  }
 }
 
 async function fetchStockOrdersForPlanning(
@@ -692,6 +735,7 @@ async function fetchStockOrdersForPlanning(
         origin_kind: stockOrigin,
         origin_label: "OP Estoque",
         order_source: "stock",
+        ...EMPTY_PLANNING_QUALITY_FINISH,
       });
     }
 

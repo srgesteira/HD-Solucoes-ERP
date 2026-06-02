@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { getActiveQualityFinishBlock } from "@/modules/producao/lib/quality-finish-blocks";
 
 export type LineApontamentoStatus = "not_started" | "in_progress" | "finished";
 
@@ -46,14 +47,20 @@ export type FinishProductionGateResult =
   | { allowed: true }
   | { allowed: false; reason: string; code?: string };
 
-/**
- * Portão para finalizar produção (Etapa C: CQ poderá bloquear aqui).
- * Hoje sempre permite.
- */
+/** Portão para finalizar produção — recusa se CQ tiver bloqueio ativo. */
 export async function assertCanFinishProduction(
-  _admin: SupabaseClient<Database>,
-  _tenantId: string,
-  _orderItemId: string
+  admin: SupabaseClient<Database>,
+  tenantId: string,
+  orderItemId: string
 ): Promise<FinishProductionGateResult> {
-  return { allowed: true };
+  const active = await getActiveQualityFinishBlock(admin, tenantId, orderItemId);
+  if (!active) return { allowed: true };
+
+  const motivo = active.block_reason.trim();
+  const reason =
+    motivo.length > 0
+      ? `Finalização bloqueada pelo Controle de Qualidade: ${motivo}`
+      : "Finalização bloqueada pelo Controle de Qualidade.";
+
+  return { allowed: false, reason, code: "cq_blocked" };
 }

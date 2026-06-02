@@ -46,11 +46,20 @@ type Props = {
   /** Histórico: só leitura, sem edição nem conclusão. */
   readOnly?: boolean;
   emptyMessage?: string;
+  /** Tela do CQ: coluna extra e acções bloquear/liberar. */
+  qualityControlMode?: boolean;
+  onBlockFinish?: (orderItemId: string) => void;
+  onReleaseFinish?: (orderItemId: string) => void;
+  onShowCqHistory?: (orderItemId: string, label: string) => void;
+  cqActionPending?: boolean;
 };
 
 /** Pedido, Cliente, Cód., Descrição, Qtd, Origem, Prazo PCP, PC entrega, Início/Fim plano, Obs., Apontamento */
 const LINE_GRID_COLS =
   "minmax(72px,0.75fr) minmax(80px,1fr) minmax(64px,0.7fr) minmax(100px,1.25fr) 40px minmax(56px,0.55fr) 76px 76px 76px 76px minmax(72px,1fr) minmax(140px,1.35fr)";
+
+const LINE_GRID_COLS_CQ =
+  "minmax(72px,0.75fr) minmax(80px,1fr) minmax(64px,0.7fr) minmax(100px,1.25fr) 40px minmax(56px,0.55fr) 76px 76px 76px 76px minmax(72px,1fr) minmax(120px,1.2fr) minmax(100px,0.95fr)";
 
 export function PcpLinesLegacyPanel({
   lines = [],
@@ -66,7 +75,14 @@ export function PcpLinesLegacyPanel({
   apontamentoPending,
   readOnly = false,
   emptyMessage,
+  qualityControlMode = false,
+  onBlockFinish,
+  onReleaseFinish,
+  onShowCqHistory,
+  cqActionPending = false,
 }: Props) {
+  const gridCols = qualityControlMode ? LINE_GRID_COLS_CQ : LINE_GRID_COLS;
+
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-3 sm:px-4 py-3 border-b border-slate-200 flex flex-wrap items-center gap-3">
@@ -92,10 +108,10 @@ export function PcpLinesLegacyPanel({
       </div>
 
       <div className="overflow-x-auto">
-        <div className="min-w-[1040px]">
+        <div className={qualityControlMode ? "min-w-[1160px]" : "min-w-[1040px]"}>
           <div
             className="grid gap-1 px-3 py-2 text-[11px] font-semibold text-slate-500 border-b border-slate-200 bg-slate-50/80 items-center"
-            style={{ gridTemplateColumns: LINE_GRID_COLS }}
+            style={{ gridTemplateColumns: gridCols }}
           >
             <span>Pedido</span>
             <span>Cliente</span>
@@ -113,6 +129,9 @@ export function PcpLinesLegacyPanel({
             </span>
             <span>Obs.</span>
             <span className="text-center">Apontamento</span>
+            {qualityControlMode ? (
+              <span className="text-center">CQ</span>
+            ) : null}
           </div>
 
           {rows.length === 0 ? (
@@ -153,7 +172,14 @@ export function PcpLinesLegacyPanel({
                 it.max_purchase_delivery_date ??
                 it.purchase_order_expected_delivery;
               const pcRisk = it.purchase_risk;
+              const cqBlocked = it.cq_finish_block_active === true;
+              const cqReason = it.cq_finish_block_reason?.trim() ?? "";
+              const priorBlocks = it.cq_finish_blocks_released_count ?? 0;
+
               const rowBg =
+                (cqBlocked && !qualityControlMode
+                  ? "bg-amber-50/90"
+                  : null) ||
                 lineRowDelayClass(pcpDeadline, prodEnd || null, completed) ||
                 (idx % 2 === 0 ? "bg-white" : "bg-slate-50");
 
@@ -161,7 +187,7 @@ export function PcpLinesLegacyPanel({
                 <div
                   key={`${it.id}-${idx}`}
                   className={`grid gap-1 px-3 py-1.5 text-[10px] sm:text-xs items-center border-b border-slate-100 ${rowBg}`}
-                  style={{ gridTemplateColumns: LINE_GRID_COLS }}
+                  style={{ gridTemplateColumns: gridCols }}
                 >
                   <span className="font-mono truncate font-medium text-slate-800">
                     {it.order_number}
@@ -281,6 +307,26 @@ export function PcpLinesLegacyPanel({
                     )}
                   </span>
                   <span className="min-w-0 flex flex-col gap-1 py-0.5">
+                    {cqBlocked && !qualityControlMode ? (
+                      <span
+                        className="inline-flex w-fit items-center rounded border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-900"
+                        title={
+                          cqReason
+                            ? `Motivo: ${cqReason}`
+                            : "Bloqueado pelo Controle de Qualidade"
+                        }
+                      >
+                        Bloqueado CQ
+                      </span>
+                    ) : null}
+                    {cqBlocked && !qualityControlMode && cqReason ? (
+                      <span
+                        className="text-[9px] text-amber-900 leading-snug line-clamp-2"
+                        title={cqReason}
+                      >
+                        {cqReason}
+                      </span>
+                    ) : null}
                     <span
                       className={`text-[10px] font-semibold ${
                         apontStatus === "finished"
@@ -325,7 +371,14 @@ export function PcpLinesLegacyPanel({
                             type="button"
                             size="sm"
                             className="h-6 px-2 text-[10px]"
-                            disabled={apontamentoPending}
+                            disabled={apontamentoPending || cqBlocked}
+                            title={
+                              cqBlocked
+                                ? cqReason
+                                  ? `Finalização bloqueada pelo CQ: ${cqReason}`
+                                  : "Finalização bloqueada pelo Controle de Qualidade"
+                                : undefined
+                            }
                             onClick={() => onFinishProduction(it.order_item_id!)}
                           >
                             Finalizar produção
@@ -334,6 +387,88 @@ export function PcpLinesLegacyPanel({
                       </div>
                     ) : null}
                   </span>
+                  {qualityControlMode ? (
+                    <span className="min-w-0 flex flex-col gap-1 py-0.5 items-center text-center">
+                      <span
+                        className={`text-[10px] font-semibold ${
+                          cqBlocked ? "text-amber-800" : "text-emerald-700"
+                        }`}
+                      >
+                        {cqBlocked ? "Bloqueado" : "Liberado"}
+                      </span>
+                      {priorBlocks > 0 ? (
+                        <button
+                          type="button"
+                          className="text-[9px] text-brand-700 underline disabled:opacity-50"
+                          disabled={!it.order_item_id || !onShowCqHistory}
+                          onClick={() => {
+                            if (!it.order_item_id || !onShowCqHistory) return;
+                            onShowCqHistory(
+                              it.order_item_id,
+                              `${it.order_number} · ${it.product_name}`
+                            );
+                          }}
+                        >
+                          {priorBlocks === 1
+                            ? "1 bloqueio anterior"
+                            : `${priorBlocks} bloqueios anteriores`}
+                        </button>
+                      ) : (
+                        <span className="text-[9px] text-slate-500">
+                          Sem bloqueios anteriores
+                        </span>
+                      )}
+                      {it.order_item_id && onShowCqHistory ? (
+                        <button
+                          type="button"
+                          className="text-[9px] text-slate-600 underline"
+                          onClick={() =>
+                            onShowCqHistory(
+                              it.order_item_id!,
+                              `${it.order_number} · ${it.product_name}`
+                            )
+                          }
+                        >
+                          Ver histórico completo
+                        </button>
+                      ) : null}
+                      {!readOnly && it.order_item_id && apontStatus !== "finished" ? (
+                        <div className="flex flex-wrap gap-1 justify-center pt-0.5">
+                          {cqBlocked ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px] border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                              disabled={cqActionPending}
+                              onClick={() => onReleaseFinish?.(it.order_item_id!)}
+                            >
+                              Liberar
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px] border-amber-300 text-amber-900 hover:bg-amber-50"
+                              disabled={cqActionPending}
+                              onClick={() => onBlockFinish?.(it.order_item_id!)}
+                            >
+                              Bloquear fim
+                            </Button>
+                          )}
+                        </div>
+                      ) : null}
+                      {cqBlocked && cqReason ? (
+                        <span
+                          className="text-[9px] text-amber-900 leading-snug line-clamp-3 w-full"
+                          title={cqReason}
+                        >
+                          {cqReason}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : null}
                 </div>
               );
             })
