@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
+import { propagateComponentCostChange } from "@/modules/engenharia/lib/products/propagate-component-cost";
 import { computeLandedUnitCost } from "@/modules/compras/lib/purchasing/landed-unit-cost";
 import { num } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 
@@ -74,6 +75,7 @@ export async function applyPurchaseOrderReceive(
   };
 
   let productsCostUpdated = 0;
+  const propagatedProductIds = new Set<string>();
 
   for (const item of rows) {
     const qty = num(item.quantity);
@@ -104,7 +106,12 @@ export async function applyPurchaseOrderReceive(
         notes: `Recebimento pedido de compra (${orderId}) — custo com IPI e despesas rateadas`,
       });
       productsCostUpdated += 1;
+      propagatedProductIds.add(item.product_id);
     }
+  }
+
+  for (const productId of propagatedProductIds) {
+    await propagateComponentCostChange(admin, tenantId, productId);
   }
 
   return {

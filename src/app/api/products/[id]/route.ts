@@ -19,6 +19,8 @@ import {
 } from "@/modules/engenharia/lib/products/prefix-classification";
 import { productTypeFromPrefixCode } from "@/modules/engenharia/lib/products/product-type-from-prefix";
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
+import { propagateComponentCostChange } from "@/modules/engenharia/lib/products/propagate-component-cost";
+import { roundBomCost } from "@/modules/engenharia/lib/products/bom-unit-cost-sync";
 import { resolveMoProductCostPrice } from "@/modules/engenharia/lib/products/mo-cost-price";
 import { productNatureFromPrefixCode } from "@/modules/engenharia/lib/products/mrp-product-nature";
 import {
@@ -415,6 +417,21 @@ export async function PUT(request: NextRequest, { params }: Params) {
           500
         );
       }
+    }
+  }
+
+  const prevCostPrice = roundBomCost(Number(existingProduct.cost_price ?? 0));
+  const nextCostPrice = roundBomCost(Number(data.cost_price ?? 0));
+  if (nextCostPrice !== prevCostPrice) {
+    try {
+      await propagateComponentCostChange(admin, tenantId, productId);
+    } catch (propErr) {
+      return apiError(
+        propErr instanceof Error
+          ? propErr.message
+          : "Erro ao propagar custo na estrutura (BOM).",
+        500
+      );
     }
   }
 
