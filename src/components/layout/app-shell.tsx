@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   BarChart2,
   BookOpen,
-  Boxes,
   Building2,
   Calculator,
   CalendarDays,
@@ -31,7 +30,6 @@ import {
   LogOut,
   Menu,
   Package,
-  PenTool,
   Percent,
   PieChart,
   Ruler,
@@ -174,18 +172,6 @@ const MENU_STRUCTURE: NavEntry[] = [
     module: "production",
     children: [
       {
-        title: "Ordens de produção",
-        href: "/production/orders",
-        icon: Package,
-        module: "production",
-      },
-      {
-        title: "Apontamento de produção",
-        href: "/production/timesheet",
-        icon: PenTool,
-        module: "production",
-      },
-      {
         title: "Controle de qualidade (CQ)",
         href: "/production/quality-control",
         icon: ClipboardCheck,
@@ -197,13 +183,6 @@ const MENU_STRUCTURE: NavEntry[] = [
         href: "/production/dashboard",
         icon: LayoutDashboard,
         module: "production",
-      },
-      {
-        title: "MRP",
-        href: "/mrp",
-        icon: Boxes,
-        module: "mrp",
-        anyOf: ["mrp", "production", "logistics"],
       },
     ],
   },
