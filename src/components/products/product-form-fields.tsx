@@ -117,6 +117,7 @@ export function ProductFormFields({
   >([]);
   const [plLoading, setPlLoading] = useState(false);
   const [addFamilyOpen, setAddFamilyOpen] = useState(false);
+  const [familiesLoading, setFamiliesLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,21 +128,14 @@ export function ProductFormFields({
         cache: "no-store",
       };
       try {
-        const [pr, fa, ma] = await Promise.all([
+        const [pr, ma] = await Promise.all([
           fetch("/api/products/prefixes", fetchOpts),
-          fetch("/api/products/families", fetchOpts),
           fetch("/api/products/materials", fetchOpts),
         ]);
         let jpr: { data?: ClassListRow[] } = {};
-        let jfa: { data?: ClassListRow[] } = {};
         let jma: { data?: ClassListRow[] } = {};
         try {
           jpr = (await pr.json()) as { data?: ClassListRow[] };
-        } catch {
-          /* ignore */
-        }
-        try {
-          jfa = (await fa.json()) as { data?: ClassListRow[] };
         } catch {
           /* ignore */
         }
@@ -152,7 +146,6 @@ export function ProductFormFields({
         }
         if (cancelled) return;
         if (pr.ok) setPrefixes(jpr.data ?? []);
-        if (fa.ok) setFamilies(jfa.data ?? []);
         if (ma.ok) setMaterials(jma.data ?? []);
       } finally {
         if (!cancelled) setBaseLoading(false);
@@ -162,6 +155,47 @@ export function ProductFormFields({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const prefixId = formData.prefix_id?.trim();
+    if (!prefixId) {
+      setFamilies([]);
+      setFamiliesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setFamiliesLoading(true);
+      try {
+        const res = await fetch(
+          `/api/products/families?prefix_id=${encodeURIComponent(prefixId)}`,
+          { credentials: "include", cache: "no-store" }
+        );
+        let json: { data?: ClassListRow[] } = {};
+        try {
+          json = (await res.json()) as { data?: ClassListRow[] };
+        } catch {
+          /* ignore */
+        }
+        if (cancelled) return;
+        const list = res.ok ? (json.data ?? []) : [];
+        setFamilies(list);
+        if (
+          formData.family_id &&
+          !list.some((f) => f.id === formData.family_id)
+        ) {
+          onChange("family_id", "");
+          onChange("subfamily_id", "");
+        }
+      } finally {
+        if (!cancelled) setFamiliesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset só ao mudar sufixo
+  }, [formData.prefix_id]);
 
   useEffect(() => {
     const fid = formData.family_id?.trim();
@@ -321,7 +355,7 @@ export function ProductFormFields({
               variant="outline"
               size="sm"
               className="h-7 px-2 text-xs shrink-0"
-              disabled={classFieldsDisabled}
+              disabled={classFieldsDisabled || !formData.prefix_id}
               onClick={() => setAddFamilyOpen(true)}
             >
               <Plus className="h-3.5 w-3.5 mr-1" aria-hidden />
@@ -348,9 +382,10 @@ export function ProductFormFields({
             ou <span className="font-mono text-slate-900">MO-A10-001</span>. A
             parte <span className="font-mono">-001</span> é a{" "}
             <strong>sequência</strong>, gerada ao guardar. A natureza MRP é
-            derivada automaticamente do prefixo seleccionado. Use{" "}
-            <strong>Adicionar família</strong> para cadastrar famílias de qualquer
-            sufixo; em HD1–HD3/AC também seleccione família e sub-família. Ou
+            derivada automaticamente do prefixo seleccionado. As famílias são{" "}
+            <strong>por sufixo</strong> (HD1–HD3/AC partilham um catálogo; MP e
+            outros sufixos simplificados têm o seu). Use{" "}
+            <strong>Adicionar família</strong> no sufixo seleccionado. Ou
             cadastre em{" "}
             <Link
               href="/settings/product-families"
@@ -373,6 +408,8 @@ export function ProductFormFields({
               onChange={(e) => {
                 const v = e.target.value;
                 onChange("prefix_id", v);
+                onChange("family_id", "");
+                onChange("subfamily_id", "");
                 const nextP = prefixes.find((x) => x.id === v);
                 const nextCode = nextP?.code ?? "";
                 if (isSimplifiedClassificationSuffix(nextCode)) {
@@ -409,14 +446,22 @@ export function ProductFormFields({
                 id="family_id"
                 className={SELECT_CLASS}
                 required={needsCompleteClassification}
-                disabled={classFieldsDisabled}
+                disabled={
+                  classFieldsDisabled || familiesLoading || !formData.prefix_id
+                }
                 value={formData.family_id}
                 onChange={(e) => {
                   onChange("family_id", e.target.value);
                   onChange("subfamily_id", "");
                 }}
               >
-                <option value="">Selecionar…</option>
+                <option value="">
+                  {familiesLoading
+                    ? "A carregar famílias…"
+                    : families.length === 0
+                      ? "Nenhuma família — use Adicionar família"
+                      : "Selecionar…"}
+                </option>
                 {families.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.code} — {p.name}
@@ -425,9 +470,14 @@ export function ProductFormFields({
               </select>
               {!needsCompleteClassification ? (
                 <p className="text-xs text-slate-500">
-                  Opcional neste sufixo (código usa material + acabamento).
+                  Catálogo só deste sufixo (ex.: MP). Opcional no código técnico
+                  (material + acabamento).
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Catálogo HD1 / HD2 / HD3 / AC (partilhado).
+                </p>
+              )}
             </div>
           ) : null}
 
@@ -798,6 +848,12 @@ export function ProductFormFields({
 
       <QuickAddProductFamilyDialog
         open={addFamilyOpen}
+        prefixId={formData.prefix_id}
+        prefixLabel={
+          selectedPrefix
+            ? `${selectedPrefix.code} — ${selectedPrefix.name}`
+            : "—"
+        }
         onClose={() => setAddFamilyOpen(false)}
         onCreated={(row) => {
           setFamilies((prev) => {

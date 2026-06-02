@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { familyCatalogUsesSharedCompletePrefix } from "@/modules/engenharia/lib/products/family-prefix-scope";
 import {
   isCompleteClassificationSuffix,
   isMoClassificationSuffix,
@@ -72,6 +73,40 @@ export function requireNonMoClassificationFields(ids: {
   finish_id?: string | null;
 }): string | null {
   return requireCompleteClassificationFields(ids);
+}
+
+/** Família opcional deve pertencer ao sufixo do produto. */
+export async function assertFamilyMatchesProductPrefix(
+  admin: SupabaseClient<Database>,
+  tenantId: string,
+  prefixId: string,
+  familyId: string
+): Promise<string | null> {
+  const { data: p } = await admin
+    .from("product_prefixes")
+    .select("id,code")
+    .eq("id", prefixId)
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (!p) return "Prefixo inválido ou inactivo para este tenant.";
+
+  let famQ = admin
+    .from("product_families")
+    .select("id")
+    .eq("id", familyId)
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true);
+
+  famQ = familyCatalogUsesSharedCompletePrefix(p.code)
+    ? famQ.is("prefix_id", null)
+    : famQ.eq("prefix_id", prefixId);
+
+  const { data: fam } = await famQ.maybeSingle();
+  if (!fam) {
+    return "Família inválida, inactiva ou não pertence a este sufixo.";
+  }
+  return null;
 }
 
 /** Valida prefixo simplificado + material + acabamento (sem família/subfamília). */
@@ -176,14 +211,22 @@ export async function assertProductClassificationTenant(
     return null;
   }
 
-  const { data: fam } = await admin
+  let famQ = admin
     .from("product_families")
-    .select("id")
+    .select("id,prefix_id")
     .eq("id", ids.family_id)
     .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (!fam) return "Família inválida ou inactiva para este tenant.";
+    .eq("is_active", true);
+
+  famQ = familyCatalogUsesSharedCompletePrefix(p.code)
+    ? famQ.is("prefix_id", null)
+    : famQ.eq("prefix_id", ids.prefix_id);
+
+  const { data: fam } = await famQ.maybeSingle();
+
+  if (!fam) {
+    return "Família inválida, inactiva ou não pertence a este sufixo.";
+  }
 
   const { data: sf } = await admin
     .from("product_subfamilies")

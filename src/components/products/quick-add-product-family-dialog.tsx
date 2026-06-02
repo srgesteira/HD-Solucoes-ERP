@@ -16,12 +16,16 @@ export type ProductFamilyListRow = {
 
 type Props = {
   open: boolean;
+  prefixId: string;
+  prefixLabel: string;
   onClose: () => void;
   onCreated: (row: ProductFamilyListRow) => void;
 };
 
 export function QuickAddProductFamilyDialog({
   open,
+  prefixId,
+  prefixLabel,
   onClose,
   onCreated,
 }: Props) {
@@ -53,6 +57,7 @@ export function QuickAddProductFamilyDialog({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          prefix_id: prefixId,
           code,
           name,
           description: description.trim() || null,
@@ -97,9 +102,9 @@ export function QuickAddProductFamilyDialog({
           Nova família
         </h3>
         <p className="text-xs text-slate-600 leading-relaxed">
-          Código curto usado no código técnico (ex.:{" "}
+          Sufixo: <strong>{prefixLabel}</strong>. Código curto (ex.:{" "}
           <span className="font-mono">A</span>, <span className="font-mono">B</span>
-          ). Letras e números, até 4 caracteres.
+          ), até 4 caracteres — só para este sufixo.
         </p>
 
         <div className="space-y-2">

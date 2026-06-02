@@ -91,9 +91,8 @@ export function ProductCommercialQuickCreateModal({
     (async () => {
       setLoading(true);
       try {
-        const [pfx, fam, mat] = await Promise.all([
+        const [pfx, mat] = await Promise.all([
           fetchJson<ClassRow[]>("/api/products/prefixes"),
-          fetchJson<ClassRow[]>("/api/products/families"),
           fetchJson<ClassRow[]>("/api/products/materials"),
         ]);
         if (cancelled) return;
@@ -101,7 +100,6 @@ export function ProductCommercialQuickCreateModal({
           ["HD1", "HD2", "HD3", "AC"].includes(p.code.toUpperCase())
         );
         setPrefixes(finishedPrefixes.length ? finishedPrefixes : pfx);
-        setFamilies(fam);
         setMaterials(mat);
         const defaultPfx =
           finishedPrefixes.find((p) => p.code === "HD1") ?? finishedPrefixes[0];
@@ -116,6 +114,34 @@ export function ProductCommercialQuickCreateModal({
       cancelled = true;
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !prefixId) {
+      setFamilies([]);
+      setFamilyId("");
+      setSubfamilyId("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const fam = await fetchJson<ClassRow[]>(
+          `/api/products/families?prefix_id=${encodeURIComponent(prefixId)}`
+        );
+        if (cancelled) return;
+        setFamilies(fam);
+        if (familyId && !fam.some((f) => f.id === familyId)) {
+          setFamilyId("");
+          setSubfamilyId("");
+        }
+      } catch {
+        if (!cancelled) setFamilies([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, prefixId]);
 
   useEffect(() => {
     if (!open || !familyId) {

@@ -1914,6 +1914,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          prefix_id: string | null
           sort_order: number
           tenant_id: string
           updated_at: string
@@ -1925,6 +1926,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          prefix_id?: string | null
           sort_order?: number
           tenant_id: string
           updated_at?: string
@@ -1936,11 +1938,19 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          prefix_id?: string | null
           sort_order?: number
           tenant_id?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "product_families_prefix_id_fkey"
+            columns: ["prefix_id"]
+            isOneToOne: false
+            referencedRelation: "product_prefixes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "product_families_tenant_id_fkey"
             columns: ["tenant_id"]

@@ -19,6 +19,7 @@ import {
   productCreateSchema,
 } from "@/shared/contracts/product.schema";
 import {
+  assertFamilyMatchesProductPrefix,
   assertProductClassificationTenant,
   assertSimplifiedProductClassificationTenant,
   requireCompleteClassificationFields,
@@ -247,6 +248,15 @@ export async function POST(request: NextRequest) {
     );
     if (simpleErr) {
       return apiError(simpleErr, 400);
+    }
+    if (validated.family_id?.trim()) {
+      const famErr = await assertFamilyMatchesProductPrefix(
+        admin,
+        tenantId,
+        validated.prefix_id,
+        validated.family_id.trim()
+      );
+      if (famErr) return apiError(famErr, 400);
     }
   }
 
