@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import type { PcpItemOriginKind } from "@/modules/pcp/lib/pcp-item-origin";
 import { resolvePcpItemOrigin } from "@/modules/pcp/lib/pcp-item-origin";
+import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-production-status";
 import { subtractDays } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
 
 type Admin = SupabaseClient<Database>;
@@ -38,9 +39,13 @@ export type PcpPlanningItem = {
   production_completed_at: string | null;
   production_start: string | null;
   production_end: string | null;
+  apontamento_start_at: string | null;
+  apontamento_end_at: string | null;
   quality_control: string | null;
   production_notes: string | null;
   can_start_production: boolean;
+  /** Pedido de venda vs OP de estoque (Etapa A/B). */
+  order_source: "sales" | "stock";
   product_type: string | null;
   product_nature: string | null;
   has_composition: boolean;
@@ -59,6 +64,7 @@ export type PcpPlanningOrder = {
   client_name: string;
   created_at: string;
   status: string;
+  order_source: "sales" | "stock";
   ready_for_invoice: boolean;
   /** Prazo prometido ao cliente (`sales_orders.expected_delivery`). */
   expected_delivery: string | null;
@@ -274,6 +280,8 @@ export async function fetchPcpPlanning(
         status: string | null;
         production_start: string | null;
         production_end: string | null;
+        apontamento_start_at: string | null;
+        apontamento_end_at: string | null;
         completed_at: string | null;
         quality_control: string | null;
         production_notes: string | null;
@@ -285,7 +293,7 @@ export async function fetchPcpPlanning(
       const { data: oiRows, error: oiErr } = await admin
         .from("order_items")
         .select(
-          "id, sales_order_item_id, line_id, status, production_start, production_end, completed_at, quality_control, production_notes, pcp_deadline"
+          "id, sales_order_item_id, line_id, status, production_start, production_end, apontamento_start_at, apontamento_end_at, completed_at, quality_control, production_notes, pcp_deadline"
         )
         .eq("tenant_id", tenantId)
         .eq("is_suggestion", false)
@@ -299,6 +307,8 @@ export async function fetchPcpPlanning(
           status: oi.status,
           production_start: oi.production_start,
           production_end: oi.production_end,
+          apontamento_start_at: oi.apontamento_start_at ?? null,
+          apontamento_end_at: oi.apontamento_end_at ?? null,
           completed_at: oi.completed_at ?? null,
           quality_control: oi.quality_control ?? null,
           production_notes: oi.production_notes ?? null,
@@ -485,9 +495,12 @@ export async function fetchPcpPlanning(
         production_completed_at: oi?.completed_at ?? null,
         production_start: oi?.production_start ?? null,
         production_end: oi?.production_end ?? null,
+        apontamento_start_at: oi?.apontamento_start_at ?? null,
+        apontamento_end_at: oi?.apontamento_end_at ?? null,
         quality_control: oi?.quality_control ?? null,
         production_notes: oi?.production_notes ?? null,
         can_start_production: canStart,
+        order_source: "sales",
         product_type: prod?.type ?? null,
         product_nature: prod?.product_nature ?? null,
         has_composition: prod?.has_composition === true,
@@ -518,6 +531,7 @@ export async function fetchPcpPlanning(
       client_name: so.client_name,
       created_at: so.created_at,
       status: so.status,
+      order_source: "sales",
       ready_for_invoice: so.ready_for_invoice === true,
       /** Coluna «Prazo Vendas» — valor directo de `sales_orders.expected_delivery`. */
       expected_delivery: expectedDelivery,
@@ -529,7 +543,175 @@ export async function fetchPcpPlanning(
     });
   }
 
+  const stockOrders = await fetchStockOrdersForPlanning(
+    admin,
+    tenantId,
+    lineNameById,
+    inventoryByProduct,
+    hasBomByProduct
+  );
+  result.push(...stockOrders);
+
   return result;
+}
+
+async function fetchStockOrdersForPlanning(
+  admin: Admin,
+  tenantId: string,
+  lineNameById: Map<string, string>,
+  inventoryByProduct: Map<string, number>,
+  hasBomByProduct: Set<string>
+): Promise<PcpPlanningOrder[]> {
+  const { data: stockOps, error: opErr } = await admin
+    .from("production_orders")
+    .select("id, order_number, status, created_at, client_name")
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
+    .eq("source_kind", "stock")
+    .neq("status", "cancelled")
+    .order("created_at", { ascending: false });
+
+  if (opErr) throw new Error(opErr.message);
+  const ops = stockOps ?? [];
+  if (ops.length === 0) return [];
+
+  const opIds = ops.map((o) => o.id);
+  const { data: oiRows, error: oiErr } = await admin
+    .from("order_items")
+    .select(
+      `
+      id,
+      order_id,
+      item_number,
+      description,
+      quantity,
+      unit,
+      product_id,
+      line_id,
+      status,
+      production_start,
+      production_end,
+      apontamento_start_at,
+      apontamento_end_at,
+      completed_at,
+      quality_control,
+      production_notes,
+      pcp_deadline,
+      product:products!order_items_product_id_fkey(
+        id,
+        technical_code,
+        name,
+        type,
+        product_nature,
+        has_composition,
+        default_production_line_id
+      )
+    `
+    )
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
+    .in("order_id", opIds);
+
+  if (oiErr) throw new Error(oiErr.message);
+
+  const itemsByOp = new Map<string, typeof oiRows>();
+  for (const oi of oiRows ?? []) {
+    const list = itemsByOp.get(oi.order_id) ?? [];
+    list.push(oi);
+    itemsByOp.set(oi.order_id, list);
+  }
+
+  const out: PcpPlanningOrder[] = [];
+
+  for (const op of ops) {
+    const rows = itemsByOp.get(op.id) ?? [];
+    if (rows.length === 0) continue;
+
+    const itemRows: PcpPlanningItem[] = [];
+    let lineNum = 0;
+    for (const oi of rows) {
+      lineNum += 1;
+      const prod = oi.product as {
+        technical_code?: string;
+        name?: string;
+        type?: string;
+        product_nature?: string | null;
+        has_composition?: boolean;
+        default_production_line_id?: string | null;
+      } | null;
+      const lineId = oi.line_id ?? prod?.default_production_line_id ?? null;
+      const productId = oi.product_id;
+      const hasBom =
+        (productId != null && hasBomByProduct.has(productId)) ||
+        prod?.has_composition === true;
+      const origin = resolvePcpItemOrigin({
+        product_type: prod?.type ?? null,
+        product_nature: prod?.product_nature ?? null,
+        has_bom: hasBom,
+        has_composition: prod?.has_composition === true,
+      });
+      const stockOrigin: PcpPlanningItem["origin_kind"] =
+        origin.kind === "comprar" ? "estoque" : origin.kind;
+
+      itemRows.push({
+        id: `${op.id}-${oi.id}`,
+        line_number: oi.item_number ?? lineNum,
+        product_id: productId,
+        product_code: prod?.technical_code ?? null,
+        product_name: prod?.name ?? oi.description,
+        quantity: Number(oi.quantity ?? 0),
+        order_item_id: oi.id,
+        production_order_id: op.id,
+        op_number: op.order_number,
+        line_id: lineId,
+        line_name: lineId ? lineNameById.get(lineId) ?? null : null,
+        item_pcp_deadline: dateOnly(oi.pcp_deadline),
+        pcp_deadline: dateOnly(oi.pcp_deadline),
+        purchase_order_status: null,
+        purchase_order_id: null,
+        purchase_order_item_id: null,
+        purchase_order_expected_delivery: null,
+        max_purchase_delivery_date: null,
+        purchase_risk: null,
+        production_status: oi.status,
+        production_completed_at: oi.completed_at ?? null,
+        production_start: oi.production_start,
+        production_end: oi.production_end,
+        apontamento_start_at: oi.apontamento_start_at ?? null,
+        apontamento_end_at: oi.apontamento_end_at ?? null,
+        quality_control: oi.quality_control ?? null,
+        production_notes: oi.production_notes ?? null,
+        can_start_production: true,
+        product_type: prod?.type ?? null,
+        product_nature: prod?.product_nature ?? null,
+        has_composition: prod?.has_composition === true,
+        has_bom: hasBom,
+        quantity_on_hand:
+          productId != null ? (inventoryByProduct.get(productId) ?? 0) : 0,
+        origin: "Estoque",
+        origin_kind: stockOrigin,
+        origin_label: "OP Estoque",
+        order_source: "stock",
+      });
+    }
+
+    out.push({
+      id: op.id,
+      order_number: op.order_number,
+      client_name: op.client_name ?? "Estoque",
+      created_at: op.created_at,
+      status: op.status,
+      order_source: "stock",
+      ready_for_invoice: false,
+      expected_delivery: null,
+      delivery_deadline: null,
+      pcp_deadline: null,
+      production_deadline: computeOrderProductionDeadline(itemRows, null),
+      items: itemRows,
+    });
+  }
+
+  return out;
 }
 
 /** Itens activos por linha de produção (não finalizados). */
@@ -543,7 +725,18 @@ export async function fetchPcpPlanningByLine(
   for (const ord of orders) {
     for (const it of ord.items) {
       if (it.line_id !== lineId) continue;
-      if (it.production_end) continue;
+      if (
+        isOrderItemProductionFinished({
+          production_start: it.production_start,
+          production_end: it.production_end,
+          status: it.production_status,
+          completed_at: it.production_completed_at,
+          apontamento_start_at: it.apontamento_start_at,
+          apontamento_end_at: it.apontamento_end_at,
+        })
+      ) {
+        continue;
+      }
       out.push({
         ...it,
         product_name: `${ord.order_number} · ${it.product_name}`,

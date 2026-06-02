@@ -10,6 +10,12 @@ import {
 } from "@/modules/pcp/lib/pcp-order-display";
 import { pcpItemOriginClass } from "@/modules/pcp/lib/pcp-item-origin";
 import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-production-status";
+import {
+  formatApontamentoDateTime,
+  LINE_APONTAMENTO_STATUS_LABELS,
+  resolveLineApontamentoStatus,
+} from "@/modules/producao/lib/line-apontamento";
+import { Button } from "@/shared/ui/button";
 
 export type LineRow = PcpPlanningItem & {
   client_name: string;
@@ -34,16 +40,17 @@ type Props = {
     value: string | null
   ) => void;
   onNotes: (orderItemId: string, notes: string) => void;
-  onComplete: (orderItemId: string) => void;
-  completePending: boolean;
+  onStartProduction: (orderItemId: string) => void;
+  onFinishProduction: (orderItemId: string) => void;
+  apontamentoPending: boolean;
   /** Histórico: só leitura, sem edição nem conclusão. */
   readOnly?: boolean;
   emptyMessage?: string;
 };
 
-/** Pedido, Cliente, Cód., Descrição, Qtd, Origem, Prazo PCP, PC entrega, Início/Fim Prod., Obs., Ocorr., ✓ */
+/** Pedido, Cliente, Cód., Descrição, Qtd, Origem, Prazo PCP, PC entrega, Início/Fim plano, Obs., Apontamento */
 const LINE_GRID_COLS =
-  "minmax(72px,0.75fr) minmax(80px,1fr) minmax(64px,0.7fr) minmax(100px,1.25fr) 40px minmax(56px,0.55fr) 76px 76px 76px 76px minmax(72px,1fr) 56px 44px";
+  "minmax(72px,0.75fr) minmax(80px,1fr) minmax(64px,0.7fr) minmax(100px,1.25fr) 40px minmax(56px,0.55fr) 76px 76px 76px 76px minmax(72px,1fr) minmax(140px,1.35fr)";
 
 export function PcpLinesLegacyPanel({
   lines = [],
@@ -54,8 +61,9 @@ export function PcpLinesLegacyPanel({
   rows,
   onProgramDate,
   onNotes,
-  onComplete,
-  completePending,
+  onStartProduction,
+  onFinishProduction,
+  apontamentoPending,
   readOnly = false,
   emptyMessage,
 }: Props) {
@@ -97,11 +105,14 @@ export function PcpLinesLegacyPanel({
             <span className="text-center">Origem</span>
             <span className="text-center">Prazo PCP</span>
             <span className="text-center">PC entrega</span>
-            <span className="text-center">Início Prod.</span>
-            <span className="text-center">Fim Prod.</span>
+            <span className="text-center" title="Programação (plano)">
+              Início plano
+            </span>
+            <span className="text-center" title="Programação (plano)">
+              Fim plano
+            </span>
             <span>Obs.</span>
-            <span className="text-center">Ocorr.</span>
-            <span className="text-center">✓</span>
+            <span className="text-center">Apontamento</span>
           </div>
 
           {rows.length === 0 ? (
@@ -118,7 +129,19 @@ export function PcpLinesLegacyPanel({
                 production_end: it.production_end,
                 status: it.production_status,
                 completed_at: it.production_completed_at,
+                apontamento_start_at: it.apontamento_start_at,
+                apontamento_end_at: it.apontamento_end_at,
               });
+              const apontStatus = resolveLineApontamentoStatus({
+                apontamento_start_at: it.apontamento_start_at,
+                apontamento_end_at: it.apontamento_end_at,
+                completed_at: it.production_completed_at,
+                status: it.production_status,
+              });
+              const originLabel =
+                it.order_source === "stock"
+                  ? "OP Estoque"
+                  : (it.origin_label ?? it.origin ?? "Pedido");
               const pcpDeadline = effectiveLinePcpDeadline(
                 it,
                 it.order_pcp_deadline,
@@ -166,7 +189,7 @@ export function PcpLinesLegacyPanel({
                           : undefined
                     }
                   >
-                    {it.origin ?? it.origin_label}
+                    {originLabel}
                   </span>
                   <span
                     className={`text-center ${pcpDeadlineProximityClass(pcpDeadline)}`}
@@ -257,33 +280,59 @@ export function PcpLinesLegacyPanel({
                       />
                     )}
                   </span>
-                  <span className="text-center text-[10px]">
-                    {it.quality_control ? (
-                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 border border-slate-200">
-                        {it.quality_control}
+                  <span className="min-w-0 flex flex-col gap-1 py-0.5">
+                    <span
+                      className={`text-[10px] font-semibold ${
+                        apontStatus === "finished"
+                          ? "text-emerald-700"
+                          : apontStatus === "in_progress"
+                            ? "text-blue-700"
+                            : "text-slate-600"
+                      }`}
+                    >
+                      {LINE_APONTAMENTO_STATUS_LABELS[apontStatus]}
+                    </span>
+                    {it.apontamento_start_at ? (
+                      <span className="text-[9px] text-slate-600 tabular-nums">
+                        Início: {formatApontamentoDateTime(it.apontamento_start_at)}
                       </span>
-                    ) : (
-                      "—"
-                    )}
-                  </span>
-                  <span className="flex justify-center">
-                    {readOnly || completed ? (
-                      <span className="text-emerald-600 text-xs" title="Concluído">
-                        ✓
+                    ) : null}
+                    {(it.apontamento_end_at || it.production_completed_at) &&
+                    apontStatus === "finished" ? (
+                      <span className="text-[9px] text-slate-600 tabular-nums">
+                        Fim:{" "}
+                        {formatApontamentoDateTime(
+                          it.apontamento_end_at ?? it.production_completed_at
+                        )}
                       </span>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={!it.order_item_id || completePending}
-                        className="inline-flex h-5 w-5 items-center justify-center rounded border border-emerald-300 text-[10px] text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
-                        title="Concluir (preenche fim com hoje se vazio)"
-                        onClick={() => {
-                          if (it.order_item_id) onComplete(it.order_item_id);
-                        }}
-                      >
-                        ✓
-                      </button>
-                    )}
+                    ) : null}
+                    {!readOnly && it.order_item_id ? (
+                      <div className="flex flex-wrap gap-1 pt-0.5">
+                        {apontStatus === "not_started" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            disabled={apontamentoPending}
+                            onClick={() => onStartProduction(it.order_item_id!)}
+                          >
+                            Iniciar produção
+                          </Button>
+                        ) : null}
+                        {apontStatus === "in_progress" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-6 px-2 text-[10px]"
+                            disabled={apontamentoPending}
+                            onClick={() => onFinishProduction(it.order_item_id!)}
+                          >
+                            Finalizar produção
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </span>
                 </div>
               );

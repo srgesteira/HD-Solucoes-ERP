@@ -106,6 +106,8 @@ export function PcpLinesPlanningView({
           production_end: it.production_end,
           status: it.production_status,
           completed_at: it.production_completed_at,
+          apontamento_start_at: it.apontamento_start_at,
+          apontamento_end_at: it.apontamento_end_at,
         });
         if (done) finished.push(row);
         else active.push(row);
@@ -196,24 +198,48 @@ export function PcpLinesPlanningView({
       toast.error(e instanceof Error ? e.message : "Erro"),
   });
 
-  const completeMut = useMutation({
+  const startMut = useMutation({
     mutationFn: async (order_item_id: string) => {
-      const res = await fetch("/api/pcp/complete-item", {
+      const res = await fetch("/api/pcp/start-production", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order_item_id }),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Erro ao concluir");
+      if (!res.ok) throw new Error(json.error ?? "Erro ao iniciar");
     },
     onSuccess: () => {
-      toast.success("Item concluído.");
+      toast.success("Produção iniciada.");
       void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
     },
     onError: (e) =>
       toast.error(e instanceof Error ? e.message : "Erro"),
   });
+
+  const finishMut = useMutation({
+    mutationFn: async (order_item_id: string) => {
+      const res = await fetch("/api/pcp/finish-production", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_item_id }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        detail?: { code?: string };
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao finalizar");
+    },
+    onSuccess: () => {
+      toast.success("Produção finalizada.");
+      void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro"),
+  });
+
+  const apontamentoPending = startMut.isPending || finishMut.isPending;
 
   const isLoading = planningQ.isLoading || (!fixedLineId && linesQ.isLoading);
   const loadError =
@@ -296,8 +322,9 @@ export function PcpLinesPlanningView({
         }
         void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
       }}
-      onComplete={(orderItemId) => completeMut.mutate(orderItemId)}
-      completePending={completeMut.isPending || programMut.isPending}
+      onStartProduction={(orderItemId) => startMut.mutate(orderItemId)}
+      onFinishProduction={(orderItemId) => finishMut.mutate(orderItemId)}
+      apontamentoPending={apontamentoPending || programMut.isPending}
     />
       {!showFinished ? (
         <p className="text-xs text-slate-500 text-center pt-2">
