@@ -36,6 +36,9 @@ type Props = {
   onNotes: (orderItemId: string, notes: string) => void;
   onComplete: (orderItemId: string) => void;
   completePending: boolean;
+  /** Histórico: só leitura, sem edição nem conclusão. */
+  readOnly?: boolean;
+  emptyMessage?: string;
 };
 
 /** Pedido, Cliente, Cód., Descrição, Qtd, Origem, Prazo PCP, PC entrega, Início/Fim Prod., Obs., Ocorr., ✓ */
@@ -53,6 +56,8 @@ export function PcpLinesLegacyPanel({
   onNotes,
   onComplete,
   completePending,
+  readOnly = false,
+  emptyMessage,
 }: Props) {
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
@@ -100,8 +105,11 @@ export function PcpLinesLegacyPanel({
           </div>
 
           {rows.length === 0 ? (
-            <p className="px-4 py-8 text-center text-xs text-slate-500">
-              Nenhum item activo nesta linha.
+            <p className="px-4 py-8 text-center text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
+              {emptyMessage ??
+                (readOnly
+                  ? "Nenhum item finalizado nesta linha."
+                  : "Nenhum item activo nesta linha.")}
             </p>
           ) : (
             rows.map((it, idx) => {
@@ -182,49 +190,72 @@ export function PcpLinesLegacyPanel({
                     {formatPcpDate(pcDelivery)}
                   </span>
                   <span className="text-center">
-                    <input
-                      type="date"
-                      className="w-full max-w-[4.75rem] rounded-md border border-slate-300 bg-white px-0.5 py-0.5 text-[10px] text-center mx-auto"
-                      value={prodStart}
-                      onChange={(e) => {
-                        if (!it.order_item_id) return;
-                        onProgramDate(
-                          it.order_item_id,
-                          "production_start",
-                          e.target.value || null
-                        );
-                      }}
-                      disabled={!it.order_item_id}
-                    />
+                    {readOnly ? (
+                      <span className="text-[10px] tabular-nums">
+                        {formatPcpDate(prodStart || null)}
+                      </span>
+                    ) : (
+                      <input
+                        type="date"
+                        className="w-full max-w-[4.75rem] rounded-md border border-slate-300 bg-white px-0.5 py-0.5 text-[10px] text-center mx-auto"
+                        value={prodStart}
+                        onChange={(e) => {
+                          if (!it.order_item_id) return;
+                          onProgramDate(
+                            it.order_item_id,
+                            "production_start",
+                            e.target.value || null
+                          );
+                        }}
+                        disabled={!it.order_item_id}
+                      />
+                    )}
                   </span>
                   <span className="text-center">
-                    <input
-                      type="date"
-                      className={`w-full max-w-[4.75rem] rounded-md border border-slate-300 bg-white px-0.5 py-0.5 text-[10px] text-center mx-auto ${lineEndVsPcpTrafficClass(pcpDeadline, prodEnd || null, completed)}`}
-                      value={prodEnd}
-                      onChange={(e) => {
-                        if (!it.order_item_id) return;
-                        onProgramDate(
-                          it.order_item_id,
-                          "production_end",
-                          e.target.value || null
-                        );
-                      }}
-                      disabled={!it.order_item_id}
-                    />
+                    {readOnly ? (
+                      <span
+                        className={`text-[10px] tabular-nums ${lineEndVsPcpTrafficClass(pcpDeadline, prodEnd || null, completed)}`}
+                      >
+                        {formatPcpDate(prodEnd || null)}
+                      </span>
+                    ) : (
+                      <input
+                        type="date"
+                        className={`w-full max-w-[4.75rem] rounded-md border border-slate-300 bg-white px-0.5 py-0.5 text-[10px] text-center mx-auto ${lineEndVsPcpTrafficClass(pcpDeadline, prodEnd || null, completed)}`}
+                        value={prodEnd}
+                        onChange={(e) => {
+                          if (!it.order_item_id) return;
+                          onProgramDate(
+                            it.order_item_id,
+                            "production_end",
+                            e.target.value || null
+                          );
+                        }}
+                        disabled={!it.order_item_id}
+                      />
+                    )}
                   </span>
                   <span className="min-w-0">
-                    <input
-                      type="text"
-                      className="w-full rounded-md border border-slate-300 bg-white px-1 py-0.5 text-[10px]"
-                      defaultValue={it.production_notes ?? ""}
-                      placeholder="Obs…"
-                      onBlur={(e) => {
-                        if (!it.order_item_id) return;
-                        onNotes(it.order_item_id, e.target.value);
-                      }}
-                      disabled={!it.order_item_id}
-                    />
+                    {readOnly ? (
+                      <span
+                        className="block truncate text-[10px] text-slate-600"
+                        title={it.production_notes ?? ""}
+                      >
+                        {it.production_notes?.trim() || "—"}
+                      </span>
+                    ) : (
+                      <input
+                        type="text"
+                        className="w-full rounded-md border border-slate-300 bg-white px-1 py-0.5 text-[10px]"
+                        defaultValue={it.production_notes ?? ""}
+                        placeholder="Obs…"
+                        onBlur={(e) => {
+                          if (!it.order_item_id) return;
+                          onNotes(it.order_item_id, e.target.value);
+                        }}
+                        disabled={!it.order_item_id}
+                      />
+                    )}
                   </span>
                   <span className="text-center text-[10px]">
                     {it.quality_control ? (
@@ -236,7 +267,11 @@ export function PcpLinesLegacyPanel({
                     )}
                   </span>
                   <span className="flex justify-center">
-                    {!completed ? (
+                    {readOnly || completed ? (
+                      <span className="text-emerald-600 text-xs" title="Concluído">
+                        ✓
+                      </span>
+                    ) : (
                       <button
                         type="button"
                         disabled={!it.order_item_id || completePending}
@@ -248,10 +283,6 @@ export function PcpLinesLegacyPanel({
                       >
                         ✓
                       </button>
-                    ) : (
-                      <span className="text-emerald-600 text-xs" title="Concluído">
-                        ✓
-                      </span>
                     )}
                   </span>
                 </div>

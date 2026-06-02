@@ -18,6 +18,14 @@ import {
   trafficRowClass,
 } from "@/modules/pcp/lib/pcp-order-display";
 import { pcpItemOriginClass } from "@/modules/pcp/lib/pcp-item-origin";
+import { cn } from "@/shared/utils/cn";
+import {
+  filterPcpOrdersByTab,
+  PCP_ORDERS_LIST_TAB_DEFAULT,
+  PCP_ORDERS_LIST_TAB_LABELS,
+  PCP_ORDERS_LIST_TABS,
+  type PcpOrdersListTab,
+} from "@/modules/pcp/lib/pcp-orders-list-tabs";
 
 type ProductionLine = { id: string; code: string; name: string };
 
@@ -85,11 +93,15 @@ export function PcpOrdersLegacyPanel({
 }: Props) {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [ordersTab, setOrdersTab] = useState<PcpOrdersListTab>(
+    PCP_ORDERS_LIST_TAB_DEFAULT
+  );
 
   const filtered = useMemo(() => {
+    const byTab = filterPcpOrdersByTab(orders, ordersTab);
     const q = search.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter(
+    if (!q) return byTab;
+    return byTab.filter(
       (o) =>
         o.order_number.toLowerCase().includes(q) ||
         o.client_name.toLowerCase().includes(q) ||
@@ -99,7 +111,7 @@ export function PcpOrdersLegacyPanel({
             it.product_name.toLowerCase().includes(q)
         )
     );
-  }, [orders, search]);
+  }, [orders, search, ordersTab]);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -112,15 +124,40 @@ export function PcpOrdersLegacyPanel({
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-3 sm:px-4 py-2 border-b border-slate-200 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-sm font-semibold text-slate-800 shrink-0">Pedidos</h2>
-        <input
-          type="search"
-          className="w-full sm:w-72 min-h-[36px] rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs"
-          placeholder="Buscar pedido, cliente ou item…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="px-3 sm:px-4 py-3 border-b border-slate-200 space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-sm font-semibold text-slate-800 shrink-0">Pedidos</h2>
+          <input
+            type="search"
+            className="w-full sm:w-72 min-h-[36px] rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs"
+            placeholder="Buscar pedido, cliente ou item…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <nav
+          className="flex flex-wrap gap-1 border-b border-slate-200 -mx-1"
+          role="tablist"
+          aria-label="Filtrar pedidos por situação"
+        >
+          {PCP_ORDERS_LIST_TABS.map((tabId) => (
+            <button
+              key={tabId}
+              type="button"
+              role="tab"
+              aria-selected={ordersTab === tabId}
+              className={cn(
+                "px-4 py-2 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap",
+                ordersTab === tabId
+                  ? "border-brand-700 text-brand-800 font-medium"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              )}
+              onClick={() => setOrdersTab(tabId)}
+            >
+              {PCP_ORDERS_LIST_TAB_LABELS[tabId]}
+            </button>
+          ))}
+        </nav>
       </div>
 
       <div className="overflow-x-auto border-b border-slate-200">
@@ -140,7 +177,9 @@ export function PcpOrdersLegacyPanel({
 
       {filtered.length === 0 ? (
         <p className="px-4 py-8 text-center text-xs text-slate-500">
-          Nenhum pedido encontrado.
+          {search.trim()
+            ? "Nenhum pedido encontrado para esta busca."
+            : `Nenhum pedido em «${PCP_ORDERS_LIST_TAB_LABELS[ordersTab]}».`}
         </p>
       ) : (
         <div className="overflow-x-auto min-w-[820px]">

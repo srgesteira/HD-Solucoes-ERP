@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, RefreshCw } from "lucide-react";
+import { History, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import type { PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
 import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-production-status";
@@ -49,6 +50,7 @@ export function PcpLinesPlanningView({
 }: Props) {
   const qc = useQueryClient();
   const [selectedLineId, setSelectedLineId] = useState(fixedLineId ?? "");
+  const [showFinished, setShowFinished] = useState(false);
   const [scheduleConflict, setScheduleConflict] = useState<{
     orderItemId: string;
     field: "production_start" | "production_end";
@@ -82,37 +84,48 @@ export function PcpLinesPlanningView({
     }
   }, [fixedLineId, lines, selectedLineId]);
 
-  const lineRows: LineRow[] = useMemo(() => {
+  const { activeRows, finishedRows } = useMemo(() => {
     const lid = activeLineId;
-    if (!lid) return [];
-    const rows: LineRow[] = [];
+    const active: LineRow[] = [];
+    const finished: LineRow[] = [];
+    if (!lid) return { activeRows: active, finishedRows: finished };
+
     for (const ord of orders) {
       for (const it of ord.items) {
         if (it.line_id !== lid) continue;
-        if (
-          isOrderItemProductionFinished({
-            production_start: it.production_start,
-            production_end: it.production_end,
-            status: it.production_status,
-            completed_at: it.production_completed_at,
-          })
-        ) {
-          continue;
-        }
-        rows.push({
+        const row: LineRow = {
           ...it,
           client_name: ord.client_name,
           order_number: ord.order_number,
           order_pcp_deadline: ord.pcp_deadline,
           order_delivery_deadline:
             ord.expected_delivery ?? ord.delivery_deadline,
+        };
+        const done = isOrderItemProductionFinished({
+          production_start: it.production_start,
+          production_end: it.production_end,
+          status: it.production_status,
+          completed_at: it.production_completed_at,
         });
+        if (done) finished.push(row);
+        else active.push(row);
       }
     }
-    return rows.sort((a, b) =>
-      (a.pcp_deadline ?? "").localeCompare(b.pcp_deadline ?? "")
-    );
+
+    const sortFn = (a: LineRow, b: LineRow) =>
+      (b.production_end ?? b.pcp_deadline ?? "").localeCompare(
+        a.production_end ?? a.pcp_deadline ?? ""
+      );
+
+    return {
+      activeRows: active.sort((a, b) =>
+        (a.pcp_deadline ?? "").localeCompare(b.pcp_deadline ?? "")
+      ),
+      finishedRows: finished.sort(sortFn),
+    };
   }, [orders, activeLineId]);
+
+  const lineRows = showFinished ? finishedRows : activeRows;
 
   const postProgram = useCallback(
     async (
@@ -224,14 +237,43 @@ export function PcpLinesPlanningView({
     lineLabel ??
     (matchedLine ? `${matchedLine.code} — ${matchedLine.name}` : undefined);
 
+  const emptyActiveMessage =
+    "Não há itens em produção nesta linha. Veja o histórico em «Ver finalizados» ou no PCP → Pedidos.";
+
   const panel = (
-    <PcpLinesLegacyPanel
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-2">
+        <p className="text-xs text-slate-600">
+          {showFinished
+            ? "Histórico de itens já concluídos nesta linha (só consulta)."
+            : "Fila actual — itens em produção ou programados."}
+        </p>
+        <button
+          type="button"
+          onClick={() => setShowFinished((v) => !v)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-brand-800 hover:bg-slate-50"
+        >
+          <History className="h-3.5 w-3.5" aria-hidden />
+          {showFinished ? "Voltar aos itens em produção" : "Ver finalizados nesta linha"}
+        </button>
+      </div>
+      <PcpLinesLegacyPanel
       lines={fixedLineId ? undefined : lines}
       selectedLineId={activeLineId}
       onLineChange={fixedLineId ? undefined : setSelectedLineId}
       hideLineFilter={Boolean(fixedLineId)}
-      panelTitle={panelTitle}
+      panelTitle={
+        showFinished
+          ? `${panelTitle ?? "Linha"} — finalizados`
+          : panelTitle
+      }
       rows={lineRows}
+      readOnly={showFinished}
+      emptyMessage={
+        showFinished
+          ? "Nenhum item finalizado nesta linha."
+          : emptyActiveMessage
+      }
       onProgramDate={(orderItemId, field, value) =>
         programMut.mutate({ order_item_id: orderItemId, field, value })
       }
@@ -257,6 +299,15 @@ export function PcpLinesPlanningView({
       onComplete={(orderItemId) => completeMut.mutate(orderItemId)}
       completePending={completeMut.isPending || programMut.isPending}
     />
+      {!showFinished ? (
+        <p className="text-xs text-slate-500 text-center pt-2">
+          Pedidos concluídos:{" "}
+          <Link href="/logistics/pcp" className="text-brand-700 underline">
+            PCP → Pedidos
+          </Link>
+        </p>
+      ) : null}
+    </>
   );
 
   const pageTitle = lineLabel
