@@ -19,6 +19,7 @@ export type PurchaseOrderForPayables = PurchaseOrderExtraCosts & {
   payment_installments: number;
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
+  is_suggestion?: boolean | null;
 };
 
 type PurchaseOrderPayableRow = {
@@ -59,6 +60,7 @@ export function purchaseOrderRowToPayablesInput(
     insurance_cost: row.insurance_cost,
     other_costs: row.other_costs,
     total_tax_non_creditable: row.total_tax_non_creditable,
+    is_suggestion: null,
   };
 }
 
@@ -150,6 +152,9 @@ export async function generatePayablesForPurchaseOrder(
   tenantId: string,
   order: PurchaseOrderForPayables
 ): Promise<GeneratePayablesResult> {
+  if (order.is_suggestion) {
+    return { created: 0, skipped: "purchase_order_is_suggestion" };
+  }
   const total = purchaseOrderPayableTotal(order);
   if (total <= 0) {
     return { created: 0, skipped: "total_zero" };
@@ -183,6 +188,9 @@ export async function syncPayablesForPurchaseOrder(
   tenantId: string,
   order: PurchaseOrderForPayables
 ): Promise<SyncPayablesResult> {
+  if (order.is_suggestion) {
+    return { updated: 0, lockedSkipped: 0, warnings: [] };
+  }
   const warnings: string[] = [];
   const total = purchaseOrderPayableTotal(order);
   const n = Math.max(1, Math.min(999, order.payment_installments ?? 1));
@@ -406,7 +414,7 @@ export async function listPayablesRecalcDryRun(
   const { data: orders, error: poErr } = await admin
     .from("purchase_orders")
     .select(
-      "id, po_number, order_date, supplier_id, subtotal, discount, tax, total_ipi, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "id, po_number, order_date, supplier_id, subtotal, discount, tax, total_ipi, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments, is_suggestion"
     )
     .eq("tenant_id", tenantId)
     .in("id", poIds);
@@ -415,10 +423,11 @@ export async function listPayablesRecalcDryRun(
     return { would_update, skipped };
   }
 
-  const poById = new Map(orders.map((o) => [o.id, o]));
+  const realOrders = (orders ?? []).filter((o) => o.is_suggestion !== true);
+  const poById = new Map(realOrders.map((o) => [o.id, o]));
 
   const targetByPo = new Map<string, number[]>();
-  for (const po of orders) {
+  for (const po of realOrders) {
     const input = purchaseOrderRowToPayablesInput(po);
     const total = purchaseOrderPayableTotal(input);
     const n = Math.max(1, Math.min(999, input.payment_installments ?? 1));

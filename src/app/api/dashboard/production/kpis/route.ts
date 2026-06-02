@@ -28,7 +28,8 @@ export async function GET(request: NextRequest) {
   const { data: orders } = await admin
     .from("production_orders")
     .select("id, status, pcp_deadline, production_deadline")
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false);
 
   const list = orders ?? [];
   const delayed = list.filter((o) => {
@@ -51,6 +52,7 @@ export async function GET(request: NextRequest) {
     .from("production_orders")
     .select("created_at, finished_at")
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .eq("status", "finished")
     .not("finished_at", "is", null)
     .gte("finished_at", periodStart)
@@ -74,6 +76,7 @@ export async function GET(request: NextRequest) {
     .from("order_items")
     .select("production_start, production_end, line_id")
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .not("production_start", "is", null)
     .not("production_end", "is", null)
     .not("line_id", "is", null)

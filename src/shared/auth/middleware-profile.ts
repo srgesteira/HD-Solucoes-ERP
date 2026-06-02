@@ -14,7 +14,7 @@ export async function loadMiddlewareAccessProfile(
 
   const { data, error } = await admin
     .from("user_profiles")
-    .select("role, enabled_modules, permissions")
+    .select("role, enabled_modules, permissions, is_active")
     .eq("id", userId)
     .maybeSingle();
 

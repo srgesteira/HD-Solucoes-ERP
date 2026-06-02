@@ -293,6 +293,7 @@ export async function analyzeProductionEfficiency(
     .from("production_orders")
     .select("delivery_deadline, finished_at")
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .eq("status", "finished")
     .limit(50);
 

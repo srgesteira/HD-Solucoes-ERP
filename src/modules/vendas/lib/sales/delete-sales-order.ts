@@ -21,6 +21,7 @@ export async function salesOrderHasAssociatedOrderItems(
     .from("order_items")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .in("sales_order_item_id", soiIds);
 
   if (oiErr) throw new Error(oiErr.message);

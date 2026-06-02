@@ -149,6 +149,7 @@ async function queryRequisitionRows(
     .from("purchase_order_items")
     .select(requisitionSelect(opts))
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .eq("status", "draft")
     .is("purchase_order_id", null)
     .not("sales_order_item_id", "is", null);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,8 @@ import type { PcpPlanningItem, PcpPlanningOrder } from "@/modules/pcp/lib/pcp-pl
 import { PcpOrdersLegacyPanel } from "@/components/pcp/pcp-orders-legacy-panel";
 import { PcpLinesPlanningView } from "@/components/pcp/pcp-lines-planning-view";
 import { PcpPurchaseDependenciesPanel } from "@/components/pcp/pcp-purchase-dependencies-panel";
+import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import type { ProductSearchHit } from "@/components/products/product-search-types";
 import "@/components/pcp/pcp-legacy.css";
 
 type ViewMode = "orders" | "lines" | "purchases";
@@ -66,6 +68,14 @@ export function PcpPlanningView() {
   const [pcSearch, setPcSearch] = useState("");
   const [pcResults, setPcResults] = useState<SearchPcRow[]>([]);
   const [pcSearching, setPcSearching] = useState(false);
+  const [mrpSuggestionResult, setMrpSuggestionResult] = useState<{
+    generated?: unknown;
+    committed?: unknown;
+  } | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [pickedProduct, setPickedProduct] = useState<ProductSearchHit | null>(null);
+  const [createQty, setCreateQty] = useState("1");
+  const [createLineId, setCreateLineId] = useState("");
 
   const q = useQuery({
     queryKey: ["pcp-planning"],
@@ -80,32 +90,100 @@ export function PcpPlanningView() {
   const lines = linesQ.data ?? [];
   const orders = q.data?.orders ?? [];
 
-  const mrpMut = useMutation({
+  const createMut = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/mrp/run", {
+      if (!pickedProduct) throw new Error("Selecione um produto.");
+      const qty = Number(createQty);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        throw new Error("Quantidade inválida.");
+      }
+      const res = await fetch("/api/pcp/production-orders", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirm: true }),
+        body: JSON.stringify({
+          product_id: pickedProduct.id,
+          quantity: qty,
+          line_id: createLineId || undefined,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao criar OP");
+    },
+    onSuccess: () => {
+      toast.success("Ordem de produção criada (estoque).");
+      setCreateOpen(false);
+      setPickedProduct(null);
+      setCreateQty("1");
+      setCreateLineId("");
+      void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro ao criar OP"),
+  });
+
+  const mrpGenerateMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/pcp/mrp-suggestions", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate" }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
-        errors?: { message: string }[];
+        generated?: unknown;
       };
-      if (!res.ok) throw new Error(json.error ?? "Erro no MRP");
-      if (json.errors?.length) {
-        toast.warning(`${json.errors.length} pedido(s) com avisos.`);
-      }
+      if (!res.ok) throw new Error(json.error ?? "Erro ao gerar sugestões");
+      setMrpSuggestionResult({ generated: json.generated });
     },
     onSuccess: () => {
-      toast.success("MRP processado.");
+      toast.success("Sugestões do MRP geradas (não efetivadas).");
       void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
       void qc.invalidateQueries({ queryKey: ["purchasing-requisitions"] });
       void qc.invalidateQueries({ queryKey: ["purchasing-requisitions-count"] });
+      void qc.invalidateQueries({ queryKey: ["purchasing-orders"] });
     },
     onError: (e) =>
       toast.error(e instanceof Error ? e.message : "Erro no MRP"),
   });
+
+  const mrpCommitMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/pcp/mrp-suggestions", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "commit" }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        committed?: unknown;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao efetivar sugestões");
+      setMrpSuggestionResult({ committed: json.committed });
+    },
+    onSuccess: () => {
+      toast.success("Sugestões efetivadas.");
+      void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+      void qc.invalidateQueries({ queryKey: ["purchasing-requisitions"] });
+      void qc.invalidateQueries({ queryKey: ["purchasing-requisitions-count"] });
+      void qc.invalidateQueries({ queryKey: ["purchasing-orders"] });
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro ao efetivar"),
+  });
+
+  const mrpSummaryText = useMemo(() => {
+    if (!mrpSuggestionResult) return null;
+    if (mrpSuggestionResult.committed) {
+      return "Sugestões efetivadas. Agora passam a aparecer nas telas normais.";
+    }
+    if (mrpSuggestionResult.generated) {
+      return "Sugestões geradas. Revise e clique em «Efetivar» para torná-las reais.";
+    }
+    return null;
+  }, [mrpSuggestionResult]);
 
   const updateLineMut = useMutation({
     mutationFn: async (args: {
@@ -235,14 +313,33 @@ export function PcpPlanningView() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={mrpMut.isPending || q.isFetching}
-            onClick={() => mrpMut.mutate()}
+            onClick={() => setCreateOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Criar ordem de produção
+          </button>
+          <button
+            type="button"
+            disabled={mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching}
+            onClick={() => mrpGenerateMut.mutate()}
             className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-white pcp-btn-primary disabled:opacity-50"
           >
-            {mrpMut.isPending ? (
+            {mrpGenerateMut.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : null}
-            Processar pedidos (MRP)
+            Gerar sugestões (MRP)
+          </button>
+          <button
+            type="button"
+            disabled={mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching}
+            onClick={() => mrpCommitMut.mutate()}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+            title="Transforma sugestões em registros reais (is_suggestion=false)"
+          >
+            {mrpCommitMut.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : null}
+            Efetivar sugestões
           </button>
           <button
             type="button"
@@ -261,6 +358,79 @@ export function PcpPlanningView() {
           </button>
         </div>
       </div>
+
+      {mrpSummaryText ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          {mrpSummaryText}
+        </div>
+      ) : null}
+
+      <ProductCatalogPickerModal
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (!open && createMut.isPending) return;
+          setCreateOpen(open);
+        }}
+        excludeIds={[]}
+        title="Criar ordem de produção (estoque)"
+        productType="finished"
+        onSelect={(p) => setPickedProduct(p)}
+      />
+
+      {createOpen ? (
+        <div className="rounded-md border border-slate-200 bg-white p-3 text-sm">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px]">
+              <div className="text-xs text-slate-600">Produto</div>
+              <div className="font-medium">
+                {pickedProduct?.technical_code ||
+                  pickedProduct?.code ||
+                  pickedProduct?.name ||
+                  "—"}
+              </div>
+            </div>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-600">Quantidade</span>
+              <input
+                className="h-9 w-28 rounded-md border border-slate-300 px-2"
+                value={createQty}
+                onChange={(e) => setCreateQty(e.target.value)}
+                inputMode="decimal"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-600">Linha</span>
+              <select
+                className="h-9 min-w-[220px] rounded-md border border-slate-300 px-2"
+                value={createLineId}
+                onChange={(e) => setCreateLineId(e.target.value)}
+              >
+                <option value="">(usar padrão do produto)</option>
+                {lines.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => createMut.mutate()}
+              disabled={createMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-white pcp-btn-primary disabled:opacity-50"
+            >
+              {createMut.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : null}
+              Criar
+            </button>
+          </div>
+          <div className="mt-2 text-xs text-slate-600">
+            Ordem estratégica de estoque: fica ativa até finalização manual na
+            linha.
+          </div>
+        </div>
+      ) : null}
 
       <nav
         className="flex gap-1 border-b border-slate-200"

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Label } from "@/shared/ui/label";
+import { Input } from "@/shared/ui/input";
 import { useMe } from "@/hooks/use-me";
 import { APP_MODULE_KEYS } from "@/shared/auth/menu-modules";
 
@@ -16,8 +17,10 @@ type TenantUser = {
   email: string;
   full_name: string | null;
   role: string;
+  is_active?: boolean | null;
   enabled_modules?: string[] | null;
   role_keys?: string[] | null;
+  status?: "active" | "invite_pending" | "suspended";
 };
 
 type RoleRow = {
@@ -47,6 +50,14 @@ export default function SettingsUsersPage() {
   const [users, setUsers] = useState<TenantUser[]>([]);
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteRoleKey, setInviteRoleKey] = useState("");
+  const [inviteAdminAll, setInviteAdminAll] = useState(false);
+  const [inviteModules, setInviteModules] = useState<string[]>([]);
+  const [inviting, setInviting] = useState(false);
+  const [activationLink, setActivationLink] = useState<string | null>(null);
   const [draft, setDraft] = useState<
     Record<string, { modules: string[]; adminAll: boolean }>
   >({});
@@ -130,6 +141,95 @@ export default function SettingsUsersPage() {
     }));
   }
 
+  async function sendInvite() {
+    const email = inviteEmail.trim();
+    if (!email) {
+      toast.error("Informe o e-mail.");
+      return;
+    }
+    setInviting(true);
+    try {
+      const res = await fetch("/api/tenant/users/invite", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          inviteAdminAll
+            ? {
+                email,
+                admin_all: true,
+                role_key: inviteRoleKey || undefined,
+                full_name: inviteName || undefined,
+              }
+            : {
+                email,
+                enabled_modules: inviteModules,
+                role_key: inviteRoleKey || undefined,
+                full_name: inviteName || undefined,
+              }
+        ),
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        activation_link?: string;
+      };
+      if (!res.ok) throw new Error(j.error ?? "Erro ao convidar");
+      if (!j.activation_link) throw new Error("Link de ativação não gerado.");
+      setActivationLink(j.activation_link);
+      toast.success("Link de ativação gerado.");
+      setInviteOpen(false);
+      setInviteEmail("");
+      setInviteName("");
+      setInviteRoleKey("");
+      setInviteAdminAll(false);
+      setInviteModules([]);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function resendInvite(userId: string) {
+    try {
+      const res = await fetch("/api/tenant/users/resend-invite", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        activation_link?: string;
+      };
+      if (!res.ok) throw new Error(j.error ?? "Erro ao reenviar");
+      if (!j.activation_link) throw new Error("Link não gerado.");
+      setActivationLink(j.activation_link);
+      toast.success("Novo link gerado.");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    }
+  }
+
+  async function setSuspended(userId: string, active: boolean) {
+    try {
+      const res = await fetch(`/api/tenant/users/${userId}/ban`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(j.error ?? "Erro");
+      toast.success(active ? "Utilizador reativado." : "Utilizador suspenso.");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    }
+  }
+
   async function saveModules(userId: string) {
     const d = draft[userId];
     if (!d) return;
@@ -204,6 +304,13 @@ export default function SettingsUsersPage() {
           <Users className="h-7 w-7 text-brand-700" aria-hidden />
           Utilizadores e módulos
         </h1>
+        <Button
+          type="button"
+          className="ml-auto"
+          onClick={() => setInviteOpen((v) => !v)}
+        >
+          Convidar usuário
+        </Button>
       </div>
 
       <p className="text-sm text-slate-600">
@@ -224,6 +331,151 @@ export default function SettingsUsersPage() {
         </Card>
       ) : (
         <div className="space-y-4">
+          {activationLink ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Link de ativação</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-slate-600">
+                  Copie e envie para o usuário (WhatsApp, etc.). O link expira; se
+                  expirar, gere um novo.
+                </p>
+                <Input value={activationLink} readOnly />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(activationLink)
+                        .then(() => toast.success("Link copiado."))
+                        .catch(() => toast.error("Falha ao copiar."));
+                    }}
+                  >
+                    Copiar link
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setActivationLink(null)}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {inviteOpen ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Convidar usuário</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="invite_email">E-mail</Label>
+                    <Input
+                      id="invite_email"
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="nome@empresa.com.br"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="invite_name">Nome (opcional)</Label>
+                    <Input
+                      id="invite_name"
+                      value={inviteName}
+                      onChange={(e) => setInviteName(e.target.value)}
+                      placeholder="Nome completo"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="invite_role">Cargo R2 (opcional)</Label>
+                    <select
+                      id="invite_role"
+                      className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                      value={inviteRoleKey}
+                      onChange={(e) => setInviteRoleKey(e.target.value)}
+                    >
+                      <option value="">(sem cargo)</option>
+                      {roles.map((r) => (
+                        <option key={r.role_key} value={r.role_key}>
+                          {r.role_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Modo</Label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="invite_admin_all"
+                        type="checkbox"
+                        checked={inviteAdminAll}
+                        onChange={(e) => setInviteAdminAll(e.target.checked)}
+                      />
+                      <Label htmlFor="invite_admin_all">Acesso total (*)</Label>
+                    </div>
+                  </div>
+                </div>
+
+                {!inviteAdminAll ? (
+                  <div className="space-y-2">
+                    <Label>Módulos</Label>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      {APP_MODULE_KEYS.map((k) => (
+                        <label
+                          key={k}
+                          className="flex items-center gap-2 text-sm text-slate-700"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={inviteModules.includes(k)}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setInviteModules((prev) => {
+                                const set = new Set(prev);
+                                if (checked) set.add(k);
+                                else set.delete(k);
+                                return [...set];
+                              });
+                            }}
+                          />
+                          <span>{MODULE_LABELS[k] ?? k}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => void sendInvite()}
+                    disabled={inviting}
+                  >
+                    {inviting ? "A enviar…" : "Enviar convite"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setInviteOpen(false)}
+                    disabled={inviting}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
           {users.map((u) => (
             <Card key={u.id}>
               <CardHeader className="pb-2">
@@ -231,6 +483,16 @@ export default function SettingsUsersPage() {
                   {u.full_name?.trim() || u.email}
                 </CardTitle>
                 <p className="text-xs text-slate-500">{u.email}</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Estado:{" "}
+                  <span className="font-medium">
+                    {u.status === "invite_pending"
+                      ? "Convite pendente"
+                      : u.status === "suspended"
+                        ? "Suspenso"
+                        : "Ativo"}
+                  </span>
+                </p>
                 {u.role_keys?.length ? (
                   <p className="text-xs text-slate-400 mt-1">
                     Cargos: {u.role_keys.join(", ")}
@@ -238,6 +500,38 @@ export default function SettingsUsersPage() {
                 ) : null}
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  {u.status === "invite_pending" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void resendInvite(u.id)}
+                    >
+                      Gerar novo link
+                    </Button>
+                  ) : null}
+                  {u.status === "suspended" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void setSuspended(u.id, true)}
+                    >
+                      Reativar
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void setSuspended(u.id, false)}
+                    >
+                      Suspender
+                    </Button>
+                  )}
+                </div>
+
                 <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
                   <div className="flex-1 min-w-[200px]">
                     <Label htmlFor={`role-${u.id}`}>Aplicar perfil R2</Label>

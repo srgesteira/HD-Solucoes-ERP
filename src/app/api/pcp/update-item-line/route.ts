@@ -48,7 +48,8 @@ export async function PUT(request: NextRequest) {
         .from("order_items")
         .update({ line_id: lineId })
         .eq("id", orderItemId)
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", tenantId)
+        .eq("is_suggestion", false);
       if (error) throw new Error(error.message);
       return apiOk({ order_item_id: orderItemId, line_id: lineId });
     }
@@ -66,6 +67,7 @@ export async function PUT(request: NextRequest) {
       .from("order_items")
       .select("id")
       .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
       .eq("sales_order_item_id", soi.id)
       .maybeSingle();
 
@@ -74,7 +76,8 @@ export async function PUT(request: NextRequest) {
         .from("order_items")
         .update({ line_id: lineId })
         .eq("id", existing.id)
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", tenantId)
+        .eq("is_suggestion", false);
       if (error) throw new Error(error.message);
       return apiOk({ order_item_id: existing.id, line_id: lineId });
     }
@@ -99,6 +102,7 @@ export async function PUT(request: NextRequest) {
         status: "waiting",
         sales_order_item_id: soi.id,
         line_id: lineId,
+        is_suggestion: false,
       })
       .select("id")
       .single();

@@ -39,6 +39,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
     .select("id, status")
     .eq("id", id)
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .maybeSingle();
 
   if (fetchErr) {

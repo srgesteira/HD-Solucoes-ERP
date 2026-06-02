@@ -67,6 +67,7 @@ export async function fetchPcpPurchaseSchedule(
     `
     )
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .not("sales_order_item_id", "is", null)
     .not("purchase_order_id", "is", null)
     .order("follow_up_date", { ascending: true, nullsFirst: false });

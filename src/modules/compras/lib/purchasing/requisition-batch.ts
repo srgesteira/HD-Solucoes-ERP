@@ -45,6 +45,7 @@ export async function assertRequisitionsSameSuggestedSupplier(
     .from("purchase_order_items")
     .select("id, suggested_supplier_id")
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .in("id", requisitionIds);
 
   if (error) throw new Error(error.message);

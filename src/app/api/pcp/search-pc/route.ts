@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     .from("purchase_orders")
     .select("id, po_number, order_date, expected_delivery, status")
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .ilike("po_number", safe)
     .order("order_date", { ascending: false })
     .limit(20);
@@ -65,6 +66,7 @@ export async function GET(request: NextRequest) {
       "id, purchase_order_id, description, quantity, sales_order_item_id, product_id"
     )
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .in("purchase_order_id", poIds);
 
   if (iErr) {

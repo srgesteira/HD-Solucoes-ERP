@@ -31,12 +31,32 @@ export function LoginForm() {
   const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
-  /** Erro vindo de redirect (?error=credenciais) — lido uma vez. */
+  /** Erro vindo de redirect (?error=…) — lido uma vez. */
   useEffect(() => {
-    if (searchParams.get("error") === "credenciais") {
+    const err = searchParams.get("error");
+    if (err === "credenciais") {
       setErrorMsg("Email ou senha incorretos.");
+    } else if (err === "callback" || err === "activate") {
+      setErrorMsg(
+        "Link inválido ou expirado. Gere um novo link de ativação (não cole em Slack/WhatsApp antes de abrir)."
+      );
     }
   }, [searchParams]);
+
+  /** Erros do Supabase no fragmento (#error_code=otp_expired). */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+    const params = new URLSearchParams(hash);
+    const code = params.get("error_code");
+    if (code === "otp_expired" || params.get("error") === "access_denied") {
+      setErrorMsg(
+        "Link de ativação inválido ou já utilizado. Peça um novo link e abra-o diretamente no browser (evite pré-visualizações em chat)."
+      );
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
 
   /**
    * GET com email/senha na URL: limpar sem depender de `searchParams` a cada render

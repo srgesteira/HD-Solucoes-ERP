@@ -48,6 +48,24 @@ export type MrpBatchSummary = {
   errors: Array<{ sales_order_id: string; message: string }>;
 };
 
+export type MrpSuggestionsSummary = {
+  generated: MrpBatchSummary;
+  suggestion_flags: {
+    production_orders_marked: number;
+    order_items_marked: number;
+    purchase_orders_marked: number;
+    purchase_order_items_marked: number;
+    sales_orders_reverted: number;
+  };
+};
+
+export type MrpCommitSummary = {
+  production_orders_committed: number;
+  order_items_committed: number;
+  purchase_orders_committed: number;
+  purchase_order_items_committed: number;
+};
+
 function round4(n: number): number {
   return Math.round((n + Number.EPSILON) * 10000) / 10000;
 }
@@ -1163,6 +1181,215 @@ export async function runMrpForOpenSalesOrders(
   }
 
   return { orders: out, errors };
+}
+
+/**
+ * Etapa A (S1): Gera sugestões persistidas (is_suggestion=true) usando o motor existente.
+ *
+ * Observação: esta função executa o MRP real por pedido e, em seguida,
+ * marca apenas os registros recém-criados como sugestão e reverte flags do pedido.
+ * Isso garante que nada “vaze” como real antes da ação explícita de efetivar.
+ */
+export async function generateMrpSuggestionsForPendingOrders(
+  admin: Admin,
+  tenantId: string,
+  userId: string
+): Promise<MrpSuggestionsSummary> {
+  const startedAt = new Date();
+  const startedIso = startedAt.toISOString();
+
+  const batch = await runMrpForOpenSalesOrders(admin, tenantId, userId, true);
+
+  // Reverter flags do pedido de venda (o MRP real marca como processado / muda status).
+  const salesOrderIds = [
+    ...new Set(batch.orders.map((o) => o.sales_order_id).filter(Boolean)),
+  ];
+  if (salesOrderIds.length) {
+    await admin
+      .from("sales_orders")
+      .update({ mrp_processed: false, status: "confirmed" })
+      .eq("tenant_id", tenantId)
+      .in("id", salesOrderIds);
+  }
+
+  // IDs retornados: para requisitions (purchase_order_items) e PCs por rastreio (purchase_orders).
+  const productionOrderIds = new Set<string>();
+  const purchaseOrderIds = new Set<string>();
+  const purchaseOrderItemIds = new Set<string>();
+
+  for (const ord of batch.orders) {
+    for (const line of ord.lines) {
+      if (line.production_order_id) productionOrderIds.add(line.production_order_id);
+      for (const po of line.purchase_orders ?? []) {
+        if (!po?.id) continue;
+        // Heurística: se o id existir em purchase_orders, marcamos como PO; caso contrário, como item.
+        // (As requisições MRP são purchase_order_items sem purchase_order_id.)
+        purchaseOrderIds.add(po.id);
+        purchaseOrderItemIds.add(po.id);
+      }
+    }
+  }
+
+  let production_orders_marked = 0;
+  let order_items_marked = 0;
+  let purchase_orders_marked = 0;
+  let purchase_order_items_marked = 0;
+
+  // Marcar OPs recém-criadas por este usuário como sugestão.
+  if (productionOrderIds.size) {
+    const ids = [...productionOrderIds];
+    const { data: ops } = await admin
+      .from("production_orders")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .in("id", ids)
+      .eq("created_by", userId)
+      .gte("created_at", startedIso);
+
+    const opIds = (ops ?? []).map((o) => o.id);
+    if (opIds.length) {
+      const { data: updOps } = await admin
+        .from("production_orders")
+        .update({ is_suggestion: true, source_kind: "mrp_suggestion" })
+        .eq("tenant_id", tenantId)
+        .in("id", opIds)
+        .select("id");
+      production_orders_marked = (updOps ?? []).length;
+
+      const { data: updItems } = await admin
+        .from("order_items")
+        .update({ is_suggestion: true })
+        .eq("tenant_id", tenantId)
+        .in("order_id", opIds)
+        .select("id");
+      order_items_marked = (updItems ?? []).length;
+    }
+  }
+
+  // Marcar PCs (purchase_orders) recém-criados pelo MRP como sugestão.
+  if (purchaseOrderIds.size) {
+    const ids = [...purchaseOrderIds];
+    const { data: pos } = await admin
+      .from("purchase_orders")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .in("id", ids)
+      .gte("created_at", startedIso);
+
+    const poIds = (pos ?? []).map((p) => p.id);
+    if (poIds.length) {
+      const { data: updPo } = await admin
+        .from("purchase_orders")
+        .update({ is_suggestion: true })
+        .eq("tenant_id", tenantId)
+        .in("id", poIds)
+        .select("id");
+      purchase_orders_marked = (updPo ?? []).length;
+
+      const { data: updPoItems } = await admin
+        .from("purchase_order_items")
+        .update({ is_suggestion: true })
+        .eq("tenant_id", tenantId)
+        .in("purchase_order_id", poIds)
+        .select("id");
+      purchase_order_items_marked += (updPoItems ?? []).length;
+    }
+  }
+
+  // Marcar requisições MRP (purchase_order_items sem purchase_order_id) recém-criadas.
+  if (purchaseOrderItemIds.size) {
+    const ids = [...purchaseOrderItemIds];
+    const { data: updReq } = await admin
+      .from("purchase_order_items")
+      .update({ is_suggestion: true })
+      .eq("tenant_id", tenantId)
+      .in("id", ids)
+      .is("purchase_order_id", null)
+      .gte("created_at", startedIso)
+      .select("id");
+    purchase_order_items_marked += (updReq ?? []).length;
+  }
+
+  return {
+    generated: batch,
+    suggestion_flags: {
+      production_orders_marked,
+      order_items_marked,
+      purchase_orders_marked,
+      purchase_order_items_marked,
+      sales_orders_reverted: salesOrderIds.length,
+    },
+  };
+}
+
+/** Efetiva sugestões existentes no tenant (is_suggestion=true → false). */
+export async function commitMrpSuggestionsForTenant(
+  admin: Admin,
+  tenantId: string
+): Promise<MrpCommitSummary> {
+  const { data: ops } = await admin
+    .from("production_orders")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", true);
+  const opIds = (ops ?? []).map((o) => o.id);
+
+  const { data: pos } = await admin
+    .from("purchase_orders")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", true);
+  const poIds = (pos ?? []).map((p) => p.id);
+
+  const { data: updOps } = await admin
+    .from("production_orders")
+    .update({ is_suggestion: false })
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", true)
+    .select("id");
+
+  const { data: updOi } = opIds.length
+    ? await admin
+        .from("order_items")
+        .update({ is_suggestion: false })
+        .eq("tenant_id", tenantId)
+        .eq("is_suggestion", true)
+        .in("order_id", opIds)
+        .select("id")
+    : { data: [] as Array<{ id: string }> };
+
+  const { data: updPo } = await admin
+    .from("purchase_orders")
+    .update({ is_suggestion: false })
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", true)
+    .select("id");
+
+  const { data: updPoiByPo } = poIds.length
+    ? await admin
+        .from("purchase_order_items")
+        .update({ is_suggestion: false })
+        .eq("tenant_id", tenantId)
+        .eq("is_suggestion", true)
+        .in("purchase_order_id", poIds)
+        .select("id")
+    : { data: [] as Array<{ id: string }> };
+
+  const { data: updReq } = await admin
+    .from("purchase_order_items")
+    .update({ is_suggestion: false })
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", true)
+    .is("purchase_order_id", null)
+    .select("id");
+
+  return {
+    production_orders_committed: (updOps ?? []).length,
+    order_items_committed: (updOi ?? []).length,
+    purchase_orders_committed: (updPo ?? []).length,
+    purchase_order_items_committed:
+      (updPoiByPo ?? []).length + (updReq ?? []).length,
+  };
 }
 
 /** Legado: uma OP para o pedido inteiro (evitar uso; preferir MRP por linha). */

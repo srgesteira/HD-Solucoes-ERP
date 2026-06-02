@@ -58,6 +58,7 @@ export async function enrichSalesOrdersListWithProduction(
         "sales_order_item_id, production_start, production_end, status, completed_at"
       )
       .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
       .in("sales_order_item_id", soiIds);
 
     if (oiErr) throw new Error(oiErr.message);

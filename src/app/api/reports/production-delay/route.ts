@@ -40,7 +40,8 @@ export async function GET() {
     .select(
       "id, order_number, status, delivery_deadline, finished_at, client_name, description"
     )
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false);
 
   if (error) {
     return apiError("Produção: " + error.message, 500);

@@ -24,7 +24,8 @@ async function refreshPurchaseOrderStatus(
     .from("purchase_order_items")
     .select("quantity, received_quantity")
     .eq("purchase_order_id", purchaseOrderId)
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false);
 
   if (error) throw new Error(error.message);
   const rows = items ?? [];
@@ -44,7 +45,8 @@ async function refreshPurchaseOrderStatus(
         actual_delivery: new Date().toISOString().slice(0, 10),
       })
       .eq("id", purchaseOrderId)
-      .eq("tenant_id", tenantId);
+      .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false);
     return;
   }
 
@@ -54,6 +56,7 @@ async function refreshPurchaseOrderStatus(
       .update({ status: "partial" })
       .eq("id", purchaseOrderId)
       .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
       .neq("status", "received");
   }
 }

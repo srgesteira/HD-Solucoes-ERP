@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
     .from("purchase_orders")
     .select("id, total, status, expected_delivery, order_date, po_number")
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .eq("status", "confirmed");
 
   if (pErr) {

@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     .from("purchase_orders")
     .select("*", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .in("status", ["draft", "sent", "partial"]);
 
   const { count: outOfStock } = await admin
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
     .from("purchase_orders")
     .select("total")
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .eq("status", "received")
     .gte("order_date", from)
     .lte("order_date", to);
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest) {
     .from("purchase_orders")
     .select("order_date, expected_delivery, actual_delivery")
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .eq("status", "received")
     .not("actual_delivery", "is", null)
     .gte("actual_delivery", range90.from)

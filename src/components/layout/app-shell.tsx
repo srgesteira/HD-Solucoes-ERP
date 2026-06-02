@@ -612,7 +612,8 @@ export function AppShell({ children, user }: AppShellProps) {
         )}
         aria-label="Menu lateral"
       >
-        <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200">
+        <div className="flex h-[100dvh] flex-col">
+        <div className="h-14 shrink-0 px-4 flex items-center justify-between border-b border-slate-200">
           <Link
             href="/dashboard"
             className="flex items-center gap-2 font-semibold text-slate-900"
@@ -633,7 +634,7 @@ export function AppShell({ children, user }: AppShellProps) {
           </button>
         </div>
 
-        <nav className="p-3 flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-8rem)]">
+        <nav className="flex-1 min-h-0 p-3 flex flex-col gap-1 overflow-y-auto">
           {visibleMenu.map((entry) => {
             if (entry.type === "link") {
               const Icon = entry.icon;
@@ -735,7 +736,7 @@ export function AppShell({ children, user }: AppShellProps) {
           })}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 p-3 bg-white">
+        <div className="shrink-0 border-t border-slate-200 p-3 bg-white">
           {user ? (
             <div className="flex items-center gap-3 mb-3">
               <div className="h-9 w-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-semibold">
@@ -759,6 +760,7 @@ export function AppShell({ children, user }: AppShellProps) {
             <LogOut className="h-4 w-4" />
             <span>Sair</span>
           </Button>
+        </div>
         </div>
       </aside>
 

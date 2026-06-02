@@ -188,7 +188,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existingOrder, error: existingErr } = await admin
     .from("purchase_orders")
     .select(
-      "id, status, po_number, order_date, supplier_id, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "id, status, po_number, order_date, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
     )
     .eq("id", id)
     .eq("tenant_id", tenantId)

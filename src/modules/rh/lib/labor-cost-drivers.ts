@@ -39,6 +39,7 @@ export async function getPurchaseOrderWeightPerLine(
     .from("purchase_orders")
     .select("id, order_date")
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .gte("order_date", firstDay)
     .lte("order_date", lastDay);
 
@@ -54,6 +55,7 @@ export async function getPurchaseOrderWeightPerLine(
       "id, purchase_order_id, sales_order_item_id, production_item_id"
     )
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .in("purchase_order_id", poIds);
 
   if (iErr) throw new Error(iErr.message);
