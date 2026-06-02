@@ -38,11 +38,11 @@ port = 587
 user = "${SUPABASE_SMTP_USER}"
 pass = "${SUPABASE_SMTP_PASS}"
 sender_name = "${SUPABASE_SMTP_SENDER_NAME}"
-sender_email = "${SUPABASE_SMTP_SENDER_EMAIL}"
+admin_email = "${SUPABASE_SMTP_SENDER_EMAIL}"
 
-# Templates de e-mail (convite) — para Supabase Cloud, versionar aqui ajuda a
-# manter o conteúdo, mas a aplicação final pode exigir ajuste no Dashboard.
-[auth.email.template.invite]
-subject = "Convite para acessar o HD Soluções ERP"
-content_path = "./templates/invite.html"
+# Templates de e-mail (convite) — em produção configure no Dashboard.
+# (Desativado aqui para a CLI não falhar no db push; ficheiro em supabase/templates/invite.html)
+# [auth.email.template.invite]
+# subject = "Convite para acessar o HD Soluções ERP"
+# content_path = "./templates/invite.html"
 
