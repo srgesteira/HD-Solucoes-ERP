@@ -32,7 +32,7 @@ function ActivateForm() {
           Não partilhe este link em chats — pré-visualizações podem invalidá-lo.
         </p>
       </div>
-      <form action="/activate" method="POST" className="space-y-4">
+      <form action="/api/auth/activate" method="POST" className="space-y-4">
         <input type="hidden" name="token_hash" value={tokenHash} />
         <input type="hidden" name="type" value={type} />
         <Button type="submit" className="w-full">

@@ -6,7 +6,12 @@ import { syncInviteProfileFromUser } from "@/shared/auth/sync-invite-profile";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED_OTP_TYPES = new Set<string>(["invite", "recovery", "signup", "magiclink"]);
+const ALLOWED_OTP_TYPES = new Set<string>([
+  "invite",
+  "recovery",
+  "signup",
+  "magiclink",
+]);
 
 /**
  * Consome o token de convite apenas em POST (clique do utilizador).
@@ -79,3 +84,4 @@ export async function POST(request: NextRequest) {
 
   return response;
 }
+
