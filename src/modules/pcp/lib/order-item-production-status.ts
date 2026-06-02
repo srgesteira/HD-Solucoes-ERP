@@ -7,6 +7,8 @@ export type OrderItemProductionFields = {
   production_end: string | null;
   status?: string | null;
   completed_at?: string | null;
+  apontamento_start_at?: string | null;
+  apontamento_end_at?: string | null;
 };
 
 export function dateOnlyYmd(v: string | null | undefined): string | null {
@@ -27,6 +29,7 @@ export function todayYmdLocal(): string {
 export function isOrderItemProductionFinished(
   item: OrderItemProductionFields
 ): boolean {
+  if (item.apontamento_end_at) return true;
   if (item.status === "completed") return true;
   if (item.completed_at) return true;
   const end = dateOnlyYmd(item.production_end);

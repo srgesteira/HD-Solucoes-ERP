@@ -4,7 +4,9 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
+import { currentUserCanProductionApontamento } from "@/modules/producao/lib/production-api-auth";
+import { assertCanFinishProduction } from "@/modules/producao/lib/line-apontamento";
+import { resolveLineApontamentoStatus } from "@/modules/producao/lib/line-apontamento";
 import { maybeMarkSalesOrderReadyForInvoice } from "@/modules/vendas/lib/sales/sales-order-ready-for-invoice";
 
 export const dynamic = "force-dynamic";
@@ -15,10 +17,10 @@ export async function POST(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
-  const moduleDenied = await requireMenuModule("pcp");
+  const moduleDenied = await requireMenuModule("producao");
   if (moduleDenied) return moduleDenied;
-  if (!(await currentUserCanPcpPlanning())) {
-    return apiError("Sem permissão para planeamento PCP", 403);
+  if (!(await currentUserCanProductionApontamento())) {
+    return apiError("Sem permissão para apontamento de produção", 403);
   }
 
   const tenantId = await getCurrentTenantId();
@@ -47,20 +49,50 @@ export async function POST(request: NextRequest) {
         : null;
 
   const admin = createSupabaseAdminClient();
+
+  const { data: existing } = await admin
+    .from("order_items")
+    .select(
+      "id, apontamento_start_at, apontamento_end_at, completed_at, status, is_suggestion"
+    )
+    .eq("id", orderItemId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (!existing) return apiError("Item de produção não encontrado", 404);
+  if (existing.is_suggestion) {
+    return apiError("Não é possível apontar numa sugestão do MRP.", 400);
+  }
+
+  const apontStatus = resolveLineApontamentoStatus(existing);
+  if (apontStatus === "finished") {
+    return apiError("Este item já foi finalizado.", 400);
+  }
+  if (apontStatus === "not_started") {
+    return apiError("Inicie a produção antes de finalizar.", 400);
+  }
+
+  const gate = await assertCanFinishProduction(admin, tenantId, orderItemId);
+  if (!gate.allowed) {
+    return apiError(gate.reason, 403, { code: gate.code });
+  }
+
   const now = new Date().toISOString();
 
   const { data, error } = await admin
     .from("order_items")
     .update({
-      production_end: now,
+      apontamento_end_at: now,
+      completed_at: now,
       quality_control: qualityControl,
       production_notes: notes,
       status: "completed",
-      completed_at: now,
     })
     .eq("id", orderItemId)
     .eq("tenant_id", tenantId)
-    .select("id, production_end, quality_control, production_notes")
+    .select(
+      "id, apontamento_start_at, apontamento_end_at, quality_control, production_notes, completed_at"
+    )
     .maybeSingle();
 
   if (error) return apiError(error.message, 400);

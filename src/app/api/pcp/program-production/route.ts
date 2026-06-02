@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
-import { requireMenuModule } from "@/modules/core/lib/api-guards";
+import { requireAnyMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
 import { checkProductionDateVsPurchases } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
-  const moduleDenied = await requireMenuModule("pcp");
+  const moduleDenied = await requireAnyMenuModule(["producao", "pcp"]);
   if (moduleDenied) return moduleDenied;
   if (!(await currentUserCanPcpPlanning())) {
     return apiError("Sem permissão para planeamento PCP", 403);

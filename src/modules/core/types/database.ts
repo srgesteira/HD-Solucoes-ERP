@@ -1567,6 +1567,8 @@ export type Database = {
       order_items: {
         Row: {
           actual_hours: number | null
+          apontamento_end_at: string | null
+          apontamento_start_at: string | null
           completed_at: string | null
           completed_by: string | null
           created_at: string
@@ -1593,6 +1595,8 @@ export type Database = {
         }
         Insert: {
           actual_hours?: number | null
+          apontamento_end_at?: string | null
+          apontamento_start_at?: string | null
           completed_at?: string | null
           completed_by?: string | null
           created_at?: string
@@ -1619,6 +1623,8 @@ export type Database = {
         }
         Update: {
           actual_hours?: number | null
+          apontamento_end_at?: string | null
+          apontamento_start_at?: string | null
           completed_at?: string | null
           completed_by?: string | null
           created_at?: string
