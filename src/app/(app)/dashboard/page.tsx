@@ -1074,7 +1074,7 @@ export default function ConsultantDashboardPage() {
           {[
             { href: "/products", label: "Produtos", icon: Package },
             { href: "/sales/orders", label: "Pedidos de Venda", icon: ShoppingBag },
-            { href: "/production/orders", label: "Produção", icon: Factory },
+            { href: "/logistics/pcp", label: "Produção", icon: Factory },
             { href: "/purchasing/orders", label: "Compras", icon: ShoppingCart },
           ].map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} className="block">
