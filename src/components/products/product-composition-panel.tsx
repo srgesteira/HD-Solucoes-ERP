@@ -118,6 +118,15 @@ function formatCurrency(value: number): string {
   }).format(Number(value ?? 0));
 }
 
+function productKindLabel(product: ProductEmbed): string {
+  const prefix = product.prefix?.code?.trim();
+  if (prefix === "SE") return "Semi-elaborado";
+  if (product.type === "finished") return "Acabado";
+  if (product.type === "raw") return "Matéria-prima";
+  if (product.type === "component") return "Componente";
+  return product.type ?? "—";
+}
+
 type ProductCompositionPanelProps = {
   productId: string;
   /** Quando true, omite cabeçalho de página e ajusta espaçamento (uso em abas). */
@@ -427,13 +436,7 @@ export function ProductCompositionPanel({
             <div>
               <span className="text-slate-500 block">Tipo</span>
               <p className="font-medium text-slate-900">
-                {product.type === "finished"
-                  ? "Acabado"
-                  : product.type === "raw"
-                    ? "Matéria-prima"
-                    : product.type === "component"
-                      ? "Componente intermédio"
-                      : product.type}
+                {productKindLabel(product)}
               </p>
             </div>
             <div>
@@ -493,8 +496,8 @@ export function ProductCompositionPanel({
         <CardContent className="overflow-x-auto">
           {components.length === 0 ? (
             <p className="text-center py-10 text-sm text-slate-500">
-              Sem linhas nesta estrutura. Para produtos transformados e acabados, defina materiais e
-              mão-de-obra para gerar o custo de lista.
+              Sem linhas nesta estrutura. Defina materiais e mão-de-obra para
+              calcular o custo de lista (acabados e semi-elaborados).
             </p>
           ) : (
             <div className="min-w-[640px] space-y-0">

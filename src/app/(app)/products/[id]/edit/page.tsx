@@ -23,6 +23,10 @@ import { ProductCompositionPanel } from "@/components/products/product-compositi
 import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/products/prefix-classification";
+import {
+  bomEligibilityMessage,
+  canProductHaveBom,
+} from "@/modules/engenharia/lib/products/product-bom-eligibility";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
 import type { StructureSuggestion } from "@/modules/engenharia/lib/services/ai.service";
@@ -235,6 +239,7 @@ export default function EditProductPage() {
   const prefixCode =
     prefixes.find((p) => p.id === formData?.prefix_id.trim())?.code ?? "";
   const isSimplified = isSimplifiedClassificationSuffix(prefixCode);
+  const canHaveBom = canProductHaveBom(prefixCode);
 
   useEffect(() => {
     if (meLoading) return;
@@ -713,17 +718,17 @@ export default function EditProductPage() {
               </div>
             ) : null}
 
-            {formData.type === "finished" ? (
+            {canHaveBom ? (
               <ProductCompositionPanel productId={productId} embedded />
             ) : (
               <Card>
                 <CardContent className="py-8 text-center space-y-2">
                   <p className="text-sm text-slate-600">
-                    A composição (lista de materiais e mão de obra) está
-                    disponível para produtos do tipo <strong>acabado</strong>.
+                    {bomEligibilityMessage(prefixCode) ||
+                      "Este produto não possui receita de fabricação (composição / BOM)."}
                   </p>
                   <p className="text-xs text-slate-500">
-                    Altere o prefixo/classificação se este produto deve ter BOM.
+                    Acabados (HD1–HD3, AC) e semi-elaborados (SE) podem ter composição.
                   </p>
                 </CardContent>
               </Card>

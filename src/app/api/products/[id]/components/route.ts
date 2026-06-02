@@ -12,6 +12,7 @@ import { productComponentSchema } from "@/shared/contracts/product.schema";
 import { resolveLaborHourlyRateForBom } from "@/modules/rh/lib/labor-cost-utils";
 import type { Database } from "@/modules/core/types/database";
 import { recalculateProductCost } from "@/modules/engenharia/lib/products/recalculate-product-cost";
+import { canProductHaveBom } from "@/modules/engenharia/lib/products/product-bom-eligibility";
 
 export const dynamic = "force-dynamic";
 
@@ -106,12 +107,32 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createSupabaseAdminClient();
 
-  const { count: parentOk } = await admin
+  const { data: parentProduct, error: parentErr } = await admin
     .from("products")
-    .select("*", { count: "exact", head: true })
+    .select("id, prefix:product_prefixes!products_prefix_id_fkey(code)")
     .eq("id", parentId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (parentErr) {
+    return apiError(
+      "Erro ao carregar produto pai: " + parentErr.message,
+      supabaseErrorToHttp(parentErr.code)
+    );
+  }
+  if (!parentProduct) return apiError("Produto pai não encontrado", 404);
+
+  const parentPrefixCode = (
+    parentProduct.prefix as { code?: string } | null
+  )?.code;
+  if (!canProductHaveBom(parentPrefixCode)) {
+    return apiError("Este tipo de produto não pode ter composição (BOM).", 400);
+  }
+
+  const { count: lineCountBefore } = await admin
+    .from("product_components")
+    .select("*", { count: "exact", head: true })
+    .eq("parent_product_id", parentId)
     .eq("tenant_id", tenantId);
-  if (!parentOk) return apiError("Produto pai não encontrado", 404);
 
   const externalLabor =
     validated.is_labor &&
@@ -284,6 +305,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   await recalculateProductCost(admin, tenantId, parentId);
+
+  if (
+    parentPrefixCode === "SE" &&
+    (lineCountBefore ?? 0) === 0
+  ) {
+    await admin
+      .from("products")
+      .update({ has_composition: true })
+      .eq("id", parentId)
+      .eq("tenant_id", tenantId);
+  }
 
   return apiOk({ data }, 201);
 }
