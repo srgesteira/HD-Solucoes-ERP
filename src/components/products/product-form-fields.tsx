@@ -3,10 +3,12 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { Label } from "@/shared/ui/label";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
+import { Button } from "@/shared/ui/button";
+import { QuickAddProductFamilyDialog } from "@/components/products/quick-add-product-family-dialog";
 import { cn } from "@/shared/utils/cn";
 import type { ProductType } from "@/modules/core/types/product.types";
 import {
@@ -114,6 +116,7 @@ export function ProductFormFields({
     { id: string; code: string; name: string; is_active: boolean }[]
   >([]);
   const [plLoading, setPlLoading] = useState(false);
+  const [addFamilyOpen, setAddFamilyOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,8 +335,9 @@ export function ProductFormFields({
             ou <span className="font-mono text-slate-900">MO-A10-001</span>. A
             parte <span className="font-mono">-001</span> é a{" "}
             <strong>sequência</strong>, gerada ao guardar. A natureza MRP é
-            derivada automaticamente do prefixo seleccionado. Se as listas
-            estiverem vazias, cadastre em{" "}
+            derivada automaticamente do prefixo seleccionado. Para prefixos
+            completos (HD1–HD3, AC), use <strong>Adicionar</strong> ao lado de
+            Família ou cadastre em{" "}
             <Link
               href="/settings/product-families"
               className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
@@ -385,14 +389,30 @@ export function ProductFormFields({
 
           {needsCompleteClassification ? (
             <div className="space-y-2">
-              <Label htmlFor="family_id">Família *</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="family_id">Família *</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs shrink-0"
+                  disabled={classFieldsDisabled}
+                  onClick={() => setAddFamilyOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" aria-hidden />
+                  Adicionar
+                </Button>
+              </div>
               <select
                 id="family_id"
                 className={SELECT_CLASS}
                 required
                 disabled={classFieldsDisabled}
                 value={formData.family_id}
-                onChange={(e) => onChange("family_id", e.target.value)}
+                onChange={(e) => {
+                  onChange("family_id", e.target.value);
+                  onChange("subfamily_id", "");
+                }}
               >
                 <option value="">Selecionar…</option>
                 {families.map((p) => (
@@ -768,6 +788,23 @@ export function ProductFormFields({
           Produto ativo (disponível para uso)
         </Label>
       </div>
+
+      <QuickAddProductFamilyDialog
+        open={addFamilyOpen}
+        onClose={() => setAddFamilyOpen(false)}
+        onCreated={(row) => {
+          setFamilies((prev) => {
+            const next = [...prev, row];
+            next.sort((a, b) =>
+              (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+              a.code.localeCompare(b.code)
+            );
+            return next;
+          });
+          onChange("family_id", row.id);
+          onChange("subfamily_id", "");
+        }}
+      />
     </div>
   );
 }
