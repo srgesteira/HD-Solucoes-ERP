@@ -23,6 +23,10 @@ import {
   parsePaymentDaysBetween,
 } from "@/shared/contracts/sales-order.schema";
 import { checkPurchaseOrderExpectedDeliveryVsProduction } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
+import {
+  ensurePayablesForPurchaseOrder,
+  purchaseOrderRowToPayablesInput,
+} from "@/modules/compras/lib/purchasing/purchase-payables";
 
 export const dynamic = "force-dynamic";
 
@@ -184,7 +188,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existingOrder, error: existingErr } = await admin
     .from("purchase_orders")
     .select(
-      "id, status, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "id, status, po_number, order_date, supplier_id, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
     )
     .eq("id", id)
     .eq("tenant_id", tenantId)
@@ -497,6 +501,24 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
   if (!data) return apiError("Pedido não encontrado", 404);
 
+  const previousStatus = existingOrder.status;
+  const payablesOrder = purchaseOrderRowToPayablesInput({
+    ...existingOrder,
+    ...data,
+    po_number: data.po_number,
+    order_date: data.order_date,
+    supplier_id: data.supplier_id,
+  });
+  const payablesResult = await ensurePayablesForPurchaseOrder(
+    admin,
+    tenantId,
+    payablesOrder,
+    {
+      previousStatus,
+      currentStatus: data.status,
+    }
+  );
+
   if (transitioningToReceived) {
     try {
       const receive = await applyPurchaseOrderReceive(admin, tenantId, id);
@@ -506,7 +528,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
         .eq("id", id)
         .eq("tenant_id", tenantId)
         .maybeSingle();
-      return apiOk({ data: detail ?? data, receive });
+      return apiOk({
+        data: detail ?? data,
+        receive,
+        payables: payablesResult,
+      });
     } catch (err) {
       return apiError(
         err instanceof Error
@@ -531,5 +557,5 @@ export async function PUT(request: NextRequest, { params }: Params) {
     );
   }
 
-  return apiOk({ data: detail ?? data });
+  return apiOk({ data: detail ?? data, payables: payablesResult });
 }

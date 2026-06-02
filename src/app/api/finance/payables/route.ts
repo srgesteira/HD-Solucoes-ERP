@@ -102,6 +102,8 @@ export async function POST(request: NextRequest) {
       due_date: b.due_date,
       notes: b.notes ?? null,
       status: "pending",
+      source_kind: "manual",
+      amount_locked: false,
     })
     .select("*")
     .single();

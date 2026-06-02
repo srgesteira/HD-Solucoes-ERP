@@ -25,6 +25,8 @@ type Payable = {
   due_date: string;
   payment_date: string | null;
   status: string;
+  amount_locked?: boolean;
+  purchase_order_id?: string | null;
 };
 
 type Supplier = { id: string; name: string; code: string };
@@ -57,6 +59,8 @@ export default function FinancePayablesPage() {
   const [showNew, setShowNew] = useState(false);
   const [payOpen, setPayOpen] = useState<Payable | null>(null);
   const [payAmount, setPayAmount] = useState("");
+  const [adjustOpen, setAdjustOpen] = useState<Payable | null>(null);
+  const [adjustAmount, setAdjustAmount] = useState("");
 
   const [form, setForm] = useState({
     description: "",
@@ -151,6 +155,30 @@ export default function FinancePayablesPage() {
     void load();
   }
 
+  async function submitAdjustAmount() {
+    if (!adjustOpen) return;
+    const amt = parseFloat(adjustAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast.error("Indique um valor válido.");
+      return;
+    }
+    const res = await fetch(`/api/finance/payables/${adjustOpen.id}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adjust_amount: amt }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      toast.error(j.error ?? "Erro ao ajustar");
+      return;
+    }
+    toast.success("Valor ajustado e travado para recálculo automático.");
+    setAdjustOpen(null);
+    setAdjustAmount("");
+    void load();
+  }
+
   async function registerPayment() {
     if (!payOpen) return;
     const amt = parseFloat(payAmount);
@@ -223,13 +251,33 @@ export default function FinancePayablesPage() {
         ),
       },
       {
+        key: "original_amount",
+        label: "Original",
+        type: "number",
+        width: "w-[11%]",
+        accessor: (row) => row.original_amount,
+        truncate: false,
+        render: (row) => (
+          <span className="text-slate-600">{fmtBrl(row.original_amount)}</span>
+        ),
+      },
+      {
         key: "current_amount",
         label: "Saldo",
         type: "number",
-        width: "w-[12%]",
+        width: "w-[11%]",
         accessor: (row) => row.current_amount,
         truncate: false,
-        render: (row) => <span>{fmtBrl(row.current_amount)}</span>,
+        render: (row) => (
+          <span>
+            {fmtBrl(row.current_amount)}
+            {row.amount_locked ? (
+              <span className="ml-1 text-xs text-amber-700" title="Ajuste manual">
+                *
+              </span>
+            ) : null}
+          </span>
+        ),
       },
       {
         key: "status",
@@ -402,17 +450,30 @@ export default function FinancePayablesPage() {
               render: (r) => (
                 <div className="flex flex-col items-end gap-1">
                   {r.status !== "paid" && r.status !== "cancelled" ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setPayOpen(r);
-                        setPayAmount(String(r.current_amount));
-                      }}
-                    >
-                      Registrar pagamento
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setAdjustOpen(r);
+                          setAdjustAmount(String(r.current_amount));
+                        }}
+                      >
+                        Ajustar valor
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPayOpen(r);
+                          setPayAmount(String(r.current_amount));
+                        }}
+                      >
+                        Registrar pagamento
+                      </Button>
+                    </>
                   ) : null}
                   {isAdmin ? (
                     <Button
@@ -431,6 +492,64 @@ export default function FinancePayablesPage() {
           />
         </CardContent>
       </Card>
+
+      {adjustOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="text-base">Ajustar valor</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-slate-600">{adjustOpen.description}</p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-slate-500">Valor original (pedido)</p>
+                  <p className="font-medium">{fmtBrl(adjustOpen.original_amount)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Saldo actual</p>
+                  <p className="font-medium">{fmtBrl(adjustOpen.current_amount)}</p>
+                </div>
+              </div>
+              {adjustOpen.amount_locked ? (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  Esta parcela já foi ajustada manualmente. Um novo ajuste actualiza o
+                  saldo e mantém a trava activa.
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Ao confirmar, o valor fica travado e não será alterado por recálculos
+                  do pedido de compra.
+                </p>
+              )}
+              <div className="space-y-1">
+                <Label>Novo saldo (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={adjustAmount}
+                  onChange={(e) => setAdjustAmount(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setAdjustOpen(null);
+                    setAdjustAmount("");
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={() => void submitAdjustAmount()}>
+                  Confirmar ajuste
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       {payOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

@@ -41,6 +41,7 @@ export type Database = {
     Tables: {
       accounts_payable: {
         Row: {
+          amount_locked: boolean
           category: string
           created_at: string
           current_amount: number
@@ -60,6 +61,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          amount_locked?: boolean
           category: string
           created_at?: string
           current_amount: number
@@ -79,6 +81,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          amount_locked?: boolean
           category?: string
           created_at?: string
           current_amount?: number

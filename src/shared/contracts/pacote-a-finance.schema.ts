@@ -28,6 +28,8 @@ export const accountsPayableUpdateSchema = z
     current_amount: z.coerce.number().min(0).max(1e12).optional(),
     payment_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     pay_amount: z.coerce.number().positive().max(1e12).optional(),
+    /** Ajuste manual de saldo; define amount_locked e acrescenta nota automática. */
+    adjust_amount: z.coerce.number().positive().max(1e12).optional(),
   });
 
 export const cashFlowEntryCreateSchema = z.object({

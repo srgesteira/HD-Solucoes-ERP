@@ -8,6 +8,10 @@ import {
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { accountsPayableUpdateSchema } from "@/shared/contracts/pacote-a-finance.schema";
 import type { Database } from "@/modules/core/types/database";
+import {
+  appendNote,
+  formatManualAdjustmentNote,
+} from "@/modules/compras/lib/purchasing/purchase-payables";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +60,28 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
   let status = row.status as string;
   let payment_date = row.payment_date as string | null;
 
+  if (b.adjust_amount != null && b.pay_amount != null) {
+    return apiError(
+      "Use apenas ajuste de valor ou registo de pagamento, não ambos.",
+      400
+    );
+  }
+
+  if (b.adjust_amount != null) {
+    if (row.status === "paid" || row.status === "cancelled") {
+      return apiError(
+        "Não é possível ajustar valor de conta paga ou cancelada.",
+        400
+      );
+    }
+    const newAmt = Math.round(b.adjust_amount * 100) / 100;
+    if (newAmt <= 0) {
+      return apiError("Valor ajustado deve ser positivo.", 400);
+    }
+    const prev = current_amount;
+    current_amount = newAmt;
+  }
+
   if (b.pay_amount != null) {
     current_amount = Math.round((current_amount - b.pay_amount) * 100) / 100;
     if (current_amount < 0) {
@@ -76,10 +102,25 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
   if (b.due_date !== undefined) update.due_date = b.due_date;
   if (b.notes !== undefined) update.notes = b.notes;
   if (b.status !== undefined) update.status = b.status;
-  if (b.current_amount !== undefined && b.pay_amount == null) {
+  if (
+    b.current_amount !== undefined &&
+    b.pay_amount == null &&
+    b.adjust_amount == null
+  ) {
     update.current_amount = b.current_amount;
   }
   if (b.payment_date !== undefined) update.payment_date = b.payment_date;
+  if (b.adjust_amount != null) {
+    const prev = Number(row.current_amount ?? 0);
+    update.current_amount = current_amount;
+    update.amount_locked = true;
+    if (Math.abs(prev - current_amount) > 0.001) {
+      update.notes = appendNote(
+        row.notes,
+        formatManualAdjustmentNote(prev, current_amount)
+      );
+    }
+  }
   if (b.pay_amount != null) {
     update.current_amount = current_amount;
     update.status = status;
