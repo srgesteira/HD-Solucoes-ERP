@@ -31,10 +31,10 @@ export function isCompleteClassificationSuffix(
 
 export function isSimplifiedClassificationSuffix(
   code: string | null | undefined
-): code is SimplifiedClassificationSuffix {
-  return (SIMPLIFIED_CLASSIFICATION_SUFFIXES as readonly string[]).includes(
-    String(code ?? "").trim()
-  );
+): boolean {
+  const c = String(code ?? "").trim();
+  if (!c) return false;
+  return !isCompleteClassificationSuffix(c);
 }
 
 export function isMoClassificationSuffix(

@@ -9,10 +9,12 @@ import {
 } from "@/modules/core/lib/tenant";
 import { familyCatalogUsesSharedCompletePrefix } from "@/modules/engenharia/lib/products/family-prefix-scope";
 import { listProductFamiliesForPrefix } from "@/modules/engenharia/lib/products/product-families-catalog";
+import {
+  normalizeClassificationCatalogCode,
+  validateClassificationCatalogCode,
+} from "@/modules/engenharia/lib/products/classification-catalog-codes";
 
 export const dynamic = "force-dynamic";
-
-const FAMILY_CODE_RE = /^[A-Z0-9]{1,4}$/;
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -86,19 +88,17 @@ export async function POST(request: NextRequest) {
   const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const prefixId =
     typeof b.prefix_id === "string" ? b.prefix_id.trim() : "";
-  const rawCode = typeof b.code === "string" ? b.code.trim().toUpperCase() : "";
+  const rawCode =
+    typeof b.code === "string"
+      ? normalizeClassificationCatalogCode(b.code)
+      : "";
   const name = typeof b.name === "string" ? b.name.trim() : "";
   const description =
     typeof b.description === "string" ? b.description.trim() || null : null;
 
   if (!prefixId) return apiError("prefix_id é obrigatório", 400);
-  if (!rawCode) return apiError("Código da família é obrigatório", 400);
-  if (!FAMILY_CODE_RE.test(rawCode)) {
-    return apiError(
-      "Código inválido. Use 1 a 4 letras ou números (ex.: A, B, H1).",
-      400
-    );
-  }
+  const codeErr = validateClassificationCatalogCode(rawCode);
+  if (codeErr) return apiError(codeErr, 400);
   if (!name) return apiError("Nome da família é obrigatório", 400);
 
   const admin = createSupabaseAdminClient();

@@ -36,7 +36,7 @@ function buildPayload(
     cost_price: Number(f.cost_price ?? 0),
     is_active: f.is_active,
     prefix_id: f.prefix_id.trim(),
-    family_id: options.isSimplified ? null : f.family_id.trim() || null,
+    family_id: f.family_id.trim() || null,
     subfamily_id: options.isSimplified ? null : f.subfamily_id.trim() || null,
     material_id: f.material_id.trim() || null,
     finish_id: f.finish_id.trim() || null,
