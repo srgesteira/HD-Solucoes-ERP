@@ -12,8 +12,15 @@ import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
+import { cn } from "@/shared/utils/cn";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useMe } from "@/hooks/use-me";
+import {
+  PAYABLES_LIST_TAB_DEFAULT,
+  PAYABLES_LIST_TAB_LABELS,
+  PAYABLES_LIST_TABS,
+  type PayablesListTab,
+} from "@/modules/faturamento/lib/payables-list-tabs";
 
 type Payable = {
   id: string;
@@ -53,6 +60,9 @@ export default function FinancePayablesPage() {
   const [rows, setRows] = useState<Payable[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<PayablesListTab>(
+    PAYABLES_LIST_TAB_DEFAULT
+  );
   const [status, setStatus] = useState("all");
   const [overdue, setOverdue] = useState(false);
   const [supplierId, setSupplierId] = useState("");
@@ -74,7 +84,11 @@ export default function FinancePayablesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const p = new URLSearchParams({ limit: "100", page: "1" });
+      const p = new URLSearchParams({
+        limit: "100",
+        page: "1",
+        tab: activeTab,
+      });
       if (status !== "all") p.set("status", status);
       if (overdue) p.set("overdue", "1");
       if (supplierId) p.set("supplier_id", supplierId);
@@ -90,7 +104,7 @@ export default function FinancePayablesPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, overdue, supplierId]);
+  }, [activeTab, status, overdue, supplierId]);
 
   const loadSuppliers = useCallback(async () => {
     try {
@@ -315,51 +329,6 @@ export default function FinancePayablesPage() {
         </Button>
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Filtros</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-4 items-end">
-          <div className="space-y-1">
-            <Label>Estado</Label>
-            <select
-              className="flex h-9 rounded-md border border-slate-300 px-3 text-sm bg-white"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="all">Todos</option>
-              <option value="pending">Pendente</option>
-              <option value="paid">Pago</option>
-              <option value="overdue">Em atraso</option>
-              <option value="cancelled">Cancelado</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <Label>Fornecedor</Label>
-            <select
-              className="flex h-9 min-w-[180px] rounded-md border border-slate-300 px-3 text-sm bg-white"
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-            >
-              <option value="">Todos</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <label className="flex items-center gap-2 text-sm cursor-pointer pb-2">
-            <input
-              type="checkbox"
-              checked={overdue}
-              onChange={(e) => setOverdue(e.target.checked)}
-            />
-            Só vencidas
-          </label>
-        </CardContent>
-      </Card>
-
       {showNew ? (
         <Card>
           <CardHeader>
@@ -434,16 +403,80 @@ export default function FinancePayablesPage() {
       ) : null}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base">Listagem</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <nav
+            className="flex flex-wrap gap-1 border-b border-slate-200 -mx-1"
+            role="tablist"
+            aria-label="Filtrar contas a pagar por situação"
+          >
+            {PAYABLES_LIST_TABS.map((tabId) => (
+              <button
+                key={tabId}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tabId}
+                className={cn(
+                  "px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap",
+                  activeTab === tabId
+                    ? "border-brand-700 text-brand-800 font-medium"
+                    : "border-transparent text-slate-600 hover:text-slate-900"
+                )}
+                onClick={() => setActiveTab(tabId)}
+              >
+                {PAYABLES_LIST_TAB_LABELS[tabId]}
+              </button>
+            ))}
+          </nav>
+
+          <div className="flex flex-wrap gap-4 items-end">
+            <div className="space-y-1">
+              <Label>Estado</Label>
+              <select
+                className="flex h-9 rounded-md border border-slate-300 px-3 text-sm bg-white"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="all">Todos</option>
+                <option value="pending">Pendente</option>
+                <option value="paid">Pago</option>
+                <option value="overdue">Em atraso</option>
+                <option value="cancelled">Cancelado</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Fornecedor</Label>
+              <select
+                className="flex h-9 min-w-[180px] rounded-md border border-slate-300 px-3 text-sm bg-white"
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+              >
+                <option value="">Todos</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer pb-2">
+              <input
+                type="checkbox"
+                checked={overdue}
+                onChange={(e) => setOverdue(e.target.checked)}
+              />
+              Só vencidas
+            </label>
+          </div>
+
           <SortableTable
             columns={tableColumns}
             data={rows}
             getRowKey={(row) => row.id}
             isLoading={loading}
-            emptyMessage="Sem contas a pagar."
+            emptyMessage={`Sem contas em «${PAYABLES_LIST_TAB_LABELS[activeTab]}».`}
             actionsColumn={{
               label: "Acções",
               width: "w-[5rem]",

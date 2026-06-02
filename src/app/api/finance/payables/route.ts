@@ -5,12 +5,17 @@ import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import {
   accountsPayableCreateSchema,
-  accountsPayableUpdateSchema,
 } from "@/shared/contracts/pacote-a-finance.schema";
+import {
+  isPayablesListTab,
+  type PayablesListTab,
+} from "@/modules/faturamento/lib/payables-list-tabs";
 
 export const dynamic = "force-dynamic";
 
 const PAYABLE_STATUS = new Set(["pending", "paid", "overdue", "cancelled"]);
+
+const UNPAID_STATUSES = ["pending", "overdue"] as const;
 
 export async function GET(request: NextRequest) {
   const gate = await assertMenuModuleAccess("faturamento");
@@ -23,6 +28,9 @@ export async function GET(request: NextRequest) {
   const status = sp.get("status");
   const supplier_id = sp.get("supplier_id");
   const overdue = sp.get("overdue");
+  const tabRaw = sp.get("tab") ?? "open";
+  const tab: PayablesListTab = isPayablesListTab(tabRaw) ? tabRaw : "open";
+  const today = new Date().toISOString().slice(0, 10);
 
   const page = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(sp.get("limit") ?? "50", 10) || 50));
@@ -35,6 +43,14 @@ export async function GET(request: NextRequest) {
     .select("*", { count: "exact" })
     .eq("tenant_id", tenantId);
 
+  if (tab === "open") {
+    q = q.in("status", [...UNPAID_STATUSES]).lte("due_date", today);
+  } else if (tab === "forecast") {
+    q = q.in("status", [...UNPAID_STATUSES]).gt("due_date", today);
+  } else if (tab === "paid") {
+    q = q.eq("status", "paid");
+  }
+
   if (status && status !== "all") {
     if (!PAYABLE_STATUS.has(status)) return apiError("Status inválido", 400);
     q = q.eq("status", status);
@@ -43,9 +59,8 @@ export async function GET(request: NextRequest) {
     q = q.eq("supplier_id", supplier_id);
   }
   if (overdue === "1") {
-    const today = new Date().toISOString().slice(0, 10);
     q = q
-      .in("status", ["pending", "overdue"])
+      .in("status", [...UNPAID_STATUSES])
       .lt("due_date", today);
   }
 
@@ -63,6 +78,7 @@ export async function GET(request: NextRequest) {
   return apiOk({
     data: data ?? [],
     pagination: { page, limit, total: count ?? 0 },
+    tab,
   });
 }
 
