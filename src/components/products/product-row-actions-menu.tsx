@@ -38,13 +38,16 @@ export function ProductRowActionsMenu({
           `/products/new?duplicateFrom=1&sourceId=${encodeURIComponent(productId)}`
         ),
     },
-    {
-      id: "bom",
-      label: "Estrutura (BOM)",
-      icon: <Layers className="h-4 w-4" />,
-      onClick: () => router.push(`/products/${productId}/structure`),
-      hidden: productType !== "finished",
-    },
+    ...(productType === "finished"
+      ? [
+          {
+            id: "bom",
+            label: "Estrutura (BOM)",
+            icon: <Layers className="h-4 w-4" />,
+            onClick: () => router.push(`/products/${productId}/structure`),
+          },
+        ]
+      : []),
     {
       id: "deactivate",
       label: "Marcar como inativo",
