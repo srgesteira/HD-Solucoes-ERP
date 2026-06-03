@@ -147,6 +147,9 @@ export async function GET(request: NextRequest) {
   if (workflowPending === "1" && hasEngineering) {
     q = q.eq("engineering_workflow_status", "pending_composition");
   }
+  if (params.get("has_composition") === "true") {
+    q = q.eq("has_composition", true);
+  }
   if (isActive !== null && isActive !== "") {
     q = q.eq("is_active", isActive === "true");
   }

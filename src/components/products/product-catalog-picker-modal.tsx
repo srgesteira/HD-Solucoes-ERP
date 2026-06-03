@@ -52,6 +52,8 @@ type Props = {
   /** Abre cadastro rápido comercial (sem BOM) em vez de nova aba de engenharia. */
   commercialQuickCreate?: boolean;
   sourceQuoteId?: string | null;
+  /** Lista só produtos com composição (products.has_composition). */
+  hasCompositionOnly?: boolean;
 };
 
 const pickerQueryKey = (filters: {
@@ -61,6 +63,7 @@ const pickerQueryKey = (filters: {
   prefixCode: string;
   page: number;
   limit: number;
+  hasCompositionOnly: boolean;
 }) => ["product-catalog-picker", filters] as const;
 
 async function fetchPrefixCodes(): Promise<string[]> {
@@ -83,11 +86,15 @@ async function fetchCatalogPage(filters: {
   prefixCode: string;
   page: number;
   limit: number;
+  hasCompositionOnly: boolean;
 }): Promise<{ data: CatalogRow[]; pagination: { page: number; limit: number; total: number } }> {
   const params = new URLSearchParams();
   if (filters.type !== "all") params.append("type", filters.type);
   if (filters.isActive !== "all") {
     params.append("is_active", filters.isActive === "active" ? "true" : "false");
+  }
+  if (filters.hasCompositionOnly) {
+    params.append("has_composition", "true");
   }
   if (filters.prefixCode.trim()) {
     params.append("prefix_code", filters.prefixCode.trim());
@@ -177,6 +184,7 @@ export function ProductCatalogPickerModal({
   showNewProductButton = true,
   commercialQuickCreate = false,
   sourceQuoteId,
+  hasCompositionOnly = false,
 }: Props) {
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
@@ -191,6 +199,7 @@ export function ProductCatalogPickerModal({
     prefixCode: "",
     page: 1,
     limit: 25,
+    hasCompositionOnly,
   });
   const [pending, setPending] = useState<ProductSearchHit[]>([]);
 
@@ -209,9 +218,10 @@ export function ProductCatalogPickerModal({
     setFilters((f) => ({
       ...f,
       type: productType === "all" ? "all" : productType,
+      hasCompositionOnly,
       page: 1,
     }));
-  }, [open, productType]);
+  }, [open, productType, hasCompositionOnly]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -230,10 +240,11 @@ export function ProductCatalogPickerModal({
         prefixCode: "",
         page: 1,
         limit: 25,
+        hasCompositionOnly,
       });
       setPending([]);
     }
-  }, [open, productType]);
+  }, [open, productType, hasCompositionOnly]);
 
   const prefixCodesQuery = useQuery({
     queryKey: ["product-prefix-codes"],
