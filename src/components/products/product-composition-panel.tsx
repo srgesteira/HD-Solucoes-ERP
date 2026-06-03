@@ -9,6 +9,7 @@ import {
   Factory,
   Loader2,
   Package,
+  Pencil,
   Plus,
   Search,
   Trash2,
@@ -111,6 +112,21 @@ async function removeComponent(productId: string, componentId: string) {
   return json;
 }
 
+async function updateComponent(
+  productId: string,
+  payload: { component_id: string; quantity?: number; unit_cost?: number }
+) {
+  const res = await fetch(`/api/products/${productId}/components`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar componente");
+  return json;
+}
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -144,6 +160,12 @@ export function ProductCompositionPanel({
   const isAdmin = me?.role === "admin";
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingLine, setEditingLine] = useState<ProductComponentLine | null>(
+    null
+  );
+  const [editQuantity, setEditQuantity] = useState(1);
+  const [editUnitCost, setEditUnitCost] = useState(0);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [componentType, setComponentType] = useState<"material" | "labor">(
     "material"
@@ -271,6 +293,21 @@ export function ProductCompositionPanel({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: (payload: {
+      component_id: string;
+      quantity?: number;
+      unit_cost?: number;
+    }) => updateComponent(productId, payload),
+    onSuccess: async () => {
+      toast.success("Linha actualizada.");
+      await queryClient.invalidateQueries({ queryKey: ["product", productId] });
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      closeEditDialog();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   function resetDialog() {
     setComponentType("material");
     setLaborSource("internal");
@@ -281,6 +318,63 @@ export function ProductCompositionPanel({
     setQuantity(1);
     setLaborHourlyRate(0);
     setExternalUnitCost(0);
+  }
+
+  function openEditDialog(line: ProductComponentLine) {
+    setEditingLine(line);
+    setEditQuantity(Number(line.quantity ?? 1));
+    setEditUnitCost(Number(line.unit_cost ?? 0));
+    setEditDialogOpen(true);
+  }
+
+  function closeEditDialog() {
+    setEditDialogOpen(false);
+    setEditingLine(null);
+    setEditQuantity(1);
+    setEditUnitCost(0);
+  }
+
+  function lineDescription(comp: ProductComponentLine): string {
+    const moCatalogLine =
+      comp.is_labor === true && !!comp.component_product_id;
+    if (moCatalogLine) {
+      const code = comp.component_product?.technical_code ?? "—";
+      return `${code} — ${comp.component_product?.name ?? ""}`;
+    }
+    if (comp.is_labor) {
+      if (comp.is_external_labor) return "Mão-de-obra externa (terceiros)";
+      return `${comp.work_center?.name ?? "Mão-de-obra"} (${comp.work_center?.code ?? "—"})`;
+    }
+    const code = comp.component_product?.technical_code ?? "—";
+    return `${code} — ${comp.component_product?.name ?? ""}`;
+  }
+
+  async function handleSaveEdit() {
+    if (!editingLine) return;
+    if (editQuantity <= 0 || !Number.isFinite(editQuantity)) {
+      toast.error("Quantidade deve ser maior que zero.");
+      return;
+    }
+    const payload: {
+      component_id: string;
+      quantity?: number;
+      unit_cost?: number;
+    } = {
+      component_id: editingLine.id,
+      quantity: editQuantity,
+    };
+    if (editingLine.is_labor) {
+      if (!Number.isFinite(editUnitCost) || editUnitCost < 0) {
+        toast.error("Custo unitário inválido.");
+        return;
+      }
+      payload.unit_cost = editUnitCost;
+    }
+    try {
+      await updateMutation.mutateAsync(payload);
+    } catch {
+      /* toast no onError */
+    }
   }
 
   async function handleAddComponent() {
@@ -482,7 +576,7 @@ export function ProductCompositionPanel({
         </div>
       ) : (
         <p className="text-sm text-slate-500 border border-dashed border-slate-200 rounded-lg p-3 bg-slate-50/80">
-          Só administradores acrescentam ou removem linhas da BOM. Pode visualizar custos aqui com a
+          Só administradores alteram linhas da BOM. Pode visualizar custos aqui com a
           conta actual.
         </p>
       )}
@@ -631,26 +725,41 @@ export function ProductCompositionPanel({
                     <div className="col-span-1 text-right tabular-nums font-medium text-slate-900">
                       {formatCurrency(subtotal)}
                     </div>
-                    <div className="col-span-1 flex justify-end">
+                    <div className="col-span-1 flex justify-end gap-1">
                       {isAdmin ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="shrink-0 h-8 w-8 p-0 border-red-200 text-red-600 hover:bg-red-50"
-                          onClick={() => {
-                            if (
-                              typeof window !== "undefined" &&
-                              !window.confirm("Remover esta linha da estrutura?")
-                            )
-                              return;
-                            removeMutation.mutate({ componentId: comp.id });
-                          }}
-                          disabled={removeMutation.isPending}
-                          aria-label="Remover linha"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 h-8 w-8 p-0"
+                            onClick={() => openEditDialog(comp)}
+                            disabled={
+                              updateMutation.isPending || removeMutation.isPending
+                            }
+                            aria-label="Editar linha"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 h-8 w-8 p-0 border-red-200 text-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              if (
+                                typeof window !== "undefined" &&
+                                !window.confirm("Remover esta linha da estrutura?")
+                              )
+                                return;
+                              removeMutation.mutate({ componentId: comp.id });
+                            }}
+                            disabled={removeMutation.isPending}
+                            aria-label="Remover linha"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
                       ) : null}
                     </div>
                   </div>
@@ -970,6 +1079,105 @@ export function ProductCompositionPanel({
                   </>
                 ) : (
                   "Adicionar"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editDialogOpen && editingLine ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
+          role="presentation"
+          onClick={closeEditDialog}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bom-edit-dialog-title"
+            className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-800 leading-none text-xl"
+              aria-label="Fechar"
+              onClick={closeEditDialog}
+            >
+              ×
+            </button>
+            <h2
+              id="bom-edit-dialog-title"
+              className="text-lg font-semibold text-slate-900 pr-8"
+            >
+              Editar linha da estrutura
+            </h2>
+            <p className="text-sm text-slate-600 mt-2 font-medium">
+              {lineDescription(editingLine)}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Alterar a quantidade recalcula o custo deste produto e propaga para
+              quem o usa na BOM.
+            </p>
+            <div className="mt-5 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="bom-edit-qty">Quantidade</Label>
+                <Input
+                  id="bom-edit-qty"
+                  type="number"
+                  step="0.000001"
+                  min={0}
+                  value={editQuantity}
+                  onChange={(e) =>
+                    setEditQuantity(parseFloat(e.target.value) || 0)
+                  }
+                />
+                <p className="text-xs text-slate-500">
+                  {editingLine.is_labor && !editingLine.is_external_labor
+                    ? "Horas no centro de trabalho."
+                    : editingLine.is_labor
+                      ? "Quantidade × custo unitário."
+                      : `Unidade: ${editingLine.component_product?.unit?.trim() || "—"} por unidade do produto pai.`}
+                </p>
+              </div>
+              {editingLine.is_labor ? (
+                <div className="space-y-2">
+                  <Label htmlFor="bom-edit-unit-cost">
+                    Custo unitário (R$)
+                    {editingLine.is_labor && !editingLine.is_external_labor
+                      ? " / hora"
+                      : ""}
+                  </Label>
+                  <Input
+                    id="bom-edit-unit-cost"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={editUnitCost}
+                    onChange={(e) =>
+                      setEditUnitCost(parseFloat(e.target.value) || 0)
+                    }
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-6 flex flex-wrap gap-2 justify-end">
+              <Button type="button" variant="outline" onClick={closeEditDialog}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={updateMutation.isPending}
+                onClick={() => void handleSaveEdit()}
+              >
+                {updateMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    A gravar…
+                  </>
+                ) : (
+                  "Guardar"
                 )}
               </Button>
             </div>

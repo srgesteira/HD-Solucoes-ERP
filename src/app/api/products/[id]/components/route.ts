@@ -8,7 +8,10 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
-import { productComponentSchema } from "@/shared/contracts/product.schema";
+import {
+  productComponentSchema,
+  productComponentUpdateSchema,
+} from "@/shared/contracts/product.schema";
 import { resolveLaborHourlyRateForBom } from "@/modules/rh/lib/labor-cost-utils";
 import type { Database } from "@/modules/core/types/database";
 import { recalculateProductCost } from "@/modules/engenharia/lib/products/recalculate-product-cost";
@@ -21,6 +24,7 @@ import {
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
+type Admin = SupabaseClient<Database>;
 
 const PRODUCT_COMPONENT_SELECT =
   `
@@ -72,6 +76,34 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 
   return apiOk({ data: data ?? [] });
+}
+
+async function finalizeBomLineChange(
+  admin: Admin,
+  tenantId: string,
+  parentId: string,
+  parentPrefixCode: string | undefined
+): Promise<void> {
+  const bomCost = await recalculateProductCost(admin, tenantId, parentId);
+
+  const { count: lineCountAfter } = await admin
+    .from("product_components")
+    .select("*", { count: "exact", head: true })
+    .eq("parent_product_id", parentId)
+    .eq("tenant_id", tenantId);
+
+  if (isSemiFinishedPrefix(parentPrefixCode) && (lineCountAfter ?? 0) > 0) {
+    await admin
+      .from("products")
+      .update({
+        cost_price: bomCost,
+        has_composition: true,
+      })
+      .eq("id", parentId)
+      .eq("tenant_id", tenantId);
+  }
+
+  await propagateComponentCostChange(admin, tenantId, parentId);
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -302,27 +334,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
   }
 
-  const bomCost = await recalculateProductCost(admin, tenantId, parentId);
-
-  const { count: lineCountAfter } = await admin
-    .from("product_components")
-    .select("*", { count: "exact", head: true })
-    .eq("parent_product_id", parentId)
-    .eq("tenant_id", tenantId);
-
-  if (isSemiFinishedPrefix(parentPrefixCode) && (lineCountAfter ?? 0) > 0) {
-    await admin
-      .from("products")
-      .update({
-        cost_price: bomCost,
-        has_composition: true,
-      })
-      .eq("id", parentId)
-      .eq("tenant_id", tenantId);
-  }
-
   try {
-    await propagateComponentCostChange(admin, tenantId, parentId);
+    await finalizeBomLineChange(admin, tenantId, parentId, parentPrefixCode);
   } catch (propErr) {
     return apiError(
       propErr instanceof Error
@@ -333,6 +346,118 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   return apiOk({ data }, 201);
+}
+
+export async function PATCH(request: NextRequest, { params }: Params) {
+  const { id: parentId } = await params;
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return apiError("Não autenticado", 401);
+  const moduleDenied = await requireMenuModule("engenharia");
+  if (moduleDenied) return moduleDenied;
+
+  if (!(await isCurrentUserTenantAdmin())) {
+    return apiError("Acesso negado", 403);
+  }
+
+  const tenantId = await getCurrentTenantId();
+  if (!tenantId) return apiError("Tenant não encontrado", 403);
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return apiError("Body inválido", 400);
+  }
+
+  const parsed = productComponentUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return apiError("Dados inválidos", 400, parsed.error.flatten());
+  }
+
+  const { component_id: componentId, quantity, unit_cost } = parsed.data;
+
+  const admin = createSupabaseAdminClient();
+
+  const { data: parentProduct, error: parentErr } = await admin
+    .from("products")
+    .select("id, prefix:product_prefixes!products_prefix_id_fkey(code)")
+    .eq("id", parentId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (parentErr) {
+    return apiError(
+      "Erro ao carregar produto pai: " + parentErr.message,
+      supabaseErrorToHttp(parentErr.code)
+    );
+  }
+  if (!parentProduct) return apiError("Produto pai não encontrado", 404);
+
+  const parentPrefixCode = (
+    parentProduct.prefix as { code?: string } | null
+  )?.code;
+  if (!canProductHaveBom(parentPrefixCode)) {
+    return apiError("Este tipo de produto não pode ter composição (BOM).", 400);
+  }
+
+  const { data: existing, error: loadErr } = await admin
+    .from("product_components")
+    .select("id, is_labor, is_external_labor")
+    .eq("id", componentId)
+    .eq("parent_product_id", parentId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (loadErr) {
+    return apiError(
+      "Erro ao carregar linha: " + loadErr.message,
+      supabaseErrorToHttp(loadErr.code)
+    );
+  }
+  if (!existing) return apiError("Componente não encontrado", 404);
+
+  if (unit_cost !== undefined && !existing.is_labor) {
+    return apiError(
+      "Custo unitário só pode ser editado em linhas de mão-de-obra.",
+      400
+    );
+  }
+
+  const patch: { quantity?: number; unit_cost?: number } = {};
+  if (quantity !== undefined) patch.quantity = quantity;
+  if (unit_cost !== undefined) patch.unit_cost = unit_cost;
+
+  const { data, error } = await admin
+    .from("product_components")
+    .update(patch)
+    .eq("id", componentId)
+    .eq("parent_product_id", parentId)
+    .eq("tenant_id", tenantId)
+    .select(PRODUCT_COMPONENT_SELECT)
+    .single();
+
+  if (error) {
+    return apiError(
+      "Erro ao actualizar componente: " + error.message,
+      supabaseErrorToHttp(error.code)
+    );
+  }
+
+  try {
+    await finalizeBomLineChange(admin, tenantId, parentId, parentPrefixCode);
+  } catch (propErr) {
+    return apiError(
+      propErr instanceof Error
+        ? propErr.message
+        : "Erro ao propagar custo na estrutura (BOM).",
+      500
+    );
+  }
+
+  return apiOk({ data });
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
@@ -412,16 +537,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       .eq("id", parentId)
       .eq("tenant_id", tenantId);
   } else if ((lineCountAfter ?? 0) > 0) {
-    const bomCost = await recalculateProductCost(admin, tenantId, parentId);
-    if (isSemiFinishedPrefix(parentPrefixCode)) {
-      await admin
-        .from("products")
-        .update({ cost_price: bomCost, has_composition: true })
-        .eq("id", parentId)
-        .eq("tenant_id", tenantId);
-    }
     try {
-      await propagateComponentCostChange(admin, tenantId, parentId);
+      await finalizeBomLineChange(admin, tenantId, parentId, parentPrefixCode);
     } catch (propErr) {
       return apiError(
         propErr instanceof Error
