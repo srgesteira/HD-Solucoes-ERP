@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Edit, Layers, Trash2 } from "lucide-react";
+import { Copy, Edit, Layers, Trash2 } from "lucide-react";
 import {
   RowActionsMenu,
   type RowActionItem,
@@ -28,6 +28,19 @@ export function ProductRowActionsMenu({
       label: "Editar",
       icon: <Edit className="h-4 w-4" />,
       onClick: () => router.push(`/products/${productId}/edit`),
+    },
+    {
+      id: "duplicate",
+      label: "Duplicar",
+      icon: <Copy className="h-4 w-4" />,
+      onClick: () => {
+        try {
+          sessionStorage.setItem("duplicateFromProductId", productId);
+        } catch {
+          /* ignore */
+        }
+        router.push("/products/new?duplicateFrom=1");
+      },
     },
     {
       id: "bom",

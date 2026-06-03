@@ -20,6 +20,54 @@ import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/produ
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
 import type { StructureSuggestion } from "@/modules/engenharia/lib/services/ai.service";
+import type { Database } from "@/modules/core/types/database";
+import type { ProductType } from "@/modules/core/types/product.types";
+
+type ApiProductRow = Database["public"]["Tables"]["products"]["Row"];
+
+function isProductType(t: string): t is ProductType {
+  return t === "finished" || t === "raw" || t === "component";
+}
+
+function duplicateSourceToForm(data: ApiProductRow): ProductFormShape {
+  return {
+    name: data.name,
+    description: data.description,
+    technical_description: data.technical_description,
+    ncm: data.ncm,
+    unit:
+      typeof data.unit === "string" && data.unit.trim() ? data.unit : "PC",
+    type: (
+      isProductType(String(data.type)) ? data.type : "component"
+    ) as ProductType,
+    cost_price: Number(data.cost_price ?? 0),
+    selling_price: Number(data.selling_price ?? 0),
+    is_active: data.is_active,
+    use_custom_bdi: Boolean(data.use_custom_bdi),
+    custom_tax_rate:
+      data.custom_tax_rate != null && data.custom_tax_rate !== undefined
+        ? Number(data.custom_tax_rate)
+        : null,
+    custom_profit_margin:
+      data.custom_profit_margin != null &&
+      data.custom_profit_margin !== undefined
+        ? Number(data.custom_profit_margin)
+        : null,
+    prefix_id: data.prefix_id ?? "",
+    family_id: data.family_id ?? "",
+    subfamily_id: data.subfamily_id ?? "",
+    material_id: data.material_id ?? "",
+    finish_id: data.finish_id ?? "",
+    technical_code: null,
+    default_is_external_labor: Boolean(data.default_is_external_labor),
+    default_work_center_id: data.default_work_center_id ?? null,
+    default_labor_cost:
+      data.default_labor_cost != null && data.default_labor_cost !== undefined
+        ? Number(data.default_labor_cost)
+        : null,
+    default_production_line_id: data.default_production_line_id ?? null,
+  };
+}
 
 function buildPayload(
   f: ProductFormShape,
@@ -107,10 +155,60 @@ export default function NewProductPage() {
   const [aiBomPending, setAiBomPending] = useState(false);
   const fromBomRef = useRef(false);
   const fromBomToastShown = useRef(false);
+  const duplicateToastShown = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sp = new URLSearchParams(window.location.search);
+    if (sp.get("duplicateFrom") === "1") {
+      let sourceId: string | null = null;
+      try {
+        sourceId = sessionStorage.getItem("duplicateFromProductId");
+        sessionStorage.removeItem("duplicateFromProductId");
+      } catch {
+        /* ignore */
+      }
+      if (!sourceId?.trim()) return;
+
+      let cancelled = false;
+      (async () => {
+        try {
+          const res = await fetch(
+            `/api/products/${encodeURIComponent(sourceId!.trim())}`,
+            { credentials: "include", cache: "no-store" }
+          );
+          const json = (await res.json().catch(() => ({}))) as {
+            data?: ApiProductRow;
+            error?: string;
+          };
+          if (cancelled) return;
+          if (!res.ok || !json.data) {
+            if (!duplicateToastShown.current) {
+              duplicateToastShown.current = true;
+              toast.error(
+                json.error ?? "Não foi possível carregar o produto a duplicar."
+              );
+            }
+            return;
+          }
+          setFormData(duplicateSourceToForm(json.data));
+          if (!duplicateToastShown.current) {
+            duplicateToastShown.current = true;
+            toast.message(`Duplicando ${json.data.name} — ajuste e salve.`, {
+              duration: 10_000,
+            });
+          }
+        } catch {
+          if (cancelled || duplicateToastShown.current) return;
+          duplicateToastShown.current = true;
+          toast.error("Erro ao carregar o produto a duplicar.");
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     fromBomRef.current = sp.get("fromBom") === "1";
     const pp = sp.get("parentProductId");
     if (pp) {
@@ -120,6 +218,7 @@ export default function NewProductPage() {
         /* ignore */
       }
     }
+    if (sp.get("duplicateFrom") === "1") return;
     if (fromBomRef.current && !fromBomToastShown.current) {
       fromBomToastShown.current = true;
       toast.message("Criação a partir da BOM", {
