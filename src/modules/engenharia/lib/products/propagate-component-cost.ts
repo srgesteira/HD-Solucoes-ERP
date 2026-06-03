@@ -122,18 +122,27 @@ export async function propagateComponentCostChange(
 
     processedParents.add(parentId);
 
+    const { data: parentBefore, error: beforeErr } = await admin
+      .from("products")
+      .select("cost_price")
+      .eq("id", parentId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (beforeErr) throw new Error(beforeErr.message);
+    const oldParentCost = roundBomCost(Number(parentBefore?.cost_price ?? 0));
+
     await syncBomMaterialUnitCostsForParent(admin, tenantId, parentId);
     const newParentCost = await recalculateProductCost(admin, tenantId, parentId);
     parentsProcessed += 1;
 
     const parentUnitCost = roundBomCost(newParentCost);
-    const linesUsingParent = await syncComponentLinesUnitCost(
+    const parentCostChanged = parentUnitCost !== oldParentCost;
+    await syncComponentLinesUnitCost(
       admin,
       tenantId,
       parentId,
       parentUnitCost
     );
-    void linesUsingParent;
 
     const grandparents = await findParentIdsUsingComponent(
       admin,
@@ -141,7 +150,10 @@ export async function propagateComponentCostChange(
       parentId
     );
     for (const gp of grandparents) {
-      if (!processedParents.has(gp)) {
+      if (parentCostChanged) {
+        processedParents.delete(gp);
+        queue.push({ parentId: gp, depth: depth + 1 });
+      } else if (!processedParents.has(gp)) {
         queue.push({ parentId: gp, depth: depth + 1 });
       }
     }

@@ -12,6 +12,11 @@ import { productComponentSchema } from "@/shared/contracts/product.schema";
 import { resolveLaborHourlyRateForBom } from "@/modules/rh/lib/labor-cost-utils";
 import type { Database } from "@/modules/core/types/database";
 import { recalculateProductCost } from "@/modules/engenharia/lib/products/recalculate-product-cost";
+import { propagateComponentCostChange } from "@/modules/engenharia/lib/products/propagate-component-cost";
+import {
+  canProductHaveBom,
+  isSemiFinishedPrefix,
+} from "@/modules/engenharia/lib/products/product-bom-eligibility";
 
 export const dynamic = "force-dynamic";
 
@@ -106,12 +111,26 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createSupabaseAdminClient();
 
-  const { count: parentOk } = await admin
+  const { data: parentProduct, error: parentErr } = await admin
     .from("products")
-    .select("*", { count: "exact", head: true })
+    .select("id, prefix:product_prefixes!products_prefix_id_fkey(code)")
     .eq("id", parentId)
-    .eq("tenant_id", tenantId);
-  if (!parentOk) return apiError("Produto pai não encontrado", 404);
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (parentErr) {
+    return apiError(
+      "Erro ao carregar produto pai: " + parentErr.message,
+      supabaseErrorToHttp(parentErr.code)
+    );
+  }
+  if (!parentProduct) return apiError("Produto pai não encontrado", 404);
+
+  const parentPrefixCode = (
+    parentProduct.prefix as { code?: string } | null
+  )?.code;
+  if (!canProductHaveBom(parentPrefixCode)) {
+    return apiError("Este tipo de produto não pode ter composição (BOM).", 400);
+  }
 
   const externalLabor =
     validated.is_labor &&
@@ -283,7 +302,35 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
   }
 
-  await recalculateProductCost(admin, tenantId, parentId);
+  const bomCost = await recalculateProductCost(admin, tenantId, parentId);
+
+  const { count: lineCountAfter } = await admin
+    .from("product_components")
+    .select("*", { count: "exact", head: true })
+    .eq("parent_product_id", parentId)
+    .eq("tenant_id", tenantId);
+
+  if (isSemiFinishedPrefix(parentPrefixCode) && (lineCountAfter ?? 0) > 0) {
+    await admin
+      .from("products")
+      .update({
+        cost_price: bomCost,
+        has_composition: true,
+      })
+      .eq("id", parentId)
+      .eq("tenant_id", tenantId);
+  }
+
+  try {
+    await propagateComponentCostChange(admin, tenantId, parentId);
+  } catch (propErr) {
+    return apiError(
+      propErr instanceof Error
+        ? propErr.message
+        : "Erro ao propagar custo na estrutura (BOM).",
+      500
+    );
+  }
 
   return apiOk({ data }, 201);
 }
@@ -313,6 +360,24 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   const admin = createSupabaseAdminClient();
 
+  const { data: parentProduct, error: parentLoadErr } = await admin
+    .from("products")
+    .select("id, prefix:product_prefixes!products_prefix_id_fkey(code)")
+    .eq("id", parentId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (parentLoadErr) {
+    return apiError(
+      "Erro ao carregar produto pai: " + parentLoadErr.message,
+      supabaseErrorToHttp(parentLoadErr.code)
+    );
+  }
+  if (!parentProduct) return apiError("Produto pai não encontrado", 404);
+
+  const parentPrefixCode = (
+    parentProduct.prefix as { code?: string } | null
+  )?.code;
+
   const { error, count } = await admin
     .from("product_components")
     .delete({ count: "exact" })
@@ -331,7 +396,41 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return apiError("Componente não encontrado", 404);
   }
 
-  await recalculateProductCost(admin, tenantId, parentId);
+  const { count: lineCountAfter } = await admin
+    .from("product_components")
+    .select("*", { count: "exact", head: true })
+    .eq("parent_product_id", parentId)
+    .eq("tenant_id", tenantId);
+
+  if (
+    isSemiFinishedPrefix(parentPrefixCode) &&
+    (lineCountAfter ?? 0) === 0
+  ) {
+    await admin
+      .from("products")
+      .update({ has_composition: false })
+      .eq("id", parentId)
+      .eq("tenant_id", tenantId);
+  } else if ((lineCountAfter ?? 0) > 0) {
+    const bomCost = await recalculateProductCost(admin, tenantId, parentId);
+    if (isSemiFinishedPrefix(parentPrefixCode)) {
+      await admin
+        .from("products")
+        .update({ cost_price: bomCost, has_composition: true })
+        .eq("id", parentId)
+        .eq("tenant_id", tenantId);
+    }
+    try {
+      await propagateComponentCostChange(admin, tenantId, parentId);
+    } catch (propErr) {
+      return apiError(
+        propErr instanceof Error
+          ? propErr.message
+          : "Erro ao propagar custo na estrutura (BOM).",
+        500
+      );
+    }
+  }
 
   return apiOk({ success: true });
 }
