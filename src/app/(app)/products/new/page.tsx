@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Save, Sparkles } from "lucide-react";
@@ -20,6 +20,124 @@ import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/produ
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
 import type { StructureSuggestion } from "@/modules/engenharia/lib/services/ai.service";
+import type { Database } from "@/modules/core/types/database";
+import type { ProductType } from "@/modules/core/types/product.types";
+
+type ApiProductRow = Database["public"]["Tables"]["products"]["Row"];
+
+type DuplicateSourceComponent = Pick<
+  Database["public"]["Tables"]["product_components"]["Row"],
+  | "component_product_id"
+  | "quantity"
+  | "unit_cost"
+  | "is_labor"
+  | "is_external_labor"
+  | "work_center_id"
+>;
+
+type ApiProductLoaded = ApiProductRow & {
+  components?: DuplicateSourceComponent[];
+};
+
+function isProductType(t: string): t is ProductType {
+  return t === "finished" || t === "raw" || t === "component";
+}
+
+function duplicateSourceToForm(data: ApiProductRow): ProductFormShape {
+  return {
+    name: data.name,
+    description: data.description,
+    technical_description: data.technical_description,
+    ncm: data.ncm,
+    unit:
+      typeof data.unit === "string" && data.unit.trim() ? data.unit : "PC",
+    type: (
+      isProductType(String(data.type)) ? data.type : "component"
+    ) as ProductType,
+    cost_price: Number(data.cost_price ?? 0),
+    selling_price: Number(data.selling_price ?? 0),
+    is_active: data.is_active,
+    use_custom_bdi: Boolean(data.use_custom_bdi),
+    custom_tax_rate:
+      data.custom_tax_rate != null && data.custom_tax_rate !== undefined
+        ? Number(data.custom_tax_rate)
+        : null,
+    custom_profit_margin:
+      data.custom_profit_margin != null &&
+      data.custom_profit_margin !== undefined
+        ? Number(data.custom_profit_margin)
+        : null,
+    prefix_id: data.prefix_id ?? "",
+    family_id: data.family_id ?? "",
+    subfamily_id: data.subfamily_id ?? "",
+    material_id: data.material_id ?? "",
+    finish_id: data.finish_id ?? "",
+    technical_code: null,
+    default_is_external_labor: Boolean(data.default_is_external_labor),
+    default_work_center_id: data.default_work_center_id ?? null,
+    default_labor_cost:
+      data.default_labor_cost != null && data.default_labor_cost !== undefined
+        ? Number(data.default_labor_cost)
+        : null,
+    default_production_line_id: data.default_production_line_id ?? null,
+  };
+}
+
+/** Body aceito por POST /api/products/[id]/components (productComponentSchema). */
+function duplicateComponentToPostBody(
+  line: DuplicateSourceComponent
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    quantity: Number(line.quantity),
+    is_labor: Boolean(line.is_labor),
+    is_external_labor: Boolean(line.is_external_labor),
+  };
+  if (line.component_product_id) {
+    body.component_product_id = line.component_product_id;
+  }
+  if (line.work_center_id) {
+    body.work_center_id = line.work_center_id;
+  }
+  if (line.unit_cost != null && Number.isFinite(Number(line.unit_cost))) {
+    body.unit_cost = Number(line.unit_cost);
+  }
+  return body;
+}
+
+async function postProductComponent(
+  parentId: string,
+  body: Record<string, unknown>
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/products/${parentId}/components`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) {
+    return { ok: false, error: json.error ?? "Erro ao copiar linha da composição" };
+  }
+  return { ok: true };
+}
+
+async function copyDuplicateBomLines(
+  newProductId: string,
+  lines: DuplicateSourceComponent[]
+): Promise<{ copied: number; failedAt: number | null; error?: string }> {
+  let copied = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const result = await postProductComponent(
+      newProductId,
+      duplicateComponentToPostBody(lines[i]!)
+    );
+    if (!result.ok) {
+      return { copied, failedAt: i + 1, error: result.error };
+    }
+    copied += 1;
+  }
+  return { copied, failedAt: null };
+}
 
 function buildPayload(
   f: ProductFormShape,
@@ -71,8 +189,12 @@ async function createProduct(payload: ReturnType<typeof buildPayload>): Promise<
   return json;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export default function NewProductPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { data: me, isLoading: meLoading } = useMe();
 
@@ -107,6 +229,59 @@ export default function NewProductPage() {
   const [aiBomPending, setAiBomPending] = useState(false);
   const fromBomRef = useRef(false);
   const fromBomToastShown = useRef(false);
+  const duplicateFromRef = useRef(false);
+  const duplicateLoadedRef = useRef(false);
+  const duplicateToastShown = useRef(false);
+  const [duplicateSourceComponents, setDuplicateSourceComponents] = useState<
+    DuplicateSourceComponent[]
+  >([]);
+
+  useEffect(() => {
+    if (searchParams.get("duplicateFrom") !== "1") return;
+    const sourceId = searchParams.get("sourceId")?.trim() ?? "";
+    if (!sourceId || !UUID_RE.test(sourceId)) return;
+    if (duplicateLoadedRef.current) return;
+    duplicateLoadedRef.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/products/${encodeURIComponent(sourceId)}`,
+          { credentials: "include", cache: "no-store" }
+        );
+        const json = (await res.json().catch(() => ({}))) as {
+          data?: ApiProductLoaded;
+          error?: string;
+        };
+        if (!res.ok || !json.data) {
+          duplicateLoadedRef.current = false;
+          if (!duplicateToastShown.current) {
+            duplicateToastShown.current = true;
+            toast.error(
+              json.error ?? "Não foi possível carregar o produto a duplicar."
+            );
+          }
+          return;
+        }
+        duplicateFromRef.current = true;
+        setFormData(duplicateSourceToForm(json.data));
+        setDuplicateSourceComponents(
+          Array.isArray(json.data.components) ? json.data.components : []
+        );
+        if (!duplicateToastShown.current) {
+          duplicateToastShown.current = true;
+          toast.message(`Duplicando ${json.data.name} — ajuste e salve.`, {
+            duration: 10_000,
+          });
+        }
+      } catch {
+        duplicateLoadedRef.current = false;
+        if (duplicateToastShown.current) return;
+        duplicateToastShown.current = true;
+        toast.error("Erro ao carregar o produto a duplicar.");
+      }
+    })();
+  }, [searchParams]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -120,6 +295,7 @@ export default function NewProductPage() {
         /* ignore */
       }
     }
+    if (sp.get("duplicateFrom") === "1") return;
     if (fromBomRef.current && !fromBomToastShown.current) {
       fromBomToastShown.current = true;
       toast.message("Criação a partir da BOM", {
@@ -166,23 +342,59 @@ export default function NewProductPage() {
     mutationFn: createProduct,
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: ["products"] });
+      const id = res.data?.id;
+      const goToEdit = () => {
+        if (id) router.push(`/products/${id}/edit`);
+        else router.push("/products");
+      };
+
       if (fromBomRef.current) {
         toast.success(
           "Produto criado! Volte para a aba da BOM e recarregue a lista para encontrar o novo produto."
         );
         return;
       }
+
+      if (
+        duplicateFromRef.current &&
+        id &&
+        duplicateSourceComponents.length > 0
+      ) {
+        const { copied, failedAt, error } = await copyDuplicateBomLines(
+          id,
+          duplicateSourceComponents
+        );
+        if (failedAt != null) {
+          toast.error(
+            error ??
+              `Composição: ${copied} de ${duplicateSourceComponents.length} linha(s) copiada(s). Complete a BOM na edição do produto.`,
+            { duration: 12_000 }
+          );
+        } else {
+          toast.success(
+            `Produto duplicado com ${copied} item(ns) de composição.`
+          );
+        }
+        goToEdit();
+        return;
+      }
+
+      if (duplicateFromRef.current) {
+        toast.success(
+          res.data?.technical_code
+            ? `Produto duplicado. Código técnico: ${res.data.technical_code}`
+            : "Produto duplicado com sucesso."
+        );
+        goToEdit();
+        return;
+      }
+
       toast.success(
         res.data?.technical_code
           ? `Produto criado. Código técnico: ${res.data.technical_code}`
           : "Produto criado com sucesso."
       );
-      const id = res.data?.id;
-      if (id) {
-        router.push(`/products/${id}/edit`);
-      } else {
-        router.push("/products");
-      }
+      goToEdit();
     },
   });
 
