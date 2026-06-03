@@ -145,6 +145,18 @@ export const productComponentSchema = z
     }
   });
 
+/** Actualização parcial de linha BOM existente (PATCH). */
+export const productComponentUpdateSchema = z
+  .object({
+    component_id: z.string().uuid(),
+    quantity: z.number().min(0.000001, "Quantidade deve ser maior que zero").optional(),
+    unit_cost: z.number().min(0).optional(),
+  })
+  .refine(
+    (data) => data.quantity !== undefined || data.unit_cost !== undefined,
+    { message: "Informe quantidade ou custo unitário para actualizar" }
+  );
+
 export const workCenterSchema = z.object({
   code: z.string().min(1, "Código é obrigatório"),
   name: z.string().min(1, "Nome é obrigatório"),
