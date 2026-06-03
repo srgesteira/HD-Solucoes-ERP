@@ -269,9 +269,13 @@ export default function ProductsPage() {
         accessor: (row) => row.technical_code,
         truncate: false,
         render: (row) => (
-          <span className="font-mono text-xs font-medium text-slate-900 whitespace-nowrap">
+          <button
+            type="button"
+            onClick={() => router.push(`/products/${row.id}/edit`)}
+            className="font-mono text-xs font-medium text-emerald-700 hover:text-emerald-900 hover:underline whitespace-nowrap cursor-pointer text-left"
+          >
             {row.technical_code?.trim() || "—"}
-          </span>
+          </button>
         ),
       },
       {
