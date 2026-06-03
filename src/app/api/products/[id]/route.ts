@@ -21,6 +21,7 @@ import { productTypeFromPrefixCode } from "@/modules/engenharia/lib/products/pro
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
 import { propagateComponentCostChange } from "@/modules/engenharia/lib/products/propagate-component-cost";
 import { roundBomCost } from "@/modules/engenharia/lib/products/bom-unit-cost-sync";
+import { seUsesBomCalculatedCost } from "@/modules/engenharia/lib/products/product-bom-eligibility";
 import { resolveMoProductCostPrice } from "@/modules/engenharia/lib/products/mo-cost-price";
 import { productNatureFromPrefixCode } from "@/modules/engenharia/lib/products/mrp-product-nature";
 import {
@@ -116,7 +117,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existingProduct, error: loadErr } = await admin
     .from("products")
     .select(
-      "id,code,technical_code,cost_price,prefix_id,family_id,subfamily_id,material_id,finish_id,default_is_external_labor,default_labor_cost,default_work_center_id,default_production_line_id"
+      "id,code,technical_code,cost_price,has_composition,prefix_id,family_id,subfamily_id,material_id,finish_id,default_is_external_labor,default_labor_cost,default_work_center_id,default_production_line_id"
     )
     .eq("id", productId)
     .eq("tenant_id", tenantId)
@@ -373,6 +374,24 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
+  if (
+    validated.cost_price !== undefined &&
+    seUsesBomCalculatedCost(
+      mergedPrefixCode,
+      Boolean(existingProduct.has_composition)
+    )
+  ) {
+    const nextCost = roundBomCost(Number(validated.cost_price));
+    const prevCost = roundBomCost(Number(existingProduct.cost_price ?? 0));
+    if (nextCost !== prevCost) {
+      return apiError(
+        "Semi-elaborado com receita (BOM): o custo é calculado pela composição. Altere a aba Composição.",
+        400
+      );
+    }
+    delete updateRow.cost_price;
+  }
+
   if (Object.keys(updateRow).length === 0) {
     return apiError("Nenhum campo para atualizar", 400);
   }
@@ -399,7 +418,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
   if (!data) return apiError("Produto não encontrado", 404);
 
-  if (validated.cost_price !== undefined && mergedIsSimplified) {
+  if (
+    validated.cost_price !== undefined &&
+    mergedIsSimplified &&
+    !seUsesBomCalculatedCost(
+      mergedPrefixCode,
+      Boolean(existingProduct.has_composition)
+    )
+  ) {
     const prevCost = Number(existingProduct.cost_price ?? 0);
     const nextCost = Number(validated.cost_price);
     if (Number.isFinite(nextCost) && nextCost >= 0 && nextCost !== prevCost) {

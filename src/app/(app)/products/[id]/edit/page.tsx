@@ -26,6 +26,7 @@ import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/produ
 import {
   bomEligibilityMessage,
   canProductHaveBom,
+  seUsesBomCalculatedCost,
 } from "@/modules/engenharia/lib/products/product-bom-eligibility";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
@@ -240,6 +241,10 @@ export default function EditProductPage() {
     prefixes.find((p) => p.id === formData?.prefix_id.trim())?.code ?? "";
   const isSimplified = isSimplifiedClassificationSuffix(prefixCode);
   const canHaveBom = canProductHaveBom(prefixCode);
+  const seCostFromBom = seUsesBomCalculatedCost(
+    prefixCode,
+    Boolean(productRaw?.has_composition)
+  );
 
   useEffect(() => {
     if (meLoading) return;
@@ -649,8 +654,39 @@ export default function EditProductPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {isSimplified ? (
+            {seCostFromBom ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3 space-y-2 max-w-lg">
+                <p className="text-sm text-slate-700">
+                  Custo calculado pela composição (receita do semi-elaborado).
+                  Propaga automaticamente para produtos que usam este SE.
+                </p>
+                <p className="text-xl font-semibold tabular-nums text-emerald-800">
+                  {new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(Number(formData.cost_price ?? 0))}
+                </p>
+                <p className="text-xs text-slate-600">
+                  Edite materiais e mão-de-obra na aba Composição.
+                </p>
+              </div>
+            ) : isSimplified ? (
               <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 space-y-2 max-w-md">
+                {prefixCode === "SE" ? (
+                  <>
+                    <p className="text-xs text-slate-600">
+                      Semi-elaborado sem receita: custo manual (ex.: compra
+                      pronta). Ao montar a composição, o custo passa a ser
+                      calculado automaticamente.
+                    </p>
+                    {Number(formData.cost_price ?? 0) > 0 ? (
+                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                        Se removeu a receita recentemente, o valor abaixo
+                        mantém-se como referência — pode ajustá-lo manualmente.
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
                 <Label htmlFor="edit_cost_price">Custo unitário (R$)</Label>
                 <Input
                   id="edit_cost_price"

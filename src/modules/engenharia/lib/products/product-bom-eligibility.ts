@@ -34,4 +34,18 @@ export function bomEligibilityMessage(prefixCode: string | null | undefined): st
   return "A composição está disponível para acabados (HD1–HD3, AC) e semi-elaborados (SE).";
 }
 
+export function isSemiFinishedPrefix(
+  prefixCode: string | null | undefined
+): boolean {
+  return String(prefixCode ?? "").trim() === "SE";
+}
+
+/** SE com receita (BOM): custo vem da composição, não manual. */
+export function seUsesBomCalculatedCost(
+  prefixCode: string | null | undefined,
+  hasComposition: boolean
+): boolean {
+  return isSemiFinishedPrefix(prefixCode) && hasComposition;
+}
+
 export { isCompleteClassificationSuffix };
