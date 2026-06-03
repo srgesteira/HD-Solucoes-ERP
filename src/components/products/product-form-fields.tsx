@@ -255,6 +255,7 @@ export function ProductFormFields({
       if (cancelled) return;
       if (
         formData.family_id &&
+        list.length > 0 &&
         !list.some((f) => f.id === formData.family_id)
       ) {
         onChange("family_id", "");
@@ -309,7 +310,11 @@ export function ProductFormFields({
     (async () => {
       const list = await reloadFinishes(mid);
       if (cancelled) return;
-      if (formData.finish_id && !list.some((f) => f.id === formData.finish_id)) {
+      if (
+        formData.finish_id &&
+        list.length > 0 &&
+        !list.some((f) => f.id === formData.finish_id)
+      ) {
         onChange("finish_id", "");
       }
     })();
