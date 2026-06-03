@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Save, Sparkles } from "lucide-react";
@@ -189,8 +189,12 @@ async function createProduct(payload: ReturnType<typeof buildPayload>): Promise<
   return json;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export default function NewProductPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { data: me, isLoading: meLoading } = useMe();
 
@@ -226,67 +230,62 @@ export default function NewProductPage() {
   const fromBomRef = useRef(false);
   const fromBomToastShown = useRef(false);
   const duplicateFromRef = useRef(false);
+  const duplicateLoadedRef = useRef(false);
   const duplicateToastShown = useRef(false);
   const [duplicateSourceComponents, setDuplicateSourceComponents] = useState<
     DuplicateSourceComponent[]
   >([]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const sp = new URLSearchParams(window.location.search);
-    if (sp.get("duplicateFrom") === "1") {
-      let sourceId: string | null = null;
-      try {
-        sourceId = sessionStorage.getItem("duplicateFromProductId");
-        sessionStorage.removeItem("duplicateFromProductId");
-      } catch {
-        /* ignore */
-      }
-      if (!sourceId?.trim()) return;
+    if (searchParams.get("duplicateFrom") !== "1") return;
+    const sourceId = searchParams.get("sourceId")?.trim() ?? "";
+    if (!sourceId || !UUID_RE.test(sourceId)) return;
+    if (duplicateLoadedRef.current) return;
+    duplicateLoadedRef.current = true;
 
-      let cancelled = false;
-      (async () => {
-        try {
-          const res = await fetch(
-            `/api/products/${encodeURIComponent(sourceId!.trim())}`,
-            { credentials: "include", cache: "no-store" }
-          );
-          const json = (await res.json().catch(() => ({}))) as {
-            data?: ApiProductLoaded;
-            error?: string;
-          };
-          if (cancelled) return;
-          if (!res.ok || !json.data) {
-            if (!duplicateToastShown.current) {
-              duplicateToastShown.current = true;
-              toast.error(
-                json.error ?? "Não foi possível carregar o produto a duplicar."
-              );
-            }
-            return;
-          }
-          duplicateFromRef.current = true;
-          setFormData(duplicateSourceToForm(json.data));
-          setDuplicateSourceComponents(
-            Array.isArray(json.data.components) ? json.data.components : []
-          );
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/products/${encodeURIComponent(sourceId)}`,
+          { credentials: "include", cache: "no-store" }
+        );
+        const json = (await res.json().catch(() => ({}))) as {
+          data?: ApiProductLoaded;
+          error?: string;
+        };
+        if (!res.ok || !json.data) {
+          duplicateLoadedRef.current = false;
           if (!duplicateToastShown.current) {
             duplicateToastShown.current = true;
-            toast.message(`Duplicando ${json.data.name} — ajuste e salve.`, {
-              duration: 10_000,
-            });
+            toast.error(
+              json.error ?? "Não foi possível carregar o produto a duplicar."
+            );
           }
-        } catch {
-          if (cancelled || duplicateToastShown.current) return;
-          duplicateToastShown.current = true;
-          toast.error("Erro ao carregar o produto a duplicar.");
+          return;
         }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }
+        duplicateFromRef.current = true;
+        setFormData(duplicateSourceToForm(json.data));
+        setDuplicateSourceComponents(
+          Array.isArray(json.data.components) ? json.data.components : []
+        );
+        if (!duplicateToastShown.current) {
+          duplicateToastShown.current = true;
+          toast.message(`Duplicando ${json.data.name} — ajuste e salve.`, {
+            duration: 10_000,
+          });
+        }
+      } catch {
+        duplicateLoadedRef.current = false;
+        if (duplicateToastShown.current) return;
+        duplicateToastShown.current = true;
+        toast.error("Erro ao carregar o produto a duplicar.");
+      }
+    })();
+  }, [searchParams]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
     fromBomRef.current = sp.get("fromBom") === "1";
     const pp = sp.get("parentProductId");
     if (pp) {

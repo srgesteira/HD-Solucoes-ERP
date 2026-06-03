@@ -33,14 +33,10 @@ export function ProductRowActionsMenu({
       id: "duplicate",
       label: "Duplicar",
       icon: <Copy className="h-4 w-4" />,
-      onClick: () => {
-        try {
-          sessionStorage.setItem("duplicateFromProductId", productId);
-        } catch {
-          /* ignore */
-        }
-        router.push("/products/new?duplicateFrom=1");
-      },
+      onClick: () =>
+        router.push(
+          `/products/new?duplicateFrom=1&sourceId=${encodeURIComponent(productId)}`
+        ),
     },
     {
       id: "bom",
