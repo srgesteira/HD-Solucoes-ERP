@@ -86,12 +86,14 @@ export type MrpStockBatchSummary = {
 
 export type MrpSuggestionsSummary = {
   generated: MrpBatchSummary;
+  stock_generated: MrpStockBatchSummary;
   suggestion_flags: {
     production_orders_marked: number;
     order_items_marked: number;
     purchase_orders_marked: number;
     purchase_order_items_marked: number;
     sales_orders_reverted: number;
+    stock_purchase_order_items_marked: number;
   };
 };
 
@@ -1625,7 +1627,10 @@ export async function generateMrpSuggestionsForPendingOrders(
   const startedAt = new Date();
   const startedIso = startedAt.toISOString();
 
-  const batch = await runMrpForOpenSalesOrders(admin, tenantId, userId, true);
+  const [batch, batchStock] = await Promise.all([
+    runMrpForOpenSalesOrders(admin, tenantId, userId, true),
+    runMrpForStockProductionOrders(admin, tenantId, userId, true),
+  ]);
 
   // Reverter flags do pedido de venda (o MRP real marca como processado / muda status).
   const salesOrderIds = [
@@ -1737,14 +1742,39 @@ export async function generateMrpSuggestionsForPendingOrders(
     purchase_order_items_marked += (updReq ?? []).length;
   }
 
+  // Estoque: marcar só requisições (POI) retornadas neste run — OP e order_items permanecem reais.
+  const stockPurchaseOrderItemIds = new Set<string>();
+  for (const ord of batchStock.stock_orders) {
+    for (const line of ord.lines) {
+      for (const po of line.purchase_orders ?? []) {
+        if (po?.id) stockPurchaseOrderItemIds.add(po.id);
+      }
+    }
+  }
+
+  let stock_purchase_order_items_marked = 0;
+  if (stockPurchaseOrderItemIds.size) {
+    const ids = [...stockPurchaseOrderItemIds];
+    const { data: updStockReq } = await admin
+      .from("purchase_order_items")
+      .update({ is_suggestion: true })
+      .eq("tenant_id", tenantId)
+      .in("id", ids)
+      .is("purchase_order_id", null)
+      .select("id");
+    stock_purchase_order_items_marked = (updStockReq ?? []).length;
+  }
+
   return {
     generated: batch,
+    stock_generated: batchStock,
     suggestion_flags: {
       production_orders_marked,
       order_items_marked,
       purchase_orders_marked,
       purchase_order_items_marked,
       sales_orders_reverted: salesOrderIds.length,
+      stock_purchase_order_items_marked,
     },
   };
 }
