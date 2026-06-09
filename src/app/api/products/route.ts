@@ -147,7 +147,9 @@ export async function GET(request: NextRequest) {
   if (workflowPending === "1" && hasEngineering) {
     q = q.eq("engineering_workflow_status", "pending_composition");
   }
-  if (params.get("has_composition") === "true") {
+  /** Opt-in estrito: só ?has_composition=true. Ausente/vazio/outro valor = sem filtro. */
+  const filterHasComposition = params.get("has_composition") === "true";
+  if (filterHasComposition) {
     q = q.eq("has_composition", true);
   }
   if (isActive !== null && isActive !== "") {
