@@ -13,6 +13,7 @@ import {
   Plus,
   Search,
   Trash2,
+  Download,
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -112,6 +113,26 @@ async function removeComponent(productId: string, componentId: string) {
   return json;
 }
 
+function componentLineToPostBody(
+  line: ProductComponentLine
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    quantity: Number(line.quantity),
+    is_labor: Boolean(line.is_labor),
+    is_external_labor: Boolean(line.is_external_labor),
+  };
+  if (line.component_product_id) {
+    body.component_product_id = line.component_product_id;
+  }
+  if (line.work_center_id) {
+    body.work_center_id = line.work_center_id;
+  }
+  if (line.unit_cost != null && Number.isFinite(Number(line.unit_cost))) {
+    body.unit_cost = Number(line.unit_cost);
+  }
+  return body;
+}
+
 async function updateComponent(
   productId: string,
   payload: { component_id: string; quantity?: number; unit_cost?: number }
@@ -167,6 +188,7 @@ export function ProductCompositionPanel({
   const [editQuantity, setEditQuantity] = useState(1);
   const [editUnitCost, setEditUnitCost] = useState(0);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [componentType, setComponentType] = useState<"material" | "labor">(
     "material"
   );
@@ -227,6 +249,11 @@ export function ProductCompositionPanel({
     return ids.filter(Boolean);
   }, [productId, usedComponentIds]);
 
+  function handleImportCompositionSelect(hit: ProductSearchHit) {
+    setImportModalOpen(false);
+    importCompositionMutation.mutate(hit.id);
+  }
+
   function handleProductPickFromSearch(hit: ProductSearchHit) {
     const isMo = hit.prefix?.code === "MO";
     if (isMo) {
@@ -269,17 +296,69 @@ export function ProductCompositionPanel({
     setSelectedProductLabel("");
   }
 
+  const invalidateProductQueries = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["product", productId] });
+    await queryClient.invalidateQueries({ queryKey: ["products"] });
+  };
+
   const addMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
       addComponent(productId, payload),
     onSuccess: async () => {
       toast.success("Linha da estrutura adicionada.");
-      await queryClient.invalidateQueries({ queryKey: ["product", productId] });
-      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await invalidateProductQueries();
       resetDialog();
       setDialogOpen(false);
     },
     onError: (err: Error) => toast.error(err.message),
+  });
+
+  const importCompositionMutation = useMutation({
+    mutationFn: async (sourceProductId: string) => {
+      const source = await fetchProductWithComponents(sourceProductId);
+      const lines = source.components ?? [];
+      if (lines.length === 0) {
+        const err = new Error("NO_COMPOSITION") as Error & { code?: string };
+        err.code = "NO_COMPOSITION";
+        throw err;
+      }
+      let copied = 0;
+      for (let i = 0; i < lines.length; i++) {
+        try {
+          await addComponent(productId, componentLineToPostBody(lines[i]!));
+          copied++;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Erro ao importar linha";
+          const err = new Error(msg) as Error & {
+            copied?: number;
+            total?: number;
+          };
+          err.copied = copied;
+          err.total = lines.length;
+          throw err;
+        }
+      }
+      return copied;
+    },
+    onSuccess: async (copied) => {
+      toast.success(`Composição importada: ${copied} item(ns).`);
+      await invalidateProductQueries();
+    },
+    onError: async (err: Error & { code?: string; copied?: number; total?: number }) => {
+      if (err.code === "NO_COMPOSITION" || err.message === "NO_COMPOSITION") {
+        toast.error("Esse produto não tem composição para importar.");
+        return;
+      }
+      if ((err.copied ?? 0) > 0) {
+        await invalidateProductQueries();
+        toast.error(
+          `Importação interrompida: ${err.copied} de ${err.total ?? "?"} linha(s) copiada(s). ${err.message}`,
+          { duration: 12_000 }
+        );
+        return;
+      }
+      toast.error(err.message);
+    },
   });
 
   const removeMutation = useMutation({
@@ -287,8 +366,7 @@ export function ProductCompositionPanel({
       removeComponent(productId, componentId),
     onSuccess: async () => {
       toast.success("Linha removida.");
-      await queryClient.invalidateQueries({ queryKey: ["product", productId] });
-      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await invalidateProductQueries();
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -301,8 +379,7 @@ export function ProductCompositionPanel({
     }) => updateComponent(productId, payload),
     onSuccess: async () => {
       toast.success("Linha actualizada.");
-      await queryClient.invalidateQueries({ queryKey: ["product", productId] });
-      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await invalidateProductQueries();
       closeEditDialog();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -568,7 +645,22 @@ export function ProductCompositionPanel({
       </Card>
 
       {isAdmin ? (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2 flex-wrap">
+          {components.length === 0 && !productLoading ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={importCompositionMutation.isPending}
+              onClick={() => setImportModalOpen(true)}
+            >
+              {importCompositionMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Importar composição
+            </Button>
+          ) : null}
           <Button type="button" onClick={() => { resetDialog(); setDialogOpen(true); }}>
             <Plus className="h-4 w-4" />
             Adicionar linha
@@ -1192,6 +1284,16 @@ export function ProductCompositionPanel({
         parentProductId={productId}
         onSelect={handleProductPickFromSearch}
         title="Pesquisar produto componente"
+      />
+
+      <ProductCatalogPickerModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        excludeIds={[productId]}
+        hasCompositionOnly
+        showNewProductButton={false}
+        onSelect={handleImportCompositionSelect}
+        title="Importar composição de outro produto"
       />
     </div>
   );
