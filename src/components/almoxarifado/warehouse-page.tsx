@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Package, Truck } from "lucide-react";
+import { Truck } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { ModulePlaceholder } from "@/components/placeholders/module-placeholder";
+import { InventoryBalancesTable } from "@/components/almoxarifado/inventory-balances-table";
 import { StockOperationsTab } from "@/components/almoxarifado/stock-operations-tab";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -26,6 +27,7 @@ export function WarehousePage() {
 
   const canView =
     me?.role === "admin" || (!permLoading && can("inventory"));
+  const canAdjust = me?.role === "admin";
 
   const [activeTab, setActiveTab] = useState<TabValue>(() =>
     parseTab(searchParams.get("tab"))
@@ -75,30 +77,14 @@ export function WarehousePage() {
         </TabsContent>
 
         <TabsContent value="inventario" className="mt-4">
-          <div className="space-y-4">
-            <ModulePlaceholder
-              title="Inventário"
-              icon={Package}
-              description="Em breve — consulta e ajuste de saldos integrados ao almoxarifado."
-            />
-            <p className="text-center text-sm text-slate-600">
-              Enquanto isso, use a tela de saldos em{" "}
-              <Link
-                href="/inventory"
-                className="font-medium text-brand-700 underline hover:text-brand-900"
-              >
-                Estoque (inventário)
-              </Link>
-              .
-            </p>
-          </div>
+          <InventoryBalancesTable canAdjust={canAdjust} />
         </TabsContent>
 
         <TabsContent value="abastecimento" className="mt-4">
           <ModulePlaceholder
             title="Abastecimento"
             icon={Truck}
-            description="Em breve — saídas de material para produção e consumo de estoque."
+            description="Nenhuma ordem de produção para abastecer no momento."
           />
         </TabsContent>
       </Tabs>
