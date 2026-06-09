@@ -48,14 +48,52 @@ export type MrpBatchSummary = {
   errors: Array<{ sales_order_id: string; message: string }>;
 };
 
+/** OPs de estoque excluídas do MRP (já encerradas ou canceladas). */
+export const MRP_STOCK_EXCLUDED_STATUSES = ["cancelled", "finished"] as const;
+
+/** Status elegíveis = todos os de production_orders excepto cancelled/finished. */
+export const MRP_STOCK_ELIGIBLE_STATUSES = [
+  "imported",
+  "planning",
+  "in_production",
+  "ready",
+  "delayed",
+] as const;
+
+export type MrpStockLineResult = {
+  order_item_id: string;
+  item_number: number;
+  product_id: string | null;
+  skipped_reason?: string;
+  requirements?: MaterialRequirement[];
+  purchase_orders: Array<{
+    id: string;
+    po_number: string;
+    supplier_id: string | null;
+  }>;
+};
+
+export type MrpStockProcessResult = {
+  production_order_id: string;
+  order_number: string;
+  lines: MrpStockLineResult[];
+};
+
+export type MrpStockBatchSummary = {
+  stock_orders: MrpStockProcessResult[];
+  errors: Array<{ source: "stock"; id: string; message: string }>;
+};
+
 export type MrpSuggestionsSummary = {
   generated: MrpBatchSummary;
+  stock_generated: MrpStockBatchSummary;
   suggestion_flags: {
     production_orders_marked: number;
     order_items_marked: number;
     purchase_orders_marked: number;
     purchase_order_items_marked: number;
     sales_orders_reverted: number;
+    stock_purchase_order_items_marked: number;
   };
 };
 
@@ -478,6 +516,15 @@ function buildTraceKey(
   return `${traceSegment(orderNumber)}-${lineNumber}-${traceSegment(componentTechnicalCode)}`;
 }
 
+/** Mesmo formato de vendas: `{pedido}-{linha}-{componente}` (OP estoque usa order_number da OP). */
+export function buildMrpRequisitionTraceKey(
+  orderNumber: string,
+  lineNumber: number,
+  componentTechnicalCode: string
+): string {
+  return buildTraceKey(orderNumber, lineNumber, componentTechnicalCode);
+}
+
 async function followUpDateForSalesOrderItem(
   admin: Admin,
   tenantId: string,
@@ -503,6 +550,52 @@ async function followUpDateForSalesOrderItem(
   return d;
 }
 
+async function followUpDateForProductionOrderItem(
+  admin: Admin,
+  tenantId: string,
+  productionOrderItemId: string,
+  hint?: string | null
+): Promise<string | null> {
+  if (hint) return String(hint).slice(0, 10);
+  const { data: oi } = await admin
+    .from("order_items")
+    .select(
+      "pcp_deadline, production_order:production_orders!order_items_order_id_fkey(pcp_deadline)"
+    )
+    .eq("id", productionOrderItemId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!oi) return null;
+  const po = Array.isArray(oi.production_order)
+    ? oi.production_order[0]
+    : oi.production_order;
+  const itemPcp = oi.pcp_deadline ? String(oi.pcp_deadline).slice(0, 10) : null;
+  const opPcp =
+    po?.pcp_deadline != null ? String(po.pcp_deadline).slice(0, 10) : null;
+  return itemPcp ?? opPcp;
+}
+
+type UpsertPurchaseRequisitionArgs = {
+  traceKey: string;
+  productId: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  description: string;
+  productionOrderId?: string | null;
+  /** order_items.id do produto acabado na OP */
+  productionOrderItemId?: string | null;
+  salesOrderItemId?: string | null;
+  pcpDeadline?: string | null;
+};
+
+type UpsertPurchaseRequisitionResult = {
+  id: string;
+  po_number: string;
+  supplier_id: string | null;
+  requisition: boolean;
+};
+
 async function resolvePreferredSupplierId(
   admin: Admin,
   tenantId: string,
@@ -527,30 +620,22 @@ async function resolvePreferredSupplierId(
 
 /**
  * Requisição de compra (item MRP) — não exige fornecedor; o PC é emitido depois em Compras.
- * Upsert por (`sales_order_item_id`, `product_id`) em rascunho sem PC.
+ * Upsert por (`sales_order_item_id`, `product_id`) ou (`production_order_item_id`, `product_id`).
  */
 async function upsertPurchaseRequisition(
   admin: Admin,
   tenantId: string,
-  args: {
-    traceKey: string;
-    productId: string;
-    quantity: number;
-    unit: string;
-    unitPrice: number;
-    description: string;
-    productionOrderId?: string | null;
-    /** order_items.id do produto acabado na OP (null se revenda sem OP) */
-    productionOrderItemId?: string | null;
-    salesOrderItemId: string;
-    pcpDeadline?: string | null;
+  args: UpsertPurchaseRequisitionArgs
+): Promise<UpsertPurchaseRequisitionResult> {
+  const salesOrderItemId = args.salesOrderItemId?.trim() || null;
+  const productionOrderItemId = args.productionOrderItemId?.trim() || null;
+
+  if (!salesOrderItemId && !productionOrderItemId) {
+    throw new Error(
+      "upsertPurchaseRequisition requer salesOrderItemId ou productionOrderItemId"
+    );
   }
-): Promise<{
-  id: string;
-  po_number: string;
-  supplier_id: string | null;
-  requisition: boolean;
-}> {
+
   const preferredSupplierId = await resolvePreferredSupplierId(
     admin,
     tenantId,
@@ -564,24 +649,24 @@ async function upsertPurchaseRequisition(
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
-  const needDate = computePurchaseNeedDate(
-    args.pcpDeadline ??
-      (await followUpDateForSalesOrderItem(
-        admin,
-        tenantId,
-        args.salesOrderItemId
-      )),
-    productLead?.purchase_lead_time_days
-  );
+  if (salesOrderItemId && args.productId) {
+    const needDate = computePurchaseNeedDate(
+      args.pcpDeadline ??
+        (await followUpDateForSalesOrderItem(
+          admin,
+          tenantId,
+          salesOrderItemId
+        )),
+      productLead?.purchase_lead_time_days
+    );
 
-  if (args.salesOrderItemId && args.productId) {
     const { data: existingRows } = await admin
       .from("purchase_order_items")
       .select(
         "id, quantity, unit_price, status, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id)"
       )
       .eq("tenant_id", tenantId)
-      .eq("sales_order_item_id", args.salesOrderItemId)
+      .eq("sales_order_item_id", salesOrderItemId)
       .eq("product_id", args.productId)
       .order("created_at", { ascending: false });
 
@@ -632,41 +717,160 @@ async function upsertPurchaseRequisition(
         };
       }
     }
+
+    const unitPrice = round4(Math.max(0, args.unitPrice));
+    const lineTotal = round4(args.quantity * unitPrice);
+
+    const { data: inserted, error: liErr } = await admin
+      .from("purchase_order_items")
+      .insert({
+        tenant_id: tenantId,
+        purchase_order_id: null,
+        status: "draft",
+        product_id: args.productId,
+        description: args.description,
+        quantity: args.quantity,
+        unit: args.unit,
+        unit_price: unitPrice,
+        total_price: lineTotal,
+        production_order_id: args.productionOrderId ?? null,
+        production_item_id: args.productionOrderItemId ?? null,
+        production_order_item_id: args.productionOrderItemId ?? null,
+        sales_order_item_id: salesOrderItemId,
+        trace_key: args.traceKey,
+        follow_up_date: needDate,
+        need_date: needDate,
+      })
+      .select("id")
+      .single();
+    if (liErr) throw new Error(liErr.message);
+
+    return {
+      id: inserted.id,
+      po_number: args.traceKey,
+      supplier_id: preferredSupplierId,
+      requisition: true,
+    };
   }
 
-  const unitPrice = round4(Math.max(0, args.unitPrice));
-  const lineTotal = round4(args.quantity * unitPrice);
+  if (productionOrderItemId && args.productId) {
+    const needDate = computePurchaseNeedDate(
+      args.pcpDeadline ??
+        (await followUpDateForProductionOrderItem(
+          admin,
+          tenantId,
+          productionOrderItemId
+        )),
+      productLead?.purchase_lead_time_days
+    );
 
-  const { data: inserted, error: liErr } = await admin
-    .from("purchase_order_items")
-    .insert({
-      tenant_id: tenantId,
-      purchase_order_id: null,
-      status: "draft",
-      product_id: args.productId,
-      description: args.description,
-      quantity: args.quantity,
-      unit: args.unit,
-      unit_price: unitPrice,
-      total_price: lineTotal,
-      production_order_id: args.productionOrderId ?? null,
-      production_item_id: args.productionOrderItemId ?? null,
-      production_order_item_id: args.productionOrderItemId ?? null,
-      sales_order_item_id: args.salesOrderItemId,
-      trace_key: args.traceKey,
-      follow_up_date: needDate,
-      need_date: needDate,
-    })
-    .select("id")
-    .single();
-  if (liErr) throw new Error(liErr.message);
+    const { data: existingRows } = await admin
+      .from("purchase_order_items")
+      .select(
+        "id, quantity, unit_price, status, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id)"
+      )
+      .eq("tenant_id", tenantId)
+      .eq("production_order_item_id", productionOrderItemId)
+      .eq("product_id", args.productId)
+      .is("purchase_order_id", null)
+      .eq("status", "draft")
+      .order("created_at", { ascending: false });
 
-  return {
-    id: inserted.id,
-    po_number: args.traceKey,
-    supplier_id: preferredSupplierId,
-    requisition: true,
-  };
+    const draftRequisition = (existingRows ?? [])[0];
+    const { data: linkedRows } = await admin
+      .from("purchase_order_items")
+      .select(
+        "id, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id)"
+      )
+      .eq("tenant_id", tenantId)
+      .eq("production_order_item_id", productionOrderItemId)
+      .eq("product_id", args.productId)
+      .not("purchase_order_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const linkedPo = linkedRows?.[0];
+
+    if (draftRequisition?.id) {
+      const newQty = round4(args.quantity);
+      const unitPrice = round4(
+        Math.max(Number(draftRequisition.unit_price ?? 0), args.unitPrice)
+      );
+
+      await admin
+        .from("purchase_order_items")
+        .update({
+          quantity: newQty,
+          unit_price: unitPrice,
+          total_price: round4(newQty * unitPrice),
+          trace_key: args.traceKey,
+          production_order_id: args.productionOrderId ?? null,
+          production_item_id: productionOrderItemId,
+          production_order_item_id: productionOrderItemId,
+          need_date: needDate,
+        })
+        .eq("id", draftRequisition.id)
+        .eq("tenant_id", tenantId);
+
+      return {
+        id: draftRequisition.id,
+        po_number: args.traceKey,
+        supplier_id: preferredSupplierId,
+        requisition: true,
+      };
+    }
+
+    if (linkedPo?.id) {
+      const po = Array.isArray(linkedPo.purchase_order)
+        ? linkedPo.purchase_order[0]
+        : linkedPo.purchase_order;
+      if (po) {
+        return {
+          id: po.id,
+          po_number: po.po_number,
+          supplier_id: po.supplier_id,
+          requisition: false,
+        };
+      }
+    }
+
+    const unitPrice = round4(Math.max(0, args.unitPrice));
+    const lineTotal = round4(args.quantity * unitPrice);
+
+    const { data: inserted, error: liErr } = await admin
+      .from("purchase_order_items")
+      .insert({
+        tenant_id: tenantId,
+        purchase_order_id: null,
+        status: "draft",
+        product_id: args.productId,
+        description: args.description,
+        quantity: args.quantity,
+        unit: args.unit,
+        unit_price: unitPrice,
+        total_price: lineTotal,
+        production_order_id: args.productionOrderId ?? null,
+        production_item_id: productionOrderItemId,
+        production_order_item_id: productionOrderItemId,
+        sales_order_item_id: null,
+        trace_key: args.traceKey,
+        follow_up_date: needDate,
+        need_date: needDate,
+      })
+      .select("id")
+      .single();
+    if (liErr) throw new Error(liErr.message);
+
+    return {
+      id: inserted.id,
+      po_number: args.traceKey,
+      supplier_id: preferredSupplierId,
+      requisition: true,
+    };
+  }
+
+  throw new Error(
+    "upsertPurchaseRequisition requer salesOrderItemId ou productionOrderItemId"
+  );
 }
 
 export type ProcessMrpForSalesOrderOptions = {
@@ -1102,6 +1306,231 @@ export async function processMrpForSalesOrder(
   };
 }
 
+/**
+ * MRP por OP de estoque: explode BOM dos itens e gera requisições de compra.
+ * Não cria OP nem altera sales_orders.
+ */
+export async function processMrpForStockProductionOrder(
+  admin: Admin,
+  tenantId: string,
+  userId: string,
+  productionOrderId: string,
+  confirm: boolean
+): Promise<MrpStockProcessResult> {
+  void userId;
+
+  const { data: op, error: opErr } = await admin
+    .from("production_orders")
+    .select("id, order_number, pcp_deadline, source_kind, is_suggestion, status")
+    .eq("id", productionOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (opErr) throw new Error(opErr.message);
+  if (!op) throw new Error("Ordem de produção não encontrada.");
+  if (op.is_suggestion) {
+    throw new Error("Ordem de produção é sugestão MRP — não processável como estoque.");
+  }
+  if (op.source_kind !== "stock") {
+    throw new Error(
+      `Ordem de produção não é de estoque (source_kind=${op.source_kind ?? "?"}).`
+    );
+  }
+  if (
+    MRP_STOCK_EXCLUDED_STATUSES.includes(
+      op.status as (typeof MRP_STOCK_EXCLUDED_STATUSES)[number]
+    )
+  ) {
+    throw new Error(
+      `Ordem de produção com status «${op.status}» — fora do MRP de estoque.`
+    );
+  }
+
+  const orderNumber = String(op.order_number ?? "");
+  const orderPcpDate =
+    op.pcp_deadline != null ? String(op.pcp_deadline).slice(0, 10) : null;
+
+  const { data: itemRows, error: itemErr } = await admin
+    .from("order_items")
+    .select(
+      "id, item_number, product_id, quantity, description, unit, pcp_deadline"
+    )
+    .eq("order_id", productionOrderId)
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
+    .not("product_id", "is", null)
+    .gt("quantity", 0)
+    .order("item_number", { ascending: true });
+  if (itemErr) throw new Error(itemErr.message);
+
+  const lines: MrpStockLineResult[] = [];
+  const bomCache = new Map<string, boolean>();
+
+  for (const row of itemRows ?? []) {
+    const itemNumber = Number(row.item_number ?? lines.length + 1);
+    const lineRes: MrpStockLineResult = {
+      order_item_id: row.id,
+      item_number: itemNumber,
+      product_id: row.product_id,
+      purchase_orders: [],
+    };
+
+    if (!row.product_id) {
+      lineRes.skipped_reason = "Linha sem produto.";
+      lines.push(lineRes);
+      continue;
+    }
+
+    const qty = Number(row.quantity ?? 0);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      lineRes.skipped_reason = "Quantidade inválida.";
+      lines.push(lineRes);
+      continue;
+    }
+
+    const hasBom = await productHasBom(
+      admin,
+      tenantId,
+      row.product_id,
+      bomCache
+    );
+    if (!hasBom) {
+      lineRes.skipped_reason = "Produto sem BOM — sem materiais para requisitar.";
+      lines.push(lineRes);
+      continue;
+    }
+
+    const pcpDate =
+      row.pcp_deadline != null
+        ? String(row.pcp_deadline).slice(0, 10)
+        : orderPcpDate;
+
+    const gross = await calculateNeededMaterialsForProductQty(
+      admin,
+      tenantId,
+      row.product_id,
+      qty
+    );
+    const requirements = await getNetRequirements(admin, tenantId, gross);
+    lineRes.requirements = requirements;
+
+    if (!confirm) {
+      const shortages = requirements.filter((m) => m.shortage > 0.0001);
+      if (shortages.length === 0) {
+        lineRes.skipped_reason = "Sem falta de material em estoque.";
+      }
+      lines.push(lineRes);
+      continue;
+    }
+
+    const shortages = requirements.filter((m) => m.shortage > 0.0001);
+    if (shortages.length === 0) {
+      lineRes.skipped_reason = "Sem falta de material em estoque.";
+      lines.push(lineRes);
+      continue;
+    }
+
+    const matIds = [...new Set(shortages.map((s) => s.product_id))];
+    const { data: mpRows, error: mpErr } = await admin
+      .from("products")
+      .select("id, technical_code, cost_price, default_labor_cost, name, unit")
+      .eq("tenant_id", tenantId)
+      .in("id", matIds);
+    if (mpErr) throw new Error(mpErr.message);
+    const matMap = new Map((mpRows ?? []).map((m) => [m.id, m]));
+
+    for (const m of shortages) {
+      try {
+        const mp = matMap.get(m.product_id);
+        const code = mp?.technical_code ?? m.product_id.slice(0, 8);
+        const traceKey = buildMrpRequisitionTraceKey(
+          orderNumber,
+          itemNumber,
+          code
+        );
+        const unitPrice = mp
+          ? Number(mp.default_labor_cost ?? mp.cost_price ?? 0)
+          : 0;
+        const req = await upsertPurchaseRequisition(admin, tenantId, {
+          traceKey,
+          productId: m.product_id,
+          quantity: m.shortage,
+          unit: m.unit,
+          unitPrice,
+          description: mp?.name ?? m.description,
+          productionOrderId,
+          productionOrderItemId: row.id,
+          pcpDeadline: pcpDate,
+        });
+        lineRes.purchase_orders.push(req);
+      } catch (reqErr) {
+        const msg =
+          reqErr instanceof Error ? reqErr.message : "Erro na requisição";
+        lineRes.skipped_reason = lineRes.skipped_reason
+          ? `${lineRes.skipped_reason}; ${msg}`
+          : msg;
+      }
+    }
+
+    lines.push(lineRes);
+  }
+
+  return {
+    production_order_id: productionOrderId,
+    order_number: orderNumber,
+    lines,
+  };
+}
+
+/** MRP em lote: OPs de estoque activas (exceto canceladas e finalizadas). */
+export async function runMrpForStockProductionOrders(
+  admin: Admin,
+  tenantId: string,
+  userId: string,
+  confirm: boolean
+): Promise<MrpStockBatchSummary> {
+  const { data: ops, error } = await admin
+    .from("production_orders")
+    .select("id, order_number")
+    .eq("tenant_id", tenantId)
+    .eq("source_kind", "stock")
+    .eq("is_suggestion", false)
+    .in("status", [...MRP_STOCK_ELIGIBLE_STATUSES])
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+
+  const stock_orders: MrpStockProcessResult[] = [];
+  const errors: MrpStockBatchSummary["errors"] = [];
+
+  for (const op of ops ?? []) {
+    try {
+      const r = await processMrpForStockProductionOrder(
+        admin,
+        tenantId,
+        userId,
+        op.id,
+        confirm
+      );
+      const worthShowing = r.lines.some(
+        (l) =>
+          (l.purchase_orders?.length ?? 0) > 0 ||
+          (l.requirements?.some((req) => req.shortage > 0.0001) ?? false) ||
+          l.skipped_reason != null
+      );
+      if (worthShowing) {
+        stock_orders.push(r);
+      }
+    } catch (e) {
+      errors.push({
+        source: "stock",
+        id: op.id,
+        message: e instanceof Error ? e.message : "Erro",
+      });
+    }
+  }
+
+  return { stock_orders, errors };
+}
+
 /** MRP em lote: pedidos confirmados ainda não processados pelo MRP. */
 export async function processMrpForPendingOrders(
   admin: Admin,
@@ -1198,7 +1627,10 @@ export async function generateMrpSuggestionsForPendingOrders(
   const startedAt = new Date();
   const startedIso = startedAt.toISOString();
 
-  const batch = await runMrpForOpenSalesOrders(admin, tenantId, userId, true);
+  const [batch, batchStock] = await Promise.all([
+    runMrpForOpenSalesOrders(admin, tenantId, userId, true),
+    runMrpForStockProductionOrders(admin, tenantId, userId, true),
+  ]);
 
   // Reverter flags do pedido de venda (o MRP real marca como processado / muda status).
   const salesOrderIds = [
@@ -1310,14 +1742,39 @@ export async function generateMrpSuggestionsForPendingOrders(
     purchase_order_items_marked += (updReq ?? []).length;
   }
 
+  // Estoque: marcar só requisições (POI) retornadas neste run — OP e order_items permanecem reais.
+  const stockPurchaseOrderItemIds = new Set<string>();
+  for (const ord of batchStock.stock_orders) {
+    for (const line of ord.lines) {
+      for (const po of line.purchase_orders ?? []) {
+        if (po?.id) stockPurchaseOrderItemIds.add(po.id);
+      }
+    }
+  }
+
+  let stock_purchase_order_items_marked = 0;
+  if (stockPurchaseOrderItemIds.size) {
+    const ids = [...stockPurchaseOrderItemIds];
+    const { data: updStockReq } = await admin
+      .from("purchase_order_items")
+      .update({ is_suggestion: true })
+      .eq("tenant_id", tenantId)
+      .in("id", ids)
+      .is("purchase_order_id", null)
+      .select("id");
+    stock_purchase_order_items_marked = (updStockReq ?? []).length;
+  }
+
   return {
     generated: batch,
+    stock_generated: batchStock,
     suggestion_flags: {
       production_orders_marked,
       order_items_marked,
       purchase_orders_marked,
       purchase_order_items_marked,
       sales_orders_reverted: salesOrderIds.length,
+      stock_purchase_order_items_marked,
     },
   };
 }

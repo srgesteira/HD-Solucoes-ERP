@@ -90,6 +90,10 @@ ${needDateLine}${suggestedIdLine}${supplierJoinLine}      trace_key,
       quotation_sent_at,
       production_order_item_id,
       production_order_id,
+      production_order:production_orders!purchase_order_items_production_order_id_fkey(
+        id,
+        order_number
+      ),
       production_order_item:order_items!purchase_order_items_production_order_item_id_fkey(
         id,
         order_id,
@@ -135,6 +139,7 @@ type RequisitionQueryRow = {
   quotation_sent_at: string | null;
   production_order_item_id: string | null;
   production_order_id: string | null;
+  production_order: unknown;
   production_order_item: unknown;
   product: unknown;
   sales_order_item: unknown;
@@ -152,7 +157,9 @@ async function queryRequisitionRows(
     .eq("is_suggestion", false)
     .eq("status", "draft")
     .is("purchase_order_id", null)
-    .not("sales_order_item_id", "is", null);
+    .or(
+      "sales_order_item_id.not.is.null,production_order_item_id.not.is.null"
+    );
 
   const result = opts.includeNeedDate
     ? await q.order("need_date", { ascending: true, nullsFirst: false })
@@ -227,6 +234,12 @@ function mapRequisitionRows(
         ? oi.production_order[0]
         : oi.production_order
       : null;
+    const directOp = row.production_order
+      ? Array.isArray(row.production_order)
+        ? row.production_order[0]
+        : row.production_order
+      : null;
+    const stockOp = prOp ?? directOp;
 
     const expected =
       dateOnly(soi?.pcp_deadline) ?? dateOnly(so?.expected_delivery);
@@ -268,8 +281,9 @@ function mapRequisitionRows(
       follow_up_date: dateOnly(row.follow_up_date),
       trace_key: row.trace_key ?? null,
       production_order_item_id: row.production_order_item_id ?? oi?.id ?? null,
-      production_order_id: prOp?.id ?? row.production_order_id ?? oi?.order_id ?? null,
-      production_order_number: prOp?.order_number ?? null,
+      production_order_id:
+        stockOp?.id ?? row.production_order_id ?? oi?.order_id ?? null,
+      production_order_number: stockOp?.order_number ?? null,
       quotation_sent_at: row.quotation_sent_at ?? null,
       is_external_labor: Boolean(product?.default_is_external_labor),
     });
@@ -279,7 +293,9 @@ function mapRequisitionRows(
     const fa = a.need_date ?? a.follow_up_date ?? a.expected_date ?? "9999-12-31";
     const fb = b.need_date ?? b.follow_up_date ?? b.expected_date ?? "9999-12-31";
     if (fa !== fb) return fa.localeCompare(fb);
-    return (a.sales_order_number ?? "").localeCompare(b.sales_order_number ?? "");
+    const originA = a.sales_order_number ?? a.production_order_number ?? "";
+    const originB = b.sales_order_number ?? b.production_order_number ?? "";
+    return originA.localeCompare(originB);
   });
 }
 
@@ -357,8 +373,12 @@ export async function countPurchaseRequisitions(
     .from("purchase_order_items")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
     .eq("status", "draft")
-    .is("purchase_order_id", null);
+    .is("purchase_order_id", null)
+    .or(
+      "sales_order_item_id.not.is.null,production_order_item_id.not.is.null"
+    );
 
   if (error) throw new Error(error.message);
   return count ?? 0;

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import type { PcpPlanningItem, PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
+import type { MrpSuggestionsSummary } from "@/modules/pcp/lib/mrp-service";
 import { PcpOrdersLegacyPanel } from "@/components/pcp/pcp-orders-legacy-panel";
 import { PcpLinesPlanningView } from "@/components/pcp/pcp-lines-planning-view";
 import { PcpPurchaseDependenciesPanel } from "@/components/pcp/pcp-purchase-dependencies-panel";
@@ -59,6 +60,24 @@ async function fetchLines(): Promise<ProductionLine[]> {
 function pcIsReceived(item: PcpPlanningItem): boolean {
   if (!item.purchase_order_item_id) return false;
   return item.purchase_order_status === "received";
+}
+
+function buildMrpGenerateToast(summary: MrpSuggestionsSummary): string {
+  const salesCount = summary.generated?.orders?.length ?? 0;
+  const stockCount = summary.stock_generated?.stock_orders?.length ?? 0;
+  const flags = summary.suggestion_flags;
+  const purchaseSuggestions =
+    (flags.purchase_order_items_marked ?? 0) +
+    (flags.stock_purchase_order_items_marked ?? 0) +
+    (flags.purchase_orders_marked ?? 0);
+  return `MRP gerado: ${salesCount} pedido(s), ${stockCount} OP(s) de estoque, ${purchaseSuggestions} sugestão(ões) de compra. Clique em Efetivar para confirmar.`;
+}
+
+function countMrpGenerateWarnings(summary: MrpSuggestionsSummary): number {
+  return (
+    (summary.generated?.errors?.length ?? 0) +
+    (summary.stock_generated?.errors?.length ?? 0)
+  );
 }
 
 export function PcpPlanningView() {
@@ -129,7 +148,7 @@ export function PcpPlanningView() {
   }
 
   const mrpGenerateMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<MrpSuggestionsSummary | undefined> => {
       const res = await fetch("/api/pcp/mrp-suggestions", {
         method: "POST",
         credentials: "include",
@@ -138,13 +157,22 @@ export function PcpPlanningView() {
       });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
-        generated?: unknown;
+        generated?: MrpSuggestionsSummary;
       };
       if (!res.ok) throw new Error(json.error ?? "Erro ao gerar sugestões");
-      setMrpSuggestionResult({ generated: json.generated });
+      if (json.generated) setMrpSuggestionResult({ generated: json.generated });
+      return json.generated;
     },
-    onSuccess: () => {
-      toast.success("Sugestões do MRP geradas (não efetivadas).");
+    onSuccess: (summary) => {
+      if (summary) {
+        toast.success(buildMrpGenerateToast(summary));
+        const warningCount = countMrpGenerateWarnings(summary);
+        if (warningCount > 0) {
+          toast.warning(`MRP concluído com ${warningCount} aviso(s).`);
+        }
+      } else {
+        toast.success("Sugestões do MRP geradas (não efetivadas).");
+      }
       void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
       void qc.invalidateQueries({ queryKey: ["purchasing-requisitions"] });
       void qc.invalidateQueries({ queryKey: ["purchasing-requisitions-count"] });

@@ -240,6 +240,10 @@ export function RequisitionsTab() {
               <span className="block text-xs text-slate-500">
                 PV {row.sales_order_number}
               </span>
+            ) : row.production_order_number ? (
+              <span className="block text-xs text-slate-500">
+                OP {row.production_order_number}
+              </span>
             ) : null}
           </>
         ),
