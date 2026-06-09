@@ -235,9 +235,10 @@ export function PcpOrdersLegacyPanel({
                       className={`w-full rounded-md border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-center ${pcpDeadlineProximityClass(order.pcp_deadline)}`}
                       defaultValue={order.pcp_deadline ?? ""}
                       onBlur={(e) => {
-                        const v = e.target.value || null;
-                        if (v !== (order.pcp_deadline ?? "")) {
-                          onPcpOrderDeadline(order.id, v);
+                        const novo = e.target.value || null;
+                        const atual = order.pcp_deadline || null;
+                        if (novo !== atual) {
+                          onPcpOrderDeadline(order.id, novo);
                         }
                       }}
                     />
