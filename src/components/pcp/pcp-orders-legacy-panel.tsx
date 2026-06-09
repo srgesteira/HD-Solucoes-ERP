@@ -32,7 +32,11 @@ type ProductionLine = { id: string; code: string; name: string };
 type Props = {
   orders: PcpPlanningOrder[];
   lines: ProductionLine[];
-  onPcpOrderDeadline: (orderId: string, date: string | null) => void;
+  onPcpOrderDeadline: (
+    orderId: string,
+    date: string | null,
+    orderSource: PcpPlanningOrder["order_source"]
+  ) => void;
   onItemLine: (args: {
     sales_order_item_id: string;
     order_item_id: string | null;
@@ -238,7 +242,7 @@ export function PcpOrdersLegacyPanel({
                         const novo = e.target.value || null;
                         const atual = order.pcp_deadline || null;
                         if (novo !== atual) {
-                          onPcpOrderDeadline(order.id, novo);
+                          onPcpOrderDeadline(order.id, novo, order.order_source);
                         }
                       }}
                     />

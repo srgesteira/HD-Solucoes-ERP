@@ -212,8 +212,16 @@ export function PcpPlanningView() {
   });
 
   const orderPcpMut = useMutation({
-    mutationFn: async (args: { orderId: string; pcp_deadline: string | null }) => {
-      const res = await fetch(`/api/sales/orders/${args.orderId}`, {
+    mutationFn: async (args: {
+      orderId: string;
+      pcp_deadline: string | null;
+      order_source: PcpPlanningOrder["order_source"];
+    }) => {
+      const url =
+        args.order_source === "stock"
+          ? `/api/pcp/production-orders/${args.orderId}`
+          : `/api/sales/orders/${args.orderId}`;
+      const res = await fetch(url, {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -521,8 +529,12 @@ export function PcpPlanningView() {
         <PcpOrdersLegacyPanel
           orders={orders}
           lines={lines}
-          onPcpOrderDeadline={(orderId, date) =>
-            orderPcpMut.mutate({ orderId, pcp_deadline: date })
+          onPcpOrderDeadline={(orderId, date, orderSource) =>
+            orderPcpMut.mutate({
+              orderId,
+              pcp_deadline: date,
+              order_source: orderSource,
+            })
           }
           onItemLine={(args) => updateLineMut.mutate(args)}
           onLinkPc={(item) => {
