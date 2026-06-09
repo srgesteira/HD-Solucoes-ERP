@@ -81,7 +81,8 @@ function movementTypeBadge(type: string) {
 }
 
 function quantityCell(type: string, quantity: number) {
-  const n = Number(quantity);
+  const raw = Number(quantity);
+  const n = Number.isFinite(raw) ? Math.abs(raw) : NaN;
   const formatted = Number.isFinite(n)
     ? n.toLocaleString("pt-BR", { maximumFractionDigits: 4 })
     : "—";
