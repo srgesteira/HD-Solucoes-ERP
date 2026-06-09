@@ -124,7 +124,7 @@ export async function applyPurchaseInvoiceConfirm(
       const ordered = Number(poi.quantity);
       const prevRecv = Number(poi.received_quantity ?? 0);
       const remaining = Math.max(0, ordered - prevRecv);
-      const toReceive = Math.min(qty, remaining > 0 ? remaining : qty);
+      const toReceive = Math.min(qty, remaining);
       const newRecv = prevRecv + toReceive;
 
       if (Math.abs(qty - remaining) > 0.0001 && remaining > 0) {
