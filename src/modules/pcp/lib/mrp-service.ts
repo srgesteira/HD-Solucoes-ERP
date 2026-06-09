@@ -48,6 +48,42 @@ export type MrpBatchSummary = {
   errors: Array<{ sales_order_id: string; message: string }>;
 };
 
+/** OPs de estoque excluídas do MRP (já encerradas ou canceladas). */
+export const MRP_STOCK_EXCLUDED_STATUSES = ["cancelled", "finished"] as const;
+
+/** Status elegíveis = todos os de production_orders excepto cancelled/finished. */
+export const MRP_STOCK_ELIGIBLE_STATUSES = [
+  "imported",
+  "planning",
+  "in_production",
+  "ready",
+  "delayed",
+] as const;
+
+export type MrpStockLineResult = {
+  order_item_id: string;
+  item_number: number;
+  product_id: string | null;
+  skipped_reason?: string;
+  requirements?: MaterialRequirement[];
+  purchase_orders: Array<{
+    id: string;
+    po_number: string;
+    supplier_id: string | null;
+  }>;
+};
+
+export type MrpStockProcessResult = {
+  production_order_id: string;
+  order_number: string;
+  lines: MrpStockLineResult[];
+};
+
+export type MrpStockBatchSummary = {
+  stock_orders: MrpStockProcessResult[];
+  errors: Array<{ source: "stock"; id: string; message: string }>;
+};
+
 export type MrpSuggestionsSummary = {
   generated: MrpBatchSummary;
   suggestion_flags: {
@@ -1266,6 +1302,231 @@ export async function processMrpForSalesOrder(
     order_number: orderNumber,
     lines: results,
   };
+}
+
+/**
+ * MRP por OP de estoque: explode BOM dos itens e gera requisições de compra.
+ * Não cria OP nem altera sales_orders.
+ */
+export async function processMrpForStockProductionOrder(
+  admin: Admin,
+  tenantId: string,
+  userId: string,
+  productionOrderId: string,
+  confirm: boolean
+): Promise<MrpStockProcessResult> {
+  void userId;
+
+  const { data: op, error: opErr } = await admin
+    .from("production_orders")
+    .select("id, order_number, pcp_deadline, source_kind, is_suggestion, status")
+    .eq("id", productionOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (opErr) throw new Error(opErr.message);
+  if (!op) throw new Error("Ordem de produção não encontrada.");
+  if (op.is_suggestion) {
+    throw new Error("Ordem de produção é sugestão MRP — não processável como estoque.");
+  }
+  if (op.source_kind !== "stock") {
+    throw new Error(
+      `Ordem de produção não é de estoque (source_kind=${op.source_kind ?? "?"}).`
+    );
+  }
+  if (
+    MRP_STOCK_EXCLUDED_STATUSES.includes(
+      op.status as (typeof MRP_STOCK_EXCLUDED_STATUSES)[number]
+    )
+  ) {
+    throw new Error(
+      `Ordem de produção com status «${op.status}» — fora do MRP de estoque.`
+    );
+  }
+
+  const orderNumber = String(op.order_number ?? "");
+  const orderPcpDate =
+    op.pcp_deadline != null ? String(op.pcp_deadline).slice(0, 10) : null;
+
+  const { data: itemRows, error: itemErr } = await admin
+    .from("order_items")
+    .select(
+      "id, item_number, product_id, quantity, description, unit, pcp_deadline"
+    )
+    .eq("order_id", productionOrderId)
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
+    .not("product_id", "is", null)
+    .gt("quantity", 0)
+    .order("item_number", { ascending: true });
+  if (itemErr) throw new Error(itemErr.message);
+
+  const lines: MrpStockLineResult[] = [];
+  const bomCache = new Map<string, boolean>();
+
+  for (const row of itemRows ?? []) {
+    const itemNumber = Number(row.item_number ?? lines.length + 1);
+    const lineRes: MrpStockLineResult = {
+      order_item_id: row.id,
+      item_number: itemNumber,
+      product_id: row.product_id,
+      purchase_orders: [],
+    };
+
+    if (!row.product_id) {
+      lineRes.skipped_reason = "Linha sem produto.";
+      lines.push(lineRes);
+      continue;
+    }
+
+    const qty = Number(row.quantity ?? 0);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      lineRes.skipped_reason = "Quantidade inválida.";
+      lines.push(lineRes);
+      continue;
+    }
+
+    const hasBom = await productHasBom(
+      admin,
+      tenantId,
+      row.product_id,
+      bomCache
+    );
+    if (!hasBom) {
+      lineRes.skipped_reason = "Produto sem BOM — sem materiais para requisitar.";
+      lines.push(lineRes);
+      continue;
+    }
+
+    const pcpDate =
+      row.pcp_deadline != null
+        ? String(row.pcp_deadline).slice(0, 10)
+        : orderPcpDate;
+
+    const gross = await calculateNeededMaterialsForProductQty(
+      admin,
+      tenantId,
+      row.product_id,
+      qty
+    );
+    const requirements = await getNetRequirements(admin, tenantId, gross);
+    lineRes.requirements = requirements;
+
+    if (!confirm) {
+      const shortages = requirements.filter((m) => m.shortage > 0.0001);
+      if (shortages.length === 0) {
+        lineRes.skipped_reason = "Sem falta de material em estoque.";
+      }
+      lines.push(lineRes);
+      continue;
+    }
+
+    const shortages = requirements.filter((m) => m.shortage > 0.0001);
+    if (shortages.length === 0) {
+      lineRes.skipped_reason = "Sem falta de material em estoque.";
+      lines.push(lineRes);
+      continue;
+    }
+
+    const matIds = [...new Set(shortages.map((s) => s.product_id))];
+    const { data: mpRows, error: mpErr } = await admin
+      .from("products")
+      .select("id, technical_code, cost_price, default_labor_cost, name, unit")
+      .eq("tenant_id", tenantId)
+      .in("id", matIds);
+    if (mpErr) throw new Error(mpErr.message);
+    const matMap = new Map((mpRows ?? []).map((m) => [m.id, m]));
+
+    for (const m of shortages) {
+      try {
+        const mp = matMap.get(m.product_id);
+        const code = mp?.technical_code ?? m.product_id.slice(0, 8);
+        const traceKey = buildMrpRequisitionTraceKey(
+          orderNumber,
+          itemNumber,
+          code
+        );
+        const unitPrice = mp
+          ? Number(mp.default_labor_cost ?? mp.cost_price ?? 0)
+          : 0;
+        const req = await upsertPurchaseRequisition(admin, tenantId, {
+          traceKey,
+          productId: m.product_id,
+          quantity: m.shortage,
+          unit: m.unit,
+          unitPrice,
+          description: mp?.name ?? m.description,
+          productionOrderId,
+          productionOrderItemId: row.id,
+          pcpDeadline: pcpDate,
+        });
+        lineRes.purchase_orders.push(req);
+      } catch (reqErr) {
+        const msg =
+          reqErr instanceof Error ? reqErr.message : "Erro na requisição";
+        lineRes.skipped_reason = lineRes.skipped_reason
+          ? `${lineRes.skipped_reason}; ${msg}`
+          : msg;
+      }
+    }
+
+    lines.push(lineRes);
+  }
+
+  return {
+    production_order_id: productionOrderId,
+    order_number: orderNumber,
+    lines,
+  };
+}
+
+/** MRP em lote: OPs de estoque activas (exceto canceladas e finalizadas). */
+export async function runMrpForStockProductionOrders(
+  admin: Admin,
+  tenantId: string,
+  userId: string,
+  confirm: boolean
+): Promise<MrpStockBatchSummary> {
+  const { data: ops, error } = await admin
+    .from("production_orders")
+    .select("id, order_number")
+    .eq("tenant_id", tenantId)
+    .eq("source_kind", "stock")
+    .eq("is_suggestion", false)
+    .in("status", [...MRP_STOCK_ELIGIBLE_STATUSES])
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+
+  const stock_orders: MrpStockProcessResult[] = [];
+  const errors: MrpStockBatchSummary["errors"] = [];
+
+  for (const op of ops ?? []) {
+    try {
+      const r = await processMrpForStockProductionOrder(
+        admin,
+        tenantId,
+        userId,
+        op.id,
+        confirm
+      );
+      const worthShowing = r.lines.some(
+        (l) =>
+          (l.purchase_orders?.length ?? 0) > 0 ||
+          (l.requirements?.some((req) => req.shortage > 0.0001) ?? false) ||
+          l.skipped_reason != null
+      );
+      if (worthShowing) {
+        stock_orders.push(r);
+      }
+    } catch (e) {
+      errors.push({
+        source: "stock",
+        id: op.id,
+        message: e instanceof Error ? e.message : "Erro",
+      });
+    }
+  }
+
+  return { stock_orders, errors };
 }
 
 /** MRP em lote: pedidos confirmados ainda não processados pelo MRP. */
