@@ -3,6 +3,7 @@ const path = require("path");
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ["puppeteer-core"],
   /**
    * Não usar `output: "standalone"` aqui: na Vercel o passo de cópia para
    * `.next/standalone` falha com rotas em grupos `(app)` (ENOENT no manifest).
@@ -22,6 +23,11 @@ const nextConfig = {
    * "multiple lockfiles" quando há um package-lock.json antigo em ~/.
    */
   outputFileTracingRoot: __dirname,
+  outputFileTracingIncludes: {
+    "/api/purchasing/orders/[id]/pdf": [
+      "./node_modules/pdfkit/js/data/**",
+    ],
+  },
   turbopack: {
     root: path.resolve(__dirname),
   },

@@ -3,7 +3,9 @@ import { computeOrderProductionDeadline } from "@/modules/pcp/lib/pcp-planning";
 import {
   computeOrderProductionAggregateStatus,
   isOrderItemProductionFinished,
+  isOrderItemProductionOverdue,
   ORDER_PRODUCTION_STATUS_LABELS,
+  type OrderItemProductionFields,
   type OrderProductionAggregateStatus,
 } from "@/modules/pcp/lib/order-item-production-status";
 
@@ -34,11 +36,15 @@ export function pcpDeadlineProximityClass(deadline: string | null): string {
   return "text-emerald-800";
 }
 
-/** Prazo produção calculado — somente leitura. */
+/** Prazo produção calculado — somente leitura (vermelho se atrasado). */
 export function productionDeadlineDisplayClass(
-  deadline: string | null
+  deadline: string | null,
+  items?: OrderItemProductionFields[]
 ): string {
   if (!deadline) return "text-slate-500";
+  if (items?.some(isOrderItemProductionOverdue)) {
+    return "text-red-800 font-semibold";
+  }
   return "text-blue-800 font-medium";
 }
 
@@ -147,6 +153,7 @@ export function lineEndVsPcpTrafficClass(
   }
 
   const t = todayYmd();
+  if (end && end < t) return "text-red-800 font-semibold";
   if (pcp < t) return "text-red-800 font-semibold";
   if (pcp === t) return "text-amber-800 font-medium";
   const d = new Date();
@@ -163,7 +170,9 @@ export function lineRowDelayClass(
 ): string {
   const pcp = dateOnly(pcpDeadline);
   const end = dateOnly(productionEnd);
-  if (end && pcp && end > pcp && !completed) return "bg-red-50";
+  if (completed) return "";
+  if (end && pcp && end > pcp) return "bg-red-50";
+  if (end && isPastDeadline(end)) return "bg-red-50";
   return "";
 }
 
@@ -174,16 +183,35 @@ export type PcpPrincipalStatus =
   | "aguardando_programacao"
   | "programado"
   | "produzindo"
+  | "pronta"
   | "finalizado"
   | null;
 
-function itemCompleted(it: PcpPlanningItem): boolean {
-  return isOrderItemProductionFinished({
+function itemProductionFields(it: PcpPlanningItem): OrderItemProductionFields {
+  return {
     production_start: it.production_start,
     production_end: it.production_end,
     status: it.production_status,
     completed_at: it.production_completed_at,
-  });
+    apontamento_start_at: it.apontamento_start_at,
+    apontamento_end_at: it.apontamento_end_at,
+  };
+}
+
+function itemCompleted(it: PcpPlanningItem): boolean {
+  return isOrderItemProductionFinished(itemProductionFields(it));
+}
+
+/** Pedido fechado pelo PCP (vendas: lib. faturamento; estoque: OP finalizada). */
+export function isOrderPcpClosed(order: PcpPlanningOrder): boolean {
+  if (order.order_source === "stock") {
+    return order.status === "finished";
+  }
+  return order.ready_for_invoice === true;
+}
+
+export function isOrderProductionReady(order: PcpPlanningOrder): boolean {
+  return getOrderProductionAggregateStatus(order) === "finished";
 }
 
 /** Estado agregado do pedido para PCP e vendas (conclusão real vs. programado). */
@@ -191,11 +219,7 @@ export function getOrderProductionAggregateStatus(
   order: PcpPlanningOrder
 ): OrderProductionAggregateStatus {
   return computeOrderProductionAggregateStatus(
-    order.items.map((it) => ({
-      production_start: it.production_start,
-      production_end: it.production_end,
-      status: it.production_status,
-    }))
+    order.items.map((it) => itemProductionFields(it))
   );
 }
 
@@ -212,11 +236,8 @@ export function getOrderPrincipalStatus(
   const items = order.items;
   if (items.length === 0) return null;
 
-  const hasDelayed = items.some(
-    (it) =>
-      !itemCompleted(it) &&
-      it.production_end &&
-      isPastDeadline(dateOnly(it.production_end)!)
+  const hasDelayed = items.some((it) =>
+    isOrderItemProductionOverdue(itemProductionFields(it))
   );
   if (hasDelayed) return "atrasado";
 
@@ -232,8 +253,12 @@ export function getOrderPrincipalStatus(
 
   if (items.some((it) => !it.line_id)) return "falta_linha";
 
-  if (getOrderProductionAggregateStatus(order) === "finished") {
+  if (isOrderPcpClosed(order)) {
     return "finalizado";
+  }
+
+  if (isOrderProductionReady(order)) {
+    return "pronta";
   }
 
   const today = new Date();

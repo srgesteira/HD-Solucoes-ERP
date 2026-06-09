@@ -1592,6 +1592,8 @@ export type Database = {
           tenant_id: string
           unit: string | null
           updated_at: string
+          warehouse_supplied_at: string | null
+          warehouse_supplied_by: string | null
         }
         Insert: {
           actual_hours?: number | null
@@ -1620,6 +1622,8 @@ export type Database = {
           tenant_id: string
           unit?: string | null
           updated_at?: string
+          warehouse_supplied_at?: string | null
+          warehouse_supplied_by?: string | null
         }
         Update: {
           actual_hours?: number | null
@@ -1648,6 +1652,8 @@ export type Database = {
           tenant_id?: string
           unit?: string | null
           updated_at?: string
+          warehouse_supplied_at?: string | null
+          warehouse_supplied_by?: string | null
         }
         Relationships: [
           {

@@ -18,6 +18,12 @@ export type InventoryMovementOrigin =
       invoice_number: string | null;
     }
   | {
+      kind: "production_order";
+      label: string;
+      order_number: string;
+      production_order_id: string;
+    }
+  | {
       kind: "unknown";
       label: string;
     };
@@ -56,6 +62,7 @@ type MovementRow = {
   movement_type: string;
   quantity: number;
   reason: string | null;
+  origin: string | null;
   reference_id: string | null;
   product_id: string;
   product:
@@ -101,9 +108,26 @@ function shortUuid(id: string): string {
 function resolveOrigin(
   referenceId: string | null,
   reason: string | null,
+  originKind: string | null,
   poMap: Map<string, { po_number: string; purchase_order_id: string }>,
-  invoiceMap: Map<string, { invoice_number: string | null }>
+  invoiceMap: Map<string, { invoice_number: string | null }>,
+  productionMap: Map<
+    string,
+    { order_number: string; production_order_id: string }
+  >
 ): InventoryMovementOrigin {
+  if (referenceId && originKind === "production_supply") {
+    const prod = productionMap.get(referenceId);
+    if (prod) {
+      return {
+        kind: "production_order",
+        label: `OP ${prod.order_number}`,
+        order_number: prod.order_number,
+        production_order_id: prod.production_order_id,
+      };
+    }
+  }
+
   if (referenceId) {
     const po = poMap.get(referenceId);
     if (po) {
@@ -130,22 +154,40 @@ function resolveOrigin(
   return { kind: "unknown", label: fallback };
 }
 
+type ProductionOriginRow = {
+  id: string;
+  order_id: string;
+  production_order:
+    | { id: string; order_number: string }
+    | { id: string; order_number: string }[]
+    | null;
+};
+
 async function buildOriginMaps(
   admin: Admin,
   tenantId: string,
-  referenceIds: string[]
+  referenceIds: string[],
+  productionRefIds: string[]
 ): Promise<{
   poMap: Map<string, { po_number: string; purchase_order_id: string }>;
   invoiceMap: Map<string, { invoice_number: string | null }>;
+  productionMap: Map<
+    string,
+    { order_number: string; production_order_id: string }
+  >;
 }> {
   const poMap = new Map<
     string,
     { po_number: string; purchase_order_id: string }
   >();
   const invoiceMap = new Map<string, { invoice_number: string | null }>();
+  const productionMap = new Map<
+    string,
+    { order_number: string; production_order_id: string }
+  >();
 
-  if (!referenceIds.length) {
-    return { poMap, invoiceMap };
+  if (!referenceIds.length && !productionRefIds.length) {
+    return { poMap, invoiceMap, productionMap };
   }
 
   const uniqueRefs = [...new Set(referenceIds)];
@@ -184,7 +226,30 @@ async function buildOriginMaps(
     });
   }
 
-  return { poMap, invoiceMap };
+  if (productionRefIds.length) {
+    const uniqueProdRefs = [...new Set(productionRefIds)];
+    const { data: oiRows, error: oiErr } = await admin
+      .from("order_items")
+      .select(
+        "id, order_id, production_order:production_orders!order_items_order_id_fkey(id, order_number)"
+      )
+      .eq("tenant_id", tenantId)
+      .in("id", uniqueProdRefs);
+
+    if (oiErr) throw new Error(oiErr.message);
+
+    for (const row of (oiRows ?? []) as unknown as ProductionOriginRow[]) {
+      const poRaw = row.production_order;
+      const po = Array.isArray(poRaw) ? poRaw[0] : poRaw;
+      if (!po?.id || !po.order_number) continue;
+      productionMap.set(row.id, {
+        order_number: po.order_number,
+        production_order_id: po.id,
+      });
+    }
+  }
+
+  return { poMap, invoiceMap, productionMap };
 }
 
 export function isInventoryMovementType(
@@ -212,6 +277,7 @@ export async function listInventoryMovements(
       movement_type,
       quantity,
       reason,
+      origin,
       reference_id,
       product_id,
       product:products!inventory_movements_product_id_fkey(id, technical_code, name)
@@ -244,10 +310,15 @@ export async function listInventoryMovements(
     .map((r) => r.reference_id)
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 
-  const { poMap, invoiceMap } = await buildOriginMaps(
+  const productionRefIds = rows
+    .filter((r) => r.origin === "production_supply" && r.reference_id)
+    .map((r) => r.reference_id as string);
+
+  const { poMap, invoiceMap, productionMap } = await buildOriginMaps(
     admin,
     tenantId,
-    referenceIds
+    referenceIds,
+    productionRefIds
   );
 
   const items: InventoryMovementListItem[] = rows.map((row) => ({
@@ -257,7 +328,14 @@ export async function listInventoryMovements(
     quantity: Number(row.quantity),
     reason: row.reason,
     product: normalizeProduct(row.product),
-    origin: resolveOrigin(row.reference_id, row.reason, poMap, invoiceMap),
+    origin: resolveOrigin(
+      row.reference_id,
+      row.reason,
+      row.origin,
+      poMap,
+      invoiceMap,
+      productionMap
+    ),
   }));
 
   return {

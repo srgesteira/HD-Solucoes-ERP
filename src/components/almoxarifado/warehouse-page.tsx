@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Truck } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
-import { ModulePlaceholder } from "@/components/placeholders/module-placeholder";
 import { InventoryBalancesTable } from "@/components/almoxarifado/inventory-balances-table";
 import { StockOperationsTab } from "@/components/almoxarifado/stock-operations-tab";
+import { SupplyTab } from "@/components/almoxarifado/supply-tab";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -81,11 +80,7 @@ export function WarehousePage() {
         </TabsContent>
 
         <TabsContent value="abastecimento" className="mt-4">
-          <ModulePlaceholder
-            title="Abastecimento"
-            icon={Truck}
-            description="Nenhuma ordem de produção para abastecer no momento."
-          />
+          <SupplyTab />
         </TabsContent>
       </Tabs>
 

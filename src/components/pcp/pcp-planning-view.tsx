@@ -287,6 +287,27 @@ export function PcpPlanningView() {
       toast.error(e instanceof Error ? e.message : "Erro"),
   });
 
+  const finishStockMut = useMutation({
+    mutationFn: async (productionOrderId: string) => {
+      const res = await fetch("/api/pcp/finish-stock-order", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ production_order_id: productionOrderId }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(json.error ?? "Erro ao finalizar ordem de estoque");
+      }
+    },
+    onSuccess: () => {
+      toast.success("Ordem de produção finalizada no PCP.");
+      void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro"),
+  });
+
   const linkMut = useMutation({
     mutationFn: async (args: {
       sales_order_item_id: string;
@@ -575,6 +596,12 @@ export function PcpPlanningView() {
           markingReadyOrderId={
             markReadyMut.isPending && markReadyMut.variables
               ? markReadyMut.variables
+              : null
+          }
+          onFinishStockOrder={(orderId) => finishStockMut.mutate(orderId)}
+          finishingStockOrderId={
+            finishStockMut.isPending && finishStockMut.variables
+              ? finishStockMut.variables
               : null
           }
         />

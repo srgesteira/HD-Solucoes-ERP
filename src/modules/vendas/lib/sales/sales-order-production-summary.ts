@@ -55,7 +55,7 @@ export async function enrichSalesOrdersListWithProduction(
     const { data: oiRows, error: oiErr } = await admin
       .from("order_items")
       .select(
-        "sales_order_item_id, production_start, production_end, status, completed_at"
+        "sales_order_item_id, production_start, production_end, status, completed_at, apontamento_start_at, apontamento_end_at"
       )
       .eq("tenant_id", tenantId)
       .eq("is_suggestion", false)
@@ -73,6 +73,8 @@ export async function enrichSalesOrdersListWithProduction(
         production_end: oi.production_end,
         status: oi.status,
         completed_at: oi.completed_at,
+        apontamento_start_at: oi.apontamento_start_at,
+        apontamento_end_at: oi.apontamento_end_at,
       });
       itemsByOrder.set(orderId, list);
     }

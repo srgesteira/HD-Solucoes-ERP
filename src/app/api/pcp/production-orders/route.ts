@@ -5,6 +5,7 @@ import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
+import { processMrpForStockProductionOrder } from "@/modules/pcp/lib/mrp-service";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +102,23 @@ export async function POST(request: NextRequest) {
     .single();
   if (iErr) return apiError(iErr.message, supabaseErrorToHttp(iErr.code));
 
-  return apiOk({ production_order: op, item });
+  let mrp: Awaited<ReturnType<typeof processMrpForStockProductionOrder>> | null =
+    null;
+  try {
+    mrp = await processMrpForStockProductionOrder(
+      admin,
+      tenantId,
+      user.id,
+      op.id,
+      true
+    );
+  } catch (mrpErr) {
+    console.warn(
+      "[production-orders] MRP pós-criação falhou:",
+      mrpErr instanceof Error ? mrpErr.message : mrpErr
+    );
+  }
+
+  return apiOk({ production_order: op, item, mrp });
 }
 

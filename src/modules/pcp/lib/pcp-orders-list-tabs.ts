@@ -1,4 +1,4 @@
-import { computeOrderProductionAggregateStatus } from "@/modules/pcp/lib/order-item-production-status";
+import { isOrderPcpClosed } from "@/modules/pcp/lib/pcp-order-display";
 import type { PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
 
 export const PCP_ORDERS_LIST_TABS = ["open", "finished", "all"] as const;
@@ -19,15 +19,8 @@ export function filterPcpOrdersByTab(
 ): PcpPlanningOrder[] {
   if (tab === "all") return orders;
   return orders.filter((order) => {
-    const agg = computeOrderProductionAggregateStatus(
-      order.items.map((it) => ({
-        production_start: it.production_start,
-        production_end: it.production_end,
-        status: it.production_status,
-        completed_at: it.production_completed_at,
-      }))
-    );
-    if (tab === "finished") return agg === "finished";
-    return agg !== "finished";
+    const closed = isOrderPcpClosed(order);
+    if (tab === "finished") return closed;
+    return !closed;
   });
 }

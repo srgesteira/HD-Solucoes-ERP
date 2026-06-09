@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { nextPurchaseOrderNumber } from "@/modules/compras/lib/purchasing/purchase-order-number";
 
 type Admin = SupabaseClient<Database>;
 
@@ -57,16 +58,6 @@ export async function resolveSupplierIdForProduct(
   return ok?.id ?? fallback;
 }
 
-function bulkPoNumber(prefix?: string | null): string {
-  const date = new Date().toISOString().slice(0, 10);
-  const suf = Math.random().toString(36).slice(2, 6).toUpperCase();
-  if (prefix?.trim()) {
-    const base = prefix.trim().slice(0, 24);
-    return `${base}-AGR-${suf}`;
-  }
-  return `PC-AGR-${date}-${suf}`;
-}
-
 export type IssueBulkResult = {
   purchase_order_id: string;
   po_number: string;
@@ -113,28 +104,15 @@ export async function issueRequisitionsAsPurchaseOrder(
     options?.supplier_id
   );
 
-  const poNumber =
-    options?.po_number?.trim() ||
-    (ids.length === 1 && first.trace_key?.trim()
-      ? first.trace_key.trim()
-      : bulkPoNumber(first.trace_key?.split("-").slice(0, 3).join("-")));
-
-  const { data: existingPo } = await admin
-    .from("purchase_orders")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("po_number", poNumber)
-    .maybeSingle();
-
-  if (existingPo?.id) {
-    throw new Error(`Já existe um pedido com o número ${poNumber}.`);
-  }
-
   const followUps = (items ?? [])
     .map((i) => i.follow_up_date)
     .filter((d): d is string => Boolean(d))
     .sort();
   const expectedDelivery = followUps[0] ? String(followUps[0]).slice(0, 10) : null;
+
+  const poNumber =
+    options?.po_number?.trim() ||
+    (await nextPurchaseOrderNumber(admin, tenantId, expectedDelivery));
 
   const { data: profile } = await admin
     .from("user_profiles")

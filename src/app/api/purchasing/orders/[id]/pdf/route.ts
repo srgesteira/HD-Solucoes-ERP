@@ -7,7 +7,7 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
-import { fetchPurchaseOrderForExport } from "@/modules/compras/lib/purchasing/fetch-purchase-order-for-export";
+import { fetchPurchaseOrderPrintContext } from "@/modules/compras/lib/purchasing/fetch-purchase-order-print";
 import { generatePurchaseOrderPdfBuffer } from "@/modules/compras/lib/purchasing/generate-purchase-order-pdf";
 
 export const dynamic = "force-dynamic";
@@ -33,12 +33,12 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 
   const admin = createSupabaseAdminClient();
-  const order = await fetchPurchaseOrderForExport(admin, tenantId, id);
-  if (!order) return apiError("Pedido não encontrado", 404);
+  const ctx = await fetchPurchaseOrderPrintContext(admin, tenantId, id);
+  if (!ctx) return apiError("Pedido não encontrado", 404);
 
   try {
-    const buffer = await generatePurchaseOrderPdfBuffer(order);
-    const filename = `pedido-${order.po_number.replace(/[^\w.-]+/g, "_")}.pdf`;
+    const buffer = await generatePurchaseOrderPdfBuffer(ctx);
+    const filename = `pedido-${ctx.order.po_number.replace(/[^\w.-]+/g, "_")}.pdf`;
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {

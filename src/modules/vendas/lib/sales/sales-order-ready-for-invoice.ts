@@ -30,7 +30,7 @@ export async function syncSalesOrderReadyForInvoice(
   const { data: oiRows, error: oiErr } = await admin
     .from("order_items")
     .select(
-      "sales_order_item_id, production_start, production_end, status, completed_at"
+      "sales_order_item_id, production_start, production_end, status, completed_at, apontamento_start_at, apontamento_end_at"
     )
     .eq("tenant_id", tenantId)
     .eq("is_suggestion", false)
@@ -45,6 +45,8 @@ export async function syncSalesOrderReadyForInvoice(
       production_end: string | null;
       status: string | null;
       completed_at: string | null;
+      apontamento_start_at: string | null;
+      apontamento_end_at: string | null;
     }
   >();
   for (const oi of oiRows ?? []) {
@@ -59,14 +61,17 @@ export async function syncSalesOrderReadyForInvoice(
     return isOrderItemProductionFinished(row);
   });
 
-  const { error: updErr } = await admin
-    .from("sales_orders")
-    .update({ ready_for_invoice: allComplete })
-    .eq("id", salesOrderId)
-    .eq("tenant_id", tenantId);
+  if (!allComplete) {
+    const { error: updErr } = await admin
+      .from("sales_orders")
+      .update({ ready_for_invoice: false })
+      .eq("id", salesOrderId)
+      .eq("tenant_id", tenantId);
+    if (updErr) throw new Error(updErr.message);
+    return false;
+  }
 
-  if (updErr) throw new Error(updErr.message);
-  return allComplete;
+  return true;
 }
 
 export async function maybeMarkSalesOrderReadyForInvoice(

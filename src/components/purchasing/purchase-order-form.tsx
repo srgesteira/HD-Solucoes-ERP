@@ -553,13 +553,17 @@ export function PurchaseOrderForm({
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="po-number">Número do pedido *</Label>
+              <Label htmlFor="po-number">
+                Número do pedido{isEdit ? " *" : ""}
+              </Label>
               <Input
                 id="po-number"
                 value={poNumber}
                 onChange={(e) => setPoNumber(e.target.value)}
-                placeholder="Ex.: PC-2026-001"
-                required
+                placeholder={
+                  isEdit ? "Ex.: 15/2026" : "Gerado automaticamente (ex.: 15/2026)"
+                }
+                required={isEdit}
                 autoComplete="off"
                 disabled={fieldsDisabled}
               />

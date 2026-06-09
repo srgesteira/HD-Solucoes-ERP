@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { nextPurchaseOrderNumber } from "@/modules/compras/lib/purchasing/purchase-order-number";
 import {
   computePurchaseNeedDate,
 } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
@@ -328,25 +329,6 @@ export async function calculateMaterialRequirements(
   return getNetRequirements(admin, tenantId, gross);
 }
 
-async function nextMrpPoNumber(admin: Admin, tenantId: string): Promise<string> {
-  const prefix = `MRP-${new Date().toISOString().slice(0, 10)}-`;
-  const { data } = await admin
-    .from("purchase_orders")
-    .select("po_number")
-    .eq("tenant_id", tenantId)
-    .like("po_number", `${prefix}%`)
-    .order("po_number", { ascending: false })
-    .limit(1);
-  const last = data?.[0]?.po_number;
-  let n = 1;
-  if (last?.startsWith(prefix)) {
-    const suf = last.slice(prefix.length);
-    const num = parseInt(suf, 10);
-    if (Number.isFinite(num)) n = num + 1;
-  }
-  return `${prefix}${String(n).padStart(4, "0")}`;
-}
-
 export type PurchaseOrdersResult = {
   purchase_orders: Array<{ id: string; po_number: string; supplier_id: string | null }>;
 };
@@ -441,7 +423,7 @@ export async function generatePurchaseOrders(
   const purchase_orders: PurchaseOrdersResult["purchase_orders"] = [];
 
   for (const [supplier_id, lines] of bySupplier) {
-    const po_number = await nextMrpPoNumber(admin, tenantId);
+    const po_number = await nextPurchaseOrderNumber(admin, tenantId);
     const { data: po, error: poErr } = await admin
       .from("purchase_orders")
       .insert({

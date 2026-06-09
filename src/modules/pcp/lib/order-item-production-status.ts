@@ -25,16 +25,24 @@ export function todayYmdLocal(): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Item concluído de facto (apontamento), não apenas com data de fim programada no futuro. */
+/** Item concluído de facto (apontamento ou marcação explícita). */
 export function isOrderItemProductionFinished(
   item: OrderItemProductionFields
 ): boolean {
   if (item.apontamento_end_at) return true;
   if (item.status === "completed") return true;
   if (item.completed_at) return true;
+  return false;
+}
+
+/** Prazo de produção ultrapassado sem apontamento de conclusão. */
+export function isOrderItemProductionOverdue(
+  item: OrderItemProductionFields
+): boolean {
+  if (isOrderItemProductionFinished(item)) return false;
   const end = dateOnlyYmd(item.production_end);
   if (!end) return false;
-  return end <= todayYmdLocal();
+  return end < todayYmdLocal();
 }
 
 export type OrderProductionAggregateStatus =
@@ -77,7 +85,7 @@ export const ORDER_PRODUCTION_STATUS_LABELS: Record<
   not_processed: "Não processado",
   scheduled: "Programado",
   in_production: "Em produção",
-  finished: "Finalizado",
+  finished: "Pronta",
 };
 
 /** Situação curta na listagem de vendas. */

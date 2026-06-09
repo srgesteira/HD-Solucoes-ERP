@@ -10,6 +10,8 @@ import {
   getOrderDeadlineTrafficLight,
   getOrderPrincipalStatus,
   getOrderProductionAggregateStatus,
+  isOrderPcpClosed,
+  isOrderProductionReady,
   orderProductionStatusLabel,
   itemProductionEndDate,
   pcpDeadlineProximityClass,
@@ -46,6 +48,8 @@ type Props = {
   pcReceived: (item: PcpPlanningItem) => boolean;
   onMarkReadyForInvoice?: (orderId: string) => void;
   markingReadyOrderId?: string | null;
+  onFinishStockOrder?: (productionOrderId: string) => void;
+  finishingStockOrderId?: string | null;
 };
 
 const ORDER_GRID =
@@ -65,6 +69,7 @@ function PrincipalBadge({ order }: { order: PcpPlanningOrder }) {
     aguardando_programacao: "bg-blue-100 text-blue-800",
     programado: "bg-slate-100 text-slate-700",
     produzindo: "bg-green-100 text-green-800",
+    pronta: "bg-teal-100 text-teal-900",
     finalizado: "bg-emerald-100 text-emerald-800",
   };
   const label: Record<string, string> = {
@@ -74,6 +79,7 @@ function PrincipalBadge({ order }: { order: PcpPlanningOrder }) {
     aguardando_programacao: "Aguard. programação",
     programado: "Programado",
     produzindo: "Produzindo",
+    pronta: "Pronta",
     finalizado: "Finalizado",
   };
   return (
@@ -94,6 +100,8 @@ export function PcpOrdersLegacyPanel({
   pcReceived,
   onMarkReadyForInvoice,
   markingReadyOrderId,
+  onFinishStockOrder,
+  finishingStockOrderId,
 }: Props) {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -248,7 +256,14 @@ export function PcpOrdersLegacyPanel({
                     />
                   </div>
                   <div
-                    className={`text-center ${productionDeadlineDisplayClass(prodDeadline)}`}
+                    className={`text-center ${productionDeadlineDisplayClass(prodDeadline, order.items.map((it) => ({
+                      production_start: it.production_start,
+                      production_end: it.production_end,
+                      status: it.production_status,
+                      completed_at: it.production_completed_at,
+                      apontamento_start_at: it.apontamento_start_at,
+                      apontamento_end_at: it.apontamento_end_at,
+                    })))}`}
                     title="Maior production_end entre os itens"
                   >
                     {formatPcpDate(prodDeadline)}
@@ -262,7 +277,8 @@ export function PcpOrdersLegacyPanel({
                     </span>
                     <PrincipalBadge order={order} />
                     {onMarkReadyForInvoice &&
-                    getOrderProductionAggregateStatus(order) === "finished" &&
+                    order.order_source === "sales" &&
+                    isOrderProductionReady(order) &&
                     !order.ready_for_invoice ? (
                       <button
                         type="button"
@@ -276,9 +292,30 @@ export function PcpOrdersLegacyPanel({
                           : "Liberar faturamento"}
                       </button>
                     ) : null}
-                    {order.ready_for_invoice ? (
+                    {onFinishStockOrder &&
+                    order.order_source === "stock" &&
+                    isOrderProductionReady(order) &&
+                    !isOrderPcpClosed(order) ? (
+                      <button
+                        type="button"
+                        className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+                        disabled={finishingStockOrderId === order.id}
+                        onClick={() => onFinishStockOrder(order.id)}
+                        title="Finalizar ordem de produção no PCP"
+                      >
+                        {finishingStockOrderId === order.id
+                          ? "…"
+                          : "Finalizar pedido"}
+                      </button>
+                    ) : null}
+                    {order.order_source === "sales" && order.ready_for_invoice ? (
                       <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium bg-teal-100 text-teal-900">
                         Lib. faturamento
+                      </span>
+                    ) : null}
+                    {order.order_source === "stock" && isOrderPcpClosed(order) ? (
+                      <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium bg-teal-100 text-teal-900">
+                        Finalizado PCP
                       </span>
                     ) : null}
                   </div>

@@ -113,6 +113,16 @@ function originCell(origin: InventoryMovementListItem["origin"]) {
       </Link>
     );
   }
+  if (origin.kind === "production_order") {
+    return (
+      <Link
+        href={`/logistics/pcp`}
+        className="text-sm font-medium text-brand-700 hover:text-brand-900 hover:underline"
+      >
+        {origin.label}
+      </Link>
+    );
+  }
   return <span className="text-sm text-slate-700">{origin.label}</span>;
 }
 

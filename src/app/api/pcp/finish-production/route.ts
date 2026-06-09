@@ -7,7 +7,6 @@ import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanProductionApontamento } from "@/modules/producao/lib/production-api-auth";
 import { assertCanFinishProduction } from "@/modules/producao/lib/line-apontamento";
 import { resolveLineApontamentoStatus } from "@/modules/producao/lib/line-apontamento";
-import { maybeMarkSalesOrderReadyForInvoice } from "@/modules/vendas/lib/sales/sales-order-ready-for-invoice";
 
 export const dynamic = "force-dynamic";
 
@@ -97,15 +96,6 @@ export async function POST(request: NextRequest) {
 
   if (error) return apiError(error.message, 400);
   if (!data) return apiError("Item de produção não encontrado", 404);
-
-  try {
-    await maybeMarkSalesOrderReadyForInvoice(admin, tenantId, orderItemId);
-  } catch (syncErr) {
-    console.warn(
-      "[finish-production] Falha ao sincronizar ready_for_invoice:",
-      syncErr instanceof Error ? syncErr.message : syncErr
-    );
-  }
 
   return apiOk(data);
 }

@@ -8,10 +8,15 @@ import {
   ArrowLeft,
   Ban,
   Loader2,
+  Mail,
   PackageCheck,
   Printer,
   ShoppingCart,
 } from "lucide-react";
+import {
+  openPurchaseOrderEmailDraft,
+  purchaseOrderEmailDraftHint,
+} from "@/modules/compras/lib/purchasing/open-purchase-order-email-draft";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -170,6 +175,7 @@ export default function PurchaseOrderDetailPage() {
     ""
   );
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [emailPending, setEmailPending] = useState(false);
 
   const {
     data: orderSummary,
@@ -337,6 +343,42 @@ export default function PurchaseOrderDetailPage() {
           >
             <Printer className="h-4 w-4" />
             Imprimir / PDF
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={emailPending}
+            onClick={async () => {
+              setEmailPending(true);
+              try {
+                const result = await openPurchaseOrderEmailDraft({
+                  orderId,
+                  poNumber: orderSummary.po_number,
+                });
+                if (result.mode === "eml") {
+                  toast.info("Abra o ficheiro .eml descarregado", {
+                    description: purchaseOrderEmailDraftHint(result),
+                    duration: 16_000,
+                  });
+                } else {
+                  toast.success(purchaseOrderEmailDraftHint(result));
+                }
+              } catch (e) {
+                toast.error(
+                  e instanceof Error ? e.message : "Erro ao preparar e-mail"
+                );
+              } finally {
+                setEmailPending(false);
+              }
+            }}
+          >
+            {emailPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Mail className="h-4 w-4" />
+            )}
+            Abrir no e-mail
           </Button>
           {canCancel ? (
             <Button

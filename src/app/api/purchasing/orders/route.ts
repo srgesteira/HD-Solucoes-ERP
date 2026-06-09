@@ -8,6 +8,7 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
+import { nextPurchaseOrderNumber } from "@/modules/compras/lib/purchasing/purchase-order-number";
 import { computePurchaseOrderTotal } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 import {
   syncPurchaseOrderItems,
@@ -153,7 +154,7 @@ export async function POST(request: NextRequest) {
   if (!body || typeof body !== "object") return apiError("Body inválido", 400);
   const b = body as Record<string, unknown>;
 
-  const po_number =
+  let po_number =
     typeof b.po_number === "string" ? b.po_number.trim() : "";
 
   const supplier_id =
@@ -230,6 +231,10 @@ export async function POST(request: NextRequest) {
 
   const admin = createSupabaseAdminClient();
 
+  if (!po_number) {
+    po_number = await nextPurchaseOrderNumber(admin, tenantId, order_date);
+  }
+
   if (supplier_id) {
     const { data: sup } = await admin
       .from("suppliers")
@@ -281,7 +286,7 @@ export async function POST(request: NextRequest) {
     .from("purchase_orders")
     .insert({
       tenant_id: tenantId,
-      po_number: po_number || "",
+      po_number,
       supplier_id,
       order_date,
       expected_delivery,
