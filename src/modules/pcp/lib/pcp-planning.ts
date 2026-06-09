@@ -607,7 +607,7 @@ async function fetchStockOrdersForPlanning(
 ): Promise<PcpPlanningOrder[]> {
   const { data: stockOps, error: opErr } = await admin
     .from("production_orders")
-    .select("id, order_number, status, created_at, client_name")
+    .select("id, order_number, status, created_at, client_name, pcp_deadline")
     .eq("tenant_id", tenantId)
     .eq("is_suggestion", false)
     .eq("source_kind", "stock")
@@ -749,7 +749,7 @@ async function fetchStockOrdersForPlanning(
       ready_for_invoice: false,
       expected_delivery: null,
       delivery_deadline: null,
-      pcp_deadline: null,
+      pcp_deadline: dateOnly(op.pcp_deadline),
       production_deadline: computeOrderProductionDeadline(itemRows, null),
       items: itemRows,
     });

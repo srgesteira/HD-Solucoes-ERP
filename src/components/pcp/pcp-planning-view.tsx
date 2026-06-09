@@ -122,6 +122,12 @@ export function PcpPlanningView() {
       toast.error(e instanceof Error ? e.message : "Erro ao criar OP"),
   });
 
+  function clearStockOpDraft() {
+    setPickedProduct(null);
+    setCreateQty("1");
+    setCreateLineId("");
+  }
+
   const mrpGenerateMut = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/pcp/mrp-suggestions", {
@@ -206,8 +212,16 @@ export function PcpPlanningView() {
   });
 
   const orderPcpMut = useMutation({
-    mutationFn: async (args: { orderId: string; pcp_deadline: string | null }) => {
-      const res = await fetch(`/api/sales/orders/${args.orderId}`, {
+    mutationFn: async (args: {
+      orderId: string;
+      pcp_deadline: string | null;
+      order_source: PcpPlanningOrder["order_source"];
+    }) => {
+      const url =
+        args.order_source === "stock"
+          ? `/api/pcp/production-orders/${args.orderId}`
+          : `/api/sales/orders/${args.orderId}`;
+      const res = await fetch(url, {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -377,16 +391,21 @@ export function PcpPlanningView() {
         onSelect={(p) => setPickedProduct(p)}
       />
 
-      {createOpen ? (
+      {pickedProduct ? (
         <div className="rounded-md border border-slate-200 bg-white p-3 text-sm">
+          <p className="text-xs font-medium text-slate-600 mb-2">
+            Confirmar ordem de produção (estoque)
+          </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[220px]">
               <div className="text-xs text-slate-600">Produto</div>
-              <div className="font-medium">
-                {pickedProduct?.technical_code ||
-                  pickedProduct?.code ||
-                  pickedProduct?.name ||
-                  "—"}
+              <div className="font-medium text-slate-900">
+                {pickedProduct.technical_code ||
+                  pickedProduct.code ||
+                  "—"}{" "}
+                <span className="font-normal text-slate-700">
+                  — {pickedProduct.name}
+                </span>
               </div>
             </div>
             <label className="flex flex-col gap-1">
@@ -423,6 +442,25 @@ export function PcpPlanningView() {
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : null}
               Criar
+            </button>
+            <button
+              type="button"
+              disabled={createMut.isPending}
+              onClick={() => {
+                clearStockOpDraft();
+                setCreateOpen(true);
+              }}
+              className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Trocar produto
+            </button>
+            <button
+              type="button"
+              disabled={createMut.isPending}
+              onClick={() => clearStockOpDraft()}
+              className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancelar
             </button>
           </div>
           <div className="mt-2 text-xs text-slate-600">
@@ -491,8 +529,12 @@ export function PcpPlanningView() {
         <PcpOrdersLegacyPanel
           orders={orders}
           lines={lines}
-          onPcpOrderDeadline={(orderId, date) =>
-            orderPcpMut.mutate({ orderId, pcp_deadline: date })
+          onPcpOrderDeadline={(orderId, date, orderSource) =>
+            orderPcpMut.mutate({
+              orderId,
+              pcp_deadline: date,
+              order_source: orderSource,
+            })
           }
           onItemLine={(args) => updateLineMut.mutate(args)}
           onLinkPc={(item) => {
