@@ -1,9 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { applyInventoryInbound } from "@/modules/almoxarifado/lib/inventory-inbound";
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
 import { propagateComponentCostChange } from "@/modules/engenharia/lib/products/propagate-component-cost";
 import { computeLandedUnitCost } from "@/modules/compras/lib/purchasing/landed-unit-cost";
 import { num } from "@/modules/compras/lib/purchasing/purchase-order-totals";
+
+function round4(n: number): number {
+  return Math.round((n + Number.EPSILON) * 10000) / 10000;
+}
 
 type Admin = SupabaseClient<Database>;
 
@@ -29,6 +34,7 @@ type PoRow = {
 export type ReceivePurchaseOrderResult = {
   itemsUpdated: number;
   productsCostUpdated: number;
+  inventoryMovements: number;
 };
 
 /**
@@ -75,11 +81,16 @@ export async function applyPurchaseOrderReceive(
   };
 
   let productsCostUpdated = 0;
+  let inventoryMovements = 0;
   const propagatedProductIds = new Set<string>();
 
   for (const item of rows) {
     const qty = num(item.quantity);
     if (qty <= 0) continue;
+
+    const prevReceived = num(item.received_quantity);
+    const newReceived = qty;
+    const delta = round4(newReceived - prevReceived);
 
     const newUnitCost = computeLandedUnitCost(
       {
@@ -94,10 +105,25 @@ export async function applyPurchaseOrderReceive(
     await admin
       .from("purchase_order_items")
       .update({
-        received_quantity: qty,
+        received_quantity: newReceived,
       })
       .eq("id", item.id)
       .eq("tenant_id", tenantId);
+
+    if (delta > 0.0001 && item.product_id) {
+      const invRes = await applyInventoryInbound(
+        admin,
+        tenantId,
+        item.product_id,
+        delta,
+        {
+          reason: `Recebimento PC (${orderId})`,
+          referenceId: item.id,
+        }
+      );
+      if (invRes.error) throw new Error(invRes.error);
+      inventoryMovements += 1;
+    }
 
     if (item.product_id) {
       await recordProductPriceHistory(admin, tenantId, item.product_id, {
@@ -117,6 +143,7 @@ export async function applyPurchaseOrderReceive(
   return {
     itemsUpdated: rows.length,
     productsCostUpdated,
+    inventoryMovements,
   };
 }
 
