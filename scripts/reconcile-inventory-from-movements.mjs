@@ -79,9 +79,15 @@ if (iErr) throw new Error(iErr.message);
 const invByProduct = new Map((invRows ?? []).map((r) => [r.product_id, r]));
 const prodById = new Map((products ?? []).map((p) => [p.id, p]));
 
+const allProductIds = new Set([
+  ...sumByProduct.keys(),
+  ...invByProduct.keys(),
+]);
+
 let changes = 0;
-for (const [productId, expected] of sumByProduct) {
+for (const productId of allProductIds) {
   const prod = prodById.get(productId);
+  const expected = round4(sumByProduct.get(productId) ?? 0);
   const inv = invByProduct.get(productId);
   const current = round4(Number(inv?.quantity_on_hand ?? 0));
   const drift = round4(current - expected);
@@ -92,13 +98,15 @@ for (const [productId, expected] of sumByProduct) {
   );
   changes += 1;
 
-  if (apply && inv?.id) {
+  if (!apply) continue;
+
+  if (inv?.id) {
     const { error: upErr } = await admin
       .from("inventory")
       .update({ quantity_on_hand: expected })
       .eq("id", inv.id);
     if (upErr) throw new Error(upErr.message);
-  } else if (apply && !inv) {
+  } else if (prod) {
     const { error: insErr } = await admin.from("inventory").insert({
       tenant_id: prod.tenant_id,
       product_id: productId,
@@ -113,3 +121,4 @@ for (const [productId, expected] of sumByProduct) {
 
 if (!changes) console.log("Nenhum desvio encontrado.");
 else if (!apply) console.log("\nDry-run. Use --apply para gravar.");
+else console.log(`\n${changes} saldo(s) actualizado(s).`);
