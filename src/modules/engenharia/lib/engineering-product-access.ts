@@ -1,13 +1,4 @@
-import {
-  currentUserCanMenuModule,
-  isCurrentUserTenantAdmin,
-} from "@/modules/core/lib/tenant";
-
-/** Admin ou utilizador com módulo Engenharia no menu. */
-export async function currentUserCanManageEngineeringProducts(): Promise<boolean> {
-  if (await isCurrentUserTenantAdmin()) return true;
-  return currentUserCanMenuModule("engenharia");
-}
+/** Verificação client-side (useMe) — sem imports de servidor. */
 
 export function meCanManageEngineeringProducts(me: {
   role?: string;
