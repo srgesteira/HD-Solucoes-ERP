@@ -9,6 +9,7 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
 import { quoteStatusAllowsContentEdit } from "@/modules/vendas/lib/sales/quote-access";
+import { quoteStatusBumpsRevisionOnContentSave } from "@/modules/vendas/lib/sales/quote-revision";
 import { QUOTE_STATUSES, type QuoteUpdate } from "@/modules/core/types/sales.types";
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
 import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
@@ -104,7 +105,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const { data: existing } = await admin
     .from("quotes")
-    .select("quote_date, validity_days, status, shipping_type")
+    .select("quote_date, validity_days, status, shipping_type, revision_number")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -151,8 +152,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     );
   }
 
-  if (b.status !== undefined && !isAdmin) {
-    return apiError("Apenas administradores podem alterar o estado", 403);
+  if (b.status !== undefined && !isAdmin && !canSales) {
+    return apiError("Sem permissão para alterar o estado do orçamento", 403);
   }
 
   let resolvedItemLines: SaleLineInput[] | null = null;
@@ -332,9 +333,31 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (!n) return apiError("Número do orçamento inválido", 400);
     updateData.quote_number = n;
   }
+  const willBumpRevision =
+    (hasContentFields || resolvedItemLines !== null) &&
+    quoteStatusBumpsRevisionOnContentSave(existing.status);
+
+  if (willBumpRevision) {
+    updateData.revision_number = Number(existing.revision_number ?? 0) + 1;
+  }
+
   if (b.status !== undefined) {
     const st = String(b.status);
     if (!QUOTE_SET.has(st)) return apiError("Status inválido", 400);
+
+    if (!isAdmin && canSales && st !== "sent") {
+      return apiError(
+        "Apenas administradores podem alterar para este estado",
+        403
+      );
+    }
+
+    if (st === "sent" && !["draft", "revision"].includes(existing.status)) {
+      return apiError(
+        "Só é possível enviar orçamentos em rascunho ou em revisão",
+        400
+      );
+    }
 
     if (st === "revision") {
       const notes =

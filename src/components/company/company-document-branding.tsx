@@ -10,6 +10,13 @@ const taxRegimeLabel: Record<string, string> = {
   lucro_real: "Lucro Real",
 };
 
+export function getTaxRegimeLabel(
+  taxRegime: string | null | undefined,
+): string | null {
+  if (!taxRegime?.trim()) return null;
+  return taxRegimeLabel[taxRegime] ?? null;
+}
+
 function formatAddress(s: CompanySettingsRow): string | null {
   const parts = [
     [s.address_street, s.address_number].filter(Boolean).join(", "),
@@ -39,10 +46,7 @@ export function CompanyDocumentBranding({
   const title =
     settings.trade_name?.trim() || settings.company_name || "Empresa";
   const addr = formatAddress(settings);
-  const regime =
-    settings.tax_regime && taxRegimeLabel[settings.tax_regime] ?
-      taxRegimeLabel[settings.tax_regime]
-    : null;
+  const regime = getTaxRegimeLabel(settings.tax_regime);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white dark:bg-slate-950 dark:border-slate-800 overflow-hidden print:border print:border-slate-300 print:shadow-none print:break-inside-avoid">

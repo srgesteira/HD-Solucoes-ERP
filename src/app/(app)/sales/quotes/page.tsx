@@ -10,7 +10,10 @@ import {
   type QuoteRowActionsQuote,
 } from "@/components/sales/quote-row-actions-menu";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
-import { quoteStatusBadge } from "@/modules/vendas/lib/sales/quote-display";
+import {
+  formatQuoteNumberWithRevision,
+  quoteStatusBadge,
+} from "@/modules/vendas/lib/sales/quote-display";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -37,6 +40,7 @@ type QuoteTab = "all" | "converted" | "open";
 interface QuoteRow {
   id: string;
   quote_number: string;
+  revision_number?: number | null;
   client_name: string;
   quote_date: string;
   valid_until: string | null;
@@ -248,7 +252,7 @@ export default function QuotesListPage() {
     status: string,
     labelOk: string
   ) => {
-    if (!isAdmin) return;
+    if (status === "sent" ? !canEditQuotes : !isAdmin) return;
     try {
       await patchQuote(row.id, { status });
       toast.success(labelOk);
@@ -301,14 +305,21 @@ export default function QuotesListPage() {
         label: "Nº orçamento",
         type: "text",
         width: "w-[12%]",
-        accessor: (row) => row.quote_number,
+        accessor: (row) =>
+          formatQuoteNumberWithRevision(
+            row.quote_number,
+            row.revision_number,
+          ),
         truncate: false,
         render: (row) => {
           const needsCommercial = Boolean(row.awaiting_commercial_finalize);
           return (
             <>
               <span className="font-medium text-slate-900 whitespace-nowrap">
-                {row.quote_number}
+                {formatQuoteNumberWithRevision(
+                  row.quote_number,
+                  row.revision_number,
+                )}
               </span>
               {needsCommercial ? (
                 <span className="mt-1 block text-xs font-medium text-brand-800">

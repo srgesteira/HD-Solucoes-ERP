@@ -980,10 +980,12 @@ export default function CompanySettingsPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="document_footer">Rodapé</Label>
+                  <Label htmlFor="document_footer">
+                    Condições gerais (orçamentos — secção Importante)
+                  </Label>
                   <Textarea
                     id="document_footer"
-                    rows={4}
+                    rows={6}
                     value={draft.document_footer ?? ""}
                     onChange={(e) =>
                       setDraft((d) => ({
@@ -991,6 +993,7 @@ export default function CompanySettingsPage() {
                         document_footer: e.target.value || null,
                       }))
                     }
+                    placeholder="Texto adicional exibido na impressão do orçamento (prazos, garantia, DIFAL, etc.). O regime tributário é incluído automaticamente."
                   />
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4 border-t border-slate-200 pt-6">

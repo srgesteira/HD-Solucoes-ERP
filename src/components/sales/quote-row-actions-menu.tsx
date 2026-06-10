@@ -9,6 +9,7 @@ import { cn } from "@/shared/utils/cn";
 export type QuoteRowActionsQuote = {
   id: string;
   quote_number: string;
+  revision_number?: number | null;
   status: string;
 };
 
@@ -77,7 +78,8 @@ export function QuoteRowActionsMenu({
   }, [menuPos, updatePosition]);
 
   const st = row.status;
-  const showSend = isAdmin && st === "draft";
+  const showSend =
+    canEditQuotes && (st === "draft" || st === "revision");
   const showApproveReject = isAdmin && (st === "draft" || st === "sent");
 
   const menu =

@@ -1,5 +1,11 @@
 import type { Tables } from "@/modules/core/types/database";
 import type { QuoteStatus } from "@/modules/core/types/sales.types";
+import {
+  formatQuoteDisplayTitle,
+  formatQuoteNumberWithRevision,
+} from "@/modules/vendas/lib/sales/quote-revision";
+
+export { formatQuoteDisplayTitle, formatQuoteNumberWithRevision };
 
 export function fmtQuoteBRL(n: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -91,6 +97,7 @@ export type QuotePrintItem = {
 
 export type QuotePrintData = {
   quote_number: string;
+  revision_number?: number | null;
   status: string;
   quote_date: string;
   valid_until: string | null;

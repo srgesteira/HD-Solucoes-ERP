@@ -15,7 +15,11 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { quoteStatusBadge } from "@/modules/vendas/lib/sales/quote-display";
+import {
+  formatQuoteDisplayTitle,
+  formatQuoteNumberWithRevision,
+  quoteStatusBadge,
+} from "@/modules/vendas/lib/sales/quote-display";
 import { quoteStatusAllowsContentEdit } from "@/modules/vendas/lib/sales/quote-access";
 import { inferDeliveryBusinessDaysFromQuote } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
@@ -69,6 +73,7 @@ type CustomerNested = {
 type QuoteDetail = {
   id: string;
   quote_number: string;
+  revision_number?: number | null;
   status: string;
   customer_id: string | null;
   quote_date: string;
@@ -175,15 +180,20 @@ async function fetchQuoteDetail(id: string): Promise<{ data: QuoteDetail }> {
 async function putQuoteUpdate(
   id: string,
   body: Record<string, unknown>
-): Promise<void> {
+): Promise<QuoteDetail> {
   const res = await fetch(`/api/sales/quotes/${id}`, {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: QuoteDetail;
+    error?: string;
+  };
   if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar orçamento");
+  if (!json.data) throw new Error("Resposta inválida");
+  return json.data;
 }
 
 async function postApproveQuote(id: string): Promise<string> {
@@ -356,7 +366,7 @@ export default function QuoteDetailPage() {
         ? parseInt(deliveryDaysRaw, 10)
         : null;
 
-      await putQuoteUpdate(id, {
+      return putQuoteUpdate(id, {
         customer_id: customerId.trim(),
         client_email: clientEmail.trim() || null,
         quote_date: quoteDate.slice(0, 10),
@@ -372,8 +382,14 @@ export default function QuoteDetailPage() {
         items: itemsResult,
       });
     },
-    onSuccess: () => {
-      toast.success("Orçamento actualizado.");
+    onSuccess: (updated) => {
+      const rev = Number(updated.revision_number ?? 0);
+      const label = formatQuoteNumberWithRevision(updated.quote_number, rev);
+      toast.success(
+        rev > 0
+          ? `Orçamento actualizado (${label}).`
+          : "Orçamento actualizado."
+      );
       setHydrated(false);
       invalidateQuote();
     },
@@ -479,7 +495,7 @@ export default function QuoteDetailPage() {
             Guardar
           </Button>
         ) : null}
-        {isAdmin && q && st === "draft" ? (
+        {canEditQuotes && q && (st === "draft" || st === "revision") ? (
           <Button
             type="button"
             size="sm"
@@ -540,7 +556,10 @@ export default function QuoteDetailPage() {
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-3">
                     <CardTitle className="text-xl sm:text-2xl font-semibold">
-                      Orçamento {q.quote_number}
+                      {formatQuoteDisplayTitle(
+                        q.quote_number,
+                        q.revision_number,
+                      )}
                     </CardTitle>
                     {sb ? (
                       <span

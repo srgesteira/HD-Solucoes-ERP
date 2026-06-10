@@ -5,6 +5,7 @@ import {
   fmtQuoteBRL,
   fmtQuoteDay,
   formatCompanyAddressForPrint,
+  formatQuoteNumberWithRevision,
   quoteStatusBadge,
   unwrapQuoteCustomer,
   quoteItemPrintDescription,
@@ -13,7 +14,44 @@ import {
   unwrapQuoteProductName,
   type QuotePrintData,
 } from "@/modules/vendas/lib/sales/quote-display";
+import { getTaxRegimeLabel } from "@/components/company/company-document-branding";
 import { cn } from "@/shared/utils/cn";
+
+const BRAZIL_STATE_NAMES: Record<string, string> = {
+  AC: "Acre",
+  AL: "Alagoas",
+  AP: "Amapá",
+  AM: "Amazonas",
+  BA: "Bahia",
+  CE: "Ceará",
+  DF: "Distrito Federal",
+  ES: "Espírito Santo",
+  GO: "Goiás",
+  MA: "Maranhão",
+  MT: "Mato Grosso",
+  MS: "Mato Grosso do Sul",
+  MG: "Minas Gerais",
+  PA: "Pará",
+  PB: "Paraíba",
+  PR: "Paraná",
+  PE: "Pernambuco",
+  PI: "Piauí",
+  RJ: "Rio de Janeiro",
+  RN: "Rio Grande do Norte",
+  RS: "Rio Grande do Sul",
+  RO: "Rondônia",
+  RR: "Roraima",
+  SC: "Santa Catarina",
+  SP: "São Paulo",
+  SE: "Sergipe",
+  TO: "Tocantins",
+};
+
+function formatCompanyStateLabel(state: string | null | undefined): string | null {
+  const uf = state?.trim().toUpperCase();
+  if (!uf) return null;
+  return BRAZIL_STATE_NAMES[uf] ?? uf;
+}
 
 const PRINT_STYLES = `
 @media print {
@@ -421,6 +459,38 @@ const PRINT_STYLES = `
   white-space: pre-wrap;
 }
 
+.qp-importante {
+  margin-top: 0.6rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.65rem;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.qp-importante-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.qp-importante-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.qp-importante-list li {
+  margin-bottom: 0.2rem;
+}
+
+.qp-importante-footer {
+  margin-top: 0.35rem;
+  white-space: pre-wrap;
+}
+
 .qp-screen-footer {
   margin-top: 0.75rem;
   padding-top: 0.5rem;
@@ -448,11 +518,40 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
   const cust = unwrapQuoteCustomer(quote.customer, quote.client_name);
   const items = Array.isArray(quote.items) ? quote.items : [];
   const addr = company ? formatCompanyAddressForPrint(company) : null;
+  const taxRegimeLabel = company ? getTaxRegimeLabel(company.tax_regime) : null;
+  const companyStateLabel = company
+    ? formatCompanyStateLabel(company.address_state)
+    : null;
 
   const hasCommercial =
     Boolean(quote.payment_terms?.trim()) ||
     Boolean(quote.delivery_deadline?.trim()) ||
-    Boolean(quote.shipping_type?.trim());
+    Boolean(quote.shipping_type?.trim()) ||
+    Boolean(taxRegimeLabel);
+
+  const importantePoints: string[] = [];
+  if (taxRegimeLabel) {
+    importantePoints.push(
+      `Empresa enquadrada no regime tributário ${taxRegimeLabel}.`,
+    );
+  }
+  if (companyStateLabel) {
+    importantePoints.push(
+      `Os tributos inclusos neste orçamento estão baseados na legislação da esfera federal e do estado de ${companyStateLabel}.`,
+    );
+  } else if (taxRegimeLabel) {
+    importantePoints.push(
+      "Os tributos inclusos neste orçamento estão baseados na legislação vigente nesta data.",
+    );
+  }
+  if (quote.shipping_type === "CIF") {
+    importantePoints.push(
+      "No caso de transporte na modalidade CIF, o horário da entrega é comercial e a descarga do caminhão é de responsabilidade do cliente.",
+    );
+  }
+  const documentFooter = company?.document_footer?.trim() ?? "";
+  const showImportante =
+    importantePoints.length > 0 || Boolean(documentFooter);
 
   const contactLine = company
     ? [
@@ -482,9 +581,19 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
             </div>
             {company ? (
               <div className="qp-header-company">
-                {company.cnpj?.trim() ? (
+                {company.cnpj?.trim() ||
+                company.state_registration?.trim() ||
+                taxRegimeLabel ? (
                   <p className="qp-company-meta">
-                    CNPJ {company.cnpj.trim()}
+                    {company.cnpj?.trim()
+                      ? `CNPJ ${company.cnpj.trim()}`
+                      : null}
+                    {company.state_registration?.trim()
+                      ? `${company.cnpj?.trim() ? " · " : ""}IE ${company.state_registration.trim()}`
+                      : null}
+                    {taxRegimeLabel
+                      ? `${company.cnpj?.trim() || company.state_registration?.trim() ? " · " : ""}${taxRegimeLabel}`
+                      : null}
                   </p>
                 ) : null}
                 {addr ? <p className="qp-company-meta">{addr}</p> : null}
@@ -498,7 +607,13 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
           </div>
           <div className="qp-header-doc">
             <h1 className="qp-doc-title">Orçamento comercial</h1>
-            <p className="qp-quote-number">Nº {quote.quote_number}</p>
+            <p className="qp-quote-number">
+              Nº{" "}
+              {formatQuoteNumberWithRevision(
+                quote.quote_number,
+                quote.revision_number,
+              )}
+            </p>
           </div>
         </header>
 
@@ -596,6 +711,12 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                       : ""}
                   </dd>
                 </div>
+                {taxRegimeLabel ? (
+                  <div className="qp-box-item qp-box-item--full">
+                    <dt>Regime tributário</dt>
+                    <dd>{taxRegimeLabel}</dd>
+                  </div>
+                ) : null}
               </dl>
             </section>
           ) : null}
@@ -731,6 +852,22 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
           </section>
         ) : null}
 
+        {showImportante ? (
+          <section className="qp-importante">
+            <h2 className="qp-importante-title">Importante</h2>
+            {importantePoints.length > 0 ? (
+              <ol className="qp-importante-list" start={1}>
+                {importantePoints.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ol>
+            ) : null}
+            {documentFooter ? (
+              <div className="qp-importante-footer">{documentFooter}</div>
+            ) : null}
+          </section>
+        ) : null}
+
         <footer className="qp-screen-footer">
           <p>
             Este orçamento é válido até {fmtQuoteDay(quote.valid_until)}, salvo
@@ -740,7 +877,11 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
 
         <footer className="quote-print-fixed-footer print:block hidden">
           <p>
-            Válido até {fmtQuoteDay(quote.valid_until)} · {quote.quote_number}
+            Válido até {fmtQuoteDay(quote.valid_until)} ·{" "}
+            {formatQuoteNumberWithRevision(
+              quote.quote_number,
+              quote.revision_number,
+            )}
           </p>
         </footer>
       </article>
