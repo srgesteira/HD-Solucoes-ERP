@@ -75,6 +75,7 @@ export default function SettingsUsersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const currentUserId = me?.id;
       const [uRes, rRes] = await Promise.all([
         fetch("/api/tenant/users", { credentials: "include", cache: "no-store" }),
         fetch("/api/role-permissions", {
@@ -93,26 +94,35 @@ export default function SettingsUsersPage() {
       if (!uRes.ok) throw new Error(uJson.error ?? "Erro ao listar utilizadores");
       if (!rRes.ok) throw new Error(rJson.error ?? "Erro ao listar cargos");
 
-      const list = (uJson.users ?? []).filter((u) => u.role !== "admin");
+      const list = (uJson.users ?? []).filter(
+        (u) => !currentUserId || u.id !== currentUserId
+      );
       setUsers(list);
       setRoles(rJson.roles ?? []);
 
       const d: Record<string, { modules: string[]; adminAll: boolean }> = {};
+      const picks: Record<string, string> = {};
       for (const u of list) {
         const mods = u.enabled_modules ?? [];
+        const isAdminUser =
+          u.role === "admin" || mods.includes("*");
         d[u.id] = {
-          adminAll: mods.includes("*"),
-          modules: mods.includes("*") ? [...APP_MODULE_KEYS] : [...mods],
+          adminAll: isAdminUser,
+          modules: isAdminUser ? [...APP_MODULE_KEYS] : [...mods],
         };
+        if (u.role_keys?.[0]) {
+          picks[u.id] = u.role_keys[0];
+        }
       }
       setDraft(d);
+      setRolePick(picks);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
       setUsers([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [me?.id]);
 
   useEffect(() => {
     if (!meLoading && me?.role === "admin") void load();
@@ -241,7 +251,10 @@ export default function SettingsUsersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           d.adminAll
-            ? { admin_all: true }
+            ? {
+                admin_all: true,
+                ...(rolePick[userId] ? { role_key: rolePick[userId] } : {}),
+              }
             : { enabled_modules: d.modules }
         ),
       });
@@ -268,7 +281,10 @@ export default function SettingsUsersPage() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role_key: roleKey }),
+        body: JSON.stringify({
+          role_key: roleKey,
+          ...(draft[userId]?.adminAll ? { admin_all: true } : {}),
+        }),
       });
       const j = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(j.error ?? "Erro ao aplicar cargo");
@@ -315,7 +331,8 @@ export default function SettingsUsersPage() {
 
       <p className="text-sm text-slate-600">
         Defina quais blocos do ERP aparecem no menu lateral de cada utilizador.
-        Administradores do sistema têm sempre acesso total.
+        Pode combinar <strong>Admin</strong> com um cargo R2 (ex.: Supervisor de
+        Engenharia): o cargo fica registado e o acesso ao menu é total.
       </p>
 
       {loading ? (
@@ -495,6 +512,11 @@ export default function SettingsUsersPage() {
                         ? "Suspenso"
                         : "Ativo"}
                   </span>
+                  {u.role === "admin" ? (
+                    <span className="ml-2 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium bg-brand-50 text-brand-800 ring-1 ring-brand-200">
+                      Admin sistema
+                    </span>
+                  ) : null}
                 </p>
                 {u.role_keys?.length ? (
                   <p className="text-xs text-slate-400 mt-1">

@@ -63,19 +63,17 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
   if (!target || target.tenant_id !== tenantId) {
     return apiError("Utilizador não encontrado neste tenant.", 404);
   }
-  if (target.role === "admin") {
-    return apiError("Não é permitido alterar outro administrador.", 403);
-  }
 
   let enabled_modules = parsed.data.enabled_modules;
-  let role_keys: string[] | null = null;
-
+  let role_keys: string[] | undefined;
   let role: string | undefined;
 
   if (parsed.data.admin_all) {
     enabled_modules = ["*"];
-    role_keys = [];
     role = "admin";
+    if (parsed.data.role_key) {
+      role_keys = [parsed.data.role_key];
+    }
   } else if (parsed.data.role_key) {
     const db = asUntypedAdmin(admin);
     const { data: roleRow, error: roleErr } = await db
@@ -111,12 +109,12 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     .from("user_profiles")
     .update({
       enabled_modules,
-      role_keys: role_keys ?? undefined,
+      ...(role_keys !== undefined ? { role_keys } : {}),
       ...(role ? { role } : {}),
     })
     .eq("id", targetUserId)
     .eq("tenant_id", tenantId)
-    .select("id, enabled_modules, role_keys")
+    .select("id, enabled_modules, role_keys, role")
     .maybeSingle();
 
   if (upErr || !updated) {

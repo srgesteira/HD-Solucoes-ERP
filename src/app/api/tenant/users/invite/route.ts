@@ -87,8 +87,7 @@ export async function POST(request: NextRequest) {
         role: admin_all ? "admin" : "member",
         is_active: true,
         enabled_modules,
-        role_keys:
-          admin_all || !parsed.data.role_key ? [] : [parsed.data.role_key],
+        role_keys: parsed.data.role_key ? [parsed.data.role_key] : [],
       },
       { onConflict: "id" }
     );
