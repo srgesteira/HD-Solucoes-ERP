@@ -18,8 +18,9 @@ export async function syncInviteProfileFromUser(user: User): Promise<void> {
   const update: Database["public"]["Tables"]["user_profiles"]["Update"] = {
     tenant_id,
     is_active: true,
+    role: admin_all ? "admin" : undefined,
     enabled_modules: admin_all ? ["*"] : enabled_modules ?? undefined,
-    role_keys: role_key ? [role_key] : undefined,
+    role_keys: admin_all ? [] : role_key ? [role_key] : undefined,
   };
   await admin
     .from("user_profiles")

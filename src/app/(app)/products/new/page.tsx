@@ -19,6 +19,7 @@ import {
 import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/products/prefix-classification";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
+import { meCanManageEngineeringProducts } from "@/modules/engenharia/lib/engineering-product-access";
 import type { StructureSuggestion } from "@/modules/engenharia/lib/services/ai.service";
 import type { Database } from "@/modules/core/types/database";
 import type { ProductType } from "@/modules/core/types/product.types";
@@ -332,8 +333,8 @@ export default function NewProductPage() {
 
   useEffect(() => {
     if (meLoading) return;
-    if (me && me.role !== "admin") {
-      toast.error("Apenas administradores podem criar produtos.");
+    if (me && !meCanManageEngineeringProducts(me)) {
+      toast.error("Sem permissão para criar produtos.");
       router.replace("/products");
     }
   }, [me, meLoading, router]);
@@ -400,7 +401,7 @@ export default function NewProductPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (me?.role !== "admin") return;
+    if (!meCanManageEngineeringProducts(me)) return;
 
     if (!formData.name.trim()) {
       toast.error("Nome é obrigatório.");
@@ -532,7 +533,7 @@ export default function NewProductPage() {
     }
   }
 
-  if (meLoading || (me && me.role !== "admin")) {
+  if (meLoading || (me && !meCanManageEngineeringProducts(me))) {
     return (
       <div className="max-w-4xl mx-auto flex justify-center py-16 text-slate-500 gap-2">
         <Loader2 className="h-5 w-5 animate-spin" aria-hidden />

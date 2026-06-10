@@ -22,6 +22,7 @@ import {
 } from "@/shared/ui/sortable-table";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
+import { meCanManageEngineeringProducts } from "@/modules/engenharia/lib/engineering-product-access";
 import { ProductPrefixTabs } from "@/components/products/product-prefix-tabs";
 import { ProductRowActionsMenu } from "@/components/products/product-row-actions-menu";
 
@@ -178,6 +179,7 @@ export default function ProductsPage() {
   const queryClient = useQueryClient();
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
+  const canManageProducts = meCanManageEngineeringProducts(me);
 
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState({
@@ -399,7 +401,7 @@ export default function ProductsPage() {
           >
             Estrutura pendente
           </Button>
-          {isAdmin ? (
+          {canManageProducts ? (
             <Button type="button" size="sm" onClick={() => router.push("/products/new")}>
               <Plus className="h-4 w-4" />
               Novo produto

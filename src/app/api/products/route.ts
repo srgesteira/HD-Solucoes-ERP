@@ -182,8 +182,11 @@ export async function POST(request: NextRequest) {
   const moduleDenied = await requireMenuModule("engenharia");
   if (moduleDenied) return moduleDenied;
 
-  if (!(await isCurrentUserTenantAdmin())) {
-    return apiError("Acesso negado", 403);
+  const canManage =
+    (await isCurrentUserTenantAdmin()) ||
+    (await currentUserCanMenuModule("engenharia"));
+  if (!canManage) {
+    return apiError("Sem permissão para criar produtos.", 403);
   }
 
   const tenantId = await getCurrentTenantId();

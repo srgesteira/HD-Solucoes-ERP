@@ -106,10 +106,6 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const moduleDenied = await requireMenuModule("engenharia");
   if (moduleDenied) return moduleDenied;
 
-  if (!(await isCurrentUserTenantAdmin())) {
-    return apiError("Acesso negado", 403);
-  }
-
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
@@ -474,10 +470,6 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   if (!user) return apiError("Não autenticado", 401);
   const moduleDenied = await requireMenuModule("engenharia");
   if (moduleDenied) return moduleDenied;
-
-  if (!(await isCurrentUserTenantAdmin())) {
-    return apiError("Acesso negado", 403);
-  }
 
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);

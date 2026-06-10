@@ -84,10 +84,11 @@ export async function POST(request: NextRequest) {
         tenant_id: tenantId,
         email,
         full_name: parsed.data.full_name ?? null,
-        role: "user",
+        role: admin_all ? "admin" : "user",
         is_active: true,
         enabled_modules,
-        role_keys: parsed.data.role_key ? [parsed.data.role_key] : [],
+        role_keys:
+          admin_all || !parsed.data.role_key ? [] : [parsed.data.role_key],
       },
       { onConflict: "id" }
     );

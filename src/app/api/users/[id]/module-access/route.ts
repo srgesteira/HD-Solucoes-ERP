@@ -70,9 +70,12 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
   let enabled_modules = parsed.data.enabled_modules;
   let role_keys: string[] | null = null;
 
+  let role: string | undefined;
+
   if (parsed.data.admin_all) {
     enabled_modules = ["*"];
     role_keys = [];
+    role = "admin";
   } else if (parsed.data.role_key) {
     const db = asUntypedAdmin(admin);
     const { data: roleRow, error: roleErr } = await db
@@ -86,6 +89,9 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     }
     enabled_modules = unionRoleModuleKeys([roleRow]);
     role_keys = [roleRow.role_key];
+    role = "user";
+  } else if (parsed.data.enabled_modules) {
+    role = "user";
   }
 
   if (!enabled_modules) {
@@ -106,6 +112,7 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     .update({
       enabled_modules,
       role_keys: role_keys ?? undefined,
+      ...(role ? { role } : {}),
     })
     .eq("id", targetUserId)
     .eq("tenant_id", tenantId)

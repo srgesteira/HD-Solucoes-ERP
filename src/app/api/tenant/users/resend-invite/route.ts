@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   // Carrega permissões atuais do perfil para gerar link consistente
   let q = admin
     .from("user_profiles")
-    .select("id, tenant_id, enabled_modules, role_keys, full_name, email")
+    .select("id, tenant_id, role, enabled_modules, role_keys, full_name, email")
     .eq("tenant_id", tenantId);
   if (userIdParam) q = q.eq("id", userIdParam);
   else if (emailParam) q = q.ilike("email", emailParam);
@@ -63,7 +63,8 @@ export async function POST(request: NextRequest) {
   const role_key =
     profile?.role_keys && profile.role_keys.length > 0 ? profile.role_keys[0] : null;
   const enabled_modules = profile?.enabled_modules ?? [];
-  const admin_all = enabled_modules.includes("*");
+  const admin_all =
+    profile.role === "admin" || enabled_modules.includes("*");
   const email = profile.email;
 
   try {

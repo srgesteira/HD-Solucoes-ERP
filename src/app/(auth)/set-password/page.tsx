@@ -22,14 +22,23 @@ export default function SetPasswordPage() {
       toast.error("Supabase não configurado.");
       return;
     }
-    void supabase.auth.getSession().then(({ data: { session } }) => {
+    void (async () => {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        await new Promise((r) => setTimeout(r, 400));
+        ({ data: { session } } = await supabase.auth.getSession());
+      }
       if (!session) {
         toast.error("Sessão inválida ou link expirado. Solicite um novo convite.");
         router.replace("/login");
         return;
       }
+      await fetch("/api/auth/sync-profile", {
+        method: "POST",
+        credentials: "include",
+      }).catch(() => null);
       setReady(true);
-    });
+    })();
   }, [router]);
 
   async function onSubmit(e: React.FormEvent) {

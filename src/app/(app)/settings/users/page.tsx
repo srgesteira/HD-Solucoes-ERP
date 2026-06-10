@@ -338,8 +338,11 @@ export default function SettingsUsersPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-sm text-slate-600">
-                  Copie e envie para o usuário (WhatsApp, etc.). O link expira; se
-                  expirar, gere um novo.
+                  Copie e envie para o utilizador. Peça para abrir no browser
+                  (Chrome/Edge/Safari) — não cole em WhatsApp/Slack antes de abrir
+                  (pré-visualizações invalidam o link). Na primeira página, clique
+                  em &quot;Continuar para definir senha&quot;. O link expira; se
+                  falhar, use &quot;Gerar novo link&quot;.
                 </p>
                 <Input value={activationLink} readOnly />
                 <div className="flex flex-wrap gap-2">
