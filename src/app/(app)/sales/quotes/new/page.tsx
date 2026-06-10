@@ -82,6 +82,7 @@ export default function NewQuotePage() {
   const [paymentTerms, setPaymentTerms] = useState("");
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
+  const [freightCost, setFreightCost] = useState(0);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newQuoteLine(0)]);
   const [productCache, setProductCache] = useState<
@@ -192,6 +193,7 @@ export default function NewQuotePage() {
           ? deliveryDaysParsed
           : null,
       shipping_type: shippingType,
+      freight_cost: shippingType === "CIF" ? freightCost : 0,
       notes: notes.trim() || null,
       items: itemsResult,
     };
@@ -276,6 +278,8 @@ export default function NewQuotePage() {
               onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
               shippingType={shippingType}
               onShippingTypeChange={setShippingType}
+              freightCost={freightCost}
+              onFreightCostChange={setFreightCost}
               notes={notes}
               onNotesChange={setNotes}
             />

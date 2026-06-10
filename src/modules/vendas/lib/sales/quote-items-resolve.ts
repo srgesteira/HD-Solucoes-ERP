@@ -217,7 +217,7 @@ export async function resolveQuoteItemsFromPayload(
   return { ok: true, lines };
 }
 
-/** Recalcula total do cabeçalho (subtotal − desconto + imposto). */
+/** Recalcula total do cabeçalho (subtotal − desconto + imposto + frete CIF). */
 export async function refreshQuoteHeaderTotals(
   admin: AdminClient,
   quoteId: string,
@@ -225,7 +225,7 @@ export async function refreshQuoteHeaderTotals(
 ): Promise<void> {
   const { data: quote } = await admin
     .from("quotes")
-    .select("subtotal, discount, tax")
+    .select("subtotal, discount, tax, freight_cost, shipping_type")
     .eq("id", quoteId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -235,7 +235,10 @@ export async function refreshQuoteHeaderTotals(
   const subtotal = Number(quote.subtotal ?? 0);
   const discount = Number(quote.discount ?? 0);
   const tax = Number(quote.tax ?? 0);
-  const total = Math.round((subtotal - discount + tax) * 100) / 100;
+  const freight =
+    quote.shipping_type === "CIF" ? Number(quote.freight_cost ?? 0) : 0;
+  const total =
+    Math.round((subtotal - discount + tax + freight) * 100) / 100;
 
   await admin
     .from("quotes")

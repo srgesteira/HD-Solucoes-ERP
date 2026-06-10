@@ -588,7 +588,13 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                 </div>
                 <div className="qp-box-item">
                   <dt>Frete</dt>
-                  <dd>{quote.shipping_type?.trim() || "—"}</dd>
+                  <dd>
+                    {quote.shipping_type?.trim() || "—"}
+                    {quote.shipping_type === "CIF" &&
+                    Number(quote.freight_cost ?? 0) > 0
+                      ? ` — ${fmtQuoteBRL(Number(quote.freight_cost))}`
+                      : ""}
+                  </dd>
                 </div>
               </dl>
             </section>
@@ -704,6 +710,13 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
               <dt>Impostos</dt>
               <dd>{fmtQuoteBRL(quote.tax)}</dd>
             </div>
+            {quote.shipping_type === "CIF" &&
+            Number(quote.freight_cost ?? 0) > 0 ? (
+              <div className="qp-totals-row">
+                <dt>Frete (CIF)</dt>
+                <dd>{fmtQuoteBRL(Number(quote.freight_cost))}</dd>
+              </div>
+            ) : null}
             <div className="qp-totals-row qp-totals-row--grand">
               <dt>Total</dt>
               <dd>{fmtQuoteBRL(quote.total)}</dd>

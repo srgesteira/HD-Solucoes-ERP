@@ -98,6 +98,7 @@ export type QuotePrintData = {
   payment_terms: string | null;
   delivery_deadline: string | null;
   shipping_type: string | null;
+  freight_cost?: number | null;
   created_at: string;
   client_name: string;
   client_email: string | null;

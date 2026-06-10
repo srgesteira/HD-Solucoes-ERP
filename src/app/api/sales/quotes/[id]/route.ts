@@ -15,6 +15,7 @@ import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-paym
 import { resolveQuoteDeliveryFromBody } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
   computeValidUntil,
+  parseQuoteFreightCost,
   parseShippingType,
   parseValidityDays,
 } from "@/modules/vendas/lib/sales/quote-validity";
@@ -103,7 +104,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const { data: existing } = await admin
     .from("quotes")
-    .select("quote_date, validity_days, status")
+    .select("quote_date, validity_days, status, shipping_type")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -129,6 +130,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     b.payment_days_to_first_due !== undefined ||
     b.payment_days_between_installments !== undefined ||
     b.shipping_type !== undefined ||
+    b.freight_cost !== undefined ||
     b.notes !== undefined ||
     b.quote_number !== undefined ||
     b.discount !== undefined ||
@@ -287,6 +289,18 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return apiError(st.error, 400);
     }
     updateData.shipping_type = st as string;
+    if ((st as string) !== "CIF") {
+      updateData.freight_cost = 0;
+    }
+  }
+  if (b.freight_cost !== undefined) {
+    const nextShipping =
+      updateData.shipping_type ?? existing.shipping_type ?? "FOB";
+    const freight = parseQuoteFreightCost(b.freight_cost, nextShipping);
+    if (typeof freight === "object" && "error" in freight) {
+      return apiError(freight.error, 400);
+    }
+    updateData.freight_cost = freight as number;
   }
   if (b.notes !== undefined) {
     updateData.notes =

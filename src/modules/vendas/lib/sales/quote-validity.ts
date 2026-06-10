@@ -29,6 +29,22 @@ export function parseValidityDays(
 export const QUOTE_SHIPPING_TYPES = ["FOB", "CIF", "Outro"] as const;
 export type QuoteShippingType = (typeof QUOTE_SHIPPING_TYPES)[number];
 
+export function parseQuoteFreightCost(
+  raw: unknown,
+  shippingType: string
+): number | { error: string } {
+  if (shippingType !== "CIF") return 0;
+  if (raw === undefined || raw === null || raw === "") return 0;
+  const v =
+    typeof raw === "number"
+      ? raw
+      : parseFloat(String(raw).trim().replace(",", "."));
+  if (!Number.isFinite(v) || v < 0) {
+    return { error: "Valor do frete inválido." };
+  }
+  return Math.round(v * 100) / 100;
+}
+
 export function parseShippingType(
   raw: unknown,
   defaultType: QuoteShippingType = "FOB"

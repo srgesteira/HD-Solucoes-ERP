@@ -51,6 +51,7 @@ export const createQuoteBodySchema = z.object({
     .union([z.number().int().min(0), z.string()])
     .optional(),
   shipping_type: z.enum(QUOTE_SHIPPING_TYPES).optional(),
+  freight_cost: z.union([z.number().min(0), z.string()]).optional(),
   notes: z.string().nullable().optional(),
   discount: z.union([z.number().min(0), z.string()]).optional(),
   tax: z.union([z.number().min(0), z.string()]).optional(),

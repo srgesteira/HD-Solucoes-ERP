@@ -3046,6 +3046,7 @@ export type Database = {
           delivery_deadline: string | null
           discount: number
           expected_delivery_date: string | null
+          freight_cost: number
           id: string
           notes: string | null
           payment_days_between_installments: number
@@ -3080,6 +3081,7 @@ export type Database = {
           delivery_deadline?: string | null
           discount?: number
           expected_delivery_date?: string | null
+          freight_cost?: number
           id?: string
           notes?: string | null
           payment_days_between_installments?: number
@@ -3114,6 +3116,7 @@ export type Database = {
           delivery_deadline?: string | null
           discount?: number
           expected_delivery_date?: string | null
+          freight_cost?: number
           id?: string
           notes?: string | null
           payment_days_between_installments?: number

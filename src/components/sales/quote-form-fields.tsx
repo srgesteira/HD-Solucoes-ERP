@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { NumericInput } from "@/shared/ui/numeric-input";
 import { Textarea } from "@/shared/ui/textarea";
 import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
 import { formatDeliveryBusinessDaysLabel } from "@/modules/vendas/lib/sales/quote-delivery";
@@ -34,6 +35,8 @@ export interface QuoteHeaderFormProps {
   onDeliveryBusinessDaysChange: (value: string) => void;
   shippingType: string;
   onShippingTypeChange: (value: string) => void;
+  freightCost: number;
+  onFreightCostChange: (value: number) => void;
   notes: string;
   onNotesChange: (value: string) => void;
   seedCustomer?: CustomerOption | null;
@@ -64,6 +67,8 @@ export function QuoteFormFields({
   onDeliveryBusinessDaysChange,
   shippingType,
   onShippingTypeChange,
+  freightCost,
+  onFreightCostChange,
   notes,
   onNotesChange,
   seedCustomer,
@@ -228,7 +233,11 @@ export function QuoteFormFields({
             id="quote-shipping-type"
             className={SELECT_CLASS}
             value={shippingType}
-            onChange={(e) => onShippingTypeChange(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              onShippingTypeChange(next);
+              if (next !== "CIF") onFreightCostChange(0);
+            }}
           >
             {QUOTE_SHIPPING_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -237,6 +246,22 @@ export function QuoteFormFields({
             ))}
           </select>
         </div>
+
+        {shippingType === "CIF" ? (
+          <div className="space-y-2">
+            <Label htmlFor="quote-freight-cost">Valor do frete (CIF)</Label>
+            <NumericInput
+              id="quote-freight-cost"
+              value={freightCost}
+              onChange={onFreightCostChange}
+              maxDecimals={2}
+              placeholder="0,00"
+            />
+            <p className="text-xs text-slate-500">
+              Opcional. Se informado, entra no total do orçamento.
+            </p>
+          </div>
+        ) : null}
 
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="quote-notes">Observações</Label>

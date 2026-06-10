@@ -81,6 +81,7 @@ type QuoteDetail = {
   payment_days_between_installments: number | null;
   delivery_deadline: string | null;
   shipping_type: string | null;
+  freight_cost?: number | null;
   created_at: string;
   client_name: string;
   client_email: string | null;
@@ -263,6 +264,7 @@ export default function QuoteDetailPage() {
   const [paymentTerms, setPaymentTerms] = useState("");
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
+  const [freightCost, setFreightCost] = useState(0);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newQuoteLine(0)]);
   const [productCache, setProductCache] = useState<
@@ -289,6 +291,7 @@ export default function QuoteDetailPage() {
     setPaymentTerms(q.payment_terms ?? "");
     setDeliveryBusinessDays(inferDeliveryBusinessDaysFromQuote(q));
     setShippingType(q.shipping_type ?? "FOB");
+    setFreightCost(Number(q.freight_cost ?? 0));
     setNotes(q.notes ?? "");
     const apiItems = Array.isArray(q.items) ? q.items : [];
     const { lines: loadedLines, cache } = itemsToLinesAndCache(apiItems);
@@ -364,6 +367,7 @@ export default function QuoteDetailPage() {
             ? deliveryDaysParsed
             : null,
         shipping_type: shippingType,
+        freight_cost: shippingType === "CIF" ? freightCost : 0,
         notes: notes.trim() || null,
         items: itemsResult,
       });
@@ -642,6 +646,8 @@ export default function QuoteDetailPage() {
                     onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
                     shippingType={shippingType}
                     onShippingTypeChange={setShippingType}
+                    freightCost={freightCost}
+                    onFreightCostChange={setFreightCost}
                     notes={notes}
                     onNotesChange={setNotes}
                   />
@@ -773,7 +779,16 @@ export default function QuoteDetailPage() {
                     </div>
                     <div>
                       <p className="text-slate-500">Frete</p>
-                      <p className="font-medium">{q.shipping_type ?? "—"}</p>
+                      <p className="font-medium">
+                        {q.shipping_type ?? "—"}
+                        {q.shipping_type === "CIF" &&
+                        Number(q.freight_cost ?? 0) > 0
+                          ? ` — ${Number(q.freight_cost).toLocaleString("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            })}`
+                          : ""}
+                      </p>
                     </div>
                   </CardContent>
                 </Card>

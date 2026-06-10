@@ -4,6 +4,7 @@ import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-paym
 import { resolveQuoteDeliveryFromBody } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
   computeValidUntil,
+  parseQuoteFreightCost,
   parseShippingType,
   parseValidityDays,
 } from "@/modules/vendas/lib/sales/quote-validity";
@@ -22,6 +23,7 @@ export type ParsedQuoteHeader = {
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
   shipping_type: string;
+  freight_cost: number;
   notes: string | null;
 };
 
@@ -63,6 +65,12 @@ export function parseQuoteHeaderFromBody(
   const shippingParsed = parseShippingType(b.shipping_type, "FOB");
   if (typeof shippingParsed === "object" && "error" in shippingParsed) {
     return { ok: false, message: shippingParsed.error };
+  }
+  const shipping_type = shippingParsed as string;
+
+  const freightParsed = parseQuoteFreightCost(b.freight_cost, shipping_type);
+  if (typeof freightParsed === "object" && "error" in freightParsed) {
+    return { ok: false, message: freightParsed.error };
   }
 
   const paymentTermsText =
@@ -117,7 +125,8 @@ export function parseQuoteHeaderFromBody(
       payment_installments: pi as number,
       payment_days_to_first_due: pd1 as number,
       payment_days_between_installments: pdb as number,
-      shipping_type: shippingParsed as string,
+      shipping_type,
+      freight_cost: freightParsed as number,
       notes:
         b.notes === undefined || b.notes === null
           ? null
@@ -158,6 +167,7 @@ export function quoteHeaderToInsert(
     payment_days_to_first_due: header.payment_days_to_first_due,
     payment_days_between_installments: header.payment_days_between_installments,
     shipping_type: header.shipping_type,
+    freight_cost: header.freight_cost,
     notes: header.notes,
     ...(extra.discount !== undefined ? { discount: extra.discount } : {}),
     ...(extra.tax !== undefined ? { tax: extra.tax } : {}),
@@ -192,6 +202,7 @@ export function quoteHeaderToUpdate(
       header.payment_days_between_installments;
   }
   if (header.shipping_type !== undefined) u.shipping_type = header.shipping_type;
+  if (header.freight_cost !== undefined) u.freight_cost = header.freight_cost;
   if (header.notes !== undefined) u.notes = header.notes;
   return u;
 }
