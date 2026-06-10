@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import type { PurchaseInvoiceConfirmInput } from "@/shared/contracts/purchase-invoice.schema";
 import { applyInventoryInbound } from "@/modules/almoxarifado/lib/inventory-inbound";
+import { INVENTORY_ORIGIN } from "@/modules/almoxarifado/lib/inventory-origins";
 import { applyPurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive";
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
 
@@ -162,7 +163,8 @@ export async function applyPurchaseInvoiceConfirm(
           toReceive,
           {
             reason: `NF-e compra (${inv.invoiceNumber ?? supplierInvoiceId})`,
-            referenceId: supplierInvoiceId,
+            referenceId: poi.id,
+            origin: INVENTORY_ORIGIN.PURCHASE_INVOICE,
           }
         );
         if (invRes.error) throw new Error(invRes.error);
@@ -185,6 +187,7 @@ export async function applyPurchaseInvoiceConfirm(
         {
           reason: `NF-e compra — entrada directa (${inv.invoiceNumber ?? ""})`,
           referenceId: supplierInvoiceId,
+          origin: INVENTORY_ORIGIN.PURCHASE_INVOICE,
         }
       );
       if (invRes.error) throw new Error(invRes.error);

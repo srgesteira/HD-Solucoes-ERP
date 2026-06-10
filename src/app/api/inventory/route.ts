@@ -8,6 +8,7 @@ import {
   isCurrentUserTenantAdmin,
   currentUserCanModule,
 } from "@/modules/core/lib/tenant";
+import { applyInventoryBalanceUpdate } from "@/modules/almoxarifado/lib/inventory-adjustment";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
   return apiOk({ data: data ?? [] });
 }
 
-/** POST /api/inventory — upsert saldo (admin) */
+/** POST /api/inventory — ajuste de saldo com movimento no extrato (admin) */
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -113,6 +114,8 @@ export async function POST(request: NextRequest) {
     b.reorder_quantity !== undefined && b.reorder_quantity !== null
       ? Number(b.reorder_quantity)
       : 0;
+  const reason =
+    typeof b.reason === "string" ? b.reason.trim() || undefined : undefined;
 
   if (!Number.isFinite(quantity_on_hand) || quantity_on_hand < 0) {
     return apiError("quantity_on_hand inválido", 400);
@@ -121,28 +124,32 @@ export async function POST(request: NextRequest) {
     return apiError("reserved_quantity inválido", 400);
   }
 
+  const result = await applyInventoryBalanceUpdate(admin, tenantId, product_id, {
+    quantity_on_hand,
+    reserved_quantity,
+    reorder_point,
+    reorder_quantity,
+    reason,
+    userId: user.id,
+  });
+
+  if (result.error) {
+    return apiError("Erro ao gravar estoque: " + result.error, 500);
+  }
+
   const { data, error } = await admin
     .from("inventory")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        product_id,
-        quantity_on_hand,
-        reserved_quantity,
-        reorder_point,
-        reorder_quantity,
-      },
-      { onConflict: "tenant_id,product_id" }
-    )
     .select()
-    .single();
+    .eq("tenant_id", tenantId)
+    .eq("product_id", product_id)
+    .maybeSingle();
 
   if (error) {
     return apiError(
-      "Erro ao gravar estoque: " + error.message,
+      "Erro ao ler estoque: " + error.message,
       supabaseErrorToHttp(error.code)
     );
   }
 
-  return apiOk({ data }, 201);
+  return apiOk({ data, delta: result.delta ?? 0 }, 201);
 }

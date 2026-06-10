@@ -72,7 +72,13 @@ type ClassListRow = ClassificationOption;
 
 type PrefixRow = Pick<ClassListRow, "id" | "code">;
 
-type QuickAddKind = "prefix" | "family" | "material" | "finish" | null;
+type QuickAddKind =
+  | "prefix"
+  | "family"
+  | "subfamily"
+  | "material"
+  | "finish"
+  | null;
 
 const FETCH_OPTS: RequestInit = {
   credentials: "include",
@@ -208,6 +214,30 @@ export function ProductFormFields({
     }
   }, []);
 
+  const reloadSubfamilies = useCallback(async (familyId: string) => {
+    if (!familyId) {
+      setSubfamilies([]);
+      return [];
+    }
+    setSubLoading(true);
+    try {
+      const list = await fetchClassificationList<ClassListRow>(
+        `/api/products/subfamilies?family_id=${encodeURIComponent(familyId)}`,
+        "Erro ao carregar sub-famílias"
+      );
+      setSubfamilies(list);
+      return list;
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Erro ao carregar sub-famílias"
+      );
+      setSubfamilies([]);
+      return [];
+    } finally {
+      setSubLoading(false);
+    }
+  }, []);
+
   const reloadFinishes = useCallback(async (materialId: string) => {
     if (!materialId) {
       setFinishes([]);
@@ -277,27 +307,13 @@ export function ProductFormFields({
     }
     let cancelled = false;
     (async () => {
-      setSubLoading(true);
-      try {
-        const res = await fetch(
-          `/api/products/subfamilies?family_id=${encodeURIComponent(fid)}`,
-          { credentials: "include", cache: "no-store" }
-        );
-        let json: { data?: ClassListRow[] } = {};
-        try {
-          json = (await res.json()) as { data?: ClassListRow[] };
-        } catch {
-          /* ignore */
-        }
-        if (!cancelled && res.ok) setSubfamilies(json.data ?? []);
-      } finally {
-        if (!cancelled) setSubLoading(false);
-      }
+      await reloadSubfamilies(fid);
+      if (cancelled) return;
     })();
     return () => {
       cancelled = true;
     };
-  }, [formData.family_id]);
+  }, [formData.family_id, reloadSubfamilies]);
 
   useEffect(() => {
     const mid = formData.material_id?.trim();
@@ -328,6 +344,7 @@ export function ProductFormFields({
   const classFieldsDisabled = classBusy || classificationLocked;
   const selectedPrefix = prefixes.find((p) => p.id === formData.prefix_id);
   const prefixCode = selectedPrefix?.code ?? "";
+  const selectedFamily = families.find((f) => f.id === formData.family_id);
   const selectedMaterial = materials.find((m) => m.id === formData.material_id);
 
   function handlePrefixChange(prefixId: string) {
@@ -393,6 +410,24 @@ export function ProductFormFields({
       description,
     }),
   };
+
+  const quickAddSubfamilyConfig: QuickAddClassificationConfig | null =
+    formData.family_id.trim()
+      ? {
+          title: "Nova sub-família",
+          contextHint: selectedFamily
+            ? `Será criada só para a família ${selectedFamily.code} — ${selectedFamily.name}.`
+            : undefined,
+          validateCode: validateClassificationCatalogCode,
+          postUrl: "/api/products/subfamilies",
+          buildBody: ({ code, name, description }) => ({
+            family_id: formData.family_id.trim(),
+            code,
+            name,
+            description,
+          }),
+        }
+      : null;
 
   const quickAddFinishConfig: QuickAddClassificationConfig | null =
     formData.material_id.trim()
@@ -520,7 +555,7 @@ export function ProductFormFields({
             derivada automaticamente do prefixo seleccionado. As famílias são{" "}
             <strong>por sufixo</strong> (HD1–HD3/AC partilham um catálogo; MP e
             outros sufixos simplificados têm o seu). Use{" "}
-            Use <strong>+ Adicionar</strong> dentro de cada lista. Ou cadastre em{" "}
+            Use <strong>+ Adicionar</strong> em cada campo. Ou cadastre em{" "}
             <Link
               href="/settings/product-families"
               className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
@@ -563,6 +598,7 @@ export function ProductFormFields({
                 placeholder="Selecionar…"
                 emptyLabel="Nenhuma família neste sufixo"
                 addLabel="+ Adicionar família"
+                showExternalAdd
                 onChange={(id) => {
                   onChange("family_id", id);
                   onChange("subfamily_id", "");
@@ -583,32 +619,25 @@ export function ProductFormFields({
           ) : null}
 
           {needsCompleteClassification ? (
-            <div className="space-y-2">
-              <Label htmlFor="subfamily_id">Sub-família *</Label>
-              <select
-                id="subfamily_id"
-                className={SELECT_CLASS}
-                required
-                disabled={
-                  classFieldsDisabled || !formData.family_id || subLoading
-                }
-                value={formData.subfamily_id}
-                onChange={(e) => onChange("subfamily_id", e.target.value)}
-              >
-                <option value="">
-                  {formData.family_id
-                    ? subLoading
-                      ? "A carregar…"
-                      : "Selecionar…"
-                    : "Escolha primeiro a família"}
-                </option>
-                {subfamilies.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.code} — {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <ClassificationSelectWithAdd
+              id="subfamily_id"
+              label="Sub-família"
+              required
+              value={formData.subfamily_id}
+              options={subfamilies}
+              loading={subLoading}
+              disabled={classFieldsDisabled || !formData.family_id}
+              placeholder={
+                formData.family_id ? "Selecionar…" : "Escolha primeiro a família"
+              }
+              emptyLabel="Nenhuma sub-família nesta família"
+              addLabel="+ Adicionar sub-família"
+              showExternalAdd
+              addDisabled={!formData.family_id}
+              addDisabledHint="Seleccione primeiro a família."
+              onChange={(id) => onChange("subfamily_id", id)}
+              onAddClick={() => setQuickAdd("subfamily")}
+            />
           ) : null}
 
           {showClassificationFields ? (
@@ -624,6 +653,7 @@ export function ProductFormFields({
                 placeholder="Selecionar…"
                 emptyLabel="Nenhum material cadastrado"
                 addLabel="+ Adicionar material"
+                showExternalAdd
                 onChange={(id) => {
                   onChange("material_id", id);
                   onChange("finish_id", "");
@@ -647,6 +677,7 @@ export function ProductFormFields({
                 addLabel="+ Adicionar acabamento"
                 addDisabled={!formData.material_id.trim()}
                 addDisabledHint="Escolha primeiro o material para adicionar acabamento."
+                showExternalAdd
                 onChange={(id) => onChange("finish_id", id)}
                 onAddClick={() => setQuickAdd("finish")}
               />
@@ -960,6 +991,19 @@ export function ProductFormFields({
             await reloadFamilies(pid);
             onChange("family_id", row.id);
             onChange("subfamily_id", "");
+          }}
+        />
+      ) : null}
+      {quickAddSubfamilyConfig ? (
+        <QuickAddClassificationItemDialog
+          open={quickAdd === "subfamily"}
+          config={quickAddSubfamilyConfig}
+          onClose={() => setQuickAdd(null)}
+          onCreated={async (row) => {
+            const fid = formData.family_id.trim();
+            if (!fid) return;
+            await reloadSubfamilies(fid);
+            onChange("subfamily_id", row.id);
           }}
         />
       ) : null}

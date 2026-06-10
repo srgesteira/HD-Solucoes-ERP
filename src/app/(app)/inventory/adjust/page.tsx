@@ -158,7 +158,9 @@ export default function InventoryAdjustPage() {
         <CardContent className="space-y-4 text-sm">
           <p className="text-slate-600 dark:text-slate-400">
             Abra o catálogo de produtos, seleccione um item e defina as
-            quantidades. Os valores substituem o registo actual (upsert).
+            quantidades. A alteração da quantidade em mão gera um movimento de
+            ajuste no extrato de estoque; reservado e pontos de encomenda
+            actualizam apenas o cadastro.
           </p>
           <Button
             type="button"

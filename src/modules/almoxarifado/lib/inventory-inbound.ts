@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { inventoryMovementExists } from "@/modules/almoxarifado/lib/inventory-movement-idempotency";
 
 type Admin = SupabaseClient<Database>;
 
@@ -12,10 +13,25 @@ export async function applyInventoryInbound(
   options?: {
     reason?: string;
     referenceId?: string | null;
+    origin?: string | null;
+    userId?: string | null;
   }
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   if (!Number.isFinite(quantity) || quantity <= 0) {
     return { error: "Quantidade inválida para entrada em estoque." };
+  }
+
+  const origin = options?.origin ?? null;
+  const referenceId = options?.referenceId ?? null;
+
+  if (origin && referenceId) {
+    const exists = await inventoryMovementExists(admin, tenantId, {
+      referenceId,
+      productId,
+      origin,
+      movementType: "in",
+    });
+    if (exists) return { skipped: true };
   }
 
   const { data: existing, error: fetchErr } = await admin
@@ -54,8 +70,10 @@ export async function applyInventoryInbound(
     product_id: productId,
     movement_type: "in",
     quantity,
-    reason: options?.reason?.trim() || "Entrada NF-e compra",
-    reference_id: options?.referenceId ?? null,
+    reason: options?.reason?.trim() || "Entrada de estoque",
+    reference_id: referenceId,
+    origin,
+    user_id: options?.userId ?? null,
   });
 
   if (movErr) return { error: movErr.message };

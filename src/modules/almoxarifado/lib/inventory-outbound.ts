@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { inventoryMovementExists } from "@/modules/almoxarifado/lib/inventory-movement-idempotency";
 
 type Admin = SupabaseClient<Database>;
 
@@ -14,10 +15,26 @@ export async function applyInventoryOutbound(
     referenceId?: string | null;
     origin?: string | null;
     userId?: string | null;
+    /** Se false, bloqueia quando saldo em mão é insuficiente. */
+    allowNegative?: boolean;
   }
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   if (!Number.isFinite(quantity) || quantity <= 0) {
     return { error: "Quantidade inválida para saída de estoque." };
+  }
+
+  const origin = options?.origin ?? null;
+  const referenceId = options?.referenceId ?? null;
+  const allowNegative = options?.allowNegative === true;
+
+  if (origin && referenceId) {
+    const exists = await inventoryMovementExists(admin, tenantId, {
+      referenceId,
+      productId,
+      origin,
+      movementType: "out",
+    });
+    if (exists) return { skipped: true };
   }
 
   const { data: existing, error: fetchErr } = await admin
@@ -30,6 +47,12 @@ export async function applyInventoryOutbound(
   if (fetchErr) return { error: fetchErr.message };
 
   const prev = Number(existing?.quantity_on_hand ?? 0);
+  if (!allowNegative && prev + 0.0001 < quantity) {
+    return {
+      error: `Saldo insuficiente (em mão: ${prev}, necessário: ${quantity}).`,
+    };
+  }
+
   const next = prev - quantity;
 
   if (existing?.id) {
@@ -57,8 +80,8 @@ export async function applyInventoryOutbound(
     movement_type: "out",
     quantity,
     reason: options?.reason?.trim() || "Saída de estoque",
-    reference_id: options?.referenceId ?? null,
-    origin: options?.origin ?? null,
+    reference_id: referenceId,
+    origin,
     user_id: options?.userId ?? null,
   });
 

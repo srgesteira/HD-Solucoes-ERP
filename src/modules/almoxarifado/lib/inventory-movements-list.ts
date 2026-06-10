@@ -116,16 +116,28 @@ function resolveOrigin(
     { order_number: string; production_order_id: string }
   >
 ): InventoryMovementOrigin {
-  if (referenceId && originKind === "production_supply") {
+  if (
+    referenceId &&
+    (originKind === "production_supply" || originKind === "production_finish")
+  ) {
     const prod = productionMap.get(referenceId);
     if (prod) {
+      const prefix =
+        originKind === "production_finish" ? "Entrada OP" : "OP";
       return {
         kind: "production_order",
-        label: `OP ${prod.order_number}`,
+        label: `${prefix} ${prod.order_number}`,
         order_number: prod.order_number,
         production_order_id: prod.production_order_id,
       };
     }
+  }
+
+  if (originKind === "manual_adjust") {
+    return {
+      kind: "unknown",
+      label: reason?.trim() || "Ajuste manual",
+    };
   }
 
   if (referenceId) {
@@ -311,7 +323,11 @@ export async function listInventoryMovements(
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 
   const productionRefIds = rows
-    .filter((r) => r.origin === "production_supply" && r.reference_id)
+    .filter(
+      (r) =>
+        (r.origin === "production_supply" || r.origin === "production_finish") &&
+        r.reference_id
+    )
     .map((r) => r.reference_id as string);
 
   const { poMap, invoiceMap, productionMap } = await buildOriginMaps(

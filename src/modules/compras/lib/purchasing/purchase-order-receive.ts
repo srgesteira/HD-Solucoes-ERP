@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { applyInventoryInbound } from "@/modules/almoxarifado/lib/inventory-inbound";
+import { INVENTORY_ORIGIN } from "@/modules/almoxarifado/lib/inventory-origins";
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
 import { propagateComponentCostChange } from "@/modules/engenharia/lib/products/propagate-component-cost";
 import { computeLandedUnitCost } from "@/modules/compras/lib/purchasing/landed-unit-cost";
@@ -119,6 +120,7 @@ export async function applyPurchaseOrderReceive(
         {
           reason: `Recebimento PC (${orderId})`,
           referenceId: item.id,
+          origin: INVENTORY_ORIGIN.PURCHASE_RECEIVE,
         }
       );
       if (invRes.error) throw new Error(invRes.error);

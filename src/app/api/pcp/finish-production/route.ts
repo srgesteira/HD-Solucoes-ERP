@@ -7,6 +7,7 @@ import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanProductionApontamento } from "@/modules/producao/lib/production-api-auth";
 import { assertCanFinishProduction } from "@/modules/producao/lib/line-apontamento";
 import { resolveLineApontamentoStatus } from "@/modules/producao/lib/line-apontamento";
+import { applyProductionFinishInbound } from "@/modules/almoxarifado/lib/production-finish-inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,21 @@ export async function POST(request: NextRequest) {
     return apiError(gate.reason, 403, { code: gate.code });
   }
 
+  let inbound: Awaited<ReturnType<typeof applyProductionFinishInbound>>;
+  try {
+    inbound = await applyProductionFinishInbound(
+      admin,
+      tenantId,
+      orderItemId,
+      user.id
+    );
+  } catch (e) {
+    return apiError(
+      e instanceof Error ? e.message : "Erro ao dar entrada no estoque",
+      500
+    );
+  }
+
   const now = new Date().toISOString();
 
   const { data, error } = await admin
@@ -97,5 +113,5 @@ export async function POST(request: NextRequest) {
   if (error) return apiError(error.message, 400);
   if (!data) return apiError("Item de produção não encontrado", 404);
 
-  return apiOk(data);
+  return apiOk({ ...data, inventory: inbound });
 }

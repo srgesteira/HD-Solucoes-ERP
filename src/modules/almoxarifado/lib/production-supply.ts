@@ -1,11 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { applyInventoryOutbound } from "@/modules/almoxarifado/lib/inventory-outbound";
+import { INVENTORY_ORIGIN } from "@/modules/almoxarifado/lib/inventory-origins";
+import { removeLegacyMrpEmpenhoForProductionOrder } from "@/modules/almoxarifado/lib/legacy-mrp-empenho";
 import { calculateNeededMaterialsForProductQty } from "@/modules/pcp/lib/mrp-service";
 
 type Admin = SupabaseClient<Database>;
 
-export const PRODUCTION_SUPPLY_ORIGIN = "production_supply";
+export const PRODUCTION_SUPPLY_ORIGIN = INVENTORY_ORIGIN.PRODUCTION_SUPPLY;
 
 export type ProductionSupplyPendingRow = {
   order_item_id: string;
@@ -240,6 +242,35 @@ export async function applyProductionSupply(
 
   const orderNumber = po.order_number;
   const reason = `Abastecimento OP ${orderNumber}`;
+
+  const empenhoCleanup = await removeLegacyMrpEmpenhoForProductionOrder(
+    admin,
+    tenantId,
+    po.id
+  );
+  if (empenhoCleanup.error) throw new Error(empenhoCleanup.error);
+
+  const materialIds = [...new Set(needs.map((n) => n.product_id))];
+  const { data: stockRows, error: stockErr } = await admin
+    .from("inventory")
+    .select("product_id, quantity_on_hand")
+    .eq("tenant_id", tenantId)
+    .in("product_id", materialIds);
+
+  if (stockErr) throw new Error(stockErr.message);
+
+  const stockByProduct = new Map(
+    (stockRows ?? []).map((r) => [r.product_id, Number(r.quantity_on_hand ?? 0)])
+  );
+
+  for (const need of needs) {
+    const onHand = stockByProduct.get(need.product_id) ?? 0;
+    if (onHand + 0.0001 < need.gross_qty) {
+      throw new Error(
+        `Saldo insuficiente para abastecer (produto ${need.product_id.slice(0, 8)}…: em mão ${onHand}, necessário ${need.gross_qty}).`
+      );
+    }
+  }
 
   for (const need of needs) {
     const outRes = await applyInventoryOutbound(

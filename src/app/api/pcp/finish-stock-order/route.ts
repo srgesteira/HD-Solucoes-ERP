@@ -6,6 +6,7 @@ import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
 import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-production-status";
+import { applyProductionFinishInboundForOrder } from "@/modules/almoxarifado/lib/production-finish-inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +94,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let inventoryPosted: Awaited<
+    ReturnType<typeof applyProductionFinishInboundForOrder>
+  > = [];
+  try {
+    inventoryPosted = await applyProductionFinishInboundForOrder(
+      admin,
+      tenantId,
+      productionOrderId,
+      user.id
+    );
+  } catch (e) {
+    return apiError(
+      e instanceof Error ? e.message : "Erro ao dar entrada no estoque",
+      500
+    );
+  }
+
   const now = new Date().toISOString();
   const { data: updated, error: updErr } = await admin
     .from("production_orders")
@@ -105,5 +123,5 @@ export async function POST(request: NextRequest) {
   if (updErr) return apiError(updErr.message, 400);
   if (!updated) return apiError("Ordem de produção não encontrada", 404);
 
-  return apiOk({ production_order: updated });
+  return apiOk({ production_order: updated, inventory: inventoryPosted });
 }

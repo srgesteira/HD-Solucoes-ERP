@@ -1,11 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import {
   SortableTable,
   type SortableTableColumn,
@@ -158,7 +161,14 @@ async function fetchMovements(
   };
 }
 
-export function StockOperationsTab() {
+type StockOperationsTabProps = {
+  canManageMovements?: boolean;
+};
+
+export function StockOperationsTab({
+  canManageMovements = false,
+}: StockOperationsTabProps) {
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<Filters>({
     page: 1,
     limit: DEFAULT_LIMIT,
@@ -177,11 +187,91 @@ export function StockOperationsTab() {
     filters.to,
   ] as const;
 
+  const [editing, setEditing] = useState<InventoryMovementListItem | null>(null);
+  const [editQty, setEditQty] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey,
     queryFn: () => fetchMovements(filters),
     retry: 1,
   });
+
+  const invalidateMovements = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
+    await queryClient.invalidateQueries({ queryKey: ["inventory-balances"] });
+  }, [queryClient]);
+
+  const openEdit = useCallback((row: InventoryMovementListItem) => {
+    setEditing(row);
+    setEditQty(String(Math.abs(Number(row.quantity))));
+    setEditReason(row.reason ?? "");
+  }, []);
+
+  const handleDelete = useCallback(
+    async (row: InventoryMovementListItem) => {
+      const label = productLabel(row);
+      if (
+        !window.confirm(
+          `Excluir movimento de ${label}?\nO saldo em mão será recalculado automaticamente.`
+        )
+      ) {
+        return;
+      }
+      setDeletingId(row.id);
+      try {
+        const res = await fetch(`/api/inventory/movements/${row.id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          throw new Error(json.error ?? "Erro ao excluir movimento.");
+        }
+        toast.success("Movimento excluído.");
+        await invalidateMovements();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao excluir.");
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [invalidateMovements]
+  );
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editing) return;
+    const qty = parseFloat(editQty.replace(",", "."));
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast.error("Quantidade inválida.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/inventory/movements/${editing.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quantity: qty,
+          reason: editReason.trim() || undefined,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(json.error ?? "Erro ao gravar movimento.");
+      }
+      toast.success("Movimento actualizado.");
+      setEditing(null);
+      await invalidateMovements();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gravar.");
+    } finally {
+      setSaving(false);
+    }
+  }, [editing, editQty, editReason, invalidateMovements]);
 
   const filteredRows = useMemo(() => {
     const rows = data?.data ?? [];
@@ -206,7 +296,7 @@ export function StockOperationsTab() {
   }, [data?.pagination, filters.page, filters.limit]);
 
   const columns = useMemo((): SortableTableColumn<InventoryMovementListItem>[] => {
-    return [
+    const cols: SortableTableColumn<InventoryMovementListItem>[] = [
       {
         key: "created_at",
         label: "Data",
@@ -261,7 +351,51 @@ export function StockOperationsTab() {
         render: (row) => originCell(row.origin),
       },
     ];
-  }, []);
+
+    if (canManageMovements) {
+      cols.push({
+        key: "actions",
+        label: "",
+        type: "text",
+        width: "w-[8%]",
+        align: "right",
+        accessor: () => "",
+        sortable: false,
+        truncate: false,
+        render: (row) => (
+          <div className="flex justify-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="Editar movimento"
+              onClick={() => openEdit(row)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-red-700 hover:text-red-800"
+              aria-label="Excluir movimento"
+              disabled={deletingId === row.id}
+              onClick={() => void handleDelete(row)}
+            >
+              {deletingId === row.id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        ),
+      });
+    }
+
+    return cols;
+  }, [canManageMovements, deletingId, handleDelete, openEdit]);
 
   return (
     <Card>
@@ -369,6 +503,55 @@ export function StockOperationsTab() {
           isLoading={isLoading}
           emptyMessage="Nenhuma movimentação registrada."
         />
+
+        {editing ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3 dark:border-slate-800 dark:bg-slate-900/40">
+            <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+              Editar movimento — {productLabel(editing)}
+            </p>
+            <div className="grid sm:grid-cols-2 gap-3 max-w-xl">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-movement-qty">Quantidade</Label>
+                <Input
+                  id="edit-movement-qty"
+                  inputMode="decimal"
+                  value={editQty}
+                  onChange={(e) => setEditQty(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="edit-movement-reason">Motivo</Label>
+                <Input
+                  id="edit-movement-reason"
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={saving}
+                onClick={() => void handleSaveEdit()}
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Gravar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={saving}
+                onClick={() => setEditing(null)}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {data?.pagination?.total !== undefined && data.pagination.total > 0 ? (
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">

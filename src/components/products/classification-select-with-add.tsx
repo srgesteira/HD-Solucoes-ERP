@@ -24,6 +24,8 @@ type Props = {
   addLabel: string;
   addDisabled?: boolean;
   addDisabledHint?: string;
+  /** Mostra o botão de criar fora da lista (sempre visível). */
+  showExternalAdd?: boolean;
   onChange: (id: string) => void;
   onAddClick: () => void;
 };
@@ -45,6 +47,7 @@ export function ClassificationSelectWithAdd({
   addLabel,
   addDisabled = false,
   addDisabledHint,
+  showExternalAdd = false,
   onChange,
   onAddClick,
 }: Props) {
@@ -160,6 +163,16 @@ export function ClassificationSelectWithAdd({
           </ul>
         ) : null}
       </div>
+      {showExternalAdd && !addDisabled && !disabled ? (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:text-brand-900 hover:underline"
+          onClick={onAddClick}
+        >
+          <Plus className="h-4 w-4 shrink-0" aria-hidden />
+          {addLabel}
+        </button>
+      ) : null}
       {addDisabled && addDisabledHint ? (
         <p className="text-xs text-slate-500">{addDisabledHint}</p>
       ) : null}

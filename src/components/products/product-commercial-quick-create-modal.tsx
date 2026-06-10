@@ -11,6 +11,12 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
+import { ClassificationSelectWithAdd } from "@/components/products/classification-select-with-add";
+import {
+  QuickAddClassificationItemDialog,
+  type QuickAddClassificationConfig,
+} from "@/components/products/quick-add-classification-item-dialog";
+import { validateClassificationCatalogCode } from "@/modules/engenharia/lib/products/classification-catalog-codes";
 import {
   isCompleteClassificationSuffix,
   isSimplifiedClassificationSuffix,
@@ -62,8 +68,11 @@ export function ProductCommercialQuickCreateModal({
   const [saving, setSaving] = useState(false);
   const [subLoading, setSubLoading] = useState(false);
   const [finLoading, setFinLoading] = useState(false);
+  const [familiesLoading, setFamiliesLoading] = useState(false);
+  const [quickAdd, setQuickAdd] = useState<"family" | "subfamily" | null>(null);
 
   const selectedPrefix = prefixes.find((p) => p.id === prefixId);
+  const selectedFamily = families.find((f) => f.id === familyId);
   const prefixCode = selectedPrefix?.code ?? "";
   const needsComplete = isCompleteClassificationSuffix(prefixCode);
   const showClassFields =
@@ -124,6 +133,7 @@ export function ProductCommercialQuickCreateModal({
     }
     let cancelled = false;
     (async () => {
+      setFamiliesLoading(true);
       try {
         const fam = await fetchJson<ClassRow[]>(
           `/api/products/families?prefix_id=${encodeURIComponent(prefixId)}`
@@ -136,6 +146,8 @@ export function ProductCommercialQuickCreateModal({
         }
       } catch {
         if (!cancelled) setFamilies([]);
+      } finally {
+        if (!cancelled) setFamiliesLoading(false);
       }
     })();
     return () => {
@@ -190,6 +202,63 @@ export function ProductCommercialQuickCreateModal({
       cancelled = true;
     };
   }, [open, materialId]);
+
+  const quickAddFamilyConfig: QuickAddClassificationConfig | null = prefixId
+    ? {
+        title: "Nova família",
+        contextHint: selectedPrefix
+          ? `Será criada só para o sufixo ${selectedPrefix.code} — ${selectedPrefix.name}.`
+          : undefined,
+        validateCode: validateClassificationCatalogCode,
+        postUrl: "/api/products/families",
+        buildBody: ({ code, name, description }) => ({
+          prefix_id: prefixId,
+          code,
+          name,
+          description,
+        }),
+      }
+    : null;
+
+  const quickAddSubfamilyConfig: QuickAddClassificationConfig | null = familyId
+    ? {
+        title: "Nova sub-família",
+        contextHint: selectedFamily
+          ? `Será criada só para a família ${selectedFamily.code} — ${selectedFamily.name}.`
+          : undefined,
+        validateCode: validateClassificationCatalogCode,
+        postUrl: "/api/products/subfamilies",
+        buildBody: ({ code, name, description }) => ({
+          family_id: familyId,
+          code,
+          name,
+          description,
+        }),
+      }
+    : null;
+
+  async function reloadFamilies() {
+    if (!prefixId) return [];
+    const fam = await fetchJson<ClassRow[]>(
+      `/api/products/families?prefix_id=${encodeURIComponent(prefixId)}`
+    );
+    setFamilies(fam);
+    return fam;
+  }
+
+  async function reloadSubfamilies() {
+    if (!familyId) return [];
+    setSubLoading(true);
+    try {
+      const subs = await fetchJson<ClassRow[]>(
+        `/api/products/subfamilies?family_id=${encodeURIComponent(familyId)}`
+      );
+      setSubfamilies(subs);
+      return subs;
+    } finally {
+      setSubLoading(false);
+    }
+  }
 
   const canSubmit = useMemo(() => {
     if (!name.trim() || !prefixId || !unit.trim()) return false;
@@ -356,50 +425,43 @@ export function ProductCommercialQuickCreateModal({
 
             {needsComplete ? (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="commercial-product-family">Família *</Label>
-                  <select
-                    id="commercial-product-family"
-                    className={SELECT_CLASS}
-                    value={familyId}
-                    required
-                    onChange={(e) => {
-                      setFamilyId(e.target.value);
-                      setSubfamilyId("");
-                    }}
-                  >
-                    <option value="">Selecionar…</option>
-                    {families.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.code} — {f.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="commercial-product-subfamily">Sub-família *</Label>
-                  <select
-                    id="commercial-product-subfamily"
-                    className={SELECT_CLASS}
-                    value={subfamilyId}
-                    required
-                    disabled={!familyId || subLoading}
-                    onChange={(e) => setSubfamilyId(e.target.value)}
-                  >
-                    <option value="">
-                      {familyId
-                        ? subLoading
-                          ? "A carregar…"
-                          : "Selecionar…"
-                        : "Escolha a família"}
-                    </option>
-                    {subfamilies.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.code} — {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <ClassificationSelectWithAdd
+                  id="commercial-product-family"
+                  label="Família"
+                  required
+                  value={familyId}
+                  options={families}
+                  loading={familiesLoading}
+                  disabled={!prefixId}
+                  placeholder="Selecionar…"
+                  emptyLabel="Nenhuma família neste sufixo"
+                  addLabel="+ Adicionar família"
+                  showExternalAdd
+                  onChange={(id) => {
+                    setFamilyId(id);
+                    setSubfamilyId("");
+                  }}
+                  onAddClick={() => setQuickAdd("family")}
+                />
+                <ClassificationSelectWithAdd
+                  id="commercial-product-subfamily"
+                  label="Sub-família"
+                  required
+                  value={subfamilyId}
+                  options={subfamilies}
+                  loading={subLoading}
+                  disabled={!familyId}
+                  placeholder={
+                    familyId ? "Selecionar…" : "Escolha primeiro a família"
+                  }
+                  emptyLabel="Nenhuma sub-família nesta família"
+                  addLabel="+ Adicionar sub-família"
+                  showExternalAdd
+                  addDisabled={!familyId}
+                  addDisabledHint="Seleccione primeiro a família."
+                  onChange={setSubfamilyId}
+                  onAddClick={() => setQuickAdd("subfamily")}
+                />
               </>
             ) : null}
 
@@ -479,5 +541,33 @@ export function ProductCommercialQuickCreateModal({
     </div>
   );
 
-  return createPortal(modal, document.body);
+  return createPortal(
+    <>
+      {modal}
+      {quickAddFamilyConfig ? (
+        <QuickAddClassificationItemDialog
+          open={quickAdd === "family"}
+          config={quickAddFamilyConfig}
+          onClose={() => setQuickAdd(null)}
+          onCreated={async (row) => {
+            await reloadFamilies();
+            setFamilyId(row.id);
+            setSubfamilyId("");
+          }}
+        />
+      ) : null}
+      {quickAddSubfamilyConfig ? (
+        <QuickAddClassificationItemDialog
+          open={quickAdd === "subfamily"}
+          config={quickAddSubfamilyConfig}
+          onClose={() => setQuickAdd(null)}
+          onCreated={async (row) => {
+            await reloadSubfamilies();
+            setSubfamilyId(row.id);
+          }}
+        />
+      ) : null}
+    </>,
+    document.body
+  );
 }

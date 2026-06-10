@@ -72,7 +72,7 @@ export function WarehousePage() {
         </TabsList>
 
         <TabsContent value="operacoes" className="mt-4">
-          <StockOperationsTab />
+          <StockOperationsTab canManageMovements={canAdjust} />
         </TabsContent>
 
         <TabsContent value="inventario" className="mt-4">
