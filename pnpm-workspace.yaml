@@ -1,6 +1,7 @@
 packages:
   - "."
 
+# pnpm 11+: allowBuilds substitui package.json#pnpm.onlyBuiltDependencies
 allowBuilds:
-  core-js: set this to true or false
+  core-js: true
   sharp: true
