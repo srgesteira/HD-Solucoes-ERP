@@ -8,6 +8,7 @@ import { currentUserCanProductionApontamento } from "@/modules/producao/lib/prod
 import { assertCanFinishProduction } from "@/modules/producao/lib/line-apontamento";
 import { resolveLineApontamentoStatus } from "@/modules/producao/lib/line-apontamento";
 import { applyProductionFinishInbound } from "@/modules/almoxarifado/lib/production-finish-inventory";
+import { ensureProductionSupplyForFinish } from "@/modules/almoxarifado/lib/production-supply";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
   const { data: existing } = await admin
     .from("order_items")
     .select(
-      "id, apontamento_start_at, apontamento_end_at, completed_at, status, is_suggestion"
+      "id, apontamento_start_at, apontamento_end_at, completed_at, status, is_suggestion, warehouse_supplied_at"
     )
     .eq("id", orderItemId)
     .eq("tenant_id", tenantId)
@@ -77,8 +78,15 @@ export async function POST(request: NextRequest) {
     return apiError(gate.reason, 403, { code: gate.code });
   }
 
+  let supply: Awaited<ReturnType<typeof ensureProductionSupplyForFinish>>;
   let inbound: Awaited<ReturnType<typeof applyProductionFinishInbound>>;
   try {
+    supply = await ensureProductionSupplyForFinish(
+      admin,
+      tenantId,
+      orderItemId,
+      user.id
+    );
     inbound = await applyProductionFinishInbound(
       admin,
       tenantId,
@@ -87,7 +95,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (e) {
     return apiError(
-      e instanceof Error ? e.message : "Erro ao dar entrada no estoque",
+      e instanceof Error ? e.message : "Erro ao actualizar estoque da produção",
       500
     );
   }
@@ -113,5 +121,5 @@ export async function POST(request: NextRequest) {
   if (error) return apiError(error.message, 400);
   if (!data) return apiError("Item de produção não encontrado", 404);
 
-  return apiOk({ ...data, inventory: inbound });
+  return apiOk({ ...data, supply, inventory: inbound });
 }

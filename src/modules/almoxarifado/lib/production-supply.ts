@@ -3,9 +3,46 @@ import type { Database } from "@/modules/core/types/database";
 import { applyInventoryOutbound } from "@/modules/almoxarifado/lib/inventory-outbound";
 import { INVENTORY_ORIGIN } from "@/modules/almoxarifado/lib/inventory-origins";
 import { removeLegacyMrpEmpenhoForProductionOrder } from "@/modules/almoxarifado/lib/legacy-mrp-empenho";
-import { calculateNeededMaterialsForProductQty } from "@/modules/pcp/lib/mrp-service";
+import {
+  calculateNeededMaterialsForProductQty,
+  type GrossMaterialNeed,
+} from "@/modules/pcp/lib/mrp-service";
 
 type Admin = SupabaseClient<Database>;
+
+type ProductPrefixRow = {
+  id: string;
+  prefix:
+    | { code: string | null }
+    | { code: string | null }[]
+    | null;
+};
+
+/** Remove mão-de-obra (prefixo MO) — não há baixa física em estoque. */
+async function filterPhysicalSupplyNeeds(
+  admin: Admin,
+  tenantId: string,
+  needs: GrossMaterialNeed[]
+): Promise<GrossMaterialNeed[]> {
+  if (!needs.length) return [];
+
+  const ids = [...new Set(needs.map((n) => n.product_id))];
+  const { data: products, error } = await admin
+    .from("products")
+    .select("id, prefix:product_prefixes!products_prefix_id_fkey(code)")
+    .eq("tenant_id", tenantId)
+    .in("id", ids);
+
+  if (error) throw new Error(error.message);
+
+  const laborIds = new Set<string>();
+  for (const raw of (products ?? []) as unknown as ProductPrefixRow[]) {
+    const prefix = Array.isArray(raw.prefix) ? raw.prefix[0] : raw.prefix;
+    if (prefix?.code === "MO") laborIds.add(raw.id);
+  }
+
+  return needs.filter((n) => !laborIds.has(n.product_id));
+}
 
 export const PRODUCTION_SUPPLY_ORIGIN = INVENTORY_ORIGIN.PRODUCTION_SUPPLY;
 
@@ -174,11 +211,19 @@ export async function listProductionSupplyPending(
   return rows;
 }
 
+export type ProductionSupplyOptions = {
+  /** Permite abastecer OP já fechada (correcção / backfill). */
+  allowFinishedOrder?: boolean;
+  /** Sem BOM: marca abastecido sem movimentos em vez de erro. */
+  skipIfNoMaterials?: boolean;
+};
+
 export async function applyProductionSupply(
   admin: Admin,
   tenantId: string,
   orderItemId: string,
-  userId?: string | null
+  userId?: string | null,
+  options?: ProductionSupplyOptions
 ): Promise<ApplyProductionSupplyResult> {
   const { data: item, error: itemErr } = await admin
     .from("order_items")
@@ -218,8 +263,11 @@ export async function applyProductionSupply(
   if (!po?.id || po.is_suggestion) {
     throw new Error("Ordem de produção inválida.");
   }
-  if (po.status === "cancelled" || po.status === "finished") {
-    throw new Error("Ordem de produção cancelada ou finalizada.");
+  if (po.status === "cancelled") {
+    throw new Error("Ordem de produção cancelada.");
+  }
+  if (po.status === "finished" && !options?.allowFinishedOrder) {
+    throw new Error("Ordem de produção já finalizada.");
   }
 
   const productId = row.product_id;
@@ -230,17 +278,38 @@ export async function applyProductionSupply(
     throw new Error("Quantidade inválida no item de produção.");
   }
 
-  const needs = await calculateNeededMaterialsForProductQty(
+  const orderNumber = po.order_number;
+
+  const bomNeeds = await calculateNeededMaterialsForProductQty(
     admin,
     tenantId,
     productId,
     qty
   );
+  const needs = await filterPhysicalSupplyNeeds(admin, tenantId, bomNeeds);
   if (!needs.length) {
-    throw new Error("Produto sem materiais na BOM para abastecer.");
+    if (!options?.skipIfNoMaterials) {
+      throw new Error("Produto sem materiais na BOM para abastecer.");
+    }
+    const now = new Date().toISOString();
+    const { error: markErr } = await admin
+      .from("order_items")
+      .update({
+        warehouse_supplied_at: now,
+        warehouse_supplied_by: userId ?? null,
+      })
+      .eq("id", orderItemId)
+      .eq("tenant_id", tenantId)
+      .is("warehouse_supplied_at", null);
+    if (markErr) throw new Error(markErr.message);
+    return {
+      order_item_id: orderItemId,
+      order_number: orderNumber,
+      movements: 0,
+      materials: [],
+    };
   }
 
-  const orderNumber = po.order_number;
   const reason = `Abastecimento OP ${orderNumber}`;
 
   const empenhoCleanup = await removeLegacyMrpEmpenhoForProductionOrder(
@@ -249,28 +318,6 @@ export async function applyProductionSupply(
     po.id
   );
   if (empenhoCleanup.error) throw new Error(empenhoCleanup.error);
-
-  const materialIds = [...new Set(needs.map((n) => n.product_id))];
-  const { data: stockRows, error: stockErr } = await admin
-    .from("inventory")
-    .select("product_id, quantity_on_hand")
-    .eq("tenant_id", tenantId)
-    .in("product_id", materialIds);
-
-  if (stockErr) throw new Error(stockErr.message);
-
-  const stockByProduct = new Map(
-    (stockRows ?? []).map((r) => [r.product_id, Number(r.quantity_on_hand ?? 0)])
-  );
-
-  for (const need of needs) {
-    const onHand = stockByProduct.get(need.product_id) ?? 0;
-    if (onHand + 0.0001 < need.gross_qty) {
-      throw new Error(
-        `Saldo insuficiente para abastecer (produto ${need.product_id.slice(0, 8)}…: em mão ${onHand}, necessário ${need.gross_qty}).`
-      );
-    }
-  }
 
   for (const need of needs) {
     const outRes = await applyInventoryOutbound(
@@ -283,6 +330,7 @@ export async function applyProductionSupply(
         referenceId: orderItemId,
         origin: PRODUCTION_SUPPLY_ORIGIN,
         userId: userId ?? null,
+        allowNegative: true,
       }
     );
     if (outRes.error) {
@@ -312,4 +360,29 @@ export async function applyProductionSupply(
       quantity: n.gross_qty,
     })),
   };
+}
+
+/** Baixa componentes da BOM se o item ainda não foi abastecido (ex.: ao finalizar na linha). */
+export async function ensureProductionSupplyForFinish(
+  admin: Admin,
+  tenantId: string,
+  orderItemId: string,
+  userId?: string | null,
+  options?: Pick<ProductionSupplyOptions, "allowFinishedOrder">
+): Promise<ApplyProductionSupplyResult | { skipped: true }> {
+  const { data: row, error } = await admin
+    .from("order_items")
+    .select("warehouse_supplied_at")
+    .eq("id", orderItemId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!row) throw new Error("Item de produção não encontrado.");
+  if (row.warehouse_supplied_at) return { skipped: true };
+
+  return applyProductionSupply(admin, tenantId, orderItemId, userId, {
+    allowFinishedOrder: options?.allowFinishedOrder,
+    skipIfNoMaterials: true,
+  });
 }
