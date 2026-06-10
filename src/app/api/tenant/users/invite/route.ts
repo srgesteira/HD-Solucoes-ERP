@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         tenant_id: tenantId,
         email,
         full_name: parsed.data.full_name ?? null,
-        role: admin_all ? "admin" : "user",
+        role: admin_all ? "admin" : "member",
         is_active: true,
         enabled_modules,
         role_keys:

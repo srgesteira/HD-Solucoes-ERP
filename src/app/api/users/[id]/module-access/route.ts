@@ -89,9 +89,9 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     }
     enabled_modules = unionRoleModuleKeys([roleRow]);
     role_keys = [roleRow.role_key];
-    role = "user";
+    role = "member";
   } else if (parsed.data.enabled_modules) {
-    role = "user";
+    role = "member";
   }
 
   if (!enabled_modules) {
