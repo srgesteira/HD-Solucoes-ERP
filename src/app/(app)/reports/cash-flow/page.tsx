@@ -38,6 +38,7 @@ type CashFlowPayload = {
   series: SeriesRow[];
   summary: {
     horizon_days: number;
+    opening_balance?: number;
     total_projected_inflow: number;
     total_projected_outflow: number;
     negative_days: number;
@@ -206,7 +207,15 @@ export default function CashFlowReportPage() {
 
       {data ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Saldo inicial (hoje)</CardDescription>
+                <CardTitle className="text-lg">
+                  {fmtBrl(data.summary.opening_balance ?? 0)}
+                </CardTitle>
+              </CardHeader>
+            </Card>
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Entradas projectadas</CardDescription>

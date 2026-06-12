@@ -37,6 +37,11 @@ export const companySettingsUpdateSchema = z.object({
   default_ncm: z.string().max(32).nullable().optional(),
   default_payment_terms: z.string().max(200).nullable().optional(),
   default_delivery_days: z.coerce.number().int().min(0).max(3650).nullable().optional(),
+  cash_flow_opening_balance: z.coerce
+    .number()
+    .min(-999999999.99)
+    .max(999999999.99)
+    .optional(),
   das_aliquot: z.coerce.number().min(0).max(100).nullable().optional(),
   focusnfe_token: z.string().max(2000).nullable().optional(),
   focusnfe_environment: focusNFeEnvironmentEnum.optional(),

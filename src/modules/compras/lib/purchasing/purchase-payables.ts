@@ -103,6 +103,33 @@ function formatNoteDate(): string {
   return `${day}/${month}/${year}`;
 }
 
+export function buildPurchaseOrderPayableTargets(order: PurchaseOrderForPayables): {
+  amounts: number[];
+  dueDates: string[];
+  descriptions: string[];
+} {
+  const total = purchaseOrderPayableTotal(order);
+  const n = Math.max(1, Math.min(999, order.payment_installments ?? 1));
+  const amounts = total > 0 ? splitAmountInInstallments(total, n) : [];
+  const baseDate = order.order_date.slice(0, 10);
+  let due = addDaysToISODate(baseDate, order.payment_days_to_first_due ?? 30);
+  const dueDates: string[] = [];
+  const descriptions: string[] = [];
+
+  for (let i = 0; i < n; i++) {
+    if (i > 0) {
+      due = addDaysToISODate(
+        due,
+        order.payment_days_between_installments ?? 0
+      );
+    }
+    dueDates.push(due);
+    descriptions.push(`Parcela ${i + 1}/${n} — PC ${order.po_number}`);
+  }
+
+  return { amounts, dueDates, descriptions };
+}
+
 /** Monta linhas de parcelas (valores + datas) para um pedido. */
 export function buildPurchaseOrderPayableRows(
   tenantId: string,
@@ -112,19 +139,13 @@ export function buildPurchaseOrderPayableRows(
   if (total <= 0) return [];
 
   const n = Math.max(1, Math.min(999, order.payment_installments ?? 1));
-  const amounts = splitAmountInInstallments(total, n);
-  const baseDate = order.order_date.slice(0, 10);
-  let due = addDaysToISODate(baseDate, order.payment_days_to_first_due ?? 30);
+  const targets = buildPurchaseOrderPayableTargets(order);
   const rows: Database["public"]["Tables"]["accounts_payable"]["Insert"][] = [];
 
   for (let i = 0; i < n; i++) {
-    if (i > 0) {
-      due = addDaysToISODate(
-        due,
-        order.payment_days_between_installments ?? 0
-      );
-    }
-    const amt = amounts[i] ?? 0;
+    const amt = targets.amounts[i] ?? 0;
+    const due = targets.dueDates[i];
+    if (!due) continue;
     rows.push({
       tenant_id: tenantId,
       purchase_order_id: order.id,
@@ -132,7 +153,7 @@ export function buildPurchaseOrderPayableRows(
       installment_index: i + 1,
       is_forecast: false,
       amount_locked: false,
-      description: `Parcela ${i + 1}/${n} — PC ${order.po_number}`,
+      description: targets.descriptions[i] ?? `Parcela ${i + 1}/${n} — PC ${order.po_number}`,
       category: "Fornecedor",
       supplier_id: order.supplier_id,
       original_amount: amt,
@@ -192,14 +213,12 @@ export async function syncPayablesForPurchaseOrder(
     return { updated: 0, lockedSkipped: 0, warnings: [] };
   }
   const warnings: string[] = [];
-  const total = purchaseOrderPayableTotal(order);
-  const n = Math.max(1, Math.min(999, order.payment_installments ?? 1));
-  const targetAmounts = splitAmountInInstallments(total, n);
+  const targets = buildPurchaseOrderPayableTargets(order);
 
   const { data: existing, error: loadErr } = await admin
     .from("accounts_payable")
     .select(
-      "id, installment_index, original_amount, current_amount, status, amount_locked, notes"
+      "id, installment_index, original_amount, current_amount, status, amount_locked, notes, due_date"
     )
     .eq("tenant_id", tenantId)
     .eq("purchase_order_id", order.id)
@@ -218,8 +237,10 @@ export async function syncPayablesForPurchaseOrder(
 
   for (const row of existing) {
     const idx = (row.installment_index ?? 1) - 1;
-    const newAmt = targetAmounts[idx];
-    if (newAmt === undefined) continue;
+    const newAmt = targets.amounts[idx];
+    const newDue = targets.dueDates[idx];
+    const newDesc = targets.descriptions[idx];
+    if (newAmt === undefined || !newDue) continue;
 
     const orig = Number(row.original_amount ?? 0);
     const cur = Number(row.current_amount ?? 0);
@@ -227,9 +248,11 @@ export async function syncPayablesForPurchaseOrder(
 
     if (row.amount_locked) {
       lockedSkipped += 1;
-      if (Math.abs(newAmt - orig) > 0.001) {
+      const dueChanged =
+        row.due_date && newDue !== String(row.due_date).slice(0, 10);
+      if (Math.abs(newAmt - orig) > 0.001 || dueChanged) {
         warnings.push(
-          `Parcela ${row.installment_index ?? "?"} travada — valor do PC mudou para ${newAmt.toFixed(2)}, mantido ${orig.toFixed(2)}.`
+          `Parcela ${row.installment_index ?? "?"} travada — PC alterado; mantido valor ${orig.toFixed(2)} e vencimento ${String(row.due_date).slice(0, 10)}.`
         );
       }
       continue;
@@ -237,7 +260,9 @@ export async function syncPayablesForPurchaseOrder(
 
     if (row.status !== "pending" || hasPayment) {
       lockedSkipped += 1;
-      if (Math.abs(newAmt - orig) > 0.001) {
+      const dueChanged =
+        row.due_date && newDue !== String(row.due_date).slice(0, 10);
+      if (Math.abs(newAmt - orig) > 0.001 || dueChanged) {
         warnings.push(
           `Parcela ${row.installment_index ?? "?"} (${row.status}) não recalculada — requer decisão manual.`
         );
@@ -245,14 +270,24 @@ export async function syncPayablesForPurchaseOrder(
       continue;
     }
 
-    if (Math.abs(newAmt - orig) < 0.001) continue;
+    const dueChanged =
+      row.due_date && newDue !== String(row.due_date).slice(0, 10);
+    const amtChanged = Math.abs(newAmt - orig) > 0.001;
+
+    if (!amtChanged && !dueChanged) continue;
+
+    const patch: Database["public"]["Tables"]["accounts_payable"]["Update"] =
+      {};
+    if (amtChanged) {
+      patch.original_amount = newAmt;
+      patch.current_amount = newAmt;
+    }
+    if (dueChanged) patch.due_date = newDue;
+    if (newDesc) patch.description = newDesc;
 
     const { error } = await admin
       .from("accounts_payable")
-      .update({
-        original_amount: newAmt,
-        current_amount: newAmt,
-      })
+      .update(patch)
       .eq("id", row.id)
       .eq("tenant_id", tenantId);
 

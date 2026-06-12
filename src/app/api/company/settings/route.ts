@@ -223,6 +223,9 @@ export async function PUT(request: NextRequest) {
   if (b.default_delivery_days !== undefined) {
     updatePayload.default_delivery_days = b.default_delivery_days;
   }
+  if (b.cash_flow_opening_balance !== undefined) {
+    updatePayload.cash_flow_opening_balance = b.cash_flow_opening_balance;
+  }
   if (b.das_aliquot !== undefined) {
     updatePayload.das_aliquot = b.das_aliquot;
   }

@@ -29,6 +29,20 @@ export async function GET(request: NextRequest) {
   );
 
   const admin = createSupabaseAdminClient();
+
+  const { data: companyRow, error: companyErr } = await admin
+    .from("company_settings")
+    .select("cash_flow_opening_balance")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (companyErr) {
+    return apiError("Configurações da empresa: " + companyErr.message, 500);
+  }
+
+  const openingBalance = Number(companyRow?.cash_flow_opening_balance ?? 0);
+  const openingBalanceSafe = Number.isFinite(openingBalance) ? openingBalance : 0;
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const end = new Date(today);
@@ -114,7 +128,7 @@ export async function GET(request: NextRequest) {
     cumulative: number;
   }> = [];
 
-  let cumulative = 0;
+  let cumulative = openingBalanceSafe;
   for (let i = 0; i <= horizon; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() + i);
@@ -134,6 +148,7 @@ export async function GET(request: NextRequest) {
 
   const summary = {
     horizon_days: horizon,
+    opening_balance: Math.round(openingBalanceSafe * 100) / 100,
     total_projected_inflow: Math.round(
       series.reduce((s, x) => s + x.inflow, 0) * 100
     ) / 100,
@@ -147,6 +162,7 @@ export async function GET(request: NextRequest) {
     series,
     summary,
     meta: {
+      opening_balance_source: "company_settings.cash_flow_opening_balance",
       inflow_source: "receivables (pending/partial) por due_date",
       outflow_source:
         "accounts_payable (pending/partial) por due_date; PCs confirmados sem AP por expected_delivery",

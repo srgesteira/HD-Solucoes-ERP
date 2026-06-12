@@ -7,6 +7,7 @@ import { ENGINEERING_STATUS_PENDING } from "@/modules/engenharia/lib/products/en
 export const MENU_ALERT_PATHS = {
   purchasingOrders: "/purchasing/orders",
   products: "/products",
+  pcpPlanning: "/logistics/pcp",
   financePayables: "/finance/payables",
   financeReceivables: "/finance/receivables",
   financeCreditAnalysis: "/finance/credit-analysis",
@@ -31,6 +32,7 @@ export async function loadMenuAlerts(
     engenharia: boolean;
     faturamento: boolean;
     vendas: boolean;
+    pcp: boolean;
   }
 ): Promise<MenuAlertsMap> {
   const alerts: MenuAlertsMap = {};
@@ -128,6 +130,22 @@ export async function loadMenuAlerts(
           .eq("awaiting_commercial_finalize", true);
         if (!error && (count ?? 0) > 0) {
           alerts[MENU_ALERT_PATHS.salesQuotes] = count ?? 0;
+        }
+      })()
+    );
+  }
+
+  if (access.pcp) {
+    tasks.push(
+      (async () => {
+        const { count, error } = await admin
+          .from("sales_orders")
+          .select("*", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .eq("mrp_processed", false)
+          .in("status", ["pending", "confirmed", "in_production"]);
+        if (!error && (count ?? 0) > 0) {
+          alerts[MENU_ALERT_PATHS.pcpPlanning] = count ?? 0;
         }
       })()
     );

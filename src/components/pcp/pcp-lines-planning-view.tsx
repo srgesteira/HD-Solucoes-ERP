@@ -6,6 +6,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import type { PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
+import {
+  pcpPlanningQueryKey,
+  usePcpPlanningQuery,
+} from "@/hooks/use-pcp-planning";
 import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-production-status";
 import {
   fetchProductionLines,
@@ -20,19 +24,6 @@ import {
   ProductionScheduleConflictDialog,
   type ProductionScheduleConflict,
 } from "@/components/pcp/production-schedule-conflict-dialog";
-
-async function fetchPlanning(): Promise<{ orders: PcpPlanningOrder[] }> {
-  const res = await fetch("/api/pcp/planning", {
-    credentials: "include",
-    cache: "no-store",
-  });
-  const json = (await res.json().catch(() => ({}))) as {
-    orders?: PcpPlanningOrder[];
-    error?: string;
-  };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao carregar planeamento");
-  return { orders: Array.isArray(json.orders) ? json.orders : [] };
-}
 
 type Props = {
   /** Sem cabeçalho de página (uso na aba do PCP). */
@@ -58,10 +49,7 @@ export function PcpLinesPlanningView({
     conflict: ProductionScheduleConflict;
   } | null>(null);
 
-  const planningQ = useQuery({
-    queryKey: ["pcp-planning"],
-    queryFn: fetchPlanning,
-  });
+  const planningQ = usePcpPlanningQuery();
 
   const linesQ = useQuery({
     queryKey: ["production-lines"],
@@ -192,7 +180,7 @@ export function PcpLinesPlanningView({
         return;
       }
       setScheduleConflict(null);
-      void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+      void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
     },
     onError: (e) =>
       toast.error(e instanceof Error ? e.message : "Erro"),
@@ -211,7 +199,7 @@ export function PcpLinesPlanningView({
     },
     onSuccess: () => {
       toast.success("Produção iniciada.");
-      void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+      void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
     },
     onError: (e) =>
       toast.error(e instanceof Error ? e.message : "Erro"),
@@ -233,7 +221,7 @@ export function PcpLinesPlanningView({
     },
     onSuccess: () => {
       toast.success("Produção finalizada.");
-      void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+      void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
     },
     onError: (e) =>
       toast.error(e instanceof Error ? e.message : "Erro"),
@@ -320,7 +308,7 @@ export function PcpLinesPlanningView({
           toast.error(json.error ?? "Erro ao guardar observações");
           return;
         }
-        void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+        void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
       }}
       onStartProduction={(orderItemId) => startMut.mutate(orderItemId)}
       onFinishProduction={(orderItemId) => finishMut.mutate(orderItemId)}
@@ -362,7 +350,7 @@ export function PcpLinesPlanningView({
           { force: true, override_note: "Ajuste automático por PC entrega" }
         ).then(() => {
           setScheduleConflict(null);
-          void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+          void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
           toast.success("Produção reprogramada.");
         });
       }}
@@ -380,7 +368,7 @@ export function PcpLinesPlanningView({
           { force: true, override_note: note }
         ).then(() => {
           setScheduleConflict(null);
-          void qc.invalidateQueries({ queryKey: ["pcp-planning"] });
+          void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
           toast.message("Data mantida com justificativa registada.");
         });
       }}

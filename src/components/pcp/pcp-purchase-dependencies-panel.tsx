@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
-import type { PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
+import { usePcpPlanningQuery } from "@/hooks/use-pcp-planning";
 import { formatPcpDate } from "@/modules/pcp/lib/pcp-order-display";
 import {
   SortableTable,
@@ -19,19 +18,6 @@ type DependencyRow = {
   max_pc: string | null;
   risk: string | null;
 };
-
-async function fetchPlanning(): Promise<{ orders: PcpPlanningOrder[] }> {
-  const res = await fetch("/api/pcp/planning", {
-    credentials: "include",
-    cache: "no-store",
-  });
-  const json = (await res.json().catch(() => ({}))) as {
-    orders?: PcpPlanningOrder[];
-    error?: string;
-  };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao carregar");
-  return { orders: json.orders ?? [] };
-}
 
 function riskIcon(risk: string | null | undefined) {
   if (risk === "critical")
@@ -51,10 +37,7 @@ function riskSortLabel(risk: string | null): string {
 }
 
 export function PcpPurchaseDependenciesPanel() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["pcp-planning"],
-    queryFn: fetchPlanning,
-  });
+  const { data, isLoading, error } = usePcpPlanningQuery();
 
   const rows = useMemo(() => {
     const out: DependencyRow[] = [];
