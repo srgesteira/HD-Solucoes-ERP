@@ -16,11 +16,12 @@ export async function GET() {
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
-  const [compras, engenharia, faturamento, vendas] = await Promise.all([
+  const [compras, engenharia, faturamento, vendas, pcp] = await Promise.all([
     currentUserCanMenuModule("compras"),
     currentUserCanMenuModule("engenharia"),
     currentUserCanMenuModule("faturamento"),
     currentUserCanMenuModule("vendas"),
+    currentUserCanMenuModule("pcp"),
   ]);
 
   const admin = createSupabaseAdminClient();
@@ -29,6 +30,7 @@ export async function GET() {
     engenharia,
     faturamento,
     vendas,
+    pcp,
   });
 
   return apiOk({ alerts });
