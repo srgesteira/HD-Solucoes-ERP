@@ -36,6 +36,23 @@ type Props = {
   onCreated?: (supplier: SupplierOption) => void;
 };
 
+async function findSupplierByCode(
+  code: string
+): Promise<SupplierOption | null> {
+  const res = await fetch(
+    `/api/purchasing/suppliers?search=${encodeURIComponent(code)}&limit=100`,
+    { credentials: "include" }
+  );
+  if (!res.ok) return null;
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: SupplierOption[];
+  };
+  const normalized = code.trim().toUpperCase();
+  return (
+    json.data?.find((s) => s.code.trim().toUpperCase() === normalized) ?? null
+  );
+}
+
 export function SupplierQuickCreateModal({
   open,
   onOpenChange,
@@ -71,12 +88,18 @@ export function SupplierQuickCreateModal({
 
   const addressLine = formatSupplierAddressLine(form);
 
+  const finishWithSupplier = (supplier: SupplierOption, message: string) => {
+    onCreated?.(supplier);
+    toast.success(message);
+    onOpenChange(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = form.code.trim();
     const name = form.name.trim();
     if (!code || !name) {
-      setError("CÃ³digo e nome sÃ£o obrigatÃ³rios.");
+      setError("Código e nome são obrigatórios.");
       return;
     }
     const docDigits = onlyDigits(form.document);
@@ -85,7 +108,7 @@ export function SupplierQuickCreateModal({
       docDigits.length !== 11 &&
       docDigits.length !== 14
     ) {
-      setError("Documento incompleto (CPF 11 ou CNPJ 14 dÃ­gitos).");
+      setError("Documento incompleto (CPF 11 ou CNPJ 14 dígitos).");
       return;
     }
     if (docDigits.length === 11 || docDigits.length === 14) {
@@ -116,10 +139,26 @@ export function SupplierQuickCreateModal({
         data?: SupplierOption;
         error?: string;
       };
+
+      if (res.status === 409) {
+        const existing = await findSupplierByCode(code);
+        if (existing) {
+          finishWithSupplier(
+            existing,
+            `Fornecedor «${existing.name}» já cadastrado — selecionado.`
+          );
+          return;
+        }
+        throw new Error(
+          json.error ??
+            "Já existe um fornecedor com este código. Altere o código ou escolha o fornecedor na lista."
+        );
+      }
+
       if (!res.ok) {
         throw new Error(json.error ?? "Erro ao criar fornecedor");
       }
-      if (!json.data?.id) throw new Error("Resposta invÃ¡lida ao criar fornecedor");
+      if (!json.data?.id) throw new Error("Resposta inválida ao criar fornecedor");
 
       const created: SupplierOption = {
         id: json.data.id,
@@ -130,9 +169,7 @@ export function SupplierQuickCreateModal({
         phone: json.data.phone ?? null,
         is_active: json.data.is_active ?? true,
       };
-      onCreated?.(created);
-      toast.success(`Fornecedor Â«${created.name}Â» criado.`);
-      onOpenChange(false);
+      finishWithSupplier(created, `Fornecedor «${created.name}» criado.`);
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Erro ao criar fornecedor.";
@@ -178,13 +215,13 @@ export function SupplierQuickCreateModal({
                 id="sqc-name"
                 value={form.name}
                 onChange={(e) => setField("name", e.target.value)}
-                placeholder="RazÃ£o social"
+                placeholder="Razão social"
                 required
                 disabled={busy}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="sqc-code">CÃ³digo *</Label>
+              <Label htmlFor="sqc-code">Código *</Label>
               <Input
                 id="sqc-code"
                 value={form.code}
@@ -211,7 +248,7 @@ export function SupplierQuickCreateModal({
 
           {addressLine ? (
             <p className="text-xs text-slate-600 rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
-              <span className="font-medium text-slate-700">EndereÃ§o: </span>
+              <span className="font-medium text-slate-700">Endereço: </span>
               {addressLine}
             </p>
           ) : null}
@@ -255,4 +292,3 @@ export function SupplierQuickCreateModal({
     </div>
   );
 }
-
