@@ -38,7 +38,8 @@ export async function GET(request: NextRequest) {
     .from("receivables")
     .select("id, due_date, current_amount, status, client_name")
     .eq("tenant_id", tenantId)
-    .in("status", ["pending", "partial"]);
+    .in("status", ["pending", "partial"])
+    .eq("is_forecast", false);
 
   if (rErr) {
     return apiError("Recebíveis: " + rErr.message, 500);

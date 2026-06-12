@@ -13,8 +13,12 @@ import {
 
 type Admin = SupabaseClient<Database>;
 
-/** Pedidos de venda visíveis no planeamento PCP. */
-export const PCP_SALES_ORDER_STATUSES = ["confirmed", "in_production"] as const;
+/** Pedidos de venda visíveis no planeamento PCP (incl. pending recém-convertidos). */
+export const PCP_SALES_ORDER_STATUSES = [
+  "pending",
+  "confirmed",
+  "in_production",
+] as const;
 
 export type PcpPlanningItem = {
   id: string;
