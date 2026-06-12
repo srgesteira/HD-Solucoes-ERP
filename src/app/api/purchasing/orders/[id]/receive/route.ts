@@ -7,7 +7,7 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
-import { applyPurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive";
+import { finalizePurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive-finalize";
 
 export const dynamic = "force-dynamic";
 
@@ -58,26 +58,12 @@ export async function POST(_request: NextRequest, { params }: Params) {
   }
 
   try {
-    const result = await applyPurchaseOrderReceive(admin, tenantId, id);
-    const { data, error } = await admin
-      .from("purchase_orders")
-      .update({
-        status: "received",
-        actual_delivery: new Date().toISOString().slice(0, 10),
-      })
-      .eq("id", id)
-      .eq("tenant_id", tenantId)
-      .select()
-      .maybeSingle();
-
-    if (error) {
-      return apiError(
-        "Erro ao finalizar recebimento: " + error.message,
-        supabaseErrorToHttp(error.code)
-      );
-    }
-
-    return apiOk({ data, receive: result });
+    const { order, receive } = await finalizePurchaseOrderReceive(
+      admin,
+      tenantId,
+      id
+    );
+    return apiOk({ data: order, receive });
   } catch (err) {
     return apiError(
       err instanceof Error ? err.message : "Erro ao processar recebimento.",

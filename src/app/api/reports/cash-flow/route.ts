@@ -14,8 +14,7 @@ function dayKey(iso: string | null | undefined): string | null {
 
 /**
  * GET /api/reports/cash-flow?horizon=90
- * Projeção simplificada: entradas (receivables pendentes/parciais por vencimento) vs
- * saídas (pedidos de compra confirmados por data prevista de entrega ou data do pedido).
+ * Projeção: entradas (receivables por vencimento) vs saídas (AP por due_date + PCs confirmados sem AP).
  */
 export async function GET(request: NextRequest) {
   const gate = await assertFinanceOrReportsAccess();
@@ -45,6 +44,16 @@ export async function GET(request: NextRequest) {
     return apiError("Recebíveis: " + rErr.message, 500);
   }
 
+  const { data: payables, error: apErr } = await admin
+    .from("accounts_payable")
+    .select("id, due_date, current_amount, status")
+    .eq("tenant_id", tenantId)
+    .in("status", ["pending", "partial"]);
+
+  if (apErr) {
+    return apiError("Contas a pagar: " + apErr.message, 500);
+  }
+
   const { data: pos, error: pErr } = await admin
     .from("purchase_orders")
     .select("id, total, status, expected_delivery, order_date, po_number")
@@ -66,7 +75,28 @@ export async function GET(request: NextRequest) {
   }
 
   const outByDay = new Map<string, number>();
+  const poIdsWithAp = new Set<string>();
+
+  for (const ap of payables ?? []) {
+    const k = dayKey(ap.due_date);
+    if (!k) continue;
+    const amt = Number(ap.current_amount ?? 0);
+    if (!Number.isFinite(amt) || amt <= 0) continue;
+    outByDay.set(k, (outByDay.get(k) ?? 0) + amt);
+  }
+
+  const { data: apPoLinks } = await admin
+    .from("accounts_payable")
+    .select("purchase_order_id")
+    .eq("tenant_id", tenantId)
+    .not("purchase_order_id", "is", null);
+
+  for (const row of apPoLinks ?? []) {
+    if (row.purchase_order_id) poIdsWithAp.add(row.purchase_order_id);
+  }
+
   for (const p of pos ?? []) {
+    if (poIdsWithAp.has(p.id)) continue;
     const k =
       dayKey(p.expected_delivery) ?? dayKey(p.order_date);
     if (!k) continue;
@@ -117,7 +147,8 @@ export async function GET(request: NextRequest) {
     summary,
     meta: {
       inflow_source: "receivables (pending/partial) por due_date",
-      outflow_source: "purchase_orders (confirmed) por expected_delivery ou order_date",
+      outflow_source:
+        "accounts_payable (pending/partial) por due_date; PCs confirmados sem AP por expected_delivery",
     },
   });
 }

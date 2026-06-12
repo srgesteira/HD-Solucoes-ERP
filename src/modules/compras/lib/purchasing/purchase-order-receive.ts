@@ -181,3 +181,10 @@ export function previewLandedUnitCostForItem(
     }
   );
 }
+
+/** Alias do plano de consolidação — custo + entrada por delta no recebimento. */
+export { applyPurchaseOrderReceive as applyPurchaseInboundCost };
+export {
+  finalizePurchaseOrderReceive,
+  type FinalizePurchaseOrderReceiveResult,
+} from "./purchase-order-receive-finalize";

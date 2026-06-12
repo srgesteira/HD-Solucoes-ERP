@@ -10,7 +10,7 @@ import {
 } from "@/modules/core/lib/tenant";
 import type { Database } from "@/modules/core/types/database";
 import { computePurchaseOrderTotal, num } from "@/modules/compras/lib/purchasing/purchase-order-totals";
-import { applyPurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive";
+import { finalizePurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive-finalize";
 import {
   canEditPurchaseOrderItems,
   syncPurchaseOrderItems,
@@ -521,7 +521,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   if (transitioningToReceived) {
     try {
-      const receive = await applyPurchaseOrderReceive(admin, tenantId, id);
+      const { receive } = await finalizePurchaseOrderReceive(
+        admin,
+        tenantId,
+        id
+      );
       const { data: detail } = await admin
         .from("purchase_orders")
         .select(ORDER_DETAIL_SELECT)

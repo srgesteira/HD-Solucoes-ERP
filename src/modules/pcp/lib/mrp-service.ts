@@ -3,6 +3,11 @@ import { nextPurchaseOrderNumber } from "@/modules/compras/lib/purchasing/purcha
 import {
   computePurchaseNeedDate,
 } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
+import {
+  fetchProductAvailabilityMap,
+  roundInventoryQty,
+  shortageFromAvailability,
+} from "@/modules/almoxarifado/lib/inventory-availability";
 import type { Database } from "@/modules/core/types/database";
 
 type Admin = SupabaseClient<Database>;
@@ -14,8 +19,12 @@ export type MaterialRequirement = {
   needed: number;
   quantity_on_hand: number;
   reserved_quantity: number;
+  quantity_in_production: number;
+  quantity_incoming: number;
   available: number;
   shortage: number;
+  /** Comparação dry-run: max(0, needed − quantity_on_hand) sem futuro/produção */
+  shortage_legacy?: number;
 };
 
 /** Necessidade bruta por matéria (após explosão da BOM). */
@@ -255,9 +264,8 @@ export async function calculateNeededMaterials(
 }
 
 /**
- * Necessidade líquida para compra/MRP: `needed` (bruto da BOM) menos apenas o stock
- * físico (`quantity_on_hand`). Sem registo em `inventory` ⇒ stock 0.
- * Falta = max(0, needed − quantity_on_hand) — com estoque inicial zero, falta = needed.
+ * Necessidade líquida para compra/MRP com 4 estados:
+ * disponível = real + futuro + em_produção − empenho; shortage = max(0, needed − disponível).
  */
 export async function getNetRequirements(
   admin: Admin,
@@ -269,22 +277,11 @@ export async function getNetRequirements(
   const productIds = [...new Set(gross.map((g) => g.product_id))];
   const needMap = new Map(gross.map((g) => [g.product_id, g.gross_qty]));
 
-  const { data: invRows } = await admin
-    .from("inventory")
-    .select("product_id, quantity_on_hand, reserved_quantity")
-    .eq("tenant_id", tenantId)
-    .in("product_id", productIds);
-
-  const invMap = new Map<
-    string,
-    { quantity_on_hand: number; reserved_quantity: number }
-  >();
-  for (const r of invRows ?? []) {
-    invMap.set(r.product_id, {
-      quantity_on_hand: Number(r.quantity_on_hand ?? 0),
-      reserved_quantity: Number(r.reserved_quantity ?? 0),
-    });
-  }
+  const availabilityMap = await fetchProductAvailabilityMap(
+    admin,
+    tenantId,
+    productIds
+  );
 
   const { data: prods, error: pErr } = await admin
     .from("products")
@@ -298,11 +295,22 @@ export async function getNetRequirements(
   for (const pid of productIds) {
     const neededRaw = needMap.get(pid) ?? 0;
     const needed = round4(neededRaw);
-    const inv = invMap.get(pid);
-    const quantity_on_hand = inv?.quantity_on_hand ?? 0;
-    const reserved_quantity = inv?.reserved_quantity ?? 0;
-    const shortage = round4(Math.max(0, needed - quantity_on_hand));
-    const available = round4(Math.max(0, quantity_on_hand - reserved_quantity));
+    const avail = availabilityMap.get(pid);
+    const quantity_on_hand = avail?.quantity_on_hand ?? 0;
+    const reserved_quantity = avail?.reserved_quantity ?? 0;
+    const quantity_in_production = avail?.quantity_in_production ?? 0;
+    const quantity_incoming = avail?.quantity_incoming ?? 0;
+    const available = avail?.available ?? 0;
+    const shortage = roundInventoryQty(shortageFromAvailability(needed, avail ?? {
+      product_id: pid,
+      quantity_on_hand: 0,
+      reserved_quantity: 0,
+      quantity_in_production: 0,
+      quantity_incoming: 0,
+      available: 0,
+      shortage_legacy_on_hand_only: (n) => round4(Math.max(0, n)),
+    }));
+    const shortage_legacy = round4(Math.max(0, needed - quantity_on_hand));
     const p = prodById.get(pid);
     out.push({
       product_id: pid,
@@ -311,8 +319,11 @@ export async function getNetRequirements(
       needed,
       quantity_on_hand: round4(quantity_on_hand),
       reserved_quantity: round4(reserved_quantity),
-      available,
+      quantity_in_production: round4(quantity_in_production),
+      quantity_incoming: round4(quantity_incoming),
+      available: round4(available),
       shortage,
+      shortage_legacy,
     });
   }
 
@@ -1067,8 +1078,11 @@ export async function processMrpForSalesOrder(
 
     const shortages = requirements.filter((m) => m.shortage > 0.0001);
 
-    const stockOnHand = await getStockOnHand(admin, tenantId, row.product_id);
-    if (!row.production_order_id && stockOnHand >= qty - 0.0001) {
+    const fgAvail = await fetchProductAvailabilityMap(admin, tenantId, [
+      row.product_id,
+    ]);
+    const fgSupply = fgAvail.get(row.product_id)?.available ?? 0;
+    if (!row.production_order_id && fgSupply >= qty - 0.0001) {
       const { error: pickErr } = await admin.from("picking_suggestions").insert({
         tenant_id: tenantId,
         sales_order_id: salesOrderId,

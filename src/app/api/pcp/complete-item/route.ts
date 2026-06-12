@@ -5,18 +5,11 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
-import { maybeMarkSalesOrderReadyForInvoice } from "@/modules/vendas/lib/sales/sales-order-ready-for-invoice";
+import { finishProductionOrderItem } from "@/modules/producao/lib/finish-production-item";
 
 export const dynamic = "force-dynamic";
 
-const todayIso = () => {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}T12:00:00.000Z`;
-};
-
+/** Legado PCP — delega ao handler unificado de finalização. */
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -44,40 +37,25 @@ export async function POST(request: NextRequest) {
   if (!orderItemId) return apiError("order_item_id é obrigatório", 400);
 
   const admin = createSupabaseAdminClient();
-  const { data: existing } = await admin
-    .from("order_items")
-    .select("id, production_start, production_end")
-    .eq("id", orderItemId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-
-  if (!existing) return apiError("Item de produção não encontrado", 404);
-
-  const now = todayIso();
-  const { data, error } = await admin
-    .from("order_items")
-    .update({
-      production_start: existing.production_start ?? now,
-      production_end: now,
-      status: "completed",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", orderItemId)
-    .eq("tenant_id", tenantId)
-    .select("id, production_start, production_end, status")
-    .maybeSingle();
-
-  if (error) return apiError(error.message, 400);
-  if (!data) return apiError("Item de produção não encontrado", 404);
 
   try {
-    await maybeMarkSalesOrderReadyForInvoice(admin, tenantId, orderItemId);
-  } catch (syncErr) {
-    console.warn(
-      "[complete-item] Falha ao sincronizar ready_for_invoice:",
-      syncErr instanceof Error ? syncErr.message : syncErr
-    );
+    const result = await finishProductionOrderItem(admin, tenantId, {
+      orderItemId,
+      userId: user.id,
+      legacyProductionDates: true,
+    });
+    return apiOk({
+      id: result.order_item.id,
+      production_start: result.order_item.production_start,
+      production_end: result.order_item.production_end,
+      status: result.order_item.status,
+      supply: result.supply,
+      inventory: result.inventory,
+    });
+  } catch (e) {
+    const err = e as Error & { code?: string };
+    const status =
+      err.message.includes("já foi finalizado") ? 400 : err.code ? 403 : 500;
+    return apiError(err.message, status, err.code ? { code: err.code } : undefined);
   }
-
-  return apiOk(data);
 }
