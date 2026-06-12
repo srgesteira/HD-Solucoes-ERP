@@ -5,10 +5,7 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanProductionApontamento } from "@/modules/producao/lib/production-api-auth";
-import { assertCanFinishProduction } from "@/modules/producao/lib/line-apontamento";
-import { resolveLineApontamentoStatus } from "@/modules/producao/lib/line-apontamento";
-import { applyProductionFinishInbound } from "@/modules/almoxarifado/lib/production-finish-inventory";
-import { ensureProductionSupplyForFinish } from "@/modules/almoxarifado/lib/production-supply";
+import { finishProductionOrderItem } from "@/modules/producao/lib/finish-production-item";
 
 export const dynamic = "force-dynamic";
 
@@ -51,75 +48,27 @@ export async function POST(request: NextRequest) {
 
   const admin = createSupabaseAdminClient();
 
-  const { data: existing } = await admin
-    .from("order_items")
-    .select(
-      "id, apontamento_start_at, apontamento_end_at, completed_at, status, is_suggestion, warehouse_supplied_at"
-    )
-    .eq("id", orderItemId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-
-  if (!existing) return apiError("Item de produção não encontrado", 404);
-  if (existing.is_suggestion) {
-    return apiError("Não é possível apontar numa sugestão do MRP.", 400);
-  }
-
-  const apontStatus = resolveLineApontamentoStatus(existing);
-  if (apontStatus === "finished") {
-    return apiError("Este item já foi finalizado.", 400);
-  }
-  if (apontStatus === "not_started") {
-    return apiError("Inicie a produção antes de finalizar.", 400);
-  }
-
-  const gate = await assertCanFinishProduction(admin, tenantId, orderItemId);
-  if (!gate.allowed) {
-    return apiError(gate.reason, 403, { code: gate.code });
-  }
-
-  let supply: Awaited<ReturnType<typeof ensureProductionSupplyForFinish>>;
-  let inbound: Awaited<ReturnType<typeof applyProductionFinishInbound>>;
   try {
-    supply = await ensureProductionSupplyForFinish(
-      admin,
-      tenantId,
+    const result = await finishProductionOrderItem(admin, tenantId, {
       orderItemId,
-      user.id
-    );
-    inbound = await applyProductionFinishInbound(
-      admin,
-      tenantId,
-      orderItemId,
-      user.id
-    );
+      userId: user.id,
+      qualityControl,
+      notes,
+    });
+    return apiOk({
+      ...result.order_item,
+      supply: result.supply,
+      inventory: result.inventory,
+    });
   } catch (e) {
-    return apiError(
-      e instanceof Error ? e.message : "Erro ao actualizar estoque da produção",
-      500
-    );
+    const err = e as Error & { code?: string };
+    const status =
+      err.message.includes("já foi finalizado") ||
+      err.message.includes("Inicie a produção")
+        ? 400
+        : err.code
+          ? 403
+          : 500;
+    return apiError(err.message, status, err.code ? { code: err.code } : undefined);
   }
-
-  const now = new Date().toISOString();
-
-  const { data, error } = await admin
-    .from("order_items")
-    .update({
-      apontamento_end_at: now,
-      completed_at: now,
-      quality_control: qualityControl,
-      production_notes: notes,
-      status: "completed",
-    })
-    .eq("id", orderItemId)
-    .eq("tenant_id", tenantId)
-    .select(
-      "id, apontamento_start_at, apontamento_end_at, quality_control, production_notes, completed_at"
-    )
-    .maybeSingle();
-
-  if (error) return apiError(error.message, 400);
-  if (!data) return apiError("Item de produção não encontrado", 404);
-
-  return apiOk({ ...data, supply, inventory: inbound });
 }

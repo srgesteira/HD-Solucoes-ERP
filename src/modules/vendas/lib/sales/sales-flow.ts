@@ -393,7 +393,8 @@ export async function generateReceivablesForSalesOrder(
     payment_installments: number;
     payment_days_to_first_due: number;
     payment_days_between_installments: number;
-  }
+  },
+  options?: { provisional?: boolean }
 ): Promise<{ error?: string }> {
   if (order.total <= 0) return {};
 
@@ -433,6 +434,9 @@ export async function generateReceivablesForSalesOrder(
       status: "pending" as const,
       client_name: order.client_name,
       client_document: order.client_document,
+      installment_index: i + 1,
+      source_kind: "sales_order",
+      is_forecast: options?.provisional === true,
     });
   }
 

@@ -30,6 +30,10 @@ import {
 } from "@/modules/vendas/lib/sales/sales-order-change-log";
 import { parseSaleLines } from "@/modules/vendas/lib/sales/sales-flow";
 import {
+  ensureReceivablesSyncedForSalesOrder,
+  salesOrderRowToReceivablesInput,
+} from "@/modules/vendas/lib/sales/sales-receivables";
+import {
   hardDeleteSalesOrder,
   salesOrderHasAssociatedOrderItems,
 } from "@/modules/vendas/lib/sales/delete-sales-order";
@@ -512,6 +516,55 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const detailRow = asSalesOrderDetail(detail);
   if (dErr || !detailRow) return apiOk({ data: detail });
+
+  try {
+    const recvSync = await ensureReceivablesSyncedForSalesOrder(
+      admin,
+      tenantId,
+      salesOrderRowToReceivablesInput({
+        id: detailRow.id,
+        order_number: String(detailRow.order_number ?? ""),
+        order_date: String(detailRow.order_date ?? ""),
+        total: Number(detailRow.total ?? 0),
+        client_name: String(detailRow.client_name ?? ""),
+        client_document:
+          typeof detailRow.client_document === "string"
+            ? detailRow.client_document
+            : null,
+        payment_installments:
+          typeof detailRow.payment_installments === "number"
+            ? detailRow.payment_installments
+            : null,
+        payment_days_to_first_due:
+          typeof detailRow.payment_days_to_first_due === "number"
+            ? detailRow.payment_days_to_first_due
+            : null,
+        payment_days_between_installments:
+          typeof detailRow.payment_days_between_installments === "number"
+            ? detailRow.payment_days_between_installments
+            : null,
+      }),
+      {
+        total:
+          updateData.total !== undefined ||
+          itemsReplaced,
+        payment_installments: updateData.payment_installments !== undefined,
+        payment_days_to_first_due:
+          updateData.payment_days_to_first_due !== undefined,
+        payment_days_between_installments:
+          updateData.payment_days_between_installments !== undefined,
+        order_date: updateData.order_date !== undefined,
+      }
+    );
+    if (recvSync?.warnings.length) {
+      console.warn("[sales-order] sync receivables:", recvSync.warnings.join(" "));
+    }
+  } catch (syncErr) {
+    console.warn(
+      "[sales-order] Falha ao sincronizar recebíveis:",
+      syncErr instanceof Error ? syncErr.message : syncErr
+    );
+  }
 
   const guard = await getSalesOrderEditGuard(admin, tenantId, {
     id: detailRow.id,

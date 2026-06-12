@@ -13,8 +13,12 @@ import {
 
 type Admin = SupabaseClient<Database>;
 
-/** Pedidos de venda visíveis no planeamento PCP. */
-export const PCP_SALES_ORDER_STATUSES = ["confirmed", "in_production"] as const;
+/** Pedidos de venda visíveis no planeamento PCP (incl. pending recém-convertidos). */
+export const PCP_SALES_ORDER_STATUSES = [
+  "pending",
+  "confirmed",
+  "in_production",
+] as const;
 
 export type PcpPlanningItem = {
   id: string;
@@ -247,12 +251,36 @@ export async function fetchPcpPlanning(
 
   const result: PcpPlanningOrder[] = [];
 
-  for (const so of ordersList) {
-    const { data: items, error: iErr } = await admin
+  type SoItemRow = {
+    id: string;
+    sales_order_id: string;
+    line_number: number;
+    description: string;
+    quantity: number;
+    product_id: string | null;
+    production_order_id: string | null;
+    pcp_deadline: string | null;
+    product: {
+      id: string;
+      technical_code: string | null;
+      name: string | null;
+      type: string | null;
+      product_nature: string | null;
+      has_composition: boolean | null;
+      default_production_line_id: string | null;
+    } | null;
+  };
+
+  const itemsByOrderId = new Map<string, SoItemRow[]>();
+  const allSoItemIds: string[] = [];
+
+  if (orderIds.length) {
+    const { data: allItems, error: allItemsErr } = await admin
       .from("sales_order_items")
       .select(
         `
         id,
+        sales_order_id,
         line_number,
         description,
         quantity,
@@ -271,148 +299,157 @@ export async function fetchPcpPlanning(
       `
       )
       .eq("tenant_id", tenantId)
-      .eq("sales_order_id", so.id)
+      .in("sales_order_id", orderIds)
       .order("line_number", { ascending: true });
 
-    if (iErr) throw new Error(iErr.message);
+    if (allItemsErr) throw new Error(allItemsErr.message);
 
-    const itemIds = (items ?? []).map((r) => r.id);
-
-    const oiBySalesItem = new Map<
-      string,
-      {
-        id: string;
-        line_id: string | null;
-        status: string | null;
-        production_start: string | null;
-        production_end: string | null;
-        apontamento_start_at: string | null;
-        apontamento_end_at: string | null;
-        completed_at: string | null;
-        quality_control: string | null;
-        production_notes: string | null;
-        pcp_deadline: string | null;
-      }
-    >();
-
-    if (itemIds.length) {
-      const { data: oiRows, error: oiErr } = await admin
-        .from("order_items")
-        .select(
-          "id, sales_order_item_id, line_id, status, production_start, production_end, apontamento_start_at, apontamento_end_at, completed_at, quality_control, production_notes, pcp_deadline"
-        )
-        .eq("tenant_id", tenantId)
-        .eq("is_suggestion", false)
-        .in("sales_order_item_id", itemIds);
-      if (oiErr) throw new Error(oiErr.message);
-      for (const oi of oiRows ?? []) {
-        if (!oi.sales_order_item_id) continue;
-        oiBySalesItem.set(oi.sales_order_item_id, {
-          id: oi.id,
-          line_id: oi.line_id,
-          status: oi.status,
-          production_start: oi.production_start,
-          production_end: oi.production_end,
-          apontamento_start_at: oi.apontamento_start_at ?? null,
-          apontamento_end_at: oi.apontamento_end_at ?? null,
-          completed_at: oi.completed_at ?? null,
-          quality_control: oi.quality_control ?? null,
-          production_notes: oi.production_notes ?? null,
-          pcp_deadline: dateOnly(oi.pcp_deadline),
-        });
-      }
+    for (const row of (allItems ?? []) as unknown as SoItemRow[]) {
+      allSoItemIds.push(row.id);
+      const list = itemsByOrderId.get(row.sales_order_id) ?? [];
+      list.push(row);
+      itemsByOrderId.set(row.sales_order_id, list);
     }
+  }
 
-    const poiBySalesItem = new Map<
-      string,
-      {
-        id: string;
-        purchase_order_id: string | null;
-        quantity: number;
-        received_quantity: number;
-        status: string | null;
-        expected_delivery: string | null;
-        max_delivery: string | null;
-      }
-    >();
-
-    if (itemIds.length) {
-      const { data: poiRows, error: poiErr } = await admin
-        .from("purchase_order_items")
-        .select(
-          "id, sales_order_item_id, purchase_order_id, quantity, received_quantity, expected_delivery_date, follow_up_date, actual_delivery_date, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(status, expected_delivery)"
-        )
-        .eq("tenant_id", tenantId)
-        .eq("is_suggestion", false)
-        .in("sales_order_item_id", itemIds);
-      if (poiErr) throw new Error(poiErr.message);
-
-      for (const row of poiRows ?? []) {
-        if (!row.sales_order_item_id) continue;
-        const po = Array.isArray(row.purchase_order)
-          ? row.purchase_order[0]
-          : row.purchase_order;
-        if (po?.status === "cancelled") continue;
-
-        const lineDate =
-          dateOnly(row.actual_delivery_date) ??
-          dateOnly(row.expected_delivery_date) ??
-          dateOnly(row.follow_up_date) ??
-          (po ? dateOnly(po.expected_delivery) : null);
-
-        const existing = poiBySalesItem.get(row.sales_order_item_id);
-        const maxDelivery =
-          !lineDate
-            ? existing?.max_delivery ?? null
-            : !existing?.max_delivery || lineDate > existing.max_delivery
-              ? lineDate
-              : existing.max_delivery;
-
-        const useRowAsPrimary =
-          !existing ||
-          (!existing.purchase_order_id && row.purchase_order_id);
-
-        poiBySalesItem.set(row.sales_order_item_id, {
-          id: useRowAsPrimary ? row.id : existing!.id,
-          purchase_order_id: useRowAsPrimary
-            ? row.purchase_order_id
-            : existing!.purchase_order_id,
-          quantity: Number(row.quantity ?? 0),
-          received_quantity: Number(row.received_quantity ?? 0),
-          status:
-            po?.status ??
-            (row.purchase_order_id ? existing?.status ?? null : "draft"),
-          expected_delivery: maxDelivery ?? existing?.expected_delivery ?? null,
-          max_delivery: maxDelivery,
-        });
-      }
+  const oiBySalesItem = new Map<
+    string,
+    {
+      id: string;
+      line_id: string | null;
+      status: string | null;
+      production_start: string | null;
+      production_end: string | null;
+      apontamento_start_at: string | null;
+      apontamento_end_at: string | null;
+      completed_at: string | null;
+      quality_control: string | null;
+      production_notes: string | null;
+      pcp_deadline: string | null;
     }
+  >();
 
-    const opIds = [
-      ...new Set(
-        (items ?? [])
-          .map((r) => r.production_order_id)
-          .filter((id): id is string => Boolean(id))
-      ),
-    ];
-    const opById = new Map<string, { order_number: string }>();
-    if (opIds.length) {
-      const { data: prRows, error: prErr } = await admin
-        .from("production_orders")
-        .select("id, order_number")
-        .eq("tenant_id", tenantId)
-        .eq("is_suggestion", false)
-        .in("id", opIds);
-      if (prErr) throw new Error(prErr.message);
-      for (const p of prRows ?? []) {
-        opById.set(p.id, { order_number: p.order_number });
-      }
+  if (allSoItemIds.length) {
+    const { data: oiRows, error: oiErr } = await admin
+      .from("order_items")
+      .select(
+        "id, sales_order_item_id, line_id, status, production_start, production_end, apontamento_start_at, apontamento_end_at, completed_at, quality_control, production_notes, pcp_deadline"
+      )
+      .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
+      .in("sales_order_item_id", allSoItemIds);
+    if (oiErr) throw new Error(oiErr.message);
+    for (const oi of oiRows ?? []) {
+      if (!oi.sales_order_item_id) continue;
+      oiBySalesItem.set(oi.sales_order_item_id, {
+        id: oi.id,
+        line_id: oi.line_id,
+        status: oi.status,
+        production_start: oi.production_start,
+        production_end: oi.production_end,
+        apontamento_start_at: oi.apontamento_start_at ?? null,
+        apontamento_end_at: oi.apontamento_end_at ?? null,
+        completed_at: oi.completed_at ?? null,
+        quality_control: oi.quality_control ?? null,
+        production_notes: oi.production_notes ?? null,
+        pcp_deadline: dateOnly(oi.pcp_deadline),
+      });
     }
+  }
 
+  const poiBySalesItem = new Map<
+    string,
+    {
+      id: string;
+      purchase_order_id: string | null;
+      quantity: number;
+      received_quantity: number;
+      status: string | null;
+      expected_delivery: string | null;
+      max_delivery: string | null;
+    }
+  >();
+
+  if (allSoItemIds.length) {
+    const { data: poiRows, error: poiErr } = await admin
+      .from("purchase_order_items")
+      .select(
+        "id, sales_order_item_id, purchase_order_id, quantity, received_quantity, expected_delivery_date, follow_up_date, actual_delivery_date, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(status, expected_delivery)"
+      )
+      .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
+      .in("sales_order_item_id", allSoItemIds);
+    if (poiErr) throw new Error(poiErr.message);
+
+    for (const row of poiRows ?? []) {
+      if (!row.sales_order_item_id) continue;
+      const po = Array.isArray(row.purchase_order)
+        ? row.purchase_order[0]
+        : row.purchase_order;
+      if (po?.status === "cancelled") continue;
+
+      const lineDate =
+        dateOnly(row.actual_delivery_date) ??
+        dateOnly(row.expected_delivery_date) ??
+        dateOnly(row.follow_up_date) ??
+        (po ? dateOnly(po.expected_delivery) : null);
+
+      const existing = poiBySalesItem.get(row.sales_order_item_id);
+      const maxDelivery =
+        !lineDate
+          ? existing?.max_delivery ?? null
+          : !existing?.max_delivery || lineDate > existing.max_delivery
+            ? lineDate
+            : existing.max_delivery;
+
+      const useRowAsPrimary =
+        !existing ||
+        (!existing.purchase_order_id && row.purchase_order_id);
+
+      poiBySalesItem.set(row.sales_order_item_id, {
+        id: useRowAsPrimary ? row.id : existing!.id,
+        purchase_order_id: useRowAsPrimary
+          ? row.purchase_order_id
+          : existing!.purchase_order_id,
+        quantity: Number(row.quantity ?? 0),
+        received_quantity: Number(row.received_quantity ?? 0),
+        status:
+          po?.status ??
+          (row.purchase_order_id ? existing?.status ?? null : "draft"),
+        expected_delivery: maxDelivery ?? existing?.expected_delivery ?? null,
+        max_delivery: maxDelivery,
+      });
+    }
+  }
+
+  const allOpIds = [
+    ...new Set(
+      [...itemsByOrderId.values()]
+        .flat()
+        .map((r) => r.production_order_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+  const opById = new Map<string, { order_number: string }>();
+  if (allOpIds.length) {
+    const { data: prRows, error: prErr } = await admin
+      .from("production_orders")
+      .select("id, order_number")
+      .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
+      .in("id", allOpIds);
+    if (prErr) throw new Error(prErr.message);
+    for (const p of prRows ?? []) {
+      opById.set(p.id, { order_number: p.order_number });
+    }
+  }
+
+  for (const so of ordersList) {
+    const items = itemsByOrderId.get(so.id) ?? [];
     const orderPcp = dateOnly(so.pcp_deadline);
     const itemRows: PcpPlanningItem[] = [];
 
-    for (const row of items ?? []) {
+    for (const row of items) {
       const prod = row.product as {
         technical_code?: string;
         name?: string;

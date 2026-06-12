@@ -31,6 +31,16 @@ export async function GET(request: NextRequest) {
   }
 
   const productId = request.nextUrl.searchParams.get("product_id")?.trim();
+  const page = Math.max(
+    1,
+    parseInt(request.nextUrl.searchParams.get("page") ?? "1", 10) || 1
+  );
+  const pageSize = Math.min(
+    200,
+    Math.max(10, parseInt(request.nextUrl.searchParams.get("page_size") ?? "50", 10) || 50)
+  );
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
 
   const admin = createSupabaseAdminClient();
   let q = admin
@@ -39,16 +49,18 @@ export async function GET(request: NextRequest) {
       `
       *,
       product:products!inventory_product_id_fkey(id, name, technical_code, unit, type)
-    `.trim()
+    `.trim(),
+      { count: "exact" }
     )
     .eq("tenant_id", tenantId)
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .range(from, to);
 
   if (productId) {
     q = q.eq("product_id", productId);
   }
 
-  const { data, error } = await q;
+  const { data, error, count } = await q;
 
   if (error) {
     return apiError(
@@ -57,7 +69,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return apiOk({ data: data ?? [] });
+  return apiOk({
+    data: data ?? [],
+    pagination: {
+      page,
+      page_size: pageSize,
+      total: count ?? 0,
+      total_pages: count ? Math.ceil(count / pageSize) : 0,
+    },
+  });
 }
 
 /** POST /api/inventory — ajuste de saldo com movimento no extrato (admin) */
