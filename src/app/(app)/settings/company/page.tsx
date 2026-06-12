@@ -90,6 +90,7 @@ function emptyDraft(): Partial<CompanyRow> {
     default_ncm: "84213990",
     default_payment_terms: "30 dias",
     default_delivery_days: 30,
+    cash_flow_opening_balance: 0,
       das_aliquot: null,
       focusnfe_token: "",
       focusnfe_environment: "homologacao",
@@ -218,6 +219,11 @@ export default function CompanySettingsPage() {
         d.default_delivery_days != null ?
           Math.floor(Number(d.default_delivery_days))
         : null,
+      cash_flow_opening_balance:
+        d.cash_flow_opening_balance != null &&
+        Number.isFinite(Number(d.cash_flow_opening_balance))
+          ? Number(d.cash_flow_opening_balance)
+          : 0,
       das_aliquot:
         d.tax_regime === "simples_nacional" &&
         d.das_aliquot != null &&
@@ -1049,6 +1055,34 @@ export default function CompanySettingsPage() {
                         }))
                       }
                     />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="cash_flow_opening_balance">
+                      Saldo inicial — projeção de fluxo de caixa (R$)
+                    </Label>
+                    <Input
+                      id="cash_flow_opening_balance"
+                      type="number"
+                      step="0.01"
+                      value={
+                        draft.cash_flow_opening_balance != null ?
+                          String(draft.cash_flow_opening_balance)
+                        : "0"
+                      }
+                      onChange={(e) =>
+                        setDraft((d) => ({
+                          ...d,
+                          cash_flow_opening_balance:
+                            e.target.value === "" ?
+                              0
+                            : Number(e.target.value),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-slate-500">
+                      Usado em Relatórios → Fluxo de caixa projetado como ponto
+                      de partida do saldo acumulado.
+                    </p>
                   </div>
                 </div>
               </CardContent>
