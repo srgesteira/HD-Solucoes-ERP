@@ -144,6 +144,13 @@ const MENU_STRUCTURE: NavEntry[] = [
         anyOf: ["logistics", "purchasing"],
       },
       {
+        title: "Fornecedores",
+        href: "/purchasing/suppliers",
+        icon: Users,
+        module: "logistics",
+        anyOf: ["logistics", "purchasing"],
+      },
+      {
         title: "Almoxarifado",
         href: "/logistics/warehouse",
         icon: Warehouse,
