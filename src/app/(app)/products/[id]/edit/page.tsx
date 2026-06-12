@@ -20,6 +20,7 @@ import {
 } from "@/components/products/product-form-fields";
 import { ProductCostHistoryTable } from "@/components/products/product-cost-history-table";
 import { ProductCompositionPanel } from "@/components/products/product-composition-panel";
+import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/products/prefix-classification";
@@ -556,9 +557,22 @@ export default function EditProductPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">
-              Editar produto
-            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold text-slate-900">
+                Editar produto
+              </h1>
+              {productRaw ? (
+                <ProductLifecycleBadge
+                  prefix_code={prefixCode || null}
+                  product_nature={productRaw.product_nature}
+                  has_composition={productRaw.has_composition}
+                  released_for_sale={productRaw.released_for_sale}
+                  engineering_workflow_status={
+                    productRaw.engineering_workflow_status
+                  }
+                />
+              ) : null}
+            </div>
             {formData.technical_code ? (
               <p className="mt-1 text-sm font-mono text-slate-600">
                 {formData.technical_code}
