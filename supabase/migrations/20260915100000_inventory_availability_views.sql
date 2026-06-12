@@ -1,4 +1,5 @@
 -- Views só-leitura: saldo futuro e em produção por produto (fatia 1 — fundação 4 estados).
+-- security_invoker = true (PG15+): respeita RLS das tabelas base por tenant.
 
 CREATE OR REPLACE VIEW public.v_product_qty_in_production AS
 SELECT
@@ -14,6 +15,8 @@ WHERE oi.is_suggestion = false
   AND oi.status <> 'completed'
   AND po.status IN ('imported', 'planning', 'in_production', 'ready', 'delayed')
 GROUP BY oi.tenant_id, oi.product_id;
+
+ALTER VIEW public.v_product_qty_in_production SET (security_invoker = true);
 
 COMMENT ON VIEW public.v_product_qty_in_production IS
   'Qty de acabados/semi em produção (OP activa, item não finalizado).';
@@ -32,6 +35,8 @@ WHERE poi.product_id IS NOT NULL
   AND po.is_suggestion = false
   AND po.status IN ('confirmed', 'partial', 'sent')
 GROUP BY poi.tenant_id, poi.product_id;
+
+ALTER VIEW public.v_product_qty_incoming SET (security_invoker = true);
 
 COMMENT ON VIEW public.v_product_qty_incoming IS
   'Qty pendente de recebimento em PCs abertos (saldo futuro).';
