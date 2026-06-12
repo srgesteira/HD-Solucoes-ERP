@@ -8,6 +8,11 @@ import {
   roundInventoryQty,
   shortageFromAvailability,
 } from "@/modules/almoxarifado/lib/inventory-availability";
+import {
+  grossNeedsFromGraph,
+  loadBomGraph,
+  type BomGraph,
+} from "@/modules/pcp/lib/bom-graph";
 import type { Database } from "@/modules/core/types/database";
 
 type Admin = SupabaseClient<Database>;
@@ -118,7 +123,7 @@ function round4(n: number): number {
   return Math.round((n + Number.EPSILON) * 10000) / 10000;
 }
 
-/** Verifica se o produto tem pelo menos uma linha em `product_components` (BOM). */
+/** Fallback legado — só quando grafo não foi pré-carregado. */
 async function productHasBom(
   admin: Admin,
   tenantId: string,
@@ -141,8 +146,7 @@ async function productHasBom(
 }
 
 /**
- * Explosão BOM: componente **com** BOM → desce um nível; **sem** BOM → necessidade de compra.
- * Produto sem BOM na raiz → compra do próprio produto.
+ * Explosão BOM via grafo em memória (preferencial) ou fallback async legado.
  */
 async function collectMaterialNeeds(
   admin: Admin,
@@ -151,8 +155,17 @@ async function collectMaterialNeeds(
   multiplier: number,
   acc: Map<string, number>,
   stack: Set<string>,
-  bomCache: Map<string, boolean>
+  bomCache: Map<string, boolean>,
+  graph?: BomGraph | null
 ): Promise<void> {
+  if (graph) {
+    const partial = grossNeedsFromGraph(graph, productId, multiplier);
+    for (const [pid, q] of partial) {
+      acc.set(pid, round4((acc.get(pid) ?? 0) + q));
+    }
+    return;
+  }
+
   if (stack.has(productId)) return;
   stack.add(productId);
 
@@ -181,7 +194,16 @@ async function collectMaterialNeeds(
 
     const childHasBom = await productHasBom(admin, tenantId, cid, bomCache);
     if (childHasBom) {
-      await collectMaterialNeeds(admin, tenantId, cid, q, acc, stack, bomCache);
+      await collectMaterialNeeds(
+        admin,
+        tenantId,
+        cid,
+        q,
+        acc,
+        stack,
+        bomCache,
+        null
+      );
     } else {
       const cur = acc.get(cid) ?? 0;
       acc.set(cid, round4(cur + q));
@@ -200,8 +222,8 @@ export async function calculateNeededMaterialsForProductQty(
 ): Promise<GrossMaterialNeed[]> {
   const qty = Number(quantity ?? 0);
   if (!Number.isFinite(qty) || qty <= 0) return [];
+  const graph = await loadBomGraph(admin, tenantId);
   const needs = new Map<string, number>();
-  const bomCache = new Map<string, boolean>();
   await collectMaterialNeeds(
     admin,
     tenantId,
@@ -209,7 +231,8 @@ export async function calculateNeededMaterialsForProductQty(
     qty,
     needs,
     new Set(),
-    bomCache
+    new Map(),
+    graph
   );
   return [...needs.entries()].map(([product_id, gross_qty]) => ({
     product_id,
@@ -240,7 +263,7 @@ export async function calculateNeededMaterials(
   if (itErr) throw new Error(itErr.message);
 
   const needs = new Map<string, number>();
-  const bomCache = new Map<string, boolean>();
+  const graph = await loadBomGraph(admin, tenantId);
   for (const it of items ?? []) {
     const pid = it.product_id;
     if (!pid) continue;
@@ -253,7 +276,8 @@ export async function calculateNeededMaterials(
       qty,
       needs,
       new Set(),
-      bomCache
+      new Map(),
+      graph
     );
   }
 
@@ -947,7 +971,7 @@ export async function processMrpForSalesOrder(
   }
 
   const results: MrpLineResult[] = [];
-  const bomCache = new Map<string, boolean>();
+  const bomGraph = await loadBomGraph(admin, tenantId);
   const orderNumber = String(so.order_number ?? "");
   const orderPcpDate =
     so.pcp_deadline != null
@@ -989,12 +1013,7 @@ export async function processMrpForSalesOrder(
       continue;
     }
 
-    const hasBom = await productHasBom(
-      admin,
-      tenantId,
-      row.product_id,
-      bomCache
-    );
+    const hasBom = bomGraph.hasBom(row.product_id);
 
     const linePcpDate =
       row.pcp_deadline != null
@@ -1359,7 +1378,7 @@ export async function processMrpForStockProductionOrder(
   if (itemErr) throw new Error(itemErr.message);
 
   const lines: MrpStockLineResult[] = [];
-  const bomCache = new Map<string, boolean>();
+  const bomGraph = await loadBomGraph(admin, tenantId);
 
   for (const row of itemRows ?? []) {
     const itemNumber = Number(row.item_number ?? lines.length + 1);
@@ -1383,12 +1402,7 @@ export async function processMrpForStockProductionOrder(
       continue;
     }
 
-    const hasBom = await productHasBom(
-      admin,
-      tenantId,
-      row.product_id,
-      bomCache
-    );
+    const hasBom = bomGraph.hasBom(row.product_id);
     if (!hasBom) {
       lineRes.skipped_reason = "Produto sem BOM — sem materiais para requisitar.";
       lines.push(lineRes);
