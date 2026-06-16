@@ -23,6 +23,7 @@ import {
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { meCanManageEngineeringProducts } from "@/modules/engenharia/lib/engineering-product-access";
+import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductPrefixTabs } from "@/components/products/product-prefix-tabs";
 import { ProductRowActionsMenu } from "@/components/products/product-row-actions-menu";
 
@@ -36,8 +37,11 @@ interface ProductRow {
   technical_code: string | null;
   cost_price: number;
   is_active: boolean;
+  product_nature?: string | null;
+  has_composition?: boolean;
   engineering_workflow_status?: string | null;
   released_for_sale?: boolean;
+  prefix?: { code?: string | null } | { code?: string | null }[] | null;
 }
 
 interface ProductsApiResponse {
@@ -287,20 +291,26 @@ export default function ProductsPage() {
         width: "w-[24%]",
         accessor: (row) => row.name,
         truncate: false,
-        render: (row) => {
-          const pendingStructure =
-            row.engineering_workflow_status === "pending_composition";
-          return (
-            <>
-              <span className="text-slate-800 line-clamp-2">{row.name}</span>
-              {pendingStructure ? (
-                <span className="mt-1 block text-xs font-medium text-amber-800">
-                  Aguarda estrutura (comercial)
-                </span>
-              ) : null}
-            </>
-          );
-        },
+        render: (row) => (
+          <span className="text-slate-800 line-clamp-2">{row.name}</span>
+        ),
+      },
+      {
+        key: "lifecycle",
+        label: "Ciclo",
+        type: "text",
+        width: "w-[14%]",
+        accessor: (row) => row.product_nature ?? row.type,
+        truncate: false,
+        render: (row) => (
+          <ProductLifecycleBadge
+            prefix={row.prefix}
+            product_nature={row.product_nature}
+            has_composition={row.has_composition}
+            released_for_sale={row.released_for_sale}
+            engineering_workflow_status={row.engineering_workflow_status}
+          />
+        ),
       },
       {
         key: "type",
