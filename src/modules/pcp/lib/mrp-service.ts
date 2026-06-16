@@ -893,6 +893,8 @@ async function upsertPurchaseRequisition(
 export type ProcessMrpForSalesOrderOptions = {
   /** Se false e `confirm`, cria só a OP e o item de produção (sem PCs por rastreio). */
   createTracePurchaseOrders?: boolean;
+  /** Grafo BOM pré-carregado (evita N queries no MRP em lote). */
+  bomGraph?: BomGraph;
 };
 
 /**
@@ -971,7 +973,7 @@ export async function processMrpForSalesOrder(
   }
 
   const results: MrpLineResult[] = [];
-  const bomGraph = await loadBomGraph(admin, tenantId);
+  const bomGraph = options?.bomGraph ?? (await loadBomGraph(admin, tenantId));
   const orderNumber = String(so.order_number ?? "");
   const orderPcpDate =
     so.pcp_deadline != null
@@ -1588,6 +1590,7 @@ export async function runMrpForOpenSalesOrders(
   const { data: orders, error } = await orderQuery;
   if (error) throw new Error(error.message);
 
+  const bomGraph = await loadBomGraph(admin, tenantId);
   const out: MrpProcessResult[] = [];
   const errors: MrpBatchSummary["errors"] = [];
 
@@ -1598,7 +1601,8 @@ export async function runMrpForOpenSalesOrders(
         tenantId,
         userId,
         o.id,
-        confirm
+        confirm,
+        { bomGraph }
       );
       const worthShowing = r.lines.some(
         (l) =>

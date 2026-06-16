@@ -24,8 +24,8 @@ export function useMenuAlerts() {
   return useQuery({
     queryKey: menuAlertsQueryKey,
     queryFn: fetchMenuAlerts,
-    refetchInterval: 60_000,
-    staleTime: 45_000,
+    refetchInterval: 180_000,
+    staleTime: 120_000,
     retry: 1,
   });
 }

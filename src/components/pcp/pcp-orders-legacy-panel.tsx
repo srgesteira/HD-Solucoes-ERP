@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, CircleAlert } from "lucide-react";
+import { ReadyForInvoiceCompositeBadge } from "@/components/fiscal/fiscal-status-badge";
 import type { PcpPlanningItem, PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
 import {
   effectiveOrderProductionDeadline,
@@ -308,10 +309,11 @@ export function PcpOrdersLegacyPanel({
                           : "Finalizar pedido"}
                       </button>
                     ) : null}
-                    {order.order_source === "sales" && order.ready_for_invoice ? (
-                      <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium bg-teal-100 text-teal-900">
-                        Lib. faturamento
-                      </span>
+                    {order.order_source === "sales" ? (
+                      <ReadyForInvoiceCompositeBadge
+                        readyForInvoice={order.ready_for_invoice === true}
+                        fiscalStatus={order.fiscal_status ?? "no_rules"}
+                      />
                     ) : null}
                     {order.order_source === "stock" && isOrderPcpClosed(order) ? (
                       <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium bg-teal-100 text-teal-900">

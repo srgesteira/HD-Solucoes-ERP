@@ -172,6 +172,7 @@ export default function SalesOrdersListPage() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: salesOrdersQueryKey(queryFilters),
     queryFn: () => fetchSalesOrders(queryFilters),
+    staleTime: 60_000,
   });
 
   const [cancelTarget, setCancelTarget] = useState<SalesOrderListRow | null>(

@@ -199,6 +199,7 @@ export default function ProductsPage() {
   const prefixCodesQuery = useQuery({
     queryKey: ["product-prefix-codes"],
     queryFn: fetchPrefixCodes,
+    staleTime: 120_000,
   });
 
   useEffect(() => {
@@ -211,6 +212,7 @@ export default function ProductsPage() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: productsQueryKey(filters),
     queryFn: () => fetchProducts(filters),
+    staleTime: 60_000,
   });
 
   const [deactivateTarget, setDeactivateTarget] = useState<ProductRow | null>(

@@ -33,6 +33,7 @@ import {
   Percent,
   PieChart,
   Send,
+  Scale,
   Settings,
   ShoppingBag,
   ShoppingCart,
@@ -424,6 +425,12 @@ const MENU_STRUCTURE: NavEntry[] = [
         title: "BDI precificação",
         href: "/settings/bdi",
         icon: Percent,
+        module: "settings",
+      },
+      {
+        title: "Regras fiscais",
+        href: "/settings/fiscal-rules",
+        icon: Scale,
         module: "settings",
       },
       {

@@ -76,6 +76,7 @@ export type PcpPlanningOrder = {
   status: string;
   order_source: "sales" | "stock";
   ready_for_invoice: boolean;
+  fiscal_status: string;
   /** Prazo prometido ao cliente (`sales_orders.expected_delivery`). */
   expected_delivery: string | null;
   /** Alias legado — mesmo valor que `expected_delivery`. */
@@ -181,6 +182,7 @@ export async function fetchPcpPlanning(
       created_at,
       status,
       ready_for_invoice,
+      fiscal_status,
       expected_delivery,
       pcp_deadline,
       quote_id,
@@ -577,6 +579,8 @@ export async function fetchPcpPlanning(
       status: so.status,
       order_source: "sales",
       ready_for_invoice: so.ready_for_invoice === true,
+      fiscal_status:
+        typeof so.fiscal_status === "string" ? so.fiscal_status : "no_rules",
       /** Coluna «Prazo Vendas» — valor directo de `sales_orders.expected_delivery`. */
       expected_delivery: expectedDelivery,
       /** Farol / comparações quando o pedido ainda não tem prazo gravado. */
@@ -784,6 +788,7 @@ async function fetchStockOrdersForPlanning(
       status: op.status,
       order_source: "stock",
       ready_for_invoice: false,
+      fiscal_status: "no_rules",
       expected_delivery: null,
       delivery_deadline: null,
       pcp_deadline: dateOnly(op.pcp_deadline),

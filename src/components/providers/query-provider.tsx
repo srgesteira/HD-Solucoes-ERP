@@ -9,7 +9,7 @@ import { useState, type ReactNode } from "react";
 
 const defaultOptions: DefaultOptions = {
   queries: {
-    staleTime: 30 * 1000,
+    staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     retry: 1,
