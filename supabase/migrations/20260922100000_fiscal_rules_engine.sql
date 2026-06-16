@@ -208,10 +208,39 @@ BEGIN
   END IF;
 END $$;
 
--- Garante constraint mesmo se a coluna já existia sem CHECK (drift de schema).
+-- Remove CHECK legado (ex.: só pending/ready_to_invoice) antes de normalizar valores.
 ALTER TABLE public.sales_orders
   DROP CONSTRAINT IF EXISTS sales_orders_fiscal_status_check;
 
+ALTER TABLE public.purchase_orders
+  DROP CONSTRAINT IF EXISTS purchase_orders_fiscal_status_check;
+
+-- Normaliza valores legados/drift (ex.: ready_to_invoice na coluna fantasma).
+UPDATE public.sales_orders
+SET fiscal_status = 'no_rules'
+WHERE fiscal_status IS NULL
+   OR fiscal_status NOT IN (
+     'pending',
+     'no_rules',
+     'rules_applied',
+     'manual_override',
+     'review_required',
+     'approved'
+   );
+
+UPDATE public.purchase_orders
+SET fiscal_status = 'no_rules'
+WHERE fiscal_status IS NULL
+   OR fiscal_status NOT IN (
+     'pending',
+     'no_rules',
+     'rules_applied',
+     'manual_override',
+     'review_required',
+     'approved'
+   );
+
+-- Garante constraint com enum definitivo.
 ALTER TABLE public.sales_orders
   ADD CONSTRAINT sales_orders_fiscal_status_check CHECK (
     fiscal_status IN (
@@ -223,9 +252,6 @@ ALTER TABLE public.sales_orders
       'approved'
     )
   );
-
-ALTER TABLE public.purchase_orders
-  DROP CONSTRAINT IF EXISTS purchase_orders_fiscal_status_check;
 
 ALTER TABLE public.purchase_orders
   ADD CONSTRAINT purchase_orders_fiscal_status_check CHECK (
