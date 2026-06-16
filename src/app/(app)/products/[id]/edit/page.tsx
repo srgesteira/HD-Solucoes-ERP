@@ -20,6 +20,7 @@ import {
 } from "@/components/products/product-form-fields";
 import { ProductCostHistoryTable } from "@/components/products/product-cost-history-table";
 import { ProductCompositionPanel } from "@/components/products/product-composition-panel";
+import { ProductDocumentsPanel } from "@/components/products/product-documents-panel";
 import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
@@ -192,10 +193,12 @@ async function updateProduct(
   return json;
 }
 
-type EditTab = "basics" | "composition";
+type EditTab = "basics" | "composition" | "documents";
 
 function tabFromSearchParam(value: string | null): EditTab {
-  return value === "composition" ? "composition" : "basics";
+  if (value === "composition") return "composition";
+  if (value === "documents") return "documents";
+  return "basics";
 }
 
 export default function EditProductPage() {
@@ -609,6 +612,7 @@ export default function EditProductPage() {
           <TabsList className="w-full sm:w-auto">
             <TabsTrigger value="basics">Informações básicas</TabsTrigger>
             <TabsTrigger value="composition">Composição</TabsTrigger>
+            <TabsTrigger value="documents">Documentos</TabsTrigger>
           </TabsList>
 
           <TabsContent value="basics" className="space-y-6 mt-4">
@@ -784,6 +788,10 @@ export default function EditProductPage() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="documents" className="mt-4">
+            {productId ? <ProductDocumentsPanel productId={productId} /> : null}
           </TabsContent>
         </Tabs>
 

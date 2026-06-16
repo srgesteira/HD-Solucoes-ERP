@@ -2165,6 +2165,85 @@ export type Database = {
           },
         ]
       }
+      product_documents: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_size_bytes: number | null
+          id: string
+          is_active: boolean
+          kind: string
+          mime_type: string | null
+          name: string
+          notes: string | null
+          product_id: string
+          revision: string
+          storage_path: string
+          tenant_id: string
+          updated_at: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_size_bytes?: number | null
+          id?: string
+          is_active?: boolean
+          kind: string
+          mime_type?: string | null
+          name: string
+          notes?: string | null
+          product_id: string
+          revision?: string
+          storage_path: string
+          tenant_id: string
+          updated_at?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_size_bytes?: number | null
+          id?: string
+          is_active?: boolean
+          kind?: string
+          mime_type?: string | null
+          name?: string
+          notes?: string | null
+          product_id?: string
+          revision?: string
+          storage_path?: string
+          tenant_id?: string
+          updated_at?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_documents_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_subfamilies: {
         Row: {
           code: string
