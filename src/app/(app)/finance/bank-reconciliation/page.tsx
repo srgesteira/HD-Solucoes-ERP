@@ -13,6 +13,7 @@ import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
+import { BankMatchModal } from "@/components/finance/bank-match-modal";
 import { formatBrl } from "@/shared/utils/format-brl";
 
 type ImportRow = {
@@ -21,6 +22,19 @@ type ImportRow = {
   file_format: string;
   imported_at: string;
   status: string;
+};
+
+type MatchedReceivable = {
+  id: string;
+  client_name: string | null;
+  document_number: string | null;
+  current_amount: number;
+};
+
+type MatchedPayable = {
+  id: string;
+  description: string;
+  current_amount: number;
 };
 
 type StatementLine = {
@@ -32,7 +46,31 @@ type StatementLine = {
   match_status: string;
   matched_receivable_id: string | null;
   matched_payable_id: string | null;
+  matched_receivable?: MatchedReceivable | MatchedReceivable[] | null;
+  matched_payable?: MatchedPayable | MatchedPayable[] | null;
 };
+
+function embedOne<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+function matchLabel(line: StatementLine): string {
+  if (line.match_status === "matched") {
+    const recv = embedOne(line.matched_receivable);
+    const pay = embedOne(line.matched_payable);
+    if (recv) {
+      return (
+        [recv.client_name, recv.document_number].filter(Boolean).join(" · ") ||
+        "Recebível"
+      );
+    }
+    if (pay) return pay.description || "Conta a pagar";
+    return "Conciliado";
+  }
+  if (line.match_status === "ignored") return "Ignorado";
+  return "Pendente";
+}
 
 async function fetchImports(): Promise<ImportRow[]> {
   const res = await fetch("/api/finance/bank-imports", {
@@ -66,6 +104,8 @@ export default function BankReconciliationPage() {
   const [uploading, setUploading] = useState(false);
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
   const [matching, setMatching] = useState(false);
+  const [matchLineId, setMatchLineId] = useState<string | null>(null);
+  const [matchBusy, setMatchBusy] = useState(false);
 
   const query = useQuery({
     queryKey: ["bank-imports"],
@@ -77,6 +117,70 @@ export default function BankReconciliationPage() {
     queryFn: () => fetchLines(selectedImportId!),
     enabled: Boolean(selectedImportId),
   });
+
+  async function invalidateLines() {
+    await qc.invalidateQueries({
+      queryKey: ["bank-import-lines", selectedImportId],
+    });
+  }
+
+  async function postMatch(
+    lineId: string,
+    body: { kind: string; target_id?: string }
+  ) {
+    const res = await fetch(
+      `/api/finance/bank-statement-lines/${lineId}/match`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) throw new Error(json.error ?? "Erro");
+  }
+
+  async function ignoreLine(lineId: string) {
+    try {
+      await postMatch(lineId, { kind: "ignore" });
+      toast.success("Linha ignorada.");
+      await invalidateLines();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    }
+  }
+
+  async function unmatchLine(lineId: string) {
+    try {
+      await postMatch(lineId, { kind: "unmatch" });
+      toast.success("Conciliação removida.");
+      await invalidateLines();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    }
+  }
+
+  async function confirmManualMatch(candidate: {
+    id: string;
+    kind: "receivable" | "payable";
+  }) {
+    if (!matchLineId) return;
+    setMatchBusy(true);
+    try {
+      await postMatch(matchLineId, {
+        kind: candidate.kind,
+        target_id: candidate.id,
+      });
+      toast.success("Linha conciliada.");
+      setMatchLineId(null);
+      await invalidateLines();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setMatchBusy(false);
+    }
+  }
 
   const importColumns: SortableTableColumn<ImportRow>[] = [
     {
@@ -115,33 +219,34 @@ export default function BankReconciliationPage() {
   ];
 
   const lineColumns: SortableTableColumn<StatementLine>[] = [
-      {
-        key: "transaction_date",
-        label: "Data",
-        type: "date",
-        accessor: (r) => r.transaction_date,
-      },
-      {
-        key: "amount",
-        label: "Valor",
-        type: "number",
-        accessor: (r) => r.amount,
-        render: (r) => (
-          <span className="tabular-nums">{formatBrl(r.amount)}</span>
-        ),
-      },
-      {
-        key: "description",
-        label: "Descrição",
-        type: "text",
-        accessor: (r) => r.description ?? "",
-      },
-      {
-        key: "match_status",
-        label: "Conciliação",
-        type: "text",
-        accessor: (r) => r.match_status,
-        render: (r) => (
+    {
+      key: "transaction_date",
+      label: "Data",
+      type: "date",
+      accessor: (r) => r.transaction_date,
+    },
+    {
+      key: "amount",
+      label: "Valor",
+      type: "number",
+      accessor: (r) => r.amount,
+      render: (r) => (
+        <span className="tabular-nums">{formatBrl(r.amount)}</span>
+      ),
+    },
+    {
+      key: "description",
+      label: "Descrição",
+      type: "text",
+      accessor: (r) => r.description ?? "",
+    },
+    {
+      key: "match_status",
+      label: "Conciliação",
+      type: "text",
+      accessor: (r) => matchLabel(r),
+      render: (r) => (
+        <div>
           <span
             className={
               r.match_status === "matched"
@@ -151,51 +256,55 @@ export default function BankReconciliationPage() {
                   : "text-amber-700"
             }
           >
-            {r.match_status}
+            {matchLabel(r)}
           </span>
-        ),
-      },
-      {
-        key: "actions",
-        label: "",
-        type: "text",
-        accessor: () => "",
-        render: (r) =>
-          r.match_status === "unmatched" ? (
+        </div>
+      ),
+    },
+    {
+      key: "actions",
+      label: "",
+      type: "text",
+      accessor: () => "",
+      render: (r) => (
+        <div className="flex flex-wrap gap-1 justify-end">
+          {r.match_status === "unmatched" && r.amount !== 0 ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => setMatchLineId(r.id)}
+              >
+                Conciliar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs"
+                onClick={() => void ignoreLine(r.id)}
+              >
+                Ignorar
+              </Button>
+            </>
+          ) : null}
+          {r.match_status === "matched" || r.match_status === "ignored" ? (
             <Button
               type="button"
               size="sm"
               variant="ghost"
               className="h-7 text-xs"
-              onClick={() => void ignoreLine(r.id)}
+              onClick={() => void unmatchLine(r.id)}
             >
-              Ignorar
+              Desfazer
             </Button>
-          ) : null,
-      },
-    ];
-
-  async function ignoreLine(lineId: string) {
-    try {
-      const res = await fetch(
-        `/api/finance/bank-statement-lines/${lineId}/match`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: "ignore" }),
-        }
-      );
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Erro");
-      toast.success("Linha ignorada.");
-      await qc.invalidateQueries({
-        queryKey: ["bank-import-lines", selectedImportId],
-      });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro");
-    }
-  }
+          ) : null}
+        </div>
+      ),
+    },
+  ];
 
   async function onUpload() {
     if (!fileName.trim() || !content.trim()) {
@@ -251,15 +360,17 @@ export default function BankReconciliationPage() {
       toast.success(
         `${json.matched ?? 0} conciliadas · ${json.unmatched ?? 0} pendentes`
       );
-      await qc.invalidateQueries({
-        queryKey: ["bank-import-lines", selectedImportId],
-      });
+      await invalidateLines();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
     } finally {
       setMatching(false);
     }
   }
+
+  const lines = linesQuery.data ?? [];
+  const matchedCount = lines.filter((l) => l.match_status === "matched").length;
+  const pendingCount = lines.filter((l) => l.match_status === "unmatched").length;
 
   return (
     <AppPage
@@ -324,11 +435,18 @@ export default function BankReconciliationPage() {
 
       {selectedImportId ? (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Link2 className="h-4 w-4" />
-              Linhas do extrato
-            </CardTitle>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Link2 className="h-4 w-4" />
+                Linhas do extrato
+              </CardTitle>
+              {lines.length > 0 ? (
+                <p className="text-xs text-slate-500 mt-1">
+                  {matchedCount} conciliadas · {pendingCount} pendentes
+                </p>
+              ) : null}
+            </div>
             <Button
               type="button"
               size="sm"
@@ -343,7 +461,7 @@ export default function BankReconciliationPage() {
           <CardContent>
             <SortableTable
               columns={lineColumns}
-              data={linesQuery.data ?? []}
+              data={lines}
               getRowKey={(r) => r.id}
               isLoading={linesQuery.isLoading}
               emptyMessage="Nenhuma linha nesta importação."
@@ -352,6 +470,14 @@ export default function BankReconciliationPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <BankMatchModal
+        open={Boolean(matchLineId)}
+        lineId={matchLineId}
+        busy={matchBusy}
+        onClose={() => setMatchLineId(null)}
+        onMatch={(c) => void confirmManualMatch(c)}
+      />
     </AppPage>
   );
 }

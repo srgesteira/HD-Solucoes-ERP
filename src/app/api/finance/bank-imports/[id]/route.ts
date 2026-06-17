@@ -30,7 +30,22 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const { data, error } = await db
     .from("bank_statement_lines")
     .select(
-      "id, transaction_date, amount, description, document_number, match_status, matched_receivable_id, matched_payable_id"
+      `
+      id,
+      transaction_date,
+      amount,
+      description,
+      document_number,
+      match_status,
+      matched_receivable_id,
+      matched_payable_id,
+      matched_receivable:receivables!bank_statement_lines_matched_receivable_id_fkey(
+        id, client_name, document_number, current_amount
+      ),
+      matched_payable:accounts_payable!bank_statement_lines_matched_payable_id_fkey(
+        id, description, current_amount
+      )
+    `
     )
     .eq("tenant_id", tenantId)
     .eq("bank_import_id", id)

@@ -4,13 +4,13 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { matchBankStatementLine } from "@/modules/finance/lib/bank-reconciliation-service";
+import { listMatchCandidatesForLine } from "@/modules/finance/lib/bank-reconciliation-service";
 
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function POST(request: NextRequest, { params }: Params) {
+export async function GET(_request: NextRequest, { params }: Params) {
   const { id } = await params;
 
   const supabase = await createServerSupabaseClient();
@@ -24,34 +24,10 @@ export async function POST(request: NextRequest, { params }: Params) {
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return apiError("Body inválido", 400);
-  }
-  const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
-  const kind =
-    b.kind === "receivable" ||
-    b.kind === "payable" ||
-    b.kind === "ignore" ||
-    b.kind === "unmatch"
-      ? b.kind
-      : null;
-  if (!kind) {
-    return apiError("kind inválido (receivable|payable|ignore|unmatch)", 400);
-  }
-
   const admin = createSupabaseAdminClient();
   try {
-    await matchBankStatementLine(admin, tenantId, id, {
-      kind,
-      target_id:
-        b.target_id === null || b.target_id === undefined
-          ? null
-          : String(b.target_id),
-    });
-    return apiOk({ success: true });
+    const result = await listMatchCandidatesForLine(admin, tenantId, id);
+    return apiOk(result);
   } catch (e) {
     return apiError(e instanceof Error ? e.message : "Erro", 500);
   }
