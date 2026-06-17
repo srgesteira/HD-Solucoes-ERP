@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { WorkAreasAdmin } from "@/components/settings/work-areas-admin";
+import { AppPage } from "@/shared/ui/app-page";
 
 export const metadata: Metadata = {
   title: "Áreas / centros de custo",
@@ -28,15 +29,13 @@ export default async function WorkAreasSettingsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h2 className="text-2xl font-semibold text-slate-900 mb-2">
-        Áreas / centros de custo
-      </h2>
-      <p className="text-sm text-slate-500 mb-6">
-        Catálogo por empresa: classifique tarefas para futuros levantamentos de esforço ou horas por
-        área.
-      </p>
+    <AppPage
+      title="Áreas / centros de custo"
+      description="Catálogo por empresa: classifique tarefas para futuros levantamentos de esforço ou horas por área."
+      width="narrow"
+      density="comfortable"
+    >
       <WorkAreasAdmin />
-    </div>
+    </AppPage>
   );
 }

@@ -19,6 +19,8 @@ import {
 } from "@/components/pcp/pcp-lines-legacy-panel";
 import { QualityCqPromptDialog } from "@/components/producao/quality-cq-prompt-dialog";
 import { QualityCqHistoryDialog } from "@/components/producao/quality-cq-history-dialog";
+import { AppPage } from "@/shared/ui/app-page";
+import { ErrorState, LoadingState } from "@/shared/ui/page-helpers";
 import "@/components/pcp/pcp-legacy.css";
 
 type PromptState =
@@ -177,17 +179,12 @@ export function QualityLinesControlView() {
     : "Linha";
 
   return (
-    <div className="pcp-legacy-shell max-w-[100rem] mx-auto space-y-4 pb-10">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">
-            Controle de qualidade — Produção
-          </h1>
-          <p className="text-sm text-slate-600 mt-0.5">
-            Bloqueie ou libere a finalização por linha. A produção não consegue
-            finalizar itens bloqueados pelo CQ.
-          </p>
-        </div>
+    <AppPage
+      title="Controle de qualidade — Produção"
+      description="Bloqueie ou libere a finalização por linha. A produção não consegue finalizar itens bloqueados pelo CQ."
+      width="full"
+      density="comfortable"
+      actions={
         <button
           type="button"
           disabled={isLoading}
@@ -205,15 +202,13 @@ export function QualityLinesControlView() {
           )}
           Actualizar
         </button>
-      </div>
-
+      }
+    >
+      <div className="pcp-legacy-shell space-y-4">
       {isLoading ? (
-        <div className="flex items-center gap-2 py-16 text-slate-600 justify-center">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          A carregar…
-        </div>
+        <LoadingState label="A carregar linhas e pedidos…" />
       ) : loadError ? (
-        <p className="text-sm text-red-600 py-8 text-center">{loadError.message}</p>
+        <ErrorState message={loadError.message} />
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-2">
@@ -306,6 +301,7 @@ export function QualityLinesControlView() {
         itemLabel={history?.label ?? ""}
         onClose={() => setHistory(null)}
       />
-    </div>
+      </div>
+    </AppPage>
   );
 }

@@ -40,6 +40,10 @@ export type FiscalRuleRow = {
   cbs_rate: number | null;
   ibs_rate: number | null;
   ibs_cbs_classificacao: string | null;
+  /** §7.7 — campos de manutenção (podem não existir antes da migração). */
+  last_reviewed_at?: string | null;
+  last_reviewed_by?: string | null;
+  review_interval_months?: number | null;
 };
 
 export type FiscalContext = {

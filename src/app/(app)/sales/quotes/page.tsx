@@ -1,10 +1,10 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, FileText, Plus, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import {
   QuoteRowActionsMenu,
   type QuoteRowActionsQuote,
@@ -16,24 +16,24 @@ import {
 } from "@/modules/vendas/lib/sales/quote-display";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
+import { InlineDateEdit } from "@/shared/ui/inline-date-edit";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { AppPage } from "@/shared/ui/app-page";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaError,
+  CronogramaPagination,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
-
-type QuoteStatus =
-  | "draft"
-  | "sent"
-  | "approved"
-  | "rejected"
-  | "converted"
-  | "revision";
 
 type QuoteTab = "all" | "converted" | "open";
 
@@ -54,38 +54,22 @@ interface QuotesApiResponse {
   pagination: { page: number; limit: number; total: number };
 }
 
-const STATUS_OPTIONS: Array<{ value: "all" | QuoteStatus; label: string }> = [
-  { value: "all", label: "Todos os estados" },
-  { value: "draft", label: "Rascunho" },
-  { value: "sent", label: "Enviado" },
-  { value: "approved", label: "Aprovado" },
-  { value: "rejected", label: "Rejeitado" },
-  { value: "converted", label: "Convertido" },
-  { value: "revision", label: "Em revisão" },
-];
-
 const TAB_OPTIONS: Array<{ value: QuoteTab; label: string }> = [
-  { value: "all", label: "Todos os orçamentos" },
-  { value: "converted", label: "Orçamentos convertidos" },
-  { value: "open", label: "Orçamentos em aberto" },
+  { value: "all", label: "Todos" },
+  { value: "open", label: "Em aberto" },
+  { value: "converted", label: "Convertidos" },
 ];
 
 const quotesQueryKey = (filters: {
   tab: QuoteTab;
-  status: string;
   search: string;
-  dateFrom: string;
-  dateTo: string;
   page: number;
   limit: number;
 }) => ["sales-quotes", filters] as const;
 
 async function fetchQuotes(filters: {
   tab: QuoteTab;
-  status: string;
   search: string;
-  dateFrom: string;
-  dateTo: string;
   page: number;
   limit: number;
 }): Promise<QuotesApiResponse> {
@@ -94,12 +78,8 @@ async function fetchQuotes(filters: {
     params.append("status_group", "converted");
   } else if (filters.tab === "open") {
     params.append("status_group", "open");
-  } else if (filters.status !== "all") {
-    params.append("status", filters.status);
   }
   if (filters.search.trim()) params.append("search", filters.search.trim());
-  if (filters.dateFrom.trim()) params.append("date_from", filters.dateFrom.trim());
-  if (filters.dateTo.trim()) params.append("date_to", filters.dateTo.trim());
   params.append("page", String(filters.page));
   params.append("limit", String(filters.limit));
 
@@ -122,6 +102,20 @@ async function fetchQuotes(filters: {
   }
 
   return json as QuotesApiResponse;
+}
+
+async function patchQuoteField(
+  id: string,
+  body: Record<string, unknown>
+): Promise<void> {
+  const res = await fetch(`/api/sales/quotes/${id}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar orçamento");
 }
 
 async function patchQuote(
@@ -195,26 +189,18 @@ export default function QuotesListPage() {
   const canEditQuotes = isAdmin || can("sales");
 
   const [activeTab, setActiveTab] = useState<QuoteTab>("all");
-  const [searchInput, setSearchInput] = useState("");
-  const [filters, setFilters] = useState({
-    status: "all",
-    search: "",
-    dateFrom: "",
-    dateTo: "",
-    page: 1,
-    limit: 25,
-  });
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
+  const [page, setPage] = useState(1);
+  const limit = 25;
 
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      setFilters((f) => ({ ...f, search: searchInput, page: 1 }));
-    }, 380);
-    return () => window.clearTimeout(t);
-  }, [searchInput]);
+    setPage(1);
+  }, [search, activeTab]);
 
   const queryFilters = useMemo(
-    () => ({ ...filters, tab: activeTab }),
-    [filters, activeTab]
+    () => ({ tab: activeTab, search, page, limit }),
+    [activeTab, search, page, limit]
   );
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -226,26 +212,43 @@ export default function QuotesListPage() {
   const [rejectBusy, setRejectBusy] = useState(false);
   const [approveBusyId, setApproveBusyId] = useState<string | null>(null);
   const totalPages = data?.pagination
-    ? Math.max(1, Math.ceil(data.pagination.total / filters.limit))
+    ? Math.max(1, Math.ceil(data.pagination.total / limit))
     : 0;
 
   const rangeDescription = useMemo(() => {
     if (!data?.pagination) return "";
     const { total } = data.pagination;
-    const start = total === 0 ? 0 : (filters.page - 1) * filters.limit + 1;
-    const end = Math.min(filters.page * filters.limit, total);
+    const start = total === 0 ? 0 : (page - 1) * limit + 1;
+    const end = Math.min(page * limit, total);
     return `${start}–${end} de ${total}`;
-  }, [data?.pagination, filters.page, filters.limit]);
+  }, [data?.pagination, page, limit]);
 
-  const invalidateQuotes = async () => {
+  const invalidateQuotes = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["sales-quotes"] });
-  };
+  }, [queryClient]);
 
   const handleTabChange = (tab: string) => {
-    const next = tab as QuoteTab;
-    setActiveTab(next);
-    setFilters((f) => ({ ...f, page: 1, status: "all" }));
+    setActiveTab(tab as QuoteTab);
+    setPage(1);
   };
+
+  const handleValidUntilChange = useCallback(
+    async (row: QuoteRow, date: string | null) => {
+      if (!canEditQuotes) return;
+      try {
+        await patchQuoteField(row.id, { valid_until: date });
+        toast.success("Validade actualizada.");
+        await invalidateQuotes();
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível actualizar a validade."
+        );
+      }
+    },
+    [canEditQuotes, invalidateQuotes]
+  );
 
   const handleStatusAction = async (
     row: QuoteRowActionsQuote,
@@ -312,15 +315,19 @@ export default function QuotesListPage() {
           ),
         truncate: false,
         render: (row) => {
+          const label = formatQuoteNumberWithRevision(
+            row.quote_number,
+            row.revision_number,
+          );
           const needsCommercial = Boolean(row.awaiting_commercial_finalize);
           return (
             <>
-              <span className="font-medium text-slate-900 whitespace-nowrap">
-                {formatQuoteNumberWithRevision(
-                  row.quote_number,
-                  row.revision_number,
-                )}
-              </span>
+              <Link
+                href={`/sales/quotes/${row.id}`}
+                className={CRONOGRAMA_TOKENS.cellLink}
+              >
+                {label}
+              </Link>
               {needsCommercial ? (
                 <span className="mt-1 block text-xs font-medium text-brand-800">
                   Custo disponível — rever markup
@@ -337,7 +344,7 @@ export default function QuotesListPage() {
         width: "w-[22%]",
         accessor: (row) => row.client_name,
         render: (row) => (
-          <span className="text-slate-800 line-clamp-2">{row.client_name}</span>
+          <span className={CRONOGRAMA_TOKENS.cellText}>{row.client_name}</span>
         ),
       },
       {
@@ -346,8 +353,9 @@ export default function QuotesListPage() {
         type: "date",
         width: "w-[10%]",
         accessor: (row) => row.quote_date,
+        truncate: false,
         render: (row) => (
-          <span className="text-slate-700 tabular-nums whitespace-nowrap">
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
             {formatDate(row.quote_date)}
           </span>
         ),
@@ -356,13 +364,20 @@ export default function QuotesListPage() {
         key: "valid_until",
         label: "Validade",
         type: "date",
-        width: "w-[10%]",
+        width: "w-[12%]",
         accessor: (row) => row.valid_until,
-        render: (row) => (
-          <span className="text-slate-700 tabular-nums whitespace-nowrap">
-            {formatDate(row.valid_until)}
-          </span>
-        ),
+        truncate: false,
+        render: (row) =>
+          canEditQuotes ? (
+            <InlineDateEdit
+              value={row.valid_until}
+              onSave={(v) => handleValidUntilChange(row, v)}
+            />
+          ) : (
+            <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
+              {formatDate(row.valid_until)}
+            </span>
+          ),
       },
       {
         key: "total",
@@ -373,7 +388,7 @@ export default function QuotesListPage() {
         accessor: (row) => row.total,
         truncate: false,
         render: (row) => (
-          <span className="tabular-nums text-slate-800">
+          <span className="text-xs tabular-nums font-medium">
             {formatCurrency(row.total)}
           </span>
         ),
@@ -388,32 +403,80 @@ export default function QuotesListPage() {
         render: (row) => {
           const sb = quoteStatusBadge(row.status);
           return (
-            <span
-              className={cn(
-                "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-                sb.className
-              )}
-            >
+            <span className={cn(CRONOGRAMA_TOKENS.badge, sb.className)}>
               {sb.label}
             </span>
           );
         },
       },
     ];
-  }, []);
+  }, [canEditQuotes, handleValidUntilChange]);
 
-  const emptyMessage = "Nenhum orçamento encontrado para estes filtros.";
+  const emptyMessage = "Nenhum orçamento encontrado.";
+
+  const listPanel = (
+    <CronogramaPanel
+      search={
+        <CronogramaSearch
+          value={searchInput}
+          onChange={setSearchInput}
+          placeholder="Buscar nº, cliente, data, código ou produto do orçamento…"
+        />
+      }
+      error={
+        error ? (
+          <CronogramaError message={error.message} onRetry={() => void refetch()} />
+        ) : null
+      }
+      footer={
+        data?.pagination?.total ? (
+          <CronogramaPagination
+            page={page}
+            totalPages={totalPages}
+            rangeDescription={rangeDescription}
+            itemCount={data?.data?.length}
+            onPageChange={setPage}
+          />
+        ) : null
+      }
+    >
+      <SortableTable
+        columns={tableColumns}
+        data={data?.data ?? []}
+        getRowKey={(row) => row.id}
+        isLoading={isLoading}
+        emptyMessage={emptyMessage}
+        rowClassName={(row) =>
+          Boolean(row.awaiting_commercial_finalize)
+            ? "bg-brand-50/80 animate-pulse ring-1 ring-inset ring-brand-400/60"
+            : ""
+        }
+        actionsColumn={{
+          label: "Ações",
+          width: "w-[5rem]",
+          render: (row) => (
+            <QuoteRowActionsMenu
+              row={row}
+              isAdmin={isAdmin}
+              canEditQuotes={canEditQuotes}
+              onStatusAction={handleStatusAction}
+              onApprove={handleApprove}
+              onReject={(r) => setRejectTarget(r as QuoteRow)}
+            />
+          ),
+        }}
+      />
+    </CronogramaPanel>
+  );
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Orçamentos</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Propostas comerciais — filtros e conversão em pedido de venda.
-          </p>
-        </div>
-        {isAdmin ? (
+    <AppPage
+      title="Orçamentos"
+      description="Cronograma comercial — propostas, prazos e conversão em pedido de venda."
+      density="comfortable"
+      width="wide"
+      actions={
+        isAdmin ? (
           <Button
             type="button"
             size="sm"
@@ -422,11 +485,11 @@ export default function QuotesListPage() {
             <Plus className="h-4 w-4" />
             Novo orçamento
           </Button>
-        ) : null}
-      </div>
-
+        ) : null
+      }
+    >
       <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList className="w-full sm:w-auto flex flex-wrap h-auto gap-1">
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
           {TAB_OPTIONS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
               {tab.label}
@@ -434,174 +497,14 @@ export default function QuotesListPage() {
           ))}
         </TabsList>
 
-        <TabsContent value={activeTab} className="mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2 font-semibold">
-                <FileText className="h-5 w-5 text-slate-600" aria-hidden />
-                {TAB_OPTIONS.find((t) => t.value === activeTab)?.label ?? "Listagem"}
-              </CardTitle>
-            </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-col gap-3">
-                  <div className="relative flex-1 min-w-0">
-                    <Search
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
-                      aria-hidden
-                    />
-                    <Input
-                      placeholder="Buscar por nº do orçamento ou cliente…"
-                      value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-3 flex-wrap sm:items-center">
-                    {activeTab === "all" ? (
-                      <select
-                        className={cn(
-                          "h-9 rounded-md border border-slate-300 bg-white px-3 text-sm min-w-[11rem]",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 dark:bg-slate-950 dark:border-slate-600"
-                        )}
-                        aria-label="Filtrar por estado"
-                        value={filters.status}
-                        onChange={(e) =>
-                          setFilters({ ...filters, status: e.target.value, page: 1 })
-                        }
-                      >
-                        {STATUS_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label className="text-xs text-slate-500 sr-only">
-                        Data inicial do orçamento
-                      </label>
-                      <Input
-                        type="date"
-                        className="h-9 w-[11rem]"
-                        aria-label="Data inicial"
-                        value={filters.dateFrom}
-                        onChange={(e) =>
-                          setFilters({
-                            ...filters,
-                            dateFrom: e.target.value,
-                            page: 1,
-                          })
-                        }
-                      />
-                      <span className="text-slate-400 text-sm">até</span>
-                      <label className="text-xs text-slate-500 sr-only">
-                        Data final do orçamento
-                      </label>
-                      <Input
-                        type="date"
-                        className="h-9 w-[11rem]"
-                        aria-label="Data final"
-                        value={filters.dateTo}
-                        onChange={(e) =>
-                          setFilters({
-                            ...filters,
-                            dateTo: e.target.value,
-                            page: 1,
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {error ? (
-                  <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm text-red-800">{error.message}</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void refetch()}
-                    >
-                      Tentar de novo
-                    </Button>
-                  </div>
-                ) : null}
-
-                <SortableTable
-                  columns={tableColumns}
-                  data={data?.data ?? []}
-                  getRowKey={(row) => row.id}
-                  isLoading={isLoading}
-                  emptyMessage={emptyMessage}
-                  rowClassName={(row) =>
-                    Boolean(row.awaiting_commercial_finalize)
-                      ? "bg-brand-50/80 animate-pulse ring-1 ring-inset ring-brand-400/60"
-                      : ""
-                  }
-                  actionsColumn={{
-                    label: "Ações",
-                    width: "w-[5rem]",
-                    render: (row) => (
-                      <QuoteRowActionsMenu
-                        row={row}
-                        isAdmin={isAdmin}
-                        canEditQuotes={canEditQuotes}
-                        onStatusAction={handleStatusAction}
-                        onApprove={handleApprove}
-                        onReject={(r) => setRejectTarget(r as QuoteRow)}
-                      />
-                    ),
-                  }}
-                />
-
-                {data?.pagination?.total !== undefined && data.pagination.total > 0 ? (
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">
-                    <p className="text-sm text-slate-500">
-                      Orçamentos nesta página: {data.data.length}. Intervalo total:{" "}
-                      <span className="font-medium text-slate-700">{rangeDescription}</span>
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={filters.page <= 1}
-                        onClick={() =>
-                          setFilters({
-                            ...filters,
-                            page: Math.max(1, filters.page - 1),
-                          })
-                        }
-                        aria-label="Página anterior"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                        Anterior
-                      </Button>
-                      <span className="text-sm tabular-nums px-2 text-slate-600">
-                        Página {filters.page} / {totalPages}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={filters.page >= totalPages}
-                        onClick={() =>
-                          setFilters({
-                            ...filters,
-                            page: Math.min(totalPages, filters.page + 1),
-                          })
-                        }
-                        aria-label="Página seguinte"
-                      >
-                        Seguinte
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-            </CardContent>
-          </Card>
+        <TabsContent value="all" className="mt-4">
+          {listPanel}
+        </TabsContent>
+        <TabsContent value="open" className="mt-4">
+          {listPanel}
+        </TabsContent>
+        <TabsContent value="converted" className="mt-4">
+          {listPanel}
         </TabsContent>
       </Tabs>
 
@@ -620,6 +523,6 @@ export default function QuotesListPage() {
           </Link>
         </p>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

@@ -26,6 +26,7 @@ import {
 import { Label } from "@/shared/ui/label";
 import { Input } from "@/shared/ui/input";
 import { Button } from "@/shared/ui/button";
+import { AppPage } from "@/shared/ui/app-page";
 import { usePermissions } from "@/hooks/use-permissions";
 
 type EvolutionSeries = {
@@ -183,45 +184,45 @@ export default function CostDashboardPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-10">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-            <Calculator className="h-7 w-7 text-brand-700" />
-            Dashboard de custos de MO
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Evolução do custo/hora e composição directo vs rateio por linha.
-          </p>
-        </div>
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Calculator className="h-5 w-5 text-brand-700" />
+          Dashboard de custos de MO
+        </span>
+      }
+      description="Evolução do custo/hora e composição directo vs rateio por linha."
+      density="comfortable"
+      actions={
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
-            <Label htmlFor="cd-year">Ano</Label>
+            <Label htmlFor="cd-year" className="text-xs">Ano</Label>
             <Input
               id="cd-year"
               type="number"
-              className="w-24"
+              className="w-24 h-9"
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="cd-month">Mês</Label>
+            <Label htmlFor="cd-month" className="text-xs">Mês</Label>
             <Input
               id="cd-month"
               type="number"
               min={1}
               max={12}
-              className="w-20"
+              className="w-20 h-9"
               value={month}
               onChange={(e) => setMonth(Number(e.target.value))}
             />
           </div>
-          <Button type="button" onClick={() => void load()}>
+          <Button type="button" size="sm" onClick={() => void load()}>
             Actualizar
           </Button>
         </div>
-      </div>
+      }
+    >
 
       {loading ? (
         <div className="flex justify-center py-16 gap-2 text-slate-500">
@@ -405,6 +406,6 @@ export default function CostDashboardPage() {
           ) : null}
         </>
       )}
-    </div>
+    </AppPage>
   );
 }

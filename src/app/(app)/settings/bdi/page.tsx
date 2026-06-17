@@ -10,6 +10,8 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import type { Tables } from "@/modules/core/types/database";
@@ -174,37 +176,34 @@ export default function BdiSettingsPage() {
 
   if (meLoading || (me && me.role !== "admin")) {
     return (
-      <div className="max-w-3xl mx-auto py-16 flex justify-center gap-2 text-slate-500">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">A validar permissões…</span>
-      </div>
+      <AppPage title="BDI precificação" backHref="/settings/profile" width="narrow">
+        <LoadingState label="A validar permissões…" />
+      </AppPage>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 py-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <Link
-          href="/settings/profile"
-          className="text-sm text-brand-700 hover:underline"
-        >
-          Configurações
-        </Link>
-        <span className="text-slate-400">/</span>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <Percent className="h-7 w-7 text-brand-700" aria-hidden />
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Percent className="h-5 w-5 text-brand-700" />
           BDI precificação
-        </h1>
-      </div>
-
-      <p className="text-sm text-slate-600">
-        Parâmetros de impostos, despesas indirectas e margem para geração de preço
-        de venda a partir do custo (
-        {draft.use_compound_bdi ? "BDI composto" : "BDI simples"}).
-        {isSimples ?
-          " Regime Simples Nacional: a carga fiscal do modelo segue a alíquota DAS definida em Configurações da empresa."
-        : null}
-      </p>
+        </span>
+      }
+      description={
+        <>
+          Parâmetros de impostos, despesas indirectas e margem para geração de
+          preço de venda a partir do custo (
+          {draft.use_compound_bdi ? "BDI composto" : "BDI simples"}).
+          {isSimples
+            ? " Regime Simples Nacional: a carga fiscal do modelo segue a alíquota DAS definida em Configurações da empresa."
+            : null}
+        </>
+      }
+      backHref="/settings/profile"
+      width="narrow"
+      density="comfortable"
+    >
 
       {isLoading ? (
         <div className="flex items-center gap-2 text-slate-500 py-12 justify-center">
@@ -451,6 +450,6 @@ export default function BdiSettingsPage() {
           </div>
         </form>
       )}
-    </div>
+    </AppPage>
   );
 }

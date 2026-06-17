@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { BoardKanban } from "@/components/kanban/board-kanban";
+import { AppPage } from "@/shared/ui/app-page";
 import type { TaskWithAssignee } from "@/modules/core/types/kanban";
 
 export const dynamic = "force-dynamic";
@@ -108,33 +107,25 @@ export default async function BoardDetailPage({ params }: PageProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full">
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <Link
-            href="/boards"
-            className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 mb-1"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Tarefas
-          </Link>
-          <div className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="inline-block h-3 w-3 rounded-full"
-              style={{ backgroundColor: board.color ?? "#0f766e" }}
-            />
-            <h2 className="text-2xl font-semibold text-slate-900 truncate">
-              {board.name}
-            </h2>
-          </div>
-          {board.description ? (
-            <p className="text-sm text-slate-500 mt-1">{board.description}</p>
-          ) : null}
-        </div>
-      </div>
-
+    <AppPage
+      backHref="/boards"
+      backLabel="Tarefas"
+      title={
+        <span className="inline-flex items-center gap-2 min-w-0">
+          <span
+            aria-hidden
+            className="inline-block h-3 w-3 rounded-full shrink-0"
+            style={{ backgroundColor: board.color ?? "#0f766e" }}
+          />
+          <span className="truncate">{board.name}</span>
+        </span>
+      }
+      description={board.description ?? undefined}
+      width="full"
+      density="comfortable"
+      className="min-h-0 flex flex-col"
+    >
       <BoardKanban boardId={board.id} columns={columns} initialTasks={initialTasks} />
-    </div>
+    </AppPage>
   );
 }

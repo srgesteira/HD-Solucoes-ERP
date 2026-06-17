@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
 import { useCreateBoard } from "@/hooks/use-boards";
 import { createBoardSchema } from "@/modules/boards/lib/validators/board";
 
@@ -61,15 +61,14 @@ export default function NewBoardPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <Link
-        href="/boards"
-        className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 mb-4"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Voltar para tarefas
-      </Link>
-
+    <AppPage
+      title="Novo projeto"
+      description="Configure as informações iniciais do seu projeto Kanban"
+      backHref="/boards"
+      backLabel="Voltar para tarefas"
+      width="narrow"
+      density="comfortable"
+    >
       <Card>
         <CardHeader>
           <CardTitle>Novo projeto</CardTitle>
@@ -169,6 +168,6 @@ export default function NewBoardPage() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

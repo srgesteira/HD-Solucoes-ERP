@@ -1,7 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { MenuAlertsMap } from "@/modules/core/lib/navigation/menu-alerts";
+import type {
+  MenuAlertEntry,
+  MenuAlertsMap,
+} from "@/modules/core/lib/navigation/menu-alerts";
 
 export const menuAlertsQueryKey = ["menu-alerts"] as const;
 
@@ -35,5 +38,13 @@ export function alertCountForHref(
   href: string
 ): number {
   if (!alerts || !href) return 0;
-  return alerts[href] ?? 0;
+  return alerts[href]?.count ?? 0;
+}
+
+export function alertEntryForHref(
+  alerts: MenuAlertsMap | undefined,
+  href: string
+): MenuAlertEntry | undefined {
+  if (!alerts || !href) return undefined;
+  return alerts[href];
 }

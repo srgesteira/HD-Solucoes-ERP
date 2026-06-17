@@ -5,6 +5,7 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import { convertQuoteToSalesOrder } from "@/modules/vendas/lib/sales/quote-convert";
+import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -123,6 +124,19 @@ export async function POST(request: NextRequest, { params }: Params) {
     .eq("id", result.salesOrderId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
+
+  await recordAuditEvent(admin, {
+    tenantId,
+    actorId: user.id,
+    actorEmail: user.email ?? null,
+    table: "quotes",
+    recordId: quoteId,
+    eventKind: "quote_approved_and_converted",
+    payload: {
+      sales_order_id: result.salesOrderId,
+      order_number: order?.order_number ?? result.orderNumber,
+    },
+  });
 
   return apiOk(
     {

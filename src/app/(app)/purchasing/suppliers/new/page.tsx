@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Save, Truck } from "lucide-react";
+import { Loader2, Save, Truck } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import {
   SupplierFormFields,
   buildSupplierPayload,
@@ -86,28 +88,16 @@ export default function NewSupplierPage() {
   }
 
   if (meLoading || (me && me.role !== "admin")) {
-    return (
-      <div className="max-w-4xl mx-auto flex justify-center py-16 text-slate-500 gap-2">
-        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-        <span className="text-sm">A validar permissões…</span>
-      </div>
-    );
+    return <LoadingState label="A validar permissões…" />;
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/purchasing/suppliers">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          Novo fornecedor
-        </h1>
-      </div>
-
+    <AppPage
+      title="Novo fornecedor"
+      backHref="/purchasing/suppliers"
+      width="narrow"
+      density="comfortable"
+    >
       <form onSubmit={(e) => void handleSubmit(e)}>
         <Card>
           <CardHeader>
@@ -146,6 +136,6 @@ export default function NewSupplierPage() {
           </Button>
         </div>
       </form>
-    </div>
+    </AppPage>
   );
 }

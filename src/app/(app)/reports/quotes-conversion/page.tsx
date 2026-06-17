@@ -24,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
 import { ReportFilters, type ReportDateRange } from "@/components/reports/report-filters";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -134,18 +135,16 @@ export default function QuotesConversionReportPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <PieChartIcon className="h-7 w-7 text-brand-700" aria-hidden />
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <PieChartIcon className="h-5 w-5 text-brand-700" />
           Conversão de orçamentos
-        </h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Taxa de conversão com base em orçamentos já enviados (exclui rascunho) e
-          valores totais ganhos vs. rejeitados no período.
-        </p>
-      </div>
-
+        </span>
+      }
+      description="Taxa de conversão com base em orçamentos já enviados (exclui rascunho) e valores totais ganhos vs. rejeitados no período."
+      density="comfortable"
+    >
       <ReportFilters
         loading={loading}
         onApply={(range) => {
@@ -282,6 +281,6 @@ export default function QuotesConversionReportPage() {
           ) : null}
         </>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

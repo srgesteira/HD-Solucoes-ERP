@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Loader2, Save, Sparkles } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
 import {
   ProductFormFields,
   type ProductFormShape,
@@ -543,17 +544,12 @@ export default function NewProductPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/products">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Novo produto</h1>
-      </div>
-
+    <AppPage
+      title="Novo produto"
+      backHref="/products"
+      width="narrow"
+      density="comfortable"
+    >
       <form onSubmit={(e) => void handleSubmit(e)}>
         <Card>
           <CardHeader>
@@ -631,6 +627,6 @@ export default function NewProductPage() {
           </Button>
         </div>
       </form>
-    </div>
+    </AppPage>
   );
 }

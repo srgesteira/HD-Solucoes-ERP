@@ -24,6 +24,7 @@ import { ProductDocumentsPanel } from "@/components/products/product-documents-p
 import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { AppPage } from "@/shared/ui/app-page";
 import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/products/prefix-classification";
 import {
   bomEligibilityMessage,
@@ -550,48 +551,42 @@ export default function EditProductPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6 space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link href="/products">
-            <Button type="button" variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4" />
-              Voltar
-            </Button>
-          </Link>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold text-slate-900">
-                Editar produto
-              </h1>
-              {productRaw ? (
-                <ProductLifecycleBadge
-                  prefix_code={prefixCode || null}
-                  product_nature={productRaw.product_nature}
-                  has_composition={productRaw.has_composition}
-                  released_for_sale={productRaw.released_for_sale}
-                  engineering_workflow_status={
-                    productRaw.engineering_workflow_status
-                  }
-                />
-              ) : null}
-            </div>
-            {formData.technical_code ? (
-              <p className="mt-1 text-sm font-mono text-slate-600">
-                {formData.technical_code}
-              </p>
-            ) : (
-              <p className="mt-1 text-xs text-amber-700">
-                Código técnico pendente — complete a classificação e guarde.
-              </p>
-            )}
-          </div>
+    <AppPage
+      backHref="/products"
+      width="narrow"
+      density="comfortable"
+      title={
+        <div className="flex flex-wrap items-center gap-2">
+          <span>Editar produto</span>
+          {productRaw ? (
+            <ProductLifecycleBadge
+              prefix_code={prefixCode || null}
+              product_nature={productRaw.product_nature}
+              has_composition={productRaw.has_composition}
+              released_for_sale={productRaw.released_for_sale}
+              engineering_workflow_status={
+                productRaw.engineering_workflow_status
+              }
+            />
+          ) : null}
         </div>
+      }
+      description={
+        formData.technical_code ? (
+          <span className="font-mono text-slate-600">
+            {formData.technical_code}
+          </span>
+        ) : (
+          <span className="text-amber-700">
+            Código técnico pendente — complete a classificação e guarde.
+          </span>
+        )
+      }
+      actions={
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="shrink-0"
           disabled={taxAnalysisPending}
           onClick={() => void handleTaxAnalysis()}
         >
@@ -602,8 +597,8 @@ export default function EditProductPage() {
           )}
           Analisar tributos (IA)
         </Button>
-      </div>
-
+      }
+    >
       <form onSubmit={(e) => void handleSubmit(e)}>
         <Tabs
           value={activeTab}
@@ -932,6 +927,6 @@ export default function EditProductPage() {
           </Card>
         </div>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

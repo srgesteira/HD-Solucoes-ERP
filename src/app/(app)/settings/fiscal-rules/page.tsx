@@ -2,12 +2,22 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Scale, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  Plus,
+  Scale,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import { useMe } from "@/hooks/use-me";
 import type { FiscalRuleRow } from "@/modules/fiscal/lib/fiscal-rules-types";
 import { resolveFiscalRule } from "@/modules/fiscal/lib/fiscal-rules-engine";
@@ -42,6 +52,58 @@ async function deleteRule(id: string) {
   if (!res.ok) throw new Error(json.error ?? "Erro ao remover");
 }
 
+type RuleToReview = {
+  id: string;
+  name: string;
+  priority: number;
+  is_active: boolean;
+  valid_from: string | null;
+  valid_until: string | null;
+  last_reviewed_at: string | null;
+  review_interval_months: number;
+  needs_review: boolean;
+  is_expired: boolean;
+  is_expiring_soon: boolean;
+};
+
+async function fetchRulesToReview(): Promise<{
+  items: RuleToReview[];
+  total: number;
+  expired: number;
+  expiringSoon: number;
+  needsReview: number;
+}> {
+  const res = await fetch("/api/fiscal/rules/to-review", {
+    credentials: "include",
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    items?: RuleToReview[];
+    total?: number;
+    expired?: number;
+    expiringSoon?: number;
+    needsReview?: number;
+    error?: string;
+  };
+  if (!res.ok)
+    throw new Error(json.error ?? "Erro ao carregar regras a revisar");
+  return {
+    items: json.items ?? [],
+    total: json.total ?? 0,
+    expired: json.expired ?? 0,
+    expiringSoon: json.expiringSoon ?? 0,
+    needsReview: json.needsReview ?? 0,
+  };
+}
+
+async function markRuleReviewed(id: string) {
+  const res = await fetch(`/api/fiscal/rules/${id}/mark-reviewed`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao marcar revisão");
+}
+
 const emptyForm = {
   name: "",
   operation_type: "",
@@ -70,6 +132,25 @@ export default function FiscalRulesSettingsPage() {
     queryFn: fetchRules,
     enabled: isAdmin,
     staleTime: 60_000,
+  });
+
+  const reviewQuery = useQuery({
+    queryKey: ["fiscal-rules-to-review"],
+    queryFn: fetchRulesToReview,
+    enabled: isAdmin,
+    staleTime: 60_000,
+  });
+
+  const markReviewedMutation = useMutation({
+    mutationFn: markRuleReviewed,
+    onSuccess: () => {
+      toast.success("Regra marcada como revisada.");
+      void queryClient.invalidateQueries({
+        queryKey: ["fiscal-rules-to-review"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-rules"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const createMutation = useMutation({
@@ -107,32 +188,105 @@ export default function FiscalRulesSettingsPage() {
 
   if (meLoading) {
     return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-      </div>
+      <AppPage title="Regras fiscais">
+        <LoadingState />
+      </AppPage>
     );
   }
 
   if (!isAdmin) {
     return (
-      <p className="text-sm text-slate-600">
-        Apenas administradores podem gerir regras fiscais.
-      </p>
+      <AppPage title="Regras fiscais" width="narrow">
+        <p className="text-sm text-slate-600">
+          Apenas administradores podem gerir regras fiscais.
+        </p>
+      </AppPage>
     );
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <Scale className="h-6 w-6" />
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Scale className="h-5 w-5" />
           Regras fiscais
-        </h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Cadastre condições e resultados tributários. Alíquotas ficam vazias até
-          a contadora preencher — o sistema não inventa valores.
-        </p>
-      </div>
+        </span>
+      }
+      description="Cadastre condições e resultados tributários. Alíquotas ficam vazias até a contadora preencher — o sistema não inventa valores."
+      density="comfortable"
+    >
+
+      {reviewQuery.data && reviewQuery.data.total > 0 ? (
+        <Card className="border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-amber-900 dark:text-amber-100">
+              <AlertCircle className="h-5 w-5" />
+              Regras a revisar ({reviewQuery.data.total})
+            </CardTitle>
+            <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
+              §7.7 — regra determinística envelhece. Confirme alíquotas e
+              clique em "Marcar como revisada" depois de conferir.{" "}
+              {reviewQuery.data.expired > 0
+                ? `${reviewQuery.data.expired} vencida(s) · `
+                : ""}
+              {reviewQuery.data.expiringSoon > 0
+                ? `${reviewQuery.data.expiringSoon} expira em até 60 dias · `
+                : ""}
+              {reviewQuery.data.needsReview > 0
+                ? `${reviewQuery.data.needsReview} sem revisão recente`
+                : ""}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y divide-amber-200 dark:divide-amber-900">
+              {reviewQuery.data.items.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      {r.is_expired ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
+                          <Clock className="h-3 w-3" />
+                          VENCIDA
+                        </span>
+                      ) : r.is_expiring_soon ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                          EXPIRA EM BREVE
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                          REVISÃO PENDENTE
+                        </span>
+                      )}
+                      <span className="truncate">{r.name}</span>
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      {r.last_reviewed_at
+                        ? `Última revisão: ${new Date(r.last_reviewed_at).toLocaleDateString("pt-BR")}`
+                        : "Nunca revisada"}
+                      {r.valid_until ? ` · vence ${r.valid_until}` : ""}
+                      {" · intervalo "}
+                      {r.review_interval_months}m
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={markReviewedMutation.isPending}
+                    onClick={() => markReviewedMutation.mutate(r.id)}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Marcar como revisada
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -354,6 +508,6 @@ export default function FiscalRulesSettingsPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ArrowLeft, FileText, Loader2, Save } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
 import { useMe } from "@/hooks/use-me";
 import { QuoteFormFields } from "@/components/sales/quote-form-fields";
 import {
@@ -217,17 +218,12 @@ export default function NewQuotePage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6 space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4 flex-wrap">
-          <Link href="/sales/quotes">
-            <Button type="button" variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4" />
-              Voltar
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-semibold text-slate-900">Novo orçamento</h1>
-        </div>
+    <AppPage
+      title="Novo orçamento"
+      backHref="/sales/quotes"
+      width="narrow"
+      density="comfortable"
+      actions={
         <Button
           type="button"
           variant="outline"
@@ -244,8 +240,8 @@ export default function NewQuotePage() {
             "Nova sugestão de número"
           )}
         </Button>
-      </div>
-
+      }
+    >
       <div className="space-y-6">
         <Card>
           <CardHeader>
@@ -334,6 +330,6 @@ export default function NewQuotePage() {
           </Button>
         </div>
       </div>
-    </div>
+    </AppPage>
   );
 }

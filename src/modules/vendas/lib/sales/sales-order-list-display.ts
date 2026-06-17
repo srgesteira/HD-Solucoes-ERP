@@ -2,6 +2,7 @@ import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
 import type { SalesOrderProductionSituation } from "@/modules/vendas/lib/sales/sales-order-production-summary";
 
 export const SALES_ORDER_LIST_TABS = [
+  "all",
   "open",
   "finished",
   "cancelled",
@@ -15,6 +16,7 @@ export function isSalesOrderListTab(v: string): v is SalesOrderListTab {
 }
 
 export const SALES_ORDER_LIST_TAB_LABELS: Record<SalesOrderListTab, string> = {
+  all: "Todos",
   open: "Em aberto",
   finished: "Finalizados",
   cancelled: "Cancelados",

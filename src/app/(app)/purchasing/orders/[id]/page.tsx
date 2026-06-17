@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   Ban,
   Loader2,
   Mail,
   PackageCheck,
   Printer,
+  RotateCcw,
   ShoppingCart,
 } from "lucide-react";
 import {
@@ -20,6 +20,13 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  StatusBadge,
+} from "@/shared/ui/page-helpers";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -114,42 +121,58 @@ async function receivePurchaseOrder(id: string): Promise<void> {
   }
 }
 
-function statusBadge(status: string): { label: string; className: string } {
+type StatusTone =
+  | "neutral"
+  | "info"
+  | "warning"
+  | "success"
+  | "danger";
+
+function statusBadge(
+  status: string
+): { label: string; tone: StatusTone; className: string } {
   switch (status as PurchaseOrderStatus) {
     case "draft":
       return {
         label: "Rascunho",
+        tone: "neutral",
         className: "bg-slate-100 text-slate-800 ring-1 ring-slate-300",
       };
     case "sent":
       return {
         label: "Enviado",
+        tone: "warning",
         className:
           "bg-amber-50 text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950/30",
       };
     case "confirmed":
       return {
         label: "Confirmado",
+        tone: "info",
         className: "bg-blue-50 text-blue-900 ring-1 ring-blue-200",
       };
     case "partial":
       return {
         label: "Parcial",
+        tone: "warning",
         className: "bg-orange-50 text-orange-900 ring-1 ring-orange-200",
       };
     case "received":
       return {
         label: "Recebido",
+        tone: "success",
         className: "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200",
       };
     case "cancelled":
       return {
         label: "Cancelado",
+        tone: "danger",
         className: "bg-red-50 text-red-800 ring-1 ring-red-200",
       };
     default:
       return {
         label: status,
+        tone: "neutral",
         className: "bg-slate-50 text-slate-700 ring-1 ring-slate-200",
       };
   }
@@ -279,40 +302,38 @@ export default function PurchaseOrderDetailPage() {
 
   if (!orderId) {
     return (
-      <div className="max-w-4xl mx-auto py-12 text-center text-slate-600 space-y-4">
-        <p className="text-sm">Pedido não encontrado.</p>
-        <Link
-          href="/purchasing/orders"
-          className="text-brand-700 underline text-sm"
-        >
-          Voltar à listagem
-        </Link>
-      </div>
+      <AppPage
+        title="Pedido de compra"
+        backHref="/purchasing/orders"
+        backLabel="Voltar à listagem"
+        width="default"
+      >
+        <EmptyState
+          title="Pedido não encontrado"
+          description="Identificador ausente."
+        />
+      </AppPage>
     );
   }
 
   if (isLoading) {
-    return (
-      <div className="max-w-5xl mx-auto flex justify-center py-16 text-slate-500 gap-2">
-        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-        <span className="text-sm">A carregar pedido…</span>
-      </div>
-    );
+    return <LoadingState label="A carregar pedido…" />;
   }
 
   if (error || !orderSummary) {
     return (
-      <div className="max-w-4xl mx-auto py-12 space-y-4 text-center">
-        <p className="text-sm text-red-700">
-          {error instanceof Error ? error.message : "Pedido não encontrado."}
-        </p>
-        <Link href="/purchasing/orders">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar à listagem
-          </Button>
-        </Link>
-      </div>
+      <AppPage
+        title="Pedido de compra"
+        backHref="/purchasing/orders"
+        backLabel="Voltar à listagem"
+        width="default"
+      >
+        <ErrorState
+          message={
+            error instanceof Error ? error.message : "Pedido não encontrado."
+          }
+        />
+      </AppPage>
     );
   }
 
@@ -320,15 +341,26 @@ export default function PurchaseOrderDetailPage() {
     orderSummary.status) as PurchaseOrderStatus;
 
   return (
-    <div className="max-w-5xl mx-auto py-6 space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <AppPage
+      backHref="/purchasing/orders"
+      backLabel="Pedidos"
+      width="default"
+      density="comfortable"
+      title={
+        <div className="flex flex-wrap items-center gap-3">
+          <ShoppingCart
+            className="h-6 w-6 text-slate-600 shrink-0"
+            aria-hidden
+          />
+          <span>Pedido</span>
+          <span className="tabular-nums">{orderSummary.po_number}</span>
+          {sb ? (
+            <StatusBadge tone={sb.tone}>{sb.label}</StatusBadge>
+          ) : null}
+        </div>
+      }
+      actions={
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/purchasing/orders">
-            <Button type="button" variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4" />
-              Voltar
-            </Button>
-          </Link>
           <Button
             type="button"
             variant="outline"
@@ -392,9 +424,15 @@ export default function PurchaseOrderDetailPage() {
               Cancelar pedido
             </Button>
           ) : null}
+          <Link href={`/purchasing/returns/new?po=${orderId}`}>
+            <Button type="button" variant="outline" size="sm">
+              <RotateCcw className="h-4 w-4" />
+              Iniciar devolução
+            </Button>
+          </Link>
         </div>
-      </div>
-
+      }
+    >
       <CompanyDocumentBranding
         settings={companyBrandingQuery.data ?? null}
         documentLabel="Pedido de compra"
@@ -403,20 +441,8 @@ export default function PurchaseOrderDetailPage() {
       <Card>
         <CardHeader className="pb-2 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <CardTitle className="text-xl font-semibold text-slate-900 flex flex-wrap items-center gap-3">
-              <ShoppingCart className="h-6 w-6 text-slate-600 shrink-0" />
-              Pedido{" "}
-              <span className="tabular-nums">{orderSummary.po_number}</span>
-              {sb ? (
-                <span
-                  className={cn(
-                    "inline-flex rounded-md px-2.5 py-1 text-xs font-medium",
-                    sb.className
-                  )}
-                >
-                  {sb.label}
-                </span>
-              ) : null}
+            <CardTitle className="text-lg font-semibold text-slate-900">
+              Estado e controle
             </CardTitle>
             {isAdmin ? (
               <div className="flex flex-wrap items-end gap-2 shrink-0">
@@ -566,6 +592,6 @@ export default function PurchaseOrderDetailPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

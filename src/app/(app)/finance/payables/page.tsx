@@ -8,11 +8,22 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
-import { cn } from "@/shared/utils/cn";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
+import {
+  matchesUniversalSearchRow,
+  parseUniversalSearch,
+} from "@/shared/utils/universal-search";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useMe } from "@/hooks/use-me";
 import {
@@ -63,7 +74,8 @@ export default function FinancePayablesPage() {
   const [activeTab, setActiveTab] = useState<PayablesListTab>(
     PAYABLES_LIST_TAB_DEFAULT
   );
-  const [status, setStatus] = useState("all");
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
   const [overdue, setOverdue] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [showNew, setShowNew] = useState(false);
@@ -89,7 +101,6 @@ export default function FinancePayablesPage() {
         page: "1",
         tab: activeTab,
       });
-      if (status !== "all") p.set("status", status);
       if (overdue) p.set("overdue", "1");
       if (supplierId) p.set("supplier_id", supplierId);
       const res = await fetch(`/api/finance/payables?${p}`, {
@@ -104,7 +115,7 @@ export default function FinancePayablesPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, status, overdue, supplierId]);
+  }, [activeTab, overdue, supplierId]);
 
   const loadSuppliers = useCallback(async () => {
     try {
@@ -237,6 +248,26 @@ export default function FinancePayablesPage() {
     return (id: string | null) => (id ? m.get(id) ?? id : "—");
   }, [suppliers]);
 
+  const searchHint = parseUniversalSearch(search);
+  const visibleRows = useMemo(() => {
+    if (!searchHint.text) return rows;
+    return rows.filter((row) =>
+      matchesUniversalSearchRow(
+        searchHint,
+        [
+          row.description,
+          row.category,
+          supplierName(row.supplier_id),
+          row.due_date,
+          row.original_amount,
+          row.current_amount,
+          PAYABLE_STATUS_LABELS[row.status] ?? row.status,
+        ],
+        []
+      )
+    );
+  }, [rows, searchHint, supplierName]);
+
   const tableColumns = useMemo((): SortableTableColumn<Payable>[] => {
     return [
       {
@@ -245,6 +276,9 @@ export default function FinancePayablesPage() {
         type: "text",
         width: "w-[22%]",
         accessor: (row) => row.description,
+        render: (row) => (
+          <span className={CRONOGRAMA_TOKENS.cellText}>{row.description}</span>
+        ),
       },
       {
         key: "supplier",
@@ -314,20 +348,23 @@ export default function FinancePayablesPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-            <Wallet className="h-7 w-7 text-brand-700" />
-            Contas a pagar
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">Fornecedores, vencimentos e baixas.</p>
-        </div>
-        <Button type="button" onClick={() => setShowNew(true)}>
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Wallet className="h-5 w-5 text-brand-700" />
+          Contas a pagar
+        </span>
+      }
+      description="Cronograma financeiro — fornecedores, vencimentos e baixas."
+      density="comfortable"
+      width="wide"
+      actions={
+        <Button type="button" size="sm" onClick={() => setShowNew(true)}>
           <Plus className="h-4 w-4" />
-          <span className="ml-1">Nova conta a pagar</span>
+          Nova conta a pagar
         </Button>
-      </div>
+      }
+    >
 
       {showNew ? (
         <Card>
@@ -402,129 +439,111 @@ export default function FinancePayablesPage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Listagem</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <nav
-            className="flex flex-wrap gap-1 border-b border-slate-200 -mx-1"
-            role="tablist"
-            aria-label="Filtrar contas a pagar por situação"
-          >
-            {PAYABLES_LIST_TABS.map((tabId) => (
-              <button
-                key={tabId}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tabId}
-                className={cn(
-                  "px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap",
-                  activeTab === tabId
-                    ? "border-brand-700 text-brand-800 font-medium"
-                    : "border-transparent text-slate-600 hover:text-slate-900"
-                )}
-                onClick={() => setActiveTab(tabId)}
-              >
-                {PAYABLES_LIST_TAB_LABELS[tabId]}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="space-y-1">
-              <Label>Estado</Label>
-              <select
-                className="flex h-9 rounded-md border border-slate-300 px-3 text-sm bg-white"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="all">Todos</option>
-                <option value="pending">Pendente</option>
-                <option value="paid">Pago</option>
-                <option value="overdue">Em atraso</option>
-                <option value="cancelled">Cancelado</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label>Fornecedor</Label>
-              <select
-                className="flex h-9 min-w-[180px] rounded-md border border-slate-300 px-3 text-sm bg-white"
-                value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
-              >
-                <option value="">Todos</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer pb-2">
-              <input
-                type="checkbox"
-                checked={overdue}
-                onChange={(e) => setOverdue(e.target.checked)}
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as PayablesListTab)}
+      >
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          {PAYABLES_LIST_TABS.map((tabId) => (
+            <TabsTrigger key={tabId} value={tabId} className="text-xs sm:text-sm">
+              {PAYABLES_LIST_TAB_LABELS[tabId]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {PAYABLES_LIST_TABS.map((tabId) => (
+          <TabsContent key={tabId} value={tabId} className="mt-4">
+            <CronogramaPanel
+              search={
+                <>
+                  <CronogramaSearch
+                    value={searchInput}
+                    onChange={setSearchInput}
+                    placeholder="Buscar descrição, fornecedor, valor, data ou estado…"
+                  />
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Fornecedor</Label>
+                      <select
+                        className="flex h-9 min-w-[11rem] rounded-md border border-slate-300 px-3 text-sm bg-white"
+                        value={supplierId}
+                        onChange={(e) => setSupplierId(e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        {suppliers.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs cursor-pointer pb-2">
+                      <input
+                        type="checkbox"
+                        checked={overdue}
+                        onChange={(e) => setOverdue(e.target.checked)}
+                      />
+                      Só vencidas
+                    </label>
+                  </div>
+                </>
+              }
+            >
+              <SortableTable
+                columns={tableColumns}
+                data={visibleRows}
+                getRowKey={(row) => row.id}
+                isLoading={loading}
+                emptyMessage={`Sem contas em «${PAYABLES_LIST_TAB_LABELS[activeTab]}».`}
+                actionsColumn={{
+                  label: "Acções",
+                  width: "w-[5rem]",
+                  render: (r) => (
+                    <div className="flex flex-col items-end gap-1">
+                      {r.status !== "paid" && r.status !== "cancelled" ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setAdjustOpen(r);
+                              setAdjustAmount(String(r.current_amount));
+                            }}
+                          >
+                            Ajustar valor
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setPayOpen(r);
+                              setPayAmount(String(r.current_amount));
+                            }}
+                          >
+                            Registrar pagamento
+                          </Button>
+                        </>
+                      ) : null}
+                      {isAdmin ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-700"
+                          onClick={() => void removeRow(r.id)}
+                        >
+                          Eliminar
+                        </Button>
+                      ) : null}
+                    </div>
+                  ),
+                }}
               />
-              Só vencidas
-            </label>
-          </div>
-
-          <SortableTable
-            columns={tableColumns}
-            data={rows}
-            getRowKey={(row) => row.id}
-            isLoading={loading}
-            emptyMessage={`Sem contas em «${PAYABLES_LIST_TAB_LABELS[activeTab]}».`}
-            actionsColumn={{
-              label: "Acções",
-              width: "w-[5rem]",
-              render: (r) => (
-                <div className="flex flex-col items-end gap-1">
-                  {r.status !== "paid" && r.status !== "cancelled" ? (
-                    <>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setAdjustOpen(r);
-                          setAdjustAmount(String(r.current_amount));
-                        }}
-                      >
-                        Ajustar valor
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setPayOpen(r);
-                          setPayAmount(String(r.current_amount));
-                        }}
-                      >
-                        Registrar pagamento
-                      </Button>
-                    </>
-                  ) : null}
-                  {isAdmin ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="text-red-700"
-                      onClick={() => void removeRow(r.id)}
-                    >
-                      Eliminar
-                    </Button>
-                  ) : null}
-                </div>
-              ),
-            }}
-          />
-        </CardContent>
-      </Card>
+            </CronogramaPanel>
+          </TabsContent>
+        ))}
+      </Tabs>
 
       {adjustOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -615,6 +634,6 @@ export default function FinancePayablesPage() {
           </Card>
         </div>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

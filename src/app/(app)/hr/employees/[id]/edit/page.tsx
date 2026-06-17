@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, CalendarClock, Loader2, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import { usePermissions } from "@/hooks/use-permissions";
 
 type Employee = {
@@ -220,29 +221,17 @@ export default function EditEmployeePage() {
     dId ? departments.find((d) => d.id === dId)?.name ?? dId : "—";
 
   if (permLoading || loading) {
-    return (
-      <div className="flex justify-center py-20 gap-2 text-slate-500">
-        <Loader2 className="h-5 w-5 animate-spin" /> A carregar…
-      </div>
-    );
+    return <LoadingState label="A carregar…" />;
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-10">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/hr/employees"
-          className="text-slate-600 hover:text-brand-700"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">
-            Editar colaborador
-          </h1>
-          <p className="text-sm text-slate-600">{form.name}</p>
-        </div>
-      </div>
+    <AppPage
+      title="Editar colaborador"
+      description={form.name}
+      backHref="/hr/employees"
+      width="narrow"
+      density="comfortable"
+    >
 
       <Card>
         <CardHeader>
@@ -489,6 +478,6 @@ export default function EditEmployeePage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

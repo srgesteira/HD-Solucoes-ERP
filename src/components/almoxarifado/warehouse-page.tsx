@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { AppPage } from "@/shared/ui/app-page";
 import { InventoryBalancesTable } from "@/components/almoxarifado/inventory-balances-table";
 import { StockOperationsTab } from "@/components/almoxarifado/stock-operations-tab";
 import { SupplyTab } from "@/components/almoxarifado/supply-tab";
@@ -56,14 +57,12 @@ export function WarehousePage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold text-slate-900">Almoxarifado</h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Extrato de movimentações, saldos e abastecimento de produção.
-        </p>
-      </div>
-
+    <AppPage
+      title="Almoxarifado"
+      description="Extrato de movimentações, saldos e abastecimento de produção."
+      density="comfortable"
+      width="wide"
+    >
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList className="w-full flex flex-wrap h-auto gap-1">
           <TabsTrigger value="operacoes">Operações de estoque</TabsTrigger>
@@ -84,11 +83,11 @@ export function WarehousePage() {
         </TabsContent>
       </Tabs>
 
-      <p className="text-xs text-slate-500 text-center pb-6">
+      <p className="text-xs text-slate-500 text-center">
         <Link href="/logistics/pcp" className="text-brand-700 underline">
           Voltar ao PCP
         </Link>
       </p>
-    </div>
+    </AppPage>
   );
 }

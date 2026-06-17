@@ -16,14 +16,15 @@ import {
   quoteHeaderToInsert,
 } from "@/modules/vendas/lib/sales/quote-payload";
 import { createQuoteBodySchema } from "@/shared/contracts/quote.schema";
+import {
+  buildQuoteUniversalSearchOrFilter,
+  resolveQuoteIdsFromUniversalSearch,
+} from "@/modules/core/lib/universal-search-query";
+import { escapeIlike } from "@/shared/utils/universal-search";
 
 export const dynamic = "force-dynamic";
 
 const QUOTE_SET = new Set<string>(QUOTE_STATUSES);
-
-function escapeIlike(pattern: string): string {
-  return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -88,10 +89,23 @@ export async function GET(request: NextRequest) {
   }
 
   if (rawSearch) {
-    const safe = `%${escapeIlike(rawSearch)}%`;
-    query = query.or(
-      `quote_number.ilike.${safe},client_name.ilike.${safe},client_email.ilike.${safe}`
+    const quoteIdsFromProducts = await resolveQuoteIdsFromUniversalSearch(
+      admin,
+      tenantId,
+      rawSearch
     );
+    const orFilter = buildQuoteUniversalSearchOrFilter(
+      rawSearch,
+      quoteIdsFromProducts
+    );
+    if (orFilter) {
+      query = query.or(orFilter);
+    } else {
+      const safe = `%${escapeIlike(rawSearch)}%`;
+      query = query.or(
+        `quote_number.ilike.${safe},client_name.ilike.${safe},client_email.ilike.${safe}`
+      );
+    }
   }
 
   if (dateFrom) {

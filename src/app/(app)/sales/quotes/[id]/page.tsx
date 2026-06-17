@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   Check,
   FileText,
   Loader2,
+  Pencil,
   Printer,
   Save,
   Send,
+  X,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ import {
   itemsToLinesAndCache,
   type QuoteApiItem,
 } from "@/modules/vendas/lib/sales/quote-form-hydrate";
+import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { cn } from "@/shared/utils/cn";
@@ -33,6 +35,8 @@ import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { QuoteStatus } from "@/modules/core/types/sales.types";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
+import { QuoteSendEmailModal } from "@/components/sales/quote-send-email-modal";
+import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
 import { QuoteFormFields } from "@/components/sales/quote-form-fields";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
@@ -213,6 +217,31 @@ async function postApproveQuote(id: string): Promise<string> {
   return oid;
 }
 
+async function postSendQuoteEmail(
+  id: string,
+  to: string[],
+  message: string | null
+): Promise<{ sent: boolean; simulated: boolean; message: string | null }> {
+  const res = await fetch(`/api/sales/quotes/${id}/send-email`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, message }),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    sent?: boolean;
+    simulated?: boolean;
+    message?: string | null;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao enviar orçamento");
+  return {
+    sent: Boolean(json.sent),
+    simulated: Boolean(json.simulated),
+    message: json.message ?? null,
+  };
+}
+
 async function postRejectQuote(
   id: string,
   reasonIds: string[],
@@ -266,6 +295,8 @@ export default function QuoteDetailPage() {
   const q = quoteQuery.data?.data;
 
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [sendEmailOpen, setSendEmailOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [customerId, setCustomerId] = useState("");
   const [clientEmail, setClientEmail] = useState("");
@@ -287,13 +318,18 @@ export default function QuoteDetailPage() {
     canEditQuotes &&
     quoteStatusAllowsContentEdit(q!.status);
 
+  // Estados em que iniciar uma edição deve incrementar revisão (princípio §2.4).
+  const editingTriggersRevision =
+    Boolean(q) && (q!.status === "sent" || q!.status === "approved");
+
   useEffect(() => {
+    setEditing(false);
     setHydrated(false);
     structureAckRef.current = false;
   }, [id]);
 
   useEffect(() => {
-    if (!q || !canContentEdit || hydrated) return;
+    if (!q || !editing || !canContentEdit || hydrated) return;
     setCustomerId(q.customer_id ?? "");
     setClientEmail(q.client_email ?? "");
     setQuoteDate(String(q.quote_date ?? "").slice(0, 10));
@@ -308,13 +344,14 @@ export default function QuoteDetailPage() {
     setLines(loadedLines);
     setProductCache(cache);
     setHydrated(true);
-  }, [q, canContentEdit, hydrated]);
+  }, [q, editing, canContentEdit, hydrated]);
 
   useEffect(() => {
     if (
       !id ||
       !q?.awaiting_commercial_finalize ||
       structureAckRef.current ||
+      !editing ||
       !canContentEdit
     ) {
       return;
@@ -336,7 +373,7 @@ export default function QuoteDetailPage() {
       setLines(loadedLines);
       setProductCache(cache);
     })();
-  }, [id, q?.awaiting_commercial_finalize, canContentEdit, queryClient]);
+  }, [id, q?.awaiting_commercial_finalize, editing, canContentEdit, queryClient]);
 
   const productById = useMemo(() => {
     const map = new Map<string, QuoteLineProduct>();
@@ -390,6 +427,7 @@ export default function QuoteDetailPage() {
           ? `Orçamento actualizado (${label}).`
           : "Orçamento actualizado."
       );
+      setEditing(false);
       setHydrated(false);
       invalidateQuote();
     },
@@ -429,6 +467,26 @@ export default function QuoteDetailPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const sendEmailMutation = useMutation({
+    mutationFn: (p: { to: string[]; message: string | null }) =>
+      postSendQuoteEmail(id, p.to, p.message),
+    onSuccess: (result) => {
+      if (result.sent) {
+        toast.success(result.message ?? "Orçamento enviado por e-mail.");
+      } else if (result.simulated) {
+        toast.info(
+          result.message ??
+            "Envio simulado — configure o serviço de e-mail (RESEND_API_KEY)."
+        );
+      } else {
+        toast.warning(result.message ?? "Envio não confirmado.");
+      }
+      setSendEmailOpen(false);
+      invalidateQuote();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const rejectMutation = useMutation({
     mutationFn: (p: { reasonIds: string[]; notes: string }) =>
       postRejectQuote(id, p.reasonIds, p.notes),
@@ -452,86 +510,134 @@ export default function QuoteDetailPage() {
     saveMutation.isPending ||
     statusMutation.isPending ||
     approveMutation.isPending ||
-    rejectMutation.isPending;
+    rejectMutation.isPending ||
+    sendEmailMutation.isPending;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-10">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link href="/sales/quotes">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar
-          </Button>
-        </Link>
-        {q ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              window.open(
-                `/sales/quotes/${id}/print`,
-                "_blank",
-                "noopener,noreferrer"
-              )
-            }
-          >
-            <Printer className="h-4 w-4" />
-            Imprimir / PDF
-          </Button>
-        ) : null}
-        {canContentEdit && hydrated ? (
-          <Button
-            type="button"
-            size="sm"
-            disabled={busy}
-            onClick={() => saveMutation.mutate()}
-          >
-            {saveMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            Guardar
-          </Button>
-        ) : null}
-        {canEditQuotes && q && (st === "draft" || st === "revision") ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => statusMutation.mutate({ status: "sent" })}
-          >
-            <Send className="h-4 w-4" />
-            Enviar
-          </Button>
-        ) : null}
-        {isAdmin && q && (st === "draft" || st === "sent") ? (
-          <>
+    <AppPage
+      backHref="/sales/quotes"
+      title={
+        q
+          ? formatQuoteDisplayTitle(q.quote_number, q.revision_number)
+          : "Orçamento"
+      }
+      density="comfortable"
+      actions={
+        <>
+          {q ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                window.open(
+                  `/sales/quotes/${id}/print`,
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              <Printer className="h-4 w-4" />
+              Imprimir / PDF
+            </Button>
+          ) : null}
+          {canContentEdit && !editing ? (
             <Button
               type="button"
               size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              variant={editingTriggersRevision ? "outline" : "primary"}
+              className={
+                editingTriggersRevision
+                  ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+                  : undefined
+              }
               disabled={busy}
-              onClick={() => approveMutation.mutate()}
+              onClick={() => {
+                if (editingTriggersRevision) {
+                  const ok = window.confirm(
+                    "Editar este orçamento criará uma nova revisão (rev seguinte). Continuar?"
+                  );
+                  if (!ok) return;
+                }
+                setEditing(true);
+              }}
             >
-              <Check className="h-4 w-4" />
-              Aprovar
+              <Pencil className="h-4 w-4" />
+              {editingTriggersRevision ? "Editar (cria revisão)" : "Editar"}
             </Button>
+          ) : null}
+          {canContentEdit && editing ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy}
+                onClick={() => saveMutation.mutate()}
+              >
+                {saveMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Guardar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setEditing(false);
+                  setHydrated(false);
+                }}
+              >
+                <X className="h-4 w-4" />
+                Cancelar edição
+              </Button>
+            </>
+          ) : null}
+          {canEditQuotes &&
+          q &&
+          !editing &&
+          (st === "draft" || st === "revision" || st === "sent") ? (
             <Button
               type="button"
               size="sm"
-              variant="danger"
+              variant="outline"
               disabled={busy}
-              onClick={() => setRejectOpen(true)}
+              onClick={() => setSendEmailOpen(true)}
             >
-              <XCircle className="h-4 w-4" />
-              Rejeitar
+              <Send className="h-4 w-4" />
+              {st === "sent" ? "Reenviar" : "Enviar"}
             </Button>
-          </>
-        ) : null}
-      </div>
+          ) : null}
+          {isAdmin && q && (st === "draft" || st === "sent") ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={busy}
+                onClick={() => approveMutation.mutate()}
+              >
+                <Check className="h-4 w-4" />
+                Aprovar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                disabled={busy}
+                onClick={() => setRejectOpen(true)}
+              >
+                <XCircle className="h-4 w-4" />
+                Rejeitar
+              </Button>
+            </>
+          ) : null}
+        </>
+      }
+    >
 
       {quoteQuery.isLoading ? (
         <div className="flex items-center gap-2 text-slate-600 py-12 justify-center">
@@ -582,7 +688,7 @@ export default function QuoteDetailPage() {
                     <span>
                       <span className="text-slate-500">Data do orçamento:</span>{" "}
                       <span className="font-medium tabular-nums text-slate-800 dark:text-slate-200">
-                        {canContentEdit && hydrated
+                        {editing && hydrated
                           ? fmtDay(quoteDate)
                           : fmtDay(q.quote_date)}
                       </span>
@@ -632,14 +738,24 @@ export default function QuoteDetailPage() {
             </Card>
           ) : null}
 
-          {canContentEdit && !hydrated ? (
+          {editing && canContentEdit && !hydrated ? (
             <div className="flex items-center justify-center gap-2 py-12 text-slate-600">
               <Loader2 className="h-5 w-5 animate-spin" />
               A preparar edição…
             </div>
           ) : null}
 
-          {canContentEdit && hydrated ? (
+          {editing && canContentEdit && editingTriggersRevision && hydrated ? (
+            <Card className="border-amber-300 bg-amber-50/80 dark:border-amber-800 dark:bg-amber-950/30">
+              <CardContent className="py-3 text-sm text-amber-900 dark:text-amber-100">
+                <strong>Aviso:</strong> ao guardar, será criada uma nova
+                revisão deste orçamento (o número receberá o sufixo da próxima
+                revisão).
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {editing && canContentEdit && hydrated ? (
             <div className="space-y-6">
               <Card>
                 <CardHeader>
@@ -941,6 +1057,12 @@ export default function QuoteDetailPage() {
                   </CardContent>
                 </Card>
               </div>
+
+              <Card>
+                <CardContent className="pt-5">
+                  <AuditHistoryPanel table="quotes" recordId={id} />
+                </CardContent>
+              </Card>
             </>
           )}
         </>
@@ -955,6 +1077,27 @@ export default function QuoteDetailPage() {
           rejectMutation.mutate({ reasonIds, notes })
         }
       />
-    </div>
+
+      <QuoteSendEmailModal
+        open={sendEmailOpen}
+        quoteNumber={
+          q
+            ? formatQuoteNumberWithRevision(q.quote_number, q.revision_number)
+            : ""
+        }
+        defaultRecipient={
+          q?.client_email?.trim() ||
+          (Array.isArray(q?.customer)
+            ? q?.customer?.[0]?.email
+            : q?.customer?.email) ||
+          ""
+        }
+        busy={sendEmailMutation.isPending}
+        onClose={() =>
+          !sendEmailMutation.isPending && setSendEmailOpen(false)
+        }
+        onSubmit={(to, message) => sendEmailMutation.mutate({ to, message })}
+      />
+    </AppPage>
   );
 }

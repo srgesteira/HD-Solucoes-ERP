@@ -15,6 +15,7 @@ import { PcpLinesPlanningView } from "@/components/pcp/pcp-lines-planning-view";
 import { PcpPurchaseDependenciesPanel } from "@/components/pcp/pcp-purchase-dependencies-panel";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
+import { AppPage } from "@/shared/ui/app-page";
 import "@/components/pcp/pcp-legacy.css";
 
 type ViewMode = "orders" | "lines" | "purchases";
@@ -351,16 +352,12 @@ export function PcpPlanningView() {
   }
 
   return (
-    <div className="pcp-legacy-shell max-w-[96rem] mx-auto space-y-4 pb-10">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">
-            Planeamento PCP
-          </h1>
-          <p className="text-sm text-slate-600 mt-0.5">
-            PCP Control — pedidos, linhas, PCs e apontamentos
-          </p>
-        </div>
+    <AppPage
+      title="Planeamento PCP"
+      description="PCP Control — pedidos, linhas, PCs e apontamentos"
+      width="wide"
+      density="comfortable"
+      actions={
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -408,8 +405,9 @@ export function PcpPlanningView() {
             Actualizar
           </button>
         </div>
-      </div>
-
+      }
+    >
+      <div className="pcp-legacy-shell space-y-4">
       {mrpSummaryText ? (
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
           {mrpSummaryText}
@@ -671,6 +669,7 @@ export function PcpPlanningView() {
           </div>
         </div>
       ) : null}
-    </div>
+      </div>
+    </AppPage>
   );
 }

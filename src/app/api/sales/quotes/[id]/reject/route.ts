@@ -5,6 +5,7 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import { rejectQuoteWithReasons } from "@/modules/vendas/lib/sales/quote-reject";
+import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,16 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!result.ok) {
     return apiError(result.message, result.status);
   }
+
+  await recordAuditEvent(admin, {
+    tenantId,
+    actorId: user.id,
+    actorEmail: user.email ?? null,
+    table: "quotes",
+    recordId: quoteId,
+    eventKind: "quote_rejected",
+    payload: { reason_ids, notes },
+  });
 
   return apiOk({ success: true });
 }

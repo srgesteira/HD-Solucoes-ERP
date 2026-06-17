@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import { usePermissions } from "@/hooks/use-permissions";
 import { toast } from "sonner";
 
@@ -71,16 +73,9 @@ export default function PurchasingDashboardPage() {
   }, [permLoading, can]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-10">
-      <h2 className="text-2xl font-semibold text-slate-900">
-        Dashboard de Compras
-      </h2>
-
+    <AppPage title="Dashboard de Compras" density="comfortable">
       {loading ? (
-        <p className="flex items-center gap-2 text-slate-600 py-12 justify-center">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          A carregar…
-        </p>
+        <LoadingState />
       ) : kpis && savings ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -159,6 +154,6 @@ export default function PurchasingDashboardPage() {
           </Card>
         </>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

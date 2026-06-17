@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/shared/ui/button";
+import { AppPage } from "@/shared/ui/app-page";
+import { EmptyState, LoadingState } from "@/shared/ui/page-helpers";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import { SalesOrderForm } from "@/components/sales/sales-order-form";
@@ -33,32 +32,31 @@ export default function SalesOrderEditPage() {
 
   if (!orderId) {
     return (
-      <p className="text-sm text-red-700 text-center py-8">Pedido inválido.</p>
+      <AppPage
+        title="Editar pedido de venda"
+        backHref="/sales/orders"
+        width="narrow"
+      >
+        <EmptyState
+          title="Pedido inválido"
+          description="Não foi possível identificar o pedido."
+        />
+      </AppPage>
     );
   }
 
   if (meLoading || !canEdit) {
-    return (
-      <div className="max-w-4xl mx-auto flex justify-center py-16 text-slate-500">
-        <span className="text-sm">A validar permissões…</span>
-      </div>
-    );
+    return <LoadingState label="A validar permissões…" />;
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-10">
-      <div className="flex items-center gap-3">
-        <Link href={`/sales/orders/${orderId}`}>
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar ao pedido
-          </Button>
-        </Link>
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-          Editar pedido de venda
-        </h1>
-      </div>
-
+    <AppPage
+      title="Editar pedido de venda"
+      backHref={`/sales/orders/${orderId}`}
+      backLabel="Voltar ao pedido"
+      width="narrow"
+      density="comfortable"
+    >
       <SalesOrderForm
         mode="edit"
         orderId={orderId}
@@ -66,6 +64,6 @@ export default function SalesOrderEditPage() {
         isAdmin={isAdmin}
         onSaved={(id) => router.push(`/sales/orders/${id}`)}
       />
-    </div>
+    </AppPage>
   );
 }

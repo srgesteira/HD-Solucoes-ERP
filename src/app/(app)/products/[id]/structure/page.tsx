@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 
 /** Composição unificada no separador da página de edição. */
 export default function ProductStructureRedirectPage() {
@@ -20,8 +22,8 @@ export default function ProductStructureRedirectPage() {
   }, [productId, router]);
 
   return (
-    <p className="text-sm text-slate-600 py-12 text-center">
-      A redireccionar para a edição do produto…
-    </p>
+    <AppPage title="Estrutura do produto" density="comfortable">
+      <LoadingState label="A redireccionar para a edição do produto…" />
+    </AppPage>
   );
 }

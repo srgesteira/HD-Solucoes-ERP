@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   FileUp,
   Loader2,
   Save,
@@ -18,6 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { NumericInput } from "@/shared/ui/numeric-input";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -227,29 +227,24 @@ export default function PurchaseInvoiceReconcilePage() {
   };
 
   if (!canUse) {
-    return (
-      <div className="max-w-lg mx-auto py-16 flex justify-center text-slate-600">
-        <span className="text-sm">A verificar permissões…</span>
-      </div>
-    );
+    return <LoadingState label="A verificar permissões…" />;
   }
 
   const inv = reconcile?.invoiceData;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-12">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link href="/purchasing/orders">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Pedidos de compra
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <FileUp className="h-6 w-6" />
-          Importar NF-e (PDF)
-        </h1>
-      </div>
+    <AppPage
+      backHref="/purchasing/orders"
+      backLabel="Pedidos de compra"
+      width="default"
+      density="comfortable"
+      title={
+        <div className="flex items-center gap-2">
+          <FileUp className="h-6 w-6 text-brand-700" aria-hidden />
+          <span>Importar NF-e (PDF)</span>
+        </div>
+      }
+    >
 
       <Card>
         <CardHeader>
@@ -531,6 +526,6 @@ export default function PurchaseInvoiceReconcilePage() {
         showNewProductButton
         title="Associar produto à linha da NF-e"
       />
-    </div>
+    </AppPage>
   );
 }

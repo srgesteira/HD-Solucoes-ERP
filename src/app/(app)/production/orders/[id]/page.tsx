@@ -12,6 +12,7 @@ import { ptBR } from "date-fns/locale";
 import {
   AlertCircle,
   ArrowLeft,
+  Ban,
   Calendar,
   CheckCircle,
   Clock,
@@ -23,10 +24,16 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
+import { StatusBadge } from "@/shared/ui/page-helpers";
 import { cn } from "@/shared/utils/cn";
+import { useMe } from "@/hooks/use-me";
+import { ProductionOrderCancelModal } from "@/components/production/production-order-cancel-modal";
+import type { ProductionCancellationReason } from "@/modules/reverse/lib/returns-types";
 
 const GANTT_MAX_COLS = 60;
 
@@ -395,6 +402,39 @@ export default function ProductionOrderDetailPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const { data: me } = useMe();
+  const isAdmin = me?.role === "admin";
+  const [cancelOpOpen, setCancelOpOpen] = useState(false);
+  const cancelOpMutation = useMutation({
+    mutationFn: async (payload: {
+      reason: ProductionCancellationReason;
+      notes: string | null;
+    }) => {
+      const res = await fetch(
+        `/api/production-orders/${orderId}/cancel`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao cancelar OP");
+    },
+    onSuccess: () => {
+      toast.success("OP cancelada.");
+      setCancelOpOpen(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["production-order", orderId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const handleStatusChange = (itemId: string, currentStatus: string) => {
     const newStatus =
       currentStatus === "completed" ? "scheduled" : "completed";
@@ -403,28 +443,30 @@ export default function ProductionOrderDetailPage() {
 
   if (!orderId) {
     return (
-      <div className="max-w-6xl mx-auto py-6">
+      <AppPage title="Pedido de produção" backHref="/production/orders">
         <Card>
           <CardContent className="py-8 text-center text-red-600 text-sm">
             Identificador de pedido inválido.
           </CardContent>
         </Card>
-      </div>
+      </AppPage>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-[16rem] text-slate-500 gap-2">
-        <Loader2 className="h-8 w-8 animate-spin" aria-hidden />
-        <span className="text-sm">A carregar pedido…</span>
-      </div>
+      <AppPage title="Pedido de produção" backHref="/production/orders">
+        <div className="flex justify-center items-center py-16 text-slate-500 gap-2">
+          <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
+          <span className="text-sm">A carregar pedido…</span>
+        </div>
+      </AppPage>
     );
   }
 
   if (error || !order) {
     return (
-      <div className="max-w-6xl mx-auto py-6 space-y-4">
+      <AppPage title="Pedido de produção" backHref="/production/orders">
         <Card className="border-slate-200">
           <CardContent className="py-10">
             <p className="text-center text-red-600 text-sm">
@@ -439,7 +481,7 @@ export default function ProductionOrderDetailPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </AppPage>
     );
   }
 
@@ -455,48 +497,66 @@ export default function ProductionOrderDetailPage() {
       ? Math.round((completedCount / items.length) * 100)
       : 0;
   const deliveryOverdue = isOrderDeliveryOverdue(order);
+  const canCancelOp =
+    isAdmin &&
+    !["cancelled", "finished", "completed"].includes(order.status);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <Link href="/production/orders">
-            <Button type="button" variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4" aria-hidden />
-              Voltar
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900 font-mono">
-              {order.order_number}
-            </h1>
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              <span
-                className={cn(
-                  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                  orderBadge.className
-                )}
-              >
-                {orderBadge.label}
-              </span>
-              {deliveryOverdue ? (
-                <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium">
-                  <AlertCircle className="h-3.5 w-3.5" aria-hidden />
-                  Prazo de entrega ultrapassado
-                </span>
-              ) : null}
-            </div>
-          </div>
+    <AppPage
+      title={
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="font-mono">{order.order_number}</span>
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+              orderBadge.className
+            )}
+          >
+            {orderBadge.label}
+          </span>
+          {deliveryOverdue ? (
+            <StatusBadge tone="danger" icon={AlertCircle}>
+              Prazo de entrega ultrapassado
+            </StatusBadge>
+          ) : null}
         </div>
-        <Button
-          type="button"
-          onClick={() => router.push(`/production/orders/${orderId}/edit`)}
-          className="shrink-0"
-        >
-          <Edit className="h-4 w-4" aria-hidden />
-          Editar
-        </Button>
-      </div>
+      }
+      backHref="/production/orders"
+      width="wide"
+      density="comfortable"
+      actions={
+        <>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => router.push(`/production/orders/${orderId}/edit`)}
+          >
+            <Edit className="h-4 w-4" aria-hidden />
+            Editar
+          </Button>
+          {canCancelOp ? (
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={() => setCancelOpOpen(true)}
+            >
+              <Ban className="h-4 w-4" aria-hidden />
+              Cancelar OP
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      {cancelOpOpen ? (
+        <ProductionOrderCancelModal
+          open={cancelOpOpen}
+          orderNumber={order.order_number}
+          busy={cancelOpMutation.isPending}
+          onClose={() => setCancelOpOpen(false)}
+          onSubmit={(payload) => cancelOpMutation.mutate(payload)}
+        />
+      ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="border-slate-200 shadow-sm">
@@ -725,6 +785,6 @@ export default function ProductionOrderDetailPage() {
           </CardContent>
         </Card>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

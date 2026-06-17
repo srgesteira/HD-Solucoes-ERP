@@ -1,5 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import {
+  buildPurchaseOrderUniversalSearchOrFilter,
+  resolvePurchaseOrderIdsFromUniversalSearch,
+} from "@/modules/core/lib/universal-search-query";
+import {
+  matchesUniversalSearchRow,
+  parseUniversalSearch,
+} from "@/shared/utils/universal-search";
 
 type Admin = SupabaseClient<Database>;
 
@@ -11,6 +19,8 @@ export type PurchaseOrderBoardRow = {
   expected_delivery: string | null;
   total_value: number;
   status: string;
+  /** Códigos/nomes de produtos do pedido (para busca universal no cliente). */
+  product_hints?: string[];
 };
 
 function dateOnly(v: string | null | undefined): string | null {
@@ -39,11 +49,19 @@ export function computeOrderSituation(
 const OPEN_STATUSES = ["draft", "sent", "confirmed", "partial"];
 const FINISHED_STATUSES = ["received"];
 
+export type PurchaseBoardBucket = "all" | "open" | "finished";
+
 export async function fetchPurchaseOrdersBoard(
   admin: Admin,
   tenantId: string,
-  bucket: "open" | "finished"
+  bucket: PurchaseBoardBucket,
+  rawSearch = ""
 ): Promise<PurchaseOrderBoardRow[]> {
+  const searchHint = parseUniversalSearch(rawSearch);
+  const productOrderIds = searchHint.text
+    ? await resolvePurchaseOrderIdsFromUniversalSearch(admin, tenantId, searchHint.text)
+    : [];
+
   let query = admin
     .from("purchase_orders")
     .select(
@@ -54,7 +72,10 @@ export async function fetchPurchaseOrdersBoard(
       expected_delivery,
       status,
       total,
-      supplier:suppliers!purchase_orders_supplier_id_fkey(name, legal_name)
+      supplier:suppliers!purchase_orders_supplier_id_fkey(name, legal_name),
+      items:purchase_order_items(
+        product:products!purchase_order_items_product_id_fkey(code, technical_code, name)
+      )
     `
     )
     .eq("tenant_id", tenantId)
@@ -63,24 +84,61 @@ export async function fetchPurchaseOrdersBoard(
 
   if (bucket === "open") {
     query = query.in("status", OPEN_STATUSES);
-  } else {
+  } else if (bucket === "finished") {
     query = query.in("status", FINISHED_STATUSES);
+  }
+
+  const orFilter = buildPurchaseOrderUniversalSearchOrFilter(
+    searchHint.text,
+    productOrderIds
+  );
+  if (orFilter) {
+    query = query.or(orFilter);
   }
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) => {
+  const rows = (data ?? []).map((row) => {
     const sup = Array.isArray(row.supplier) ? row.supplier[0] : row.supplier;
+    const supplierName =
+      sup?.name?.trim() || sup?.legal_name?.trim() || "—";
+
+    const productHints: string[] = [];
+    const items = Array.isArray(row.items) ? row.items : [];
+    for (const item of items) {
+      const prod = Array.isArray(item.product) ? item.product[0] : item.product;
+      if (prod?.code) productHints.push(String(prod.code));
+      if (prod?.technical_code) productHints.push(String(prod.technical_code));
+      if (prod?.name) productHints.push(String(prod.name));
+    }
+
     return {
       id: row.id,
       po_number: row.po_number,
-      supplier_name:
-        sup?.name?.trim() || sup?.legal_name?.trim() || "—",
+      supplier_name: supplierName,
       order_date: String(row.order_date).slice(0, 10),
       expected_delivery: dateOnly(row.expected_delivery),
       total_value: Number(row.total ?? 0),
       status: row.status,
+      product_hints: productHints,
     };
   });
+
+  if (!searchHint.text) return rows;
+
+  return rows.filter((row) =>
+    matchesUniversalSearchRow(
+      searchHint,
+      [
+        row.po_number,
+        row.supplier_name,
+        row.order_date,
+        row.expected_delivery,
+        row.status,
+        row.total_value,
+      ],
+      row.product_hints ?? []
+    )
+  );
 }

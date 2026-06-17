@@ -2,16 +2,28 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Loader2, Plus } from "lucide-react";
+import { Building2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
+import {
+  matchesUniversalSearchRow,
+  parseUniversalSearch,
+} from "@/shared/utils/universal-search";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useMe } from "@/hooks/use-me";
 
@@ -41,6 +53,8 @@ export default function HrDepartmentsPage() {
   const { can, isLoading: permLoading } = usePermissions();
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
   const [rows, setRows] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
@@ -129,6 +143,23 @@ export default function HrDepartmentsPage() {
     toast.success("Direcionador actualizado.");
   }
 
+  const searchHint = parseUniversalSearch(search);
+  const visibleRows = useMemo(() => {
+    if (!searchHint.text) return rows;
+    return rows.filter((row) =>
+      matchesUniversalSearchRow(
+        searchHint,
+        [
+          row.code,
+          row.name,
+          row.is_support ? "apoio sim" : "apoio não",
+          DRIVER_LABELS[row.allocation_driver ?? "hours"],
+        ],
+        []
+      )
+    );
+  }, [rows, searchHint]);
+
   const tableColumns = useMemo((): SortableTableColumn<Department>[] => {
     return [
       {
@@ -139,7 +170,7 @@ export default function HrDepartmentsPage() {
         accessor: (row) => row.code,
         truncate: false,
         render: (row) => (
-          <span className="font-mono text-xs">{row.code}</span>
+          <span className={CRONOGRAMA_TOKENS.cellLink}>{row.code}</span>
         ),
       },
       {
@@ -201,29 +232,28 @@ export default function HrDepartmentsPage() {
 
   if (permLoading || (!permLoading && !can("hr"))) {
     return (
-      <div className="flex justify-center items-center gap-2 py-20 text-slate-500">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">A validar acesso…</span>
-      </div>
+      <AppPage title="Departamentos">
+        <LoadingState label="A validar acesso…" />
+      </AppPage>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex flex-wrap justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-            <Building2 className="h-7 w-7 text-brand-700" />
-            Departamentos
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Departamentos de apoio são rateados para as linhas conforme o
-            direcionador escolhido.
-          </p>
-        </div>
-        {isAdmin ? (
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Building2 className="h-5 w-5 text-brand-700" />
+          Departamentos
+        </span>
+      }
+      description="Cronograma de departamentos — rateio para linhas de produção."
+      width="wide"
+      density="comfortable"
+      actions={
+        isAdmin ? (
           <Button
             type="button"
+            size="sm"
             onClick={() => {
               setShowNew(true);
               setForm({
@@ -235,10 +265,11 @@ export default function HrDepartmentsPage() {
             }}
           >
             <Plus className="h-4 w-4" />
-            <span className="ml-1">Novo</span>
+            Novo
           </Button>
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
 
       {showNew && isAdmin ? (
         <Card>
@@ -286,20 +317,23 @@ export default function HrDepartmentsPage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Listagem</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SortableTable
-            columns={tableColumns}
-            data={rows}
-            getRowKey={(row) => row.id}
-            isLoading={loading}
-            emptyMessage="Nenhum departamento cadastrado."
+      <CronogramaPanel
+        search={
+          <CronogramaSearch
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder="Buscar código, nome ou direcionador…"
           />
-        </CardContent>
-      </Card>
-    </div>
+        }
+      >
+        <SortableTable
+          columns={tableColumns}
+          data={visibleRows}
+          getRowKey={(row) => row.id}
+          isLoading={loading}
+          emptyMessage="Nenhum departamento cadastrado."
+        />
+      </CronogramaPanel>
+    </AppPage>
   );
 }

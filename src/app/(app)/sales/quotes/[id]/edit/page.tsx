@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 
 /** Redireciona para a página única do orçamento (edição + acções no mesmo ecrã). */
 export default function QuoteEditRedirectPage() {
@@ -15,9 +16,8 @@ export default function QuoteEditRedirectPage() {
   }, [id, router]);
 
   return (
-    <div className="flex items-center justify-center gap-2 py-16 text-slate-600">
-      <Loader2 className="h-5 w-5 animate-spin" />
-      A redireccionar…
-    </div>
+    <AppPage title="Orçamento" density="comfortable">
+      <LoadingState label="A redireccionar…" />
+    </AppPage>
   );
 }

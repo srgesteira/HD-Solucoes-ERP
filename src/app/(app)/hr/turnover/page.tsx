@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { ModulePlaceholder } from "@/components/placeholders/module-placeholder";
 import { PieChart } from "lucide-react";
+import { AppPage } from "@/shared/ui/app-page";
 
 export default function HrTurnoverPage() {
   return (
-    <div className="space-y-4 max-w-2xl mx-auto">
+    <AppPage title="Turnover" width="narrow" density="comfortable">
       <ModulePlaceholder
         title="Turnover"
         icon={PieChart}
@@ -18,6 +19,6 @@ export default function HrTurnoverPage() {
           Abrir dashboard RH
         </Link>
       </p>
-    </div>
+    </AppPage>
   );
 }

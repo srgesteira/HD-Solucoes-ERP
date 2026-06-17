@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Save, Search } from "lucide-react";
+import { Loader2, Save, Search } from "lucide-react";
 import { toast } from "sonner";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
@@ -11,6 +10,7 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
 import { useMe } from "@/hooks/use-me";
 
 type ProductLite = {
@@ -141,16 +141,14 @@ export default function InventoryAdjustPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link href="/inventory">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Lista de estoque
-          </Button>
-        </Link>
-      </div>
-
+    <AppPage
+      title="Ajuste de estoque"
+      description="Selecione um produto e atualize seus saldos e parâmetros"
+      backHref="/inventory"
+      backLabel="Lista de estoque"
+      width="narrow"
+      density="comfortable"
+    >
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Ajuste de estoque</CardTitle>
@@ -257,6 +255,6 @@ export default function InventoryAdjustPage() {
         showNewProductButton={false}
         title="Seleccionar produto"
       />
-    </div>
+    </AppPage>
   );
 }

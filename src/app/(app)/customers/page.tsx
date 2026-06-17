@@ -1,25 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Edit,
-  Plus,
-  Search,
-  User,
-  UserX,
-} from "lucide-react";
+import { Edit, Plus, User, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
-import { cn } from "@/shared/utils/cn";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { AppPage } from "@/shared/ui/app-page";
+import { StatusBadge } from "@/shared/ui/page-helpers";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaError,
+  CronogramaPagination,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -31,6 +31,8 @@ import {
   CUSTOMERS_QUERY_KEY,
   customersListQueryKey,
 } from "@/modules/vendas/lib/customers/query-keys";
+
+type CustomerTab = "all" | "active" | "inactive";
 
 interface CustomerRow {
   id: string;
@@ -47,19 +49,21 @@ interface CustomersApiResponse {
   pagination: { page: number; limit: number; total: number };
 }
 
+const TAB_OPTIONS: Array<{ value: CustomerTab; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "active", label: "Ativos" },
+  { value: "inactive", label: "Inativos" },
+];
+
 async function fetchCustomers(filters: {
-  isActive: string;
+  tab: CustomerTab;
   search: string;
   page: number;
   limit: number;
 }): Promise<CustomersApiResponse> {
   const params = new URLSearchParams();
-  if (filters.isActive !== "all") {
-    params.append(
-      "is_active",
-      filters.isActive === "active" ? "true" : "false"
-    );
-  }
+  if (filters.tab === "active") params.append("is_active", "true");
+  else if (filters.tab === "inactive") params.append("is_active", "false");
   if (filters.search.trim()) params.append("search", filters.search.trim());
   params.append("page", String(filters.page));
   params.append("limit", String(filters.limit));
@@ -99,48 +103,57 @@ export default function CustomersPage() {
   const { can } = usePermissions();
   const canManage = me?.role === "admin" || can("sales");
 
-  const [searchInput, setSearchInput] = useState("");
-  const [filters, setFilters] = useState({
-    isActive: "all",
-    search: "",
-    page: 1,
-    limit: 25,
-  });
+  const [activeTab, setActiveTab] = useState<CustomerTab>("all");
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
+  const [page, setPage] = useState(1);
+  const limit = 25;
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<CustomerFormValues | null>(null);
   const [toggleBusy, setToggleBusy] = useState<string | null>(null);
 
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      setFilters((f) => ({ ...f, search: searchInput, page: 1 }));
-    }, 380);
-    return () => window.clearTimeout(t);
-  }, [searchInput]);
+    setPage(1);
+  }, [search, activeTab]);
+
+  const queryFilters = useMemo(
+    () => ({ tab: activeTab, search, page, limit }),
+    [activeTab, search, page, limit]
+  );
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: customersListQueryKey(filters),
-    queryFn: () => fetchCustomers(filters),
+    queryKey: customersListQueryKey({
+      isActive: activeTab,
+      search,
+      page,
+      limit,
+    }),
+    queryFn: () => fetchCustomers(queryFilters),
     enabled: canManage,
   });
 
   const totalPages = data?.pagination
-    ? Math.max(1, Math.ceil(data.pagination.total / filters.limit))
+    ? Math.max(1, Math.ceil(data.pagination.total / limit))
     : 0;
 
   const rangeDescription = useMemo(() => {
     if (!data?.pagination) return "";
     const { total } = data.pagination;
-    const start = total === 0 ? 0 : (filters.page - 1) * filters.limit + 1;
-    const end = Math.min(filters.page * filters.limit, total);
+    const start = total === 0 ? 0 : (page - 1) * limit + 1;
+    const end = Math.min(page * limit, total);
     return `${start}–${end} de ${total}`;
-  }, [data?.pagination, filters.page, filters.limit]);
+  }, [data?.pagination, page, limit]);
+
+  const invalidateCustomers = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: CUSTOMERS_QUERY_KEY });
+  }, [queryClient]);
 
   const handleToggleActive = async (row: CustomerRow) => {
     setToggleBusy(row.id);
     try {
       await setCustomerActive(row.id, !row.is_active);
       toast.success(row.is_active ? "Cliente desativado." : "Cliente reativado.");
-      await queryClient.invalidateQueries({ queryKey: CUSTOMERS_QUERY_KEY });
+      await invalidateCustomers();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Não foi possível alterar o estado."
@@ -177,7 +190,9 @@ export default function CustomersPage() {
         width: "w-[22%]",
         accessor: (row) => row.name,
         render: (row) => (
-          <span className="font-medium text-slate-900 line-clamp-2">{row.name}</span>
+          <span className={`${CRONOGRAMA_TOKENS.cellText} font-medium line-clamp-2`}>
+            {row.name}
+          </span>
         ),
       },
       {
@@ -188,7 +203,7 @@ export default function CustomersPage() {
         accessor: (row) => row.document,
         truncate: false,
         render: (row) => (
-          <span className="text-slate-700 whitespace-nowrap">
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
             {row.document?.trim() || "—"}
           </span>
         ),
@@ -200,7 +215,7 @@ export default function CustomersPage() {
         width: "w-[20%]",
         accessor: (row) => row.email,
         render: (row) => (
-          <span className="text-slate-700 line-clamp-1">
+          <span className={CRONOGRAMA_TOKENS.cellText}>
             {row.email?.trim() || "—"}
           </span>
         ),
@@ -213,7 +228,7 @@ export default function CustomersPage() {
         accessor: (row) => row.phone,
         truncate: false,
         render: (row) => (
-          <span className="text-slate-700 whitespace-nowrap">
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
             {row.phone?.trim() || "—"}
           </span>
         ),
@@ -226,16 +241,9 @@ export default function CustomersPage() {
         accessor: (row) => (row.is_active ? "Ativo" : "Inativo"),
         truncate: false,
         render: (row) => (
-          <span
-            className={cn(
-              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-              row.is_active
-                ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
-                : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
-            )}
-          >
+          <StatusBadge tone={row.is_active ? "success" : "muted"}>
             {row.is_active ? "Ativo" : "Inativo"}
-          </span>
+          </StatusBadge>
         ),
       },
     ];
@@ -243,156 +251,110 @@ export default function CustomersPage() {
 
   if (!canManage) {
     return (
-      <div className="max-w-xl mx-auto py-12">
+      <AppPage title="Clientes" width="narrow">
         <p className="text-sm text-slate-600">
           Sem permissão para aceder ao cadastro de clientes.
         </p>
-      </div>
+      </AppPage>
     );
   }
 
+  const listPanel = (
+    <CronogramaPanel
+      search={
+        <CronogramaSearch
+          value={searchInput}
+          onChange={setSearchInput}
+          placeholder="Buscar nome, documento, e-mail, telefone ou morada…"
+        />
+      }
+      error={
+        error ? (
+          <CronogramaError message={error.message} onRetry={() => void refetch()} />
+        ) : null
+      }
+      footer={
+        data?.pagination?.total ? (
+          <CronogramaPagination
+            page={page}
+            totalPages={totalPages}
+            rangeDescription={rangeDescription}
+            itemCount={data?.data?.length}
+            onPageChange={setPage}
+          />
+        ) : null
+      }
+    >
+      <SortableTable
+        columns={tableColumns}
+        data={data?.data ?? []}
+        getRowKey={(row) => row.id}
+        isLoading={isLoading}
+        emptyMessage="Nenhum cliente encontrado."
+        actionsColumn={{
+          label: "Ações",
+          width: "w-[5rem]",
+          render: (row) => (
+            <RowActionsMenu
+              items={[
+                {
+                  id: "edit",
+                  label: "Editar",
+                  icon: <Edit className="h-4 w-4" />,
+                  onClick: () => openEdit(row),
+                },
+                {
+                  id: "toggle",
+                  label: row.is_active ? "Desativar" : "Reativar",
+                  icon: row.is_active ? (
+                    <UserX className="h-4 w-4" />
+                  ) : (
+                    <User className="h-4 w-4" />
+                  ),
+                  disabled: toggleBusy === row.id,
+                  onClick: () => void handleToggleActive(row),
+                },
+              ]}
+            />
+          ),
+        }}
+      />
+    </CronogramaPanel>
+  );
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Clientes</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Cadastro para orçamentos e pedidos — busca por CNPJ/CPF e contactos.
-          </p>
-        </div>
+    <AppPage
+      title="Clientes"
+      description="Cronograma de cadastro — orçamentos e pedidos de venda."
+      density="comfortable"
+      width="wide"
+      actions={
         <Button type="button" size="sm" onClick={openCreate}>
           <Plus className="h-4 w-4" />
           Novo cliente
         </Button>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2 font-semibold">
-            <User className="h-5 w-5 text-slate-600" aria-hidden />
-            Listagem
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
-            <div className="relative flex-1 min-w-0">
-              <Search
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
-                aria-hidden
-              />
-              <Input
-                placeholder="Buscar por nome, documento ou e-mail…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <select
-              className={cn(
-                "h-9 rounded-md border border-slate-300 bg-white px-3 text-sm",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
-              )}
-              aria-label="Filtrar por estado"
-              value={filters.isActive}
-              onChange={(e) =>
-                setFilters({ ...filters, isActive: e.target.value, page: 1 })
-              }
-            >
-              <option value="all">Todos</option>
-              <option value="active">Ativos</option>
-              <option value="inactive">Inativos</option>
-            </select>
-          </div>
-
-          {error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-red-800">{error.message}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void refetch()}
-              >
-                Tentar de novo
-              </Button>
-            </div>
-          ) : null}
-
-          <SortableTable
-            columns={tableColumns}
-            data={data?.data ?? []}
-            getRowKey={(row) => row.id}
-            isLoading={isLoading}
-            emptyMessage="Nenhum cliente encontrado para estes filtros."
-            actionsColumn={{
-              label: "Ações",
-              width: "w-[5rem]",
-              render: (row) =>
-                canManage ? (
-                  <RowActionsMenu
-                    items={[
-                      {
-                        id: "edit",
-                        label: "Editar",
-                        icon: <Edit className="h-4 w-4" />,
-                        onClick: () => openEdit(row),
-                      },
-                      {
-                        id: "toggle",
-                        label: row.is_active ? "Desativar" : "Reativar",
-                        icon: row.is_active ? (
-                          <UserX className="h-4 w-4" />
-                        ) : (
-                          <User className="h-4 w-4" />
-                        ),
-                        disabled: toggleBusy === row.id,
-                        onClick: () => void handleToggleActive(row),
-                      },
-                    ]}
-                  />
-                ) : (
-                  <span className="text-xs text-slate-400">—</span>
-                ),
-            }}
-          />
-
-          {data?.pagination && data.pagination.total > 0 ? (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-600">
-              <span>{rangeDescription}</span>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={filters.page <= 1}
-                  onClick={() =>
-                    setFilters((f) => ({ ...f, page: Math.max(1, f.page - 1) }))
-                  }
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="tabular-nums">
-                  Página {filters.page} de {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={filters.page >= totalPages}
-                  onClick={() =>
-                    setFilters((f) => ({
-                      ...f,
-                      page: Math.min(totalPages, f.page + 1),
-                    }))
-                  }
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+      }
+    >
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v as CustomerTab);
+          setPage(1);
+        }}
+      >
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          {TAB_OPTIONS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {TAB_OPTIONS.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value} className="mt-4">
+            {listPanel}
+          </TabsContent>
+        ))}
+      </Tabs>
 
       <CustomerQuickCreateModal
         open={modalOpen}
@@ -403,13 +365,13 @@ export default function CustomersPage() {
         editCustomer={editTarget}
         onCreated={() => {
           toast.success("Cliente criado.");
-          void queryClient.invalidateQueries({ queryKey: CUSTOMERS_QUERY_KEY });
+          void invalidateCustomers();
         }}
         onUpdated={() => {
           toast.success("Cliente atualizado.");
-          void queryClient.invalidateQueries({ queryKey: CUSTOMERS_QUERY_KEY });
+          void invalidateCustomers();
         }}
       />
-    </div>
+    </AppPage>
   );
 }

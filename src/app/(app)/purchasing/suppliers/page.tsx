@@ -1,34 +1,35 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Edit,
-  Plus,
-  Search,
-  Truck,
-  User,
-  UserX,
-} from "lucide-react";
+import { Edit, Plus, User, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
 import { RowActionsMenu } from "@/shared/ui/row-actions-menu";
+import { AppPage } from "@/shared/ui/app-page";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaError,
+  CronogramaPagination,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import {
   SUPPLIERS_QUERY_KEY,
   suppliersListQueryKey,
 } from "@/modules/compras/lib/suppliers/query-keys";
+
+type SupplierTab = "all" | "active" | "inactive";
 
 interface SupplierRow {
   id: string;
@@ -45,19 +46,21 @@ interface SuppliersApiResponse {
   pagination: { page: number; limit: number; total: number };
 }
 
+const TAB_OPTIONS: Array<{ value: SupplierTab; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "active", label: "Ativos" },
+  { value: "inactive", label: "Inativos" },
+];
+
 async function fetchSuppliers(filters: {
-  isActive: string;
+  tab: SupplierTab;
   search: string;
   page: number;
   limit: number;
 }): Promise<SuppliersApiResponse> {
   const params = new URLSearchParams();
-  if (filters.isActive !== "all") {
-    params.append(
-      "is_active",
-      filters.isActive === "active" ? "true" : "false"
-    );
-  }
+  if (filters.tab === "active") params.append("is_active", "true");
+  else if (filters.tab === "inactive") params.append("is_active", "false");
   if (filters.search.trim()) params.append("search", filters.search.trim());
   params.append("page", String(filters.page));
   params.append("limit", String(filters.limit));
@@ -68,20 +71,19 @@ async function fetchSuppliers(filters: {
   });
   const json = (await res.json().catch(() => ({}))) as SuppliersApiResponse & {
     error?: string;
-    detail?: unknown;
   };
 
   if (!res.ok) {
-    const errMsg =
-      typeof json.error === "string" ? json.error : "Erro ao carregar fornecedores";
-    throw new Error(errMsg);
+    throw new Error(
+      typeof json.error === "string" ? json.error : "Erro ao carregar fornecedores"
+    );
   }
 
   if (!json.data || !json.pagination) {
-    throw new Error("Resposta invÃ¡lida da API");
+    throw new Error("Resposta inválida da API");
   }
 
-  return json as SuppliersApiResponse;
+  return json;
 }
 
 async function setSupplierActive(id: string, isActive: boolean): Promise<void> {
@@ -101,27 +103,35 @@ export default function SuppliersPage() {
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
 
-  const [searchInput, setSearchInput] = useState("");
-  const [filters, setFilters] = useState({
-    isActive: "all",
-    search: "",
-    page: 1,
-    limit: 25,
-  });
+  const [activeTab, setActiveTab] = useState<SupplierTab>("all");
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
+  const [page, setPage] = useState(1);
+  const limit = 25;
+  const [toggleBusy, setToggleBusy] = useState<string | null>(null);
 
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      setFilters((f) => ({ ...f, search: searchInput, page: 1 }));
-    }, 380);
-    return () => window.clearTimeout(t);
-  }, [searchInput]);
+    setPage(1);
+  }, [search, activeTab]);
+
+  const queryFilters = useMemo(
+    () => ({ tab: activeTab, search, page, limit }),
+    [activeTab, search, page, limit]
+  );
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: suppliersListQueryKey(filters),
-    queryFn: () => fetchSuppliers(filters),
+    queryKey: suppliersListQueryKey({
+      isActive: activeTab,
+      search,
+      page,
+      limit,
+    }),
+    queryFn: () => fetchSuppliers(queryFilters),
   });
 
-  const [toggleBusy, setToggleBusy] = useState<string | null>(null);
+  const invalidateSuppliers = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: SUPPLIERS_QUERY_KEY });
+  }, [queryClient]);
 
   const handleToggleActive = async (row: SupplierRow) => {
     if (!isAdmin) return;
@@ -131,10 +141,10 @@ export default function SuppliersPage() {
       toast.success(
         row.is_active ? "Fornecedor desativado." : "Fornecedor reativado."
       );
-      await queryClient.invalidateQueries({ queryKey: SUPPLIERS_QUERY_KEY });
+      await invalidateSuppliers();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "NÃ£o foi possÃ­vel alterar o estado."
+        err instanceof Error ? err.message : "Não foi possível alterar o estado."
       );
     } finally {
       setToggleBusy(null);
@@ -142,16 +152,16 @@ export default function SuppliersPage() {
   };
 
   const totalPages = data?.pagination
-    ? Math.max(1, Math.ceil(data.pagination.total / filters.limit))
+    ? Math.max(1, Math.ceil(data.pagination.total / limit))
     : 0;
 
   const rangeDescription = useMemo(() => {
     if (!data?.pagination) return "";
     const { total } = data.pagination;
-    const start = total === 0 ? 0 : (filters.page - 1) * filters.limit + 1;
-    const end = Math.min(filters.page * filters.limit, total);
-    return `${start}â€“${end} de ${total}`;
-  }, [data?.pagination, filters.page, filters.limit]);
+    const start = total === 0 ? 0 : (page - 1) * limit + 1;
+    const end = Math.min(page * limit, total);
+    return `${start}–${end} de ${total}`;
+  }, [data?.pagination, page, limit]);
 
   const tableColumns = useMemo((): SortableTableColumn<SupplierRow>[] => {
     return [
@@ -163,7 +173,7 @@ export default function SuppliersPage() {
         accessor: (row) => row.code,
         truncate: false,
         render: (row) => (
-          <span className="font-medium text-slate-900 whitespace-nowrap">
+          <span className={`${CRONOGRAMA_TOKENS.cellLink} whitespace-nowrap`}>
             {row.code}
           </span>
         ),
@@ -175,7 +185,7 @@ export default function SuppliersPage() {
         width: "w-[20%]",
         accessor: (row) => row.name,
         render: (row) => (
-          <span className="text-slate-800 line-clamp-2">{row.name}</span>
+          <span className={CRONOGRAMA_TOKENS.cellText}>{row.name}</span>
         ),
       },
       {
@@ -186,7 +196,7 @@ export default function SuppliersPage() {
         accessor: (row) => row.document,
         truncate: false,
         render: (row) => (
-          <span className="text-slate-700 whitespace-nowrap">
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
             {row.document?.trim() || "—"}
           </span>
         ),
@@ -198,7 +208,7 @@ export default function SuppliersPage() {
         width: "w-[18%]",
         accessor: (row) => row.email,
         render: (row) => (
-          <span className="text-slate-700 line-clamp-1">
+          <span className={CRONOGRAMA_TOKENS.cellText}>
             {row.email?.trim() || "—"}
           </span>
         ),
@@ -211,7 +221,7 @@ export default function SuppliersPage() {
         accessor: (row) => row.phone,
         truncate: false,
         render: (row) => (
-          <span className="text-slate-700 whitespace-nowrap">
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
             {row.phone?.trim() || "—"}
           </span>
         ),
@@ -226,10 +236,10 @@ export default function SuppliersPage() {
         render: (row) => (
           <span
             className={cn(
-              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
+              CRONOGRAMA_TOKENS.badge,
               row.is_active
-                ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
-                : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
+                ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                : "bg-slate-100 text-slate-600 ring-slate-300"
             )}
           >
             {row.is_active ? "Ativo" : "Inativo"}
@@ -239,16 +249,81 @@ export default function SuppliersPage() {
     ];
   }, []);
 
+  const listPanel = (
+    <CronogramaPanel
+      search={
+        <CronogramaSearch
+          value={searchInput}
+          onChange={setSearchInput}
+          placeholder="Buscar código, nome, documento, e-mail ou telefone…"
+        />
+      }
+      error={
+        error ? (
+          <CronogramaError message={error.message} onRetry={() => void refetch()} />
+        ) : null
+      }
+      footer={
+        data?.pagination?.total ? (
+          <CronogramaPagination
+            page={page}
+            totalPages={totalPages}
+            rangeDescription={rangeDescription}
+            itemCount={data?.data?.length}
+            onPageChange={setPage}
+          />
+        ) : null
+      }
+    >
+      <SortableTable
+        columns={tableColumns}
+        data={data?.data ?? []}
+        getRowKey={(row) => row.id}
+        isLoading={isLoading}
+        emptyMessage="Nenhum fornecedor encontrado."
+        actionsColumn={{
+          label: "Ações",
+          width: "w-[5rem]",
+          render: (supplier) =>
+            isAdmin ? (
+              <RowActionsMenu
+                items={[
+                  {
+                    id: "edit",
+                    label: "Editar",
+                    icon: <Edit className="h-4 w-4" />,
+                    onClick: () =>
+                      router.push(`/purchasing/suppliers/${supplier.id}/edit`),
+                  },
+                  {
+                    id: "toggle",
+                    label: supplier.is_active ? "Desativar" : "Reativar",
+                    icon: supplier.is_active ? (
+                      <UserX className="h-4 w-4" />
+                    ) : (
+                      <User className="h-4 w-4" />
+                    ),
+                    disabled: toggleBusy === supplier.id,
+                    onClick: () => void handleToggleActive(supplier),
+                  },
+                ]}
+              />
+            ) : (
+              <span className="text-xs text-slate-400">—</span>
+            ),
+        }}
+      />
+    </CronogramaPanel>
+  );
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Fornecedores</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Cadastro de fornecedores do tenant â€” CNPJ/CPF, contactos e estado.
-          </p>
-        </div>
-        {isAdmin ? (
+    <AppPage
+      title="Fornecedores"
+      description="Cronograma de cadastro — compras e contas a pagar."
+      density="comfortable"
+      width="wide"
+      actions={
+        isAdmin ? (
           <Button
             type="button"
             size="sm"
@@ -257,159 +332,37 @@ export default function SuppliersPage() {
             <Plus className="h-4 w-4" />
             Novo fornecedor
           </Button>
-        ) : null}
-      </div>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2 font-semibold">
-            <Truck className="h-5 w-5 text-slate-600" aria-hidden />
-            Listagem
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
-            <div className="relative flex-1 min-w-0">
-              <Search
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
-                aria-hidden
-              />
-              <Input
-                placeholder="Buscar por nome, documento ou e-mailâ€¦"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2 shrink-0">
-              <select
-                className={cn(
-                  "h-9 rounded-md border border-slate-300 bg-white px-3 text-sm",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
-                )}
-                aria-label="Filtrar por estado"
-                value={filters.isActive}
-                onChange={(e) =>
-                  setFilters({ ...filters, isActive: e.target.value, page: 1 })
-                }
-              >
-                <option value="all">Todos</option>
-                <option value="active">Ativos</option>
-                <option value="inactive">Inativos</option>
-              </select>
-            </div>
-          </div>
-
-          {error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-red-800">{error.message}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void refetch()}
-              >
-                Tentar de novo
-              </Button>
-            </div>
-          ) : null}
-
-          <SortableTable
-            columns={tableColumns}
-            data={data?.data ?? []}
-            getRowKey={(row) => row.id}
-            isLoading={isLoading}
-            emptyMessage="Nenhum fornecedor encontrado para estes filtros."
-            actionsColumn={{
-              label: "Ações",
-              width: "w-[5rem]",
-              render: (supplier) =>
-                isAdmin ? (
-                  <RowActionsMenu
-                    items={[
-                      {
-                        id: "edit",
-                        label: "Editar",
-                        icon: <Edit className="h-4 w-4" />,
-                        onClick: () =>
-                          router.push(
-                            `/purchasing/suppliers/${supplier.id}/edit`
-                          ),
-                      },
-                      {
-                        id: "toggle",
-                        label: supplier.is_active ? "Desativar" : "Reativar",
-                        icon: supplier.is_active ? (
-                          <UserX className="h-4 w-4" />
-                        ) : (
-                          <User className="h-4 w-4" />
-                        ),
-                        disabled: toggleBusy === supplier.id,
-                        onClick: () => void handleToggleActive(supplier),
-                      },
-                    ]}
-                  />
-                ) : (
-                  <span className="text-xs text-slate-400">—</span>
-                ),
-            }}
-          />
-
-          {data?.pagination?.total !== undefined && data.pagination.total > 0 ? (
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">
-              <p className="text-sm text-slate-500">
-                Fornecedores nesta pÃ¡gina: {data.data.length}. Intervalo total:{" "}
-                <span className="font-medium text-slate-700">
-                  {rangeDescription}
-                </span>
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={filters.page <= 1}
-                  onClick={() =>
-                    setFilters({ ...filters, page: Math.max(1, filters.page - 1) })
-                  }
-                  aria-label="Página anterior"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Anterior
-                </Button>
-                <span className="text-sm tabular-nums px-2 text-slate-600">
-                  PÃ¡gina {filters.page} / {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={filters.page >= totalPages}
-                  onClick={() =>
-                    setFilters({
-                      ...filters,
-                      page: Math.min(totalPages, filters.page + 1),
-                    })
-                  }
-                  aria-label="PÃ¡gina seguinte"
-                >
-                  Seguinte
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
+        ) : null
+      }
+    >
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v as SupplierTab);
+          setPage(1);
+        }}
+      >
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          {TAB_OPTIONS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {TAB_OPTIONS.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value} className="mt-4">
+            {listPanel}
+          </TabsContent>
+        ))}
+      </Tabs>
 
       {!isLoading && error == null ? (
         <p className="text-xs text-slate-500 text-center pb-8">
           <Link href="/boards" className="text-brand-700 underline">
-            Voltar Ã s tarefas
+            Voltar às tarefas
           </Link>
         </p>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

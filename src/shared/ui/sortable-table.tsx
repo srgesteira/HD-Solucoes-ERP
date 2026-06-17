@@ -30,6 +30,8 @@ export type SortableTableActionsColumn<T> = {
   render: (row: T) => ReactNode;
 };
 
+export type SortableTableDensity = "default" | "cronograma";
+
 export type SortableTableProps<T> = {
   columns: SortableTableColumn<T>[];
   data: T[];
@@ -38,6 +40,8 @@ export type SortableTableProps<T> = {
   isLoading?: boolean;
   loadingMessage?: string;
   emptyMessage?: string;
+  /** Densidade visual — cronograma usa linhas compactas (referência Compras). */
+  density?: SortableTableDensity;
   className?: string;
   tableClassName?: string;
   rowClassName?: string | ((row: T) => string);
@@ -81,6 +85,7 @@ export function SortableTable<T>({
   isLoading = false,
   loadingMessage = "A carregar…",
   emptyMessage = "Nenhum registo encontrado.",
+  density = "cronograma",
   className,
   tableClassName,
   rowClassName,
@@ -143,6 +148,11 @@ export function SortableTable<T>({
   }
 
   const actionsWidth = actionsColumn?.width ?? "w-[5rem]";
+  const isCronograma = density === "cronograma";
+  const tableText = isCronograma ? "text-xs" : "text-sm";
+  const headerPad = isCronograma ? "px-3 py-2" : "px-3 py-2.5";
+  const cellPad = isCronograma ? "px-3 py-2" : "px-3 py-2.5";
+  const headerText = isCronograma ? "text-xs font-medium" : "font-medium";
 
   return (
     <div
@@ -153,7 +163,8 @@ export function SortableTable<T>({
     >
       <table
         className={cn(
-          "w-full table-fixed text-sm text-left",
+          "w-full table-fixed text-left",
+          tableText,
           tableClassName
         )}
       >
@@ -173,7 +184,9 @@ export function SortableTable<T>({
                   key={col.key}
                   scope="col"
                   className={cn(
-                    "px-3 py-2.5 font-medium text-slate-700",
+                    headerPad,
+                    headerText,
+                    "text-slate-700",
                     cellAlignClass(col.align)
                   )}
                 >
@@ -208,7 +221,11 @@ export function SortableTable<T>({
             {actionsColumn ? (
               <th
                 scope="col"
-                className="px-2 py-2.5 font-medium text-slate-700 text-right"
+                className={cn(
+                  headerPad,
+                  headerText,
+                  "text-slate-700 text-right"
+                )}
               >
                 {actionsColumn.label ?? "Acções"}
               </th>
@@ -272,7 +289,8 @@ export function SortableTable<T>({
                       <td
                         key={col.key}
                         className={cn(
-                          "px-3 py-2.5 align-middle",
+                          cellPad,
+                          "align-middle",
                           cellAlignClass(col.align)
                         )}
                       >
@@ -293,7 +311,7 @@ export function SortableTable<T>({
                     );
                   })}
                   {actionsColumn ? (
-                    <td className="px-2 py-2.5 text-right align-middle w-[5rem]">
+                    <td className={cn(cellPad, "text-right align-middle w-[5rem]")}>
                       {actionsColumn.render(row)}
                     </td>
                   ) : null}

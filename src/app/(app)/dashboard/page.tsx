@@ -22,6 +22,7 @@ import {
   CardTitle,
 } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
+import { AppPage } from "@/shared/ui/app-page";
 
 type InsightRow = {
   id: string;
@@ -567,21 +568,21 @@ export default function ConsultantDashboardPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-24">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-brand-700 mb-1">
-            <LayoutDashboard className="h-5 w-5" />
-            <span className="text-xs font-semibold uppercase tracking-wide">
-              Inteligência de negócio
-            </span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900">Agente Consultor</h1>
-          <p className="text-sm text-slate-600 mt-1 max-w-xl">
-            Indicadores, insights da IA e ações rápidas num só lugar.
-          </p>
-        </div>
-
+    <AppPage
+      title={
+        <span className="flex flex-col gap-1">
+          <span className="flex items-center gap-2 text-brand-700 text-xs font-semibold uppercase tracking-wide">
+            <LayoutDashboard className="h-4 w-4" />
+            Inteligência de negócio
+          </span>
+          Agente Consultor
+        </span>
+      }
+      description="Indicadores, insights da IA e ações rápidas num só lugar."
+      width="wide"
+      density="comfortable"
+      className="pb-16"
+      actions={
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="text-xs text-slate-500 whitespace-nowrap">
             {lastAnalyzedAt ? (
@@ -636,8 +637,8 @@ export default function ConsultantDashboardPage() {
             ) : null}
           </div>
         </div>
-      </div>
-
+      }
+    >
       {isAdmin && anthropicConfigured === false ? (
         <div
           className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"
@@ -1095,6 +1096,6 @@ export default function ConsultantDashboardPage() {
           ))}
         </div>
       </section>
-    </div>
+    </AppPage>
   );
 }

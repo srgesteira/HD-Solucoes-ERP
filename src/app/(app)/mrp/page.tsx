@@ -3,12 +3,14 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Boxes, Loader2 } from "lucide-react";
+import { Boxes, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import { useMe } from "@/hooks/use-me";
 import type {
   MaterialRequirement,
@@ -170,22 +172,22 @@ function MrpPageContent() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link href="/sales/orders">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Pedidos de venda
-          </Button>
-        </Link>
-      </div>
-
+    <AppPage
+      title={
+        <div className="flex items-center gap-2">
+          <Boxes className="h-6 w-6 text-brand-700" aria-hidden />
+          <span>MRP — planeamento por pedido</span>
+        </div>
+      }
+      description="Calcule necessidades de materiais a partir de pedidos de venda"
+      backHref="/sales/orders"
+      backLabel="Pedidos de venda"
+      width="narrow"
+      density="comfortable"
+    >
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Boxes className="h-5 w-5" />
-            MRP — planeamento por pedido
-          </CardTitle>
+          <CardTitle className="text-lg">Parâmetros</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <p className="text-slate-600 dark:text-slate-400">
@@ -432,20 +434,13 @@ function MrpPageContent() {
           ) : null}
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }
 
 export default function MrpPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="max-w-4xl mx-auto flex items-center gap-2 py-16 text-slate-600">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          A carregar…
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingState label="A carregar…" />}>
       <MrpPageContent />
     </Suspense>
   );

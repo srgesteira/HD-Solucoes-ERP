@@ -4,13 +4,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Building2, Download, Loader2, Save, Upload } from "lucide-react";
+import { Building2, Download, Loader2, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
+import { AppPage } from "@/shared/ui/app-page";
+import {
+  ErrorState,
+  LoadingState,
+  StatusBadge,
+} from "@/shared/ui/page-helpers";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import type { Tables } from "@/modules/core/types/database";
@@ -312,46 +318,52 @@ export default function CompanySettingsPage() {
 
   if (meLoading || (me && me.role !== "admin")) {
     return (
-      <div className="max-w-4xl mx-auto flex justify-center py-16 text-slate-500 gap-2">
-        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-        <span className="text-sm">A validar permissões…</span>
-      </div>
+      <AppPage title="Configurações da empresa" backHref="/settings/profile">
+        <LoadingState label="A validar permissões…" />
+      </AppPage>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6 space-y-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <Link href="/settings/profile">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Building2 className="h-5 w-5 text-slate-600" />
+          Configurações da empresa
+        </span>
+      }
+      description="Dados usados em documentos e identificação fiscal."
+      backHref="/settings/profile"
+      width="narrow"
+      density="comfortable"
+      actions={
+        companyQuery.data ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={saveMutation.isPending}
+            onClick={() => handleSave()}
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Guardar
           </Button>
-        </Link>
-        <div className="flex items-center gap-2">
-          <Building2 className="h-8 w-8 text-slate-600" aria-hidden />
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">
-              Configurações da empresa
-            </h1>
-            <p className="text-sm text-slate-600">
-              Dados usados em documentos e identificação fiscal.
-            </p>
-          </div>
-        </div>
-      </div>
-
+        ) : null
+      }
+    >
       {companyQuery.isLoading ? (
-        <div className="flex justify-center py-16 text-slate-500 gap-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>A carregar…</span>
-        </div>
+        <LoadingState />
       ) : companyQuery.error ? (
-        <p className="text-red-600 text-sm">
-          {companyQuery.error instanceof Error
-            ? companyQuery.error.message
-            : "Erro ao carregar"}
-        </p>
+        <ErrorState
+          message={
+            companyQuery.error instanceof Error
+              ? companyQuery.error.message
+              : "Erro ao carregar"
+          }
+        />
       ) : companyQuery.data === null ? (
         <Card>
           <CardContent className="pt-8 pb-8 text-center space-y-4">
@@ -583,13 +595,9 @@ export default function CompanySettingsPage() {
                       NF-e (FocusNFe)
                     </h3>
                     {companyQuery.data?.focusnfe_configured ? (
-                      <span className="text-xs rounded-md bg-emerald-100 px-2 py-0.5 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100">
-                        Token configurado
-                      </span>
+                      <StatusBadge tone="success">Token configurado</StatusBadge>
                     ) : (
-                      <span className="text-xs text-slate-500">
-                        Token não configurado
-                      </span>
+                      <StatusBadge tone="muted">Token não configurado</StatusBadge>
                     )}
                   </div>
                   <p className="text-xs text-slate-500">
@@ -1141,6 +1149,6 @@ export default function CompanySettingsPage() {
           </div>
         </>
       )}
-    </div>
+    </AppPage>
   );
 }

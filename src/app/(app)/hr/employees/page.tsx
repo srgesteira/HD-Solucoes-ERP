@@ -9,12 +9,35 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
+import {
+  matchesUniversalSearchRow,
+  parseUniversalSearch,
+} from "@/shared/utils/universal-search";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useMe } from "@/hooks/use-me";
+
+type EmployeeTab = "all" | "active" | "inactive" | "vacation" | "terminated";
+
+const TAB_OPTIONS: Array<{ value: EmployeeTab; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "active", label: "Ativos" },
+  { value: "inactive", label: "Inativos" },
+  { value: "vacation", label: "Férias" },
+  { value: "terminated", label: "Desligados" },
+];
 
 type Employee = {
   id: string;
@@ -49,6 +72,9 @@ export default function HrEmployeesPage() {
   const { can, isLoading: permLoading } = usePermissions();
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
+  const [activeTab, setActiveTab] = useState<EmployeeTab>("all");
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
   const [rows, setRows] = useState<Employee[]>([]);
   const [centers, setCenters] = useState<WorkCenter[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -220,6 +246,32 @@ export default function HrEmployeesPage() {
     terminated: "Desligado",
   };
 
+  const searchHint = parseUniversalSearch(search);
+  const visibleRows = useMemo(() => {
+    let list = rows;
+    if (activeTab !== "all") {
+      list = list.filter((r) => r.status === activeTab);
+    }
+    if (!searchHint.text) return list;
+    return list.filter((r) =>
+      matchesUniversalSearchRow(
+        searchHint,
+        [
+          r.name,
+          r.document,
+          r.email,
+          r.phone,
+          r.position,
+          r.monthly_salary,
+          centerName(r.work_center_id),
+          deptName(r.department_id),
+          employeeStatusLabel[r.status] ?? r.status,
+        ],
+        []
+      )
+    );
+  }, [rows, activeTab, searchHint, centers, departments]);
+
   const tableColumns = useMemo((): SortableTableColumn<Employee>[] => {
     return [
       {
@@ -230,7 +282,7 @@ export default function HrEmployeesPage() {
         accessor: (row) => row.name,
         truncate: false,
         render: (row) => (
-          <span className="inline-flex items-center gap-1.5 font-medium">
+          <span className={`${CRONOGRAMA_TOKENS.cellText} inline-flex items-center gap-1.5 font-medium`}>
             {row.name}
             {row.has_period_allocations ? (
               <span title="Alocações temporárias por período">
@@ -301,43 +353,51 @@ export default function HrEmployeesPage() {
 
   if (permLoading || (!permLoading && !can("hr"))) {
     return (
-      <div className="flex justify-center items-center gap-2 py-20 text-slate-500">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">A validar acesso…</span>
-      </div>
+      <AppPage title="Colaboradores">
+        <LoadingState label="A validar acesso…" />
+      </AppPage>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex flex-wrap justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-            <Users className="h-7 w-7 text-brand-700" />
-            Colaboradores
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Departamento, linha de produção e % de alocação para rateio de MO.
-          </p>
-        </div>
-        <Button type="button" onClick={() => { setShowNew(true); setEditing(null); setForm({
-          name: "",
-          document: "",
-          email: "",
-          phone: "",
-          position: "",
-          monthly_salary: "",
-          work_center_id: "",
-          department_id: "",
-          allocation_percentage: "100",
-          admission_date: "",
-          status: "active",
-          notes: "",
-        }); }}>
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Users className="h-5 w-5 text-brand-700" />
+          Colaboradores
+        </span>
+      }
+      description="Cronograma de colaboradores — departamento, linha e alocação."
+      density="comfortable"
+      width="wide"
+      actions={
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => {
+            setShowNew(true);
+            setEditing(null);
+            setForm({
+              name: "",
+              document: "",
+              email: "",
+              phone: "",
+              position: "",
+              monthly_salary: "",
+              work_center_id: "",
+              department_id: "",
+              allocation_percentage: "100",
+              admission_date: "",
+              status: "active",
+              notes: "",
+            });
+          }}
+        >
           <Plus className="h-4 w-4" />
-          <span className="ml-1">Novo</span>
+          Novo
         </Button>
-      </div>
+      }
+    >
 
       {(showNew || editing) ? (
         <Card>
@@ -491,44 +551,63 @@ export default function HrEmployeesPage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Listagem</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SortableTable
-            columns={tableColumns}
-            data={rows}
-            getRowKey={(row) => row.id}
-            isLoading={loading}
-            emptyMessage="Nenhum colaborador cadastrado."
-            actionsColumn={{
-              label: "Ações",
-              width: "w-[5rem]",
-              render: (r) => (
-                <div className="flex flex-col items-end gap-1 sm:flex-row sm:justify-end">
-                  <Link href={`/hr/employees/${r.id}/edit`}>
-                    <Button type="button" size="sm" variant="outline">
-                      Editar
-                    </Button>
-                  </Link>
-                  {isAdmin ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="text-red-700"
-                      onClick={() => void remove(r.id)}
-                    >
-                      Excluir
-                    </Button>
-                  ) : null}
-                </div>
-              ),
-            }}
-          />
-        </CardContent>
-      </Card>
-    </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as EmployeeTab)}
+      >
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          {TAB_OPTIONS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {TAB_OPTIONS.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value} className="mt-4">
+            <CronogramaPanel
+              search={
+                <CronogramaSearch
+                  value={searchInput}
+                  onChange={setSearchInput}
+                  placeholder="Buscar nome, documento, cargo, departamento ou linha…"
+                />
+              }
+            >
+              <SortableTable
+                columns={tableColumns}
+                data={visibleRows}
+                getRowKey={(row) => row.id}
+                isLoading={loading}
+                emptyMessage="Nenhum colaborador cadastrado."
+                actionsColumn={{
+                  label: "Ações",
+                  width: "w-[5rem]",
+                  render: (r) => (
+                    <div className="flex flex-col items-end gap-1 sm:flex-row sm:justify-end">
+                      <Link href={`/hr/employees/${r.id}/edit`}>
+                        <Button type="button" size="sm" variant="outline">
+                          Editar
+                        </Button>
+                      </Link>
+                      {isAdmin ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-700"
+                          onClick={() => void remove(r.id)}
+                        >
+                          Excluir
+                        </Button>
+                      ) : null}
+                    </div>
+                  ),
+                }}
+              />
+            </CronogramaPanel>
+          </TabsContent>
+        ))}
+      </Tabs>
+    </AppPage>
   );
 }

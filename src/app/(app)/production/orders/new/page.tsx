@@ -1,24 +1,16 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/shared/ui/button";
+import { AppPage } from "@/shared/ui/app-page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 
 export default function NewProductionOrderPage() {
   return (
-    <div className="max-w-4xl mx-auto py-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/production/orders">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-            Voltar
-          </Button>
-        </Link>
-        <h1 className="text-xl font-semibold text-slate-900">
-          Novo pedido de produção
-        </h1>
-      </div>
+    <AppPage
+      title="Novo pedido de produção"
+      backHref="/production/orders"
+      width="narrow"
+      density="comfortable"
+    >
       <Card className="border-slate-200 shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Em desenvolvimento</CardTitle>
@@ -29,6 +21,6 @@ export default function NewProductionOrderPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

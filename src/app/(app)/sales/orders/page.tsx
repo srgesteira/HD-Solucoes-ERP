@@ -1,26 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   Plus,
-  Search,
-  ShoppingBag,
 } from "lucide-react";
 import { SalesOrderRowActionsMenu } from "@/components/sales/sales-order-row-actions-menu";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
+import { InlineDateEdit } from "@/shared/ui/inline-date-edit";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { AppPage } from "@/shared/ui/app-page";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaError,
+  CronogramaPagination,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -57,8 +62,6 @@ interface OrdersApiResponse {
 const salesOrdersQueryKey = (filters: {
   tab: SalesOrderListTab;
   search: string;
-  dateFrom: string;
-  dateTo: string;
   page: number;
   limit: number;
 }) => ["sales-orders", filters] as const;
@@ -66,8 +69,6 @@ const salesOrdersQueryKey = (filters: {
 async function fetchSalesOrders(filters: {
   tab: SalesOrderListTab;
   search: string;
-  dateFrom: string;
-  dateTo: string;
   page: number;
   limit: number;
 }): Promise<OrdersApiResponse> {
@@ -75,10 +76,7 @@ async function fetchSalesOrders(filters: {
   params.append("page", String(filters.page));
   params.append("limit", String(filters.limit));
   params.append("tab", filters.tab);
-  if (filters.search.trim()) params.append("client", filters.search.trim());
-  if (filters.dateFrom.trim())
-    params.append("date_from", filters.dateFrom.trim());
-  if (filters.dateTo.trim()) params.append("date_to", filters.dateTo.trim());
+  if (filters.search.trim()) params.append("search", filters.search.trim());
 
   const res = await fetch(`/api/sales/orders?${params.toString()}`, {
     credentials: "include",
@@ -101,6 +99,20 @@ async function fetchSalesOrders(filters: {
   }
 
   return json as OrdersApiResponse;
+}
+
+async function patchOrderField(
+  id: string,
+  body: Record<string, unknown>
+): Promise<void> {
+  const res = await fetch(`/api/sales/orders/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao actualizar pedido");
 }
 
 async function putOrderStatus(id: string, status: string): Promise<void> {
@@ -147,26 +159,19 @@ export default function SalesOrdersListPage() {
   const isAdmin = me?.role === "admin";
   const canSales = isAdmin || can("sales");
 
-  const [tab, setTab] = useState<SalesOrderListTab>("open");
-  const [searchInput, setSearchInput] = useState("");
-  const [filters, setFilters] = useState({
-    search: "",
-    dateFrom: "",
-    dateTo: "",
-    page: 1,
-    limit: 25,
-  });
+  const [tab, setTab] = useState<SalesOrderListTab>("all");
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
+  const [page, setPage] = useState(1);
+  const limit = 25;
 
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      setFilters((f) => ({ ...f, search: searchInput, page: 1 }));
-    }, 380);
-    return () => window.clearTimeout(t);
-  }, [searchInput]);
+    setPage(1);
+  }, [search, tab]);
 
   const queryFilters = useMemo(
-    () => ({ ...filters, tab }),
-    [filters, tab]
+    () => ({ search, tab, page, limit }),
+    [search, tab, page, limit]
   );
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -185,16 +190,16 @@ export default function SalesOrdersListPage() {
     useState<SalesOrderListRow | null>(null);
 
   const totalPages = data?.pagination
-    ? Math.max(1, Math.ceil(data.pagination.total / filters.limit))
+    ? Math.max(1, Math.ceil(data.pagination.total / limit))
     : 0;
 
   const rangeDescription = useMemo(() => {
     if (!data?.pagination) return "";
     const { total } = data.pagination;
-    const start = total === 0 ? 0 : (filters.page - 1) * filters.limit + 1;
-    const end = Math.min(filters.page * filters.limit, total);
+    const start = total === 0 ? 0 : (page - 1) * limit + 1;
+    const end = Math.min(page * limit, total);
     return `${start}–${end} de ${total}`;
-  }, [data?.pagination, filters.page, filters.limit]);
+  }, [data?.pagination, page, limit]);
 
   const invalidateList = () => {
     void queryClient.invalidateQueries({ queryKey: ["sales-orders"] });
@@ -231,10 +236,28 @@ export default function SalesOrdersListPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  function onTabChange(next: SalesOrderListTab) {
-    setTab(next);
-    setFilters((f) => ({ ...f, page: 1 }));
+  function onTabChange(next: string) {
+    setTab(next as SalesOrderListTab);
+    setPage(1);
   }
+
+  const handleExpectedDeliveryChange = useCallback(
+    async (row: SalesOrderListRow, date: string | null) => {
+      if (!canSales) return;
+      try {
+        await patchOrderField(row.id, { expected_delivery: date });
+        toast.success("Prazo de entrega actualizado.");
+        invalidateList();
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível actualizar o prazo."
+        );
+      }
+    },
+    [canSales]
+  );
 
   const tableColumns = useMemo((): SortableTableColumn<SalesOrderListRow>[] => {
     return [
@@ -249,7 +272,7 @@ export default function SalesOrdersListPage() {
           <>
             <Link
               href={`/sales/orders/${row.id}`}
-              className="text-brand-800 hover:underline font-mono"
+              className={CRONOGRAMA_TOKENS.cellLink}
             >
               {row.order_number}
             </Link>
@@ -271,7 +294,7 @@ export default function SalesOrdersListPage() {
         width: "w-[18%]",
         accessor: (row) => row.client_name,
         render: (row) => (
-          <span className="text-slate-800">{row.client_name}</span>
+          <span className={CRONOGRAMA_TOKENS.cellText}>{row.client_name}</span>
         ),
       },
       {
@@ -280,8 +303,9 @@ export default function SalesOrdersListPage() {
         type: "date",
         width: "w-[8%]",
         accessor: (row) => row.order_date,
+        truncate: false,
         render: (row) => (
-          <span className="text-slate-700 tabular-nums whitespace-nowrap">
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
             {formatSalesListDate(row.order_date)}
           </span>
         ),
@@ -290,13 +314,20 @@ export default function SalesOrdersListPage() {
         key: "expected_delivery",
         label: "Prazo entrega",
         type: "date",
-        width: "w-[9%]",
+        width: "w-[11%]",
         accessor: (row) => row.expected_delivery,
-        render: (row) => (
-          <span className="text-slate-700 tabular-nums whitespace-nowrap">
-            {formatSalesListDate(row.expected_delivery)}
-          </span>
-        ),
+        truncate: false,
+        render: (row) =>
+          canSales ? (
+            <InlineDateEdit
+              value={row.expected_delivery}
+              onSave={(v) => handleExpectedDeliveryChange(row, v)}
+            />
+          ) : (
+            <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
+              {formatSalesListDate(row.expected_delivery)}
+            </span>
+          ),
       },
       {
         key: "production_deadline",
@@ -320,12 +351,7 @@ export default function SalesOrdersListPage() {
         render: (row) => {
           const sb = salesOrderStatusPill(row.status);
           return (
-            <span
-              className={cn(
-                "inline-flex rounded-md px-2 py-0.5 text-xs font-medium",
-                sb.className
-              )}
-            >
+            <span className={cn(CRONOGRAMA_TOKENS.badge, sb.className)}>
               {sb.label}
             </span>
           );
@@ -367,30 +393,84 @@ export default function SalesOrdersListPage() {
         accessor: (row) => row.total,
         truncate: false,
         render: (row) => (
-          <span className="tabular-nums text-slate-800">
+          <span className="text-xs tabular-nums font-medium">
             {formatCurrency(row.total)}
           </span>
         ),
       },
     ];
-  }, [tab]);
+  }, [tab, canSales, handleExpectedDeliveryChange]);
 
   const emptyMessage = `Nenhum pedido em «${SALES_ORDER_LIST_TAB_LABELS[tab]}»${
-    filters.search ? " para esta busca." : "."
+    search ? " para esta busca." : "."
   }`;
 
+  const listPanel = (
+    <CronogramaPanel
+      search={
+        <CronogramaSearch
+          value={searchInput}
+          onChange={setSearchInput}
+          placeholder="Buscar nº, cliente, data, código ou produto do pedido…"
+        />
+      }
+      error={
+        error ? (
+          <CronogramaError message={error.message} onRetry={() => void refetch()} />
+        ) : null
+      }
+      footer={
+        data?.pagination?.total ? (
+          <CronogramaPagination
+            page={page}
+            totalPages={totalPages}
+            rangeDescription={rangeDescription}
+            itemCount={data?.data?.length}
+            onPageChange={setPage}
+          />
+        ) : null
+      }
+    >
+      <SortableTable
+        columns={tableColumns}
+        data={data?.data ?? []}
+        getRowKey={(row) => row.id}
+        isLoading={isLoading}
+        emptyMessage={emptyMessage}
+        actionsColumn={{
+          label: "Acções",
+          width: "w-[5rem]",
+          render: (row) => {
+            const st = row.status as SalesOrderStatus;
+            const canCancel =
+              isAdmin && st !== "delivered" && st !== "cancelled";
+            const canReactivate = isAdmin && st === "cancelled";
+            return (
+              <SalesOrderRowActionsMenu
+                orderId={row.id}
+                canEdit={canSales}
+                canCancel={canCancel}
+                canDelete={isAdmin}
+                canReactivate={canReactivate}
+                onCancel={() => setCancelTarget(row)}
+                onDelete={() => setDeleteTarget(row)}
+                onReactivate={() => setReactivateTarget(row)}
+              />
+            );
+          },
+        }}
+      />
+    </CronogramaPanel>
+  );
+
   return (
-    <div className="max-w-[90rem] mx-auto space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">
-            Pedidos de venda
-          </h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Visão comercial com prazos de entrega, produção e situação PCP.
-          </p>
-        </div>
-        {isAdmin ? (
+    <AppPage
+      title="Pedidos de venda"
+      description="Cronograma comercial — prazos de entrega, produção e situação PCP."
+      width="wide"
+      density="comfortable"
+      actions={
+        isAdmin ? (
           <Button
             type="button"
             size="sm"
@@ -399,178 +479,24 @@ export default function SalesOrdersListPage() {
             <Plus className="h-4 w-4" />
             Novo pedido
           </Button>
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
+      <Tabs value={tab} onValueChange={onTabChange}>
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          {SALES_ORDER_LIST_TABS.map((tabId) => (
+            <TabsTrigger key={tabId} value={tabId} className="text-xs sm:text-sm">
+              {SALES_ORDER_LIST_TAB_LABELS[tabId]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2 font-semibold">
-            <ShoppingBag className="h-5 w-5 text-slate-600" aria-hidden />
-            Listagem
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <nav
-            className="flex flex-wrap gap-1 border-b border-slate-200 -mx-1"
-            role="tablist"
-            aria-label="Filtrar pedidos por situação"
-          >
-            {SALES_ORDER_LIST_TABS.map((tabId) => (
-              <button
-                key={tabId}
-                type="button"
-                role="tab"
-                aria-selected={tab === tabId}
-                className={cn(
-                  "px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap",
-                  tab === tabId
-                    ? "border-brand-700 text-brand-800 font-medium"
-                    : "border-transparent text-slate-600 hover:text-slate-900"
-                )}
-                onClick={() => onTabChange(tabId)}
-              >
-                {SALES_ORDER_LIST_TAB_LABELS[tabId]}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex flex-col gap-3">
-            <div className="relative flex-1 min-w-0">
-              <Search
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
-                aria-hidden
-              />
-              <Input
-                placeholder="Buscar por nº do pedido ou cliente…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                type="date"
-                className="h-9 w-[11rem]"
-                aria-label="Data inicial"
-                value={filters.dateFrom}
-                onChange={(e) =>
-                  setFilters({
-                    ...filters,
-                    dateFrom: e.target.value,
-                    page: 1,
-                  })
-                }
-              />
-              <span className="text-slate-400 text-sm">até</span>
-              <Input
-                type="date"
-                className="h-9 w-[11rem]"
-                aria-label="Data final"
-                value={filters.dateTo}
-                onChange={(e) =>
-                  setFilters({
-                    ...filters,
-                    dateTo: e.target.value,
-                    page: 1,
-                  })
-                }
-              />
-            </div>
-          </div>
-
-          {error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-red-800">{error.message}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void refetch()}
-              >
-                Tentar de novo
-              </Button>
-            </div>
-          ) : null}
-
-          <SortableTable
-            columns={tableColumns}
-            data={data?.data ?? []}
-            getRowKey={(row) => row.id}
-            isLoading={isLoading}
-            emptyMessage={emptyMessage}
-            actionsColumn={{
-              label: "Acções",
-              width: "w-[5rem]",
-              render: (row) => {
-                const st = row.status as SalesOrderStatus;
-                const canCancel =
-                  isAdmin && st !== "delivered" && st !== "cancelled";
-                const canReactivate = isAdmin && st === "cancelled";
-                return (
-                  <SalesOrderRowActionsMenu
-                    orderId={row.id}
-                    canEdit={canSales}
-                    canCancel={canCancel}
-                    canDelete={isAdmin}
-                    canReactivate={canReactivate}
-                    onCancel={() => setCancelTarget(row)}
-                    onDelete={() => setDeleteTarget(row)}
-                    onReactivate={() => setReactivateTarget(row)}
-                  />
-                );
-              },
-            }}
-          />
-
-          {data?.pagination?.total !== undefined && data.pagination.total > 0 ? (
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">
-              <p className="text-sm text-slate-500">
-                Pedidos nesta página: {data.data.length}. Intervalo total:{" "}
-                <span className="font-medium text-slate-700">
-                  {rangeDescription}
-                </span>
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={filters.page <= 1}
-                  onClick={() =>
-                    setFilters({
-                      ...filters,
-                      page: Math.max(1, filters.page - 1),
-                    })
-                  }
-                  aria-label="Página anterior"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Anterior
-                </Button>
-                <span className="text-sm tabular-nums px-2 text-slate-600">
-                  Página {filters.page} / {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={filters.page >= totalPages}
-                  onClick={() =>
-                    setFilters({
-                      ...filters,
-                      page: Math.min(totalPages, filters.page + 1),
-                    })
-                  }
-                  aria-label="Página seguinte"
-                >
-                  Seguinte
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+        {SALES_ORDER_LIST_TABS.map((tabId) => (
+          <TabsContent key={tabId} value={tabId} className="mt-4">
+            {listPanel}
+          </TabsContent>
+        ))}
+      </Tabs>
 
       {reactivateTarget ? (
         <div
@@ -741,6 +667,6 @@ export default function SalesOrdersListPage() {
           </Link>
         </p>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

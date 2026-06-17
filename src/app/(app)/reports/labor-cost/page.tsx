@@ -14,6 +14,7 @@ import {
 import { Label } from "@/shared/ui/label";
 import { Input } from "@/shared/ui/input";
 import { Button } from "@/shared/ui/button";
+import { AppPage } from "@/shared/ui/app-page";
 import { ReportTable } from "@/components/reports/report-table";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -111,18 +112,16 @@ export default function LaborCostReportPage() {
   }));
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <Calculator className="h-7 w-7 text-brand-700" aria-hidden />
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Calculator className="h-5 w-5 text-brand-700" />
           Custo de mão de obra por linha
-        </h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Valores gravados pelo recálculo mensal (salários dos colaboradores ativos na linha ÷
-          horas padrão × número de colaboradores).
-        </p>
-      </div>
-
+        </span>
+      }
+      description="Valores gravados pelo recálculo mensal (salários dos colaboradores ativos na linha ÷ horas padrão × número de colaboradores)."
+      density="comfortable"
+    >
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Período</CardTitle>
@@ -185,6 +184,6 @@ export default function LaborCostReportPage() {
           />
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

@@ -484,6 +484,84 @@ export async function PUT(request: NextRequest, { params }: Params) {
   return apiOk({ data: full });
 }
 
+/** Actualização parcial para edição inline no cronograma (ex.: validade). */
+export async function PATCH(request: NextRequest, { params }: Params) {
+  const { id } = await params;
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return apiError("Não autenticado", 401);
+  const access = await assertMenuModuleAccess("vendas");
+  if (!access.ok) return access.response;
+
+  const tenantId = await getCurrentTenantId();
+  if (!tenantId) return apiError("Tenant não encontrado", 403);
+
+  const isAdmin = await isCurrentUserTenantAdmin();
+  const canSales = await currentUserCanModule("sales");
+  if (!isAdmin && !canSales) return apiError("Sem permissão", 403);
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return apiError("JSON inválido", 400);
+  }
+
+  const admin = createSupabaseAdminClient();
+  const { data: existing, error: loadErr } = await admin
+    .from("quotes")
+    .select("id, status")
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (loadErr) {
+    return apiError(
+      "Erro ao carregar orçamento: " + loadErr.message,
+      supabaseErrorToHttp(loadErr.code)
+    );
+  }
+  if (!existing) return apiError("Orçamento não encontrado", 404);
+
+  const updateData: QuoteUpdate = {};
+
+  if (body.valid_until !== undefined) {
+    const raw = body.valid_until;
+    const next =
+      raw === null || raw === ""
+        ? null
+        : String(raw).slice(0, 10);
+    if (next && !/^\d{4}-\d{2}-\d{2}$/.test(next)) {
+      return apiError("Validade inválida", 400);
+    }
+    updateData.valid_until = next;
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return apiError("Nenhum campo para actualizar", 400);
+  }
+
+  const { data: updated, error: updErr } = await admin
+    .from("quotes")
+    .update(updateData)
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .select("*")
+    .maybeSingle();
+
+  if (updErr) {
+    return apiError(
+      "Erro ao actualizar orçamento: " + updErr.message,
+      supabaseErrorToHttp(updErr.code)
+    );
+  }
+
+  return apiOk({ data: updated });
+}
+
 export async function DELETE(_request: NextRequest, { params }: Params) {
   const { id } = await params;
 

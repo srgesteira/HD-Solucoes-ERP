@@ -7,21 +7,27 @@ import { useQuery } from "@tanstack/react-query";
 import { FileUp, Plus } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { AppPage } from "@/shared/ui/app-page";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import { OpenOrdersTab } from "@/components/purchasing/open-orders-tab";
+import { AllOrdersTab } from "@/components/purchasing/all-orders-tab";
 import { FinishedOrdersTab } from "@/components/purchasing/finished-orders-tab";
 import { RequisitionsTab } from "@/components/purchasing/requisitions-tab";
+import {
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
 import {
   fetchRequisitionsCount,
   requisitionsCountQueryKey,
 } from "@/components/purchasing/purchase-requisitions-panel";
 
-type TabValue = "open" | "finished" | "requisitions";
+type TabValue = "all" | "open" | "finished" | "requisitions";
 
 function parseTab(raw: string | null): TabValue {
-  if (raw === "finished" || raw === "requisitions") return raw;
+  if (raw === "all" || raw === "finished" || raw === "requisitions") return raw;
   if (raw === "schedule" || raw === "orders") return "open";
   return "open";
 }
@@ -37,6 +43,8 @@ export function PurchasingOrdersPage() {
   const [activeTab, setActiveTab] = useState<TabValue>(() =>
     parseTab(searchParams.get("tab"))
   );
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
 
   useEffect(() => {
     setActiveTab(parseTab(searchParams.get("tab")));
@@ -58,16 +66,14 @@ export function PurchasingOrdersPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Compras</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Cronograma operacional — prazos, pedidos em aberto e requisições MRP.
-          </p>
-        </div>
-        {canPurchasing ? (
-          <div className="flex flex-wrap gap-2">
+    <AppPage
+      title="Compras"
+      description="Cronograma operacional — prazos, pedidos em aberto e requisições MRP."
+      density="comfortable"
+      width="wide"
+      actions={
+        canPurchasing ? (
+          <>
             <Button
               type="button"
               variant="outline"
@@ -87,12 +93,13 @@ export function PurchasingOrdersPage() {
                 Novo pedido de compra
               </Button>
             ) : null}
-          </div>
-        ) : null}
-      </div>
-
+          </>
+        ) : null
+      }
+    >
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          <TabsTrigger value="all">Todos</TabsTrigger>
           <TabsTrigger value="open">Pedidos em aberto</TabsTrigger>
           <TabsTrigger value="finished">Pedidos faturados</TabsTrigger>
           <TabsTrigger
@@ -107,12 +114,26 @@ export function PurchasingOrdersPage() {
           </TabsTrigger>
         </TabsList>
 
+        {activeTab !== "requisitions" ? (
+          <div className="mt-4">
+            <CronogramaSearch
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="Buscar pedido, fornecedor, data, código ou produto…"
+            />
+          </div>
+        ) : null}
+
+        <TabsContent value="all" className="mt-4">
+          <AllOrdersTab search={search} canPurchasing={canPurchasing} />
+        </TabsContent>
+
         <TabsContent value="open" className="mt-4">
-          <OpenOrdersTab canPurchasing={canPurchasing} />
+          <OpenOrdersTab search={search} canPurchasing={canPurchasing} />
         </TabsContent>
 
         <TabsContent value="finished" className="mt-4">
-          <FinishedOrdersTab canPurchasing={canPurchasing} />
+          <FinishedOrdersTab search={search} canPurchasing={canPurchasing} />
         </TabsContent>
 
         <TabsContent value="requisitions" className="mt-4">
@@ -125,6 +146,6 @@ export function PurchasingOrdersPage() {
           Voltar às tarefas
         </Link>
       </p>
-    </div>
+    </AppPage>
   );
 }

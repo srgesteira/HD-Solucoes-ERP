@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
-import { ArrowLeft, FileUp, Loader2, Sparkles } from "lucide-react";
+import { FileUp, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
+import { EmptyState } from "@/shared/ui/page-helpers";
 import { useMe } from "@/hooks/use-me";
 import type { OrderPdfExtraction } from "@/modules/engenharia/lib/services/ai.service";
 
@@ -134,37 +135,36 @@ export default function SalesUploadPdfPage() {
 
   if (!meLoading && !isAdmin) {
     return (
-      <div className="max-w-lg mx-auto space-y-4">
-        <p className="text-sm text-slate-600">
-          Apenas administradores podem importar PDF para orçamento.
-        </p>
-        <Link href="/sales/quotes">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar aos orçamentos
-          </Button>
-        </Link>
-      </div>
+      <AppPage
+        title="Orçamento a partir de PDF"
+        backHref="/sales/quotes"
+        backLabel="Voltar aos orçamentos"
+        width="narrow"
+      >
+        <EmptyState
+          title="Sem permissão"
+          description="Apenas administradores podem importar PDF para orçamento."
+        />
+      </AppPage>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link href="/sales/quotes">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar
-          </Button>
-        </Link>
-      </div>
-
+    <AppPage
+      title={
+        <div className="flex items-center gap-2">
+          <FileUp className="h-6 w-6 text-brand-700" aria-hidden />
+          <span>Orçamento a partir de PDF</span>
+        </div>
+      }
+      description="Importe um PDF e gere um orçamento em rascunho automaticamente"
+      backHref="/sales/quotes"
+      width="narrow"
+      density="comfortable"
+    >
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <FileUp className="h-5 w-5" />
-            Orçamento a partir de PDF
-          </CardTitle>
+          <CardTitle className="text-lg">Extração</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <p className="text-slate-600 dark:text-slate-400">
@@ -304,6 +304,6 @@ export default function SalesUploadPdfPage() {
           </CardContent>
         </Card>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

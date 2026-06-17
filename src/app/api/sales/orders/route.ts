@@ -19,6 +19,11 @@ import {
 import { parseRequiredExpectedDelivery } from "@/shared/contracts/sales-order.schema";
 import { isSalesOrderListTab } from "@/modules/vendas/lib/sales/sales-order-list-display";
 import {
+  buildSalesOrderUniversalSearchOrFilter,
+  resolveSalesOrderIdsFromUniversalSearch,
+} from "@/modules/core/lib/universal-search-query";
+import { escapeIlike } from "@/shared/utils/universal-search";
+import {
   enrichSalesOrdersListWithProduction,
   type SalesOrderProductionSummary,
 } from "@/modules/vendas/lib/sales/sales-order-production-summary";
@@ -26,10 +31,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const SO_SET = new Set<string>(SALES_ORDER_STATUSES);
-
-function escapeIlike(pattern: string): string {
-  return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 function optionalPaymentInt(b: Record<string, unknown>, key: string, def: number): number {
   if (b[key] === undefined || b[key] === null) return def;
@@ -62,9 +63,12 @@ export async function GET(request: NextRequest) {
     return apiOk({ suggestion });
   }
 
-  const tabParam = searchParams.get("tab")?.trim() ?? "open";
+  const tabParam = searchParams.get("tab")?.trim() ?? "all";
   const status = searchParams.get("status");
-  const client = searchParams.get("client")?.trim();
+  const rawSearch =
+    searchParams.get("search")?.trim() ??
+    searchParams.get("client")?.trim() ??
+    "";
   const dateFrom = searchParams.get("date_from")?.trim();
   const dateTo = searchParams.get("date_to")?.trim();
 
@@ -92,6 +96,8 @@ export async function GET(request: NextRequest) {
   }
 
   switch (tabParam) {
+    case "all":
+      break;
     case "open":
       query = query.in("status", ["pending", "confirmed", "in_production"]);
       break;
@@ -115,11 +121,24 @@ export async function GET(request: NextRequest) {
     query = query.eq("status", status);
   }
 
-  if (client) {
-    const safe = `%${escapeIlike(client)}%`;
-    query = query.or(
-      `client_name.ilike.${safe},client_document.ilike.${safe},client_email.ilike.${safe},order_number.ilike.${safe}`
+  if (rawSearch) {
+    const orderIdsFromProducts = await resolveSalesOrderIdsFromUniversalSearch(
+      admin,
+      tenantId,
+      rawSearch
     );
+    const orFilter = buildSalesOrderUniversalSearchOrFilter(
+      rawSearch,
+      orderIdsFromProducts
+    );
+    if (orFilter) {
+      query = query.or(orFilter);
+    } else {
+      const safe = `%${escapeIlike(rawSearch)}%`;
+      query = query.or(
+        `client_name.ilike.${safe},client_document.ilike.${safe},client_email.ilike.${safe},order_number.ilike.${safe}`
+      );
+    }
   }
 
   if (dateFrom) {

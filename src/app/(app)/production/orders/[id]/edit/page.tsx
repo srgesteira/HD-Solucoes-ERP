@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
+import { AppPage } from "@/shared/ui/app-page";
+import { EmptyState, LoadingState } from "@/shared/ui/page-helpers";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -129,49 +131,34 @@ export default function EditProductionOrderPage() {
 
   if (!id) {
     return (
-      <p className="text-sm text-slate-600 py-12 text-center">Pedido inválido.</p>
+      <AppPage
+        title="Editar pedido"
+        backHref="/production/orders"
+        width="narrow"
+      >
+        <EmptyState title="Pedido inválido" description="ID não fornecido." />
+      </AppPage>
     );
   }
 
   if (meLoading || !canEdit) {
-    return (
-      <div className="max-w-4xl mx-auto flex justify-center py-16 gap-2 text-slate-500">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">A validar permissões…</span>
-      </div>
-    );
+    return <LoadingState label="A validar permissões…" />;
   }
 
   if (orderQuery.isLoading || !hydrated) {
-    return (
-      <div className="max-w-4xl mx-auto flex justify-center py-16 gap-2 text-slate-500">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">A carregar…</span>
-      </div>
-    );
+    return <LoadingState label="A carregar…" />;
   }
 
   const items = order?.items ?? [];
 
   return (
-    <div className="max-w-4xl mx-auto py-6 space-y-6 pb-10">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/production/orders/${id}`}>
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar
-          </Button>
-        </Link>
-        <h1 className="text-xl font-semibold text-slate-900">
-          Editar pedido {order?.order_number ?? ""}
-        </h1>
-      </div>
-
-      <p className="text-sm text-slate-600 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-        Itens de produção são geridos no planeamento (PCP) e no detalhe do
-        pedido. Aqui altera apenas o cabeçalho e prazos.
-      </p>
-
+    <AppPage
+      title={`Editar pedido ${order?.order_number ?? ""}`}
+      description="Altere apenas o cabeçalho e prazos. Itens são geridos no PCP."
+      backHref={`/production/orders/${id}`}
+      width="narrow"
+      density="comfortable"
+    >
       <form
         className="space-y-6"
         onSubmit={(e) => {
@@ -295,6 +282,6 @@ export default function EditProductionOrderPage() {
           </Button>
         </div>
       </form>
-    </div>
+    </AppPage>
   );
 }

@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
 import { ReportFilters } from "@/components/reports/report-filters";
 import { ReportTable } from "@/components/reports/report-table";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -113,18 +114,16 @@ export default function OverdueReceivablesReportPage() {
   const t = data?.totals;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <DollarSign className="h-7 w-7 text-brand-700" aria-hidden />
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <DollarSign className="h-5 w-5 text-brand-700" />
           Contas a receber vencidas
-        </h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Títulos pendentes ou parciais com vencimento anterior a hoje, agrupados por
-          cliente. Valores por faixa de dias em atraso.
-        </p>
-      </div>
-
+        </span>
+      }
+      description="Títulos pendentes ou parciais com vencimento anterior a hoje, agrupados por cliente. Valores por faixa de dias em atraso."
+      density="comfortable"
+    >
       <ReportFilters
         showPeriod={false}
         loading={loading}
@@ -215,6 +214,6 @@ export default function OverdueReceivablesReportPage() {
           />
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

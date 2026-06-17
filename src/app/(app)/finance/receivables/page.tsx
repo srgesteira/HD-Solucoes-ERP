@@ -6,22 +6,37 @@ import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaPagination,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
 import { usePermissions } from "@/hooks/use-permissions";
+import {
+  matchesUniversalSearchRow,
+  parseUniversalSearch,
+} from "@/shared/utils/universal-search";
+
+type ReceivableTab = "all" | "pending" | "partial" | "paid" | "cancelled" | "overdue";
 
 type Row = Record<string, unknown>;
 
-function fmtBrl(n: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(n);
-}
+const TAB_OPTIONS: Array<{ value: ReceivableTab; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "pending", label: "Pendentes" },
+  { value: "partial", label: "Parciais" },
+  { value: "paid", label: "Pagos" },
+  { value: "cancelled", label: "Cancelados" },
+  { value: "overdue", label: "Vencidos" },
+];
 
 const RECEIVABLE_STATUS_LABELS: Record<string, string> = {
   pending: "Pendente",
@@ -30,25 +45,50 @@ const RECEIVABLE_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelado",
 };
 
+function fmtBrl(n: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(n);
+}
+
+function formatDate(iso: unknown): string {
+  if (iso == null || iso === "") return "—";
+  const s = String(iso).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return String(iso);
+  const [y, m, d] = s.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 export default function FinanceReceivablesPage() {
   const router = useRouter();
   const { can, isLoading: permLoading } = usePermissions();
+  const [activeTab, setActiveTab] = useState<ReceivableTab>("all");
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState("all");
-  const [overdue, setOverdue] = useState(false);
+  const limit = 25;
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, activeTab]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         page: String(page),
-        limit: "25",
+        limit: String(limit),
       });
-      if (status !== "all") params.set("status", status);
-      if (overdue) params.set("overdue", "1");
+      if (activeTab === "overdue") {
+        params.set("overdue", "1");
+      } else if (activeTab !== "all") {
+        params.set("status", activeTab);
+      }
+      if (search.trim()) params.set("client", search.trim());
       const res = await fetch(`/api/finance/receivables?${params}`, {
         credentials: "include",
         cache: "no-store",
@@ -67,7 +107,7 @@ export default function FinanceReceivablesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, status, overdue]);
+  }, [page, activeTab, search, limit]);
 
   useEffect(() => {
     if (!permLoading && !can("finance")) {
@@ -81,6 +121,30 @@ export default function FinanceReceivablesPage() {
     void load();
   }, [permLoading, can, load]);
 
+  const searchHint = parseUniversalSearch(search);
+  const visibleRows = useMemo(() => {
+    if (!searchHint.text) return rows;
+    return rows.filter((row) =>
+      matchesUniversalSearchRow(
+        searchHint,
+        [
+          String(row.client_name ?? ""),
+          String(row.due_date ?? ""),
+          Number(row.current_amount ?? 0),
+          String(row.status ?? ""),
+          RECEIVABLE_STATUS_LABELS[String(row.status ?? "")] ?? "",
+        ],
+        []
+      )
+    );
+  }, [rows, searchHint]);
+
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const rangeDescription =
+    total === 0
+      ? ""
+      : `${(page - 1) * limit + 1}–${Math.min(page * limit, total)} de ${total}`;
+
   const tableColumns = useMemo((): SortableTableColumn<Row>[] => {
     return [
       {
@@ -90,7 +154,9 @@ export default function FinanceReceivablesPage() {
         width: "w-[24%]",
         accessor: (row) => String(row.client_name ?? ""),
         render: (row) => (
-          <span>{String(row.client_name ?? "—")}</span>
+          <span className={CRONOGRAMA_TOKENS.cellText}>
+            {String(row.client_name ?? "—")}
+          </span>
         ),
       },
       {
@@ -101,7 +167,9 @@ export default function FinanceReceivablesPage() {
         accessor: (row) => row.due_date,
         truncate: false,
         render: (row) => (
-          <span className="whitespace-nowrap">{String(row.due_date ?? "")}</span>
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
+            {formatDate(row.due_date)}
+          </span>
         ),
       },
       {
@@ -109,10 +177,13 @@ export default function FinanceReceivablesPage() {
         label: "Valor",
         type: "number",
         width: "w-[14%]",
+        align: "right",
         accessor: (row) => Number(row.current_amount ?? 0),
         truncate: false,
         render: (row) => (
-          <span>{fmtBrl(Number(row.current_amount ?? 0))}</span>
+          <span className="text-xs tabular-nums font-medium">
+            {fmtBrl(Number(row.current_amount ?? 0))}
+          </span>
         ),
       },
       {
@@ -123,20 +194,28 @@ export default function FinanceReceivablesPage() {
         accessor: (row) =>
           RECEIVABLE_STATUS_LABELS[String(row.status ?? "")] ??
           String(row.status ?? ""),
+        truncate: false,
+        render: (row) => {
+          const label =
+            RECEIVABLE_STATUS_LABELS[String(row.status ?? "")] ??
+            String(row.status ?? "—");
+          return (
+            <span className={CRONOGRAMA_TOKENS.badge}>{label}</span>
+          );
+        },
       },
       {
         key: "document",
         label: "Documento",
         type: "text",
         width: "w-[29%]",
-        accessor: (row) =>
-          row.sales_order_id ? "Ver pedido" : "—",
+        accessor: (row) => (row.sales_order_id ? "Ver pedido" : "—"),
         truncate: false,
         render: (row) =>
           row.sales_order_id ? (
             <Link
               href={`/sales/orders/${String(row.sales_order_id)}`}
-              className="text-brand-700 hover:underline"
+              className={CRONOGRAMA_TOKENS.cellLink}
             >
               Ver pedido
             </Link>
@@ -156,94 +235,70 @@ export default function FinanceReceivablesPage() {
     );
   }
 
+  const listPanel = (
+    <CronogramaPanel
+      search={
+        <CronogramaSearch
+          value={searchInput}
+          onChange={setSearchInput}
+          placeholder="Buscar cliente, valor, data ou estado…"
+        />
+      }
+      footer={
+        total > 0 ? (
+          <CronogramaPagination
+            page={page}
+            totalPages={totalPages}
+            rangeDescription={rangeDescription}
+            itemCount={visibleRows.length}
+            onPageChange={setPage}
+          />
+        ) : null
+      }
+    >
+      <SortableTable
+        columns={tableColumns}
+        data={visibleRows}
+        getRowKey={(row) => String(row.id)}
+        isLoading={loading}
+        emptyMessage="Sem registos."
+      />
+    </CronogramaPanel>
+  );
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Contas a receber</h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Títulos do tenant. Filtros por estado e vencidos.
-          </p>
-        </div>
+    <AppPage
+      title="Contas a receber"
+      description="Cronograma financeiro — títulos por vencimento e estado."
+      density="comfortable"
+      width="wide"
+      actions={
         <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="h-4 w-4" />
-          <span className="ml-1">Actualizar</span>
+          Actualizar
         </Button>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Filtros</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-4 items-end">
-          <div className="space-y-1">
-            <Label htmlFor="st">Status</Label>
-            <select
-              id="st"
-              className="flex h-9 rounded-md border border-slate-300 px-3 text-sm bg-white"
-              value={status}
-              onChange={(e) => {
-                setPage(1);
-                setStatus(e.target.value);
-              }}
-            >
-              <option value="all">Todos</option>
-              <option value="pending">Pendente</option>
-              <option value="partial">Parcial</option>
-              <option value="paid">Pago</option>
-              <option value="cancelled">Cancelado</option>
-            </select>
-          </div>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={overdue}
-              onChange={(e) => {
-                setPage(1);
-                setOverdue(e.target.checked);
-              }}
-            />
-            Só vencidos
-          </label>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Listagem ({total})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SortableTable
-            columns={tableColumns}
-            data={rows}
-            getRowKey={(row) => String(row.id)}
-            isLoading={loading}
-            emptyMessage="Sem registos."
-          />
-          {total > 25 ? (
-            <div className="flex justify-end gap-2 mt-4">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Anterior
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={page * 25 >= total}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Seguinte
-              </Button>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-    </div>
+      }
+    >
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v as ReceivableTab);
+          setPage(1);
+        }}
+      >
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          {TAB_OPTIONS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {TAB_OPTIONS.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value} className="mt-4">
+            {listPanel}
+          </TabsContent>
+        ))}
+      </Tabs>
+    </AppPage>
   );
 }

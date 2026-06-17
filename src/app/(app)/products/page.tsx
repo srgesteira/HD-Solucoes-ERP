@@ -4,23 +4,23 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  Package,
-  Plus,
-  Search,
-} from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
+import { AppPage } from "@/shared/ui/app-page";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
-import { cn } from "@/shared/utils/cn";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaError,
+  CronogramaPagination,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { meCanManageEngineeringProducts } from "@/modules/engenharia/lib/engineering-product-access";
 import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
@@ -28,7 +28,14 @@ import { ProductPrefixTabs } from "@/components/products/product-prefix-tabs";
 import { ProductRowActionsMenu } from "@/components/products/product-row-actions-menu";
 
 type ProductType = "finished" | "raw" | "component";
+type ProductTab = "all" | "active" | "inactive" | "pending";
 
+const TAB_OPTIONS: Array<{ value: ProductTab; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "active", label: "Ativos" },
+  { value: "inactive", label: "Inativos" },
+  { value: "pending", label: "Eng. pendente" },
+];
 interface ProductRow {
   id: string;
   name: string;
@@ -50,15 +57,12 @@ interface ProductsApiResponse {
 }
 
 const productsQueryKey = (filters: {
-  type: string;
-  isActive: string;
+  tab: ProductTab;
   search: string;
   prefixCode: string;
   page: number;
   limit: number;
-  workflowPending: boolean;
 }) => ["products", filters] as const;
-
 async function fetchPrefixCodes(): Promise<string[]> {
   const res = await fetch("/api/products/prefix-codes", {
     credentials: "include",
@@ -75,30 +79,22 @@ async function fetchPrefixCodes(): Promise<string[]> {
 }
 
 async function fetchProducts(filters: {
-  type: string;
-  isActive: string;
+  tab: ProductTab;
   search: string;
   prefixCode: string;
   page: number;
   limit: number;
-  workflowPending: boolean;
 }): Promise<ProductsApiResponse> {
   const params = new URLSearchParams();
-  if (filters.type !== "all") params.append("type", filters.type);
-  if (filters.isActive !== "all") {
-    params.append(
-      "is_active",
-      filters.isActive === "active" ? "true" : "false"
-    );
-  }
+  if (filters.tab === "active") params.append("is_active", "true");
+  else if (filters.tab === "inactive") params.append("is_active", "false");
+  else if (filters.tab === "pending") params.append("workflow_pending", "1");
   if (filters.prefixCode.trim()) {
     params.append("prefix_code", filters.prefixCode.trim());
   }
   if (filters.search.trim()) params.append("search", filters.search.trim());
-  if (filters.workflowPending) params.append("workflow_pending", "1");
   params.append("page", String(filters.page));
   params.append("limit", String(filters.limit));
-
   const res = await fetch(`/api/products?${params.toString()}`, {
     credentials: "include",
     cache: "no-store",
@@ -185,16 +181,21 @@ export default function ProductsPage() {
   const isAdmin = me?.role === "admin";
   const canManageProducts = meCanManageEngineeringProducts(me);
 
-  const [searchInput, setSearchInput] = useState("");
-  const [filters, setFilters] = useState({
-    type: "all",
-    isActive: "all",
-    search: "",
-    prefixCode: "",
-    page: 1,
-    limit: 25,
-    workflowPending: false,
-  });
+  const [activeTab, setActiveTab] = useState<ProductTab>("all");
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
+  const [prefixCode, setPrefixCode] = useState("");
+  const [page, setPage] = useState(1);
+  const limit = 25;
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, activeTab, prefixCode]);
+
+  const queryFilters = useMemo(
+    () => ({ tab: activeTab, search, prefixCode, page, limit }),
+    [activeTab, search, prefixCode, page, limit]
+  );
 
   const prefixCodesQuery = useQuery({
     queryKey: ["product-prefix-codes"],
@@ -202,16 +203,9 @@ export default function ProductsPage() {
     staleTime: 120_000,
   });
 
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      setFilters((f) => ({ ...f, search: searchInput, page: 1 }));
-    }, 380);
-    return () => window.clearTimeout(t);
-  }, [searchInput]);
-
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: productsQueryKey(filters),
-    queryFn: () => fetchProducts(filters),
+    queryKey: productsQueryKey(queryFilters),
+    queryFn: () => fetchProducts(queryFilters),
     staleTime: 60_000,
   });
 
@@ -256,16 +250,16 @@ export default function ProductsPage() {
   };
 
   const totalPages = data?.pagination
-    ? Math.max(1, Math.ceil(data.pagination.total / filters.limit))
+    ? Math.max(1, Math.ceil(data.pagination.total / limit))
     : 0;
 
   const rangeDescription = useMemo(() => {
     if (!data?.pagination) return "";
     const { total } = data.pagination;
-    const start = total === 0 ? 0 : (filters.page - 1) * filters.limit + 1;
-    const end = Math.min(filters.page * filters.limit, total);
+    const start = total === 0 ? 0 : (page - 1) * limit + 1;
+    const end = Math.min(page * limit, total);
     return `${start}–${end} de ${total}`;
-  }, [data?.pagination, filters.page, filters.limit]);
+  }, [data?.pagination, page, limit]);
 
   const tableColumns = useMemo((): SortableTableColumn<ProductRow>[] => {
     return [
@@ -385,195 +379,118 @@ export default function ProductsPage() {
     ];
   }, []);
 
-  return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Produtos</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Catálogo do tenant — códigos, custos de lista e estado.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={filters.workflowPending ? "primary" : "outline"}
-            className={cn(
-              filters.workflowPending &&
-                "animate-pulse ring-2 ring-amber-400 ring-offset-1"
-            )}
-            onClick={() =>
-              setFilters((f) => ({
-                ...f,
-                workflowPending: !f.workflowPending,
-                page: 1,
-              }))
-            }
-          >
-            Estrutura pendente
-          </Button>
-          {canManageProducts ? (
-            <Button type="button" size="sm" onClick={() => router.push("/products/new")}>
-              <Plus className="h-4 w-4" />
-              Novo produto
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2 font-semibold">
-            <Package className="h-5 w-5 text-slate-600" aria-hidden />
-            Listagem
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+  const listPanel = (
+    <CronogramaPanel
+      search={
+        <>
           <ProductPrefixTabs
             codes={prefixCodesQuery.data ?? []}
-            activeCode={filters.prefixCode}
-            onChange={(code) =>
-              setFilters((f) => ({ ...f, prefixCode: code, page: 1 }))
-            }
+            activeCode={prefixCode}
+            onChange={(code) => {
+              setPrefixCode(code);
+              setPage(1);
+            }}
             isLoading={prefixCodesQuery.isLoading}
             showAllTab={isAdmin}
           />
-          <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
-            <div className="relative flex-1 min-w-0">
-              <Search
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
-                aria-hidden
-              />
-              <Input
-                placeholder="Buscar por código ou nome…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2 shrink-0">
-              <select
-                className={cn(
-                  "h-9 rounded-md border border-slate-300 bg-white px-3 text-sm",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
-                )}
-                aria-label="Filtrar por tipo"
-                value={filters.type}
-                onChange={(e) =>
-                  setFilters({ ...filters, type: e.target.value, page: 1 })
-                }
-              >
-                <option value="all">Todos os tipos</option>
-                <option value="finished">Acabados</option>
-                <option value="raw">Matéria-prima</option>
-                <option value="component">Componentes</option>
-              </select>
-              <select
-                className={cn(
-                  "h-9 rounded-md border border-slate-300 bg-white px-3 text-sm",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
-                )}
-                aria-label="Filtrar por estado"
-                value={filters.isActive}
-                onChange={(e) =>
-                  setFilters({ ...filters, isActive: e.target.value, page: 1 })
-                }
-              >
-                <option value="all">Todos</option>
-                <option value="active">Ativos</option>
-                <option value="inactive">Inativos</option>
-              </select>
-            </div>
-          </div>
-
-          {error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-red-800">{error.message}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void refetch()}
-              >
-                Tentar de novo
-              </Button>
-            </div>
-          ) : null}
-
-          <SortableTable
-            columns={tableColumns}
-            data={data?.data ?? []}
-            getRowKey={(row) => row.id}
-            isLoading={isLoading}
-            emptyMessage="Nenhum produto encontrado para estes filtros."
-            rowClassName={(row) =>
-              row.engineering_workflow_status === "pending_composition"
-                ? "bg-amber-50/90 animate-pulse ring-1 ring-inset ring-amber-300/80"
-                : ""
-            }
-            actionsColumn={{
-              label: "Ações",
-              width: "w-[5rem]",
-              render: (product) =>
-                isAdmin ? (
-                  <ProductRowActionsMenu
-                    productId={product.id}
-                    productType={product.type}
-                    onDeactivate={() => setDeactivateTarget(product)}
-                    onHardDelete={() => setHardDeleteTarget(product)}
-                  />
-                ) : (
-                  <span className="text-xs text-slate-400">—</span>
-                ),
-            }}
+          <CronogramaSearch
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder="Buscar código técnico, nome, tipo ou descrição…"
           />
+        </>
+      }
+      error={
+        error ? (
+          <CronogramaError message={error.message} onRetry={() => void refetch()} />
+        ) : null
+      }
+      footer={
+        data?.pagination?.total ? (
+          <CronogramaPagination
+            page={page}
+            totalPages={totalPages}
+            rangeDescription={rangeDescription}
+            itemCount={data?.data?.length}
+            onPageChange={setPage}
+          />
+        ) : null
+      }
+    >
+      <SortableTable
+        columns={tableColumns}
+        data={data?.data ?? []}
+        getRowKey={(row) => row.id}
+        isLoading={isLoading}
+        emptyMessage="Nenhum produto encontrado."
+        rowClassName={(row) =>
+          row.engineering_workflow_status === "pending_composition"
+            ? "bg-amber-50/90 animate-pulse ring-1 ring-inset ring-amber-300/80"
+            : ""
+        }
+        actionsColumn={{
+          label: "Ações",
+          width: "w-[5rem]",
+          render: (product) =>
+            isAdmin ? (
+              <ProductRowActionsMenu
+                productId={product.id}
+                productType={product.type}
+                onDeactivate={() => setDeactivateTarget(product)}
+                onHardDelete={() => setHardDeleteTarget(product)}
+              />
+            ) : (
+              <span className="text-xs text-slate-400">—</span>
+            ),
+        }}
+      />
+    </CronogramaPanel>
+  );
 
-          {data?.pagination?.total !== undefined &&
-          data.pagination.total > 0 ? (
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">
-              <p className="text-sm text-slate-500">
-                Produtos nesta página: {data.data.length}. Intervalo total:{" "}
-                <span className="font-medium text-slate-700">{rangeDescription}</span>
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={filters.page <= 1}
-                  onClick={() =>
-                    setFilters({ ...filters, page: Math.max(1, filters.page - 1) })
-                  }
-                  aria-label="Página anterior"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Anterior
-                </Button>
-                <span className="text-sm tabular-nums px-2 text-slate-600">
-                  Página {filters.page} / {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={filters.page >= totalPages}
-                  onClick={() =>
-                    setFilters({
-                      ...filters,
-                      page: Math.min(totalPages, filters.page + 1),
-                    })
-                  }
-                  aria-label="Página seguinte"
-                >
-                  Seguinte
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+  return (
+    <AppPage
+      title="Produtos"
+      description="Cronograma de catálogo — códigos, custos e ciclo de engenharia."
+      density="comfortable"
+      width="wide"
+      actions={
+        canManageProducts ? (
+          <Button type="button" size="sm" onClick={() => router.push("/products/new")}>
+            <Plus className="h-4 w-4" />
+            Novo produto
+          </Button>
+        ) : null
+      }
+    >
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v as ProductTab);
+          setPage(1);
+        }}
+      >
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          {TAB_OPTIONS.map((tab) => (
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className={cn(
+                "text-xs sm:text-sm",
+                tab.value === "pending" &&
+                  activeTab === "pending" &&
+                  "animate-pulse text-amber-800"
+              )}
+            >
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {TAB_OPTIONS.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value} className="mt-4">
+            {listPanel}
+          </TabsContent>
+        ))}
+      </Tabs>
 
       {deactivateTarget ? (
         <div
@@ -690,6 +607,6 @@ export default function ProductsPage() {
           </Link>
         </p>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

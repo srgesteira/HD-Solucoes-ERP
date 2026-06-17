@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
 import { ReportFilters } from "@/components/reports/report-filters";
 import { ReportTable } from "@/components/reports/report-table";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -90,18 +91,16 @@ export default function ProductionDelayReportPage() {
   const s = data?.summary;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <Factory className="h-7 w-7 text-brand-700" aria-hidden />
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Factory className="h-5 w-5 text-brand-700" />
           Atraso na produção
-        </h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Ordens finalizadas no prazo vs. atrasadas, média de dias de atraso quando
-          atrasadas, e ordens abertas em atraso ou com estado «delayed».
-        </p>
-      </div>
-
+        </span>
+      }
+      description="Ordens finalizadas no prazo vs. atrasadas, média de dias de atraso quando atrasadas, e ordens abertas em atraso ou com estado «delayed»."
+      density="comfortable"
+    >
       <ReportFilters
         showPeriod={false}
         loading={loading}
@@ -170,6 +169,6 @@ export default function ProductionDelayReportPage() {
           />
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

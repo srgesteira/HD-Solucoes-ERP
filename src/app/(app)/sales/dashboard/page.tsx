@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
 import { usePermissions } from "@/hooks/use-permissions";
 import { toast } from "sonner";
 
@@ -83,21 +84,21 @@ export default function SalesDashboardPage() {
   }, [permLoading, can]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-10">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900">
-            Dashboard de Vendas
-          </h2>
-          <p className="text-sm text-slate-500">
-            Indicadores do mês ({data?.month_from ?? "…"} a{" "}
-            {data?.month_to ?? "…"})
-          </p>
-        </div>
-        <Link href="/sales/quotes" className="text-sm text-brand-700 underline">
-          Ver orçamentos
+    <AppPage
+      title="Dashboard de Vendas"
+      description={
+        <>
+          Indicadores do mês ({data?.month_from ?? "…"} a{" "}
+          {data?.month_to ?? "…"})
+        </>
+      }
+      density="comfortable"
+      actions={
+        <Link href="/sales/quotes" className="text-sm text-brand-700 hover:underline">
+          Ver orçamentos →
         </Link>
-      </div>
+      }
+    >
 
       {loading ? (
         <p className="flex items-center gap-2 text-slate-600 py-12 justify-center">
@@ -216,6 +217,6 @@ export default function SalesDashboardPage() {
           </div>
         </>
       ) : null}
-    </div>
+    </AppPage>
   );
 }

@@ -20,6 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
 import { ReportFilters, type ReportDateRange } from "@/components/reports/report-filters";
 import { ReportTable } from "@/components/reports/report-table";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -116,18 +117,16 @@ export default function TopProductsReportPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <TrendingUp className="h-7 w-7 text-brand-700" aria-hidden />
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <TrendingUp className="h-5 w-5 text-brand-700" />
           Produtos mais vendidos
-        </h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Agregação por quantidade nos pedidos de venda no intervalo equivalente ao
-          período seleccionado (máx. 365 dias).
-        </p>
-      </div>
-
+        </span>
+      }
+      description="Agregação por quantidade nos pedidos de venda no intervalo equivalente ao período seleccionado (máx. 365 dias)."
+      density="comfortable"
+    >
       <ReportFilters
         loading={loading}
         onApply={(range) => {
@@ -190,6 +189,6 @@ export default function TopProductsReportPage() {
         ]}
         rows={tableRows}
       />
-    </div>
+    </AppPage>
   );
 }

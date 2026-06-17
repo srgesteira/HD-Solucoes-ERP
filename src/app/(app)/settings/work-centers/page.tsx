@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { WorkCentersAdmin } from "@/components/settings/work-centers-admin";
+import { AppPage } from "@/shared/ui/app-page";
 
 export const metadata: Metadata = {
   title: "Centros de trabalho",
@@ -28,17 +29,12 @@ export default async function WorkCentersSettingsPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          Centros de trabalho
-        </h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Cadastro de linhas, horas padrão e custo de mão de obra (directo +
-          rateio dos departamentos de apoio).
-        </p>
-      </div>
+    <AppPage
+      title="Centros de trabalho"
+      description="Cadastro de linhas, horas padrão e custo de mão de obra (directo + rateio dos departamentos de apoio)."
+      density="comfortable"
+    >
       <WorkCentersAdmin />
-    </div>
+    </AppPage>
   );
 }

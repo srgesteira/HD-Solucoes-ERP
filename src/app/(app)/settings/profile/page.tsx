@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
+import { StatusBadge } from "@/shared/ui/page-helpers";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 
 export const metadata: Metadata = {
@@ -24,9 +26,7 @@ export default async function ProfilePage() {
     .maybeSingle();
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h2 className="text-2xl font-semibold text-slate-900 mb-6">Meu perfil</h2>
-
+    <AppPage title="Meu perfil" width="narrow" density="comfortable">
       <Card>
         <CardHeader>
           <CardTitle>Conta</CardTitle>
@@ -46,9 +46,7 @@ export default async function ProfilePage() {
 
             <dt className="text-slate-500">Papel</dt>
             <dd className="sm:col-span-2">
-              <span className="inline-flex items-center rounded-full bg-brand-50 text-brand-700 text-xs font-medium px-2 py-0.5">
-                {profile?.role ?? "—"}
-              </span>
+              <StatusBadge tone="brand">{profile?.role ?? "—"}</StatusBadge>
             </dd>
 
             <dt className="text-slate-500">Tenant ID</dt>
@@ -63,6 +61,6 @@ export default async function ProfilePage() {
           </dl>
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

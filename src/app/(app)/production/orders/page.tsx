@@ -1,30 +1,44 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
-  ChevronLeft,
-  ChevronRight,
-  ClipboardList,
   Edit,
   Eye,
-  Loader2,
   Plus,
-  Search,
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaError,
+  CronogramaPagination,
+  CronogramaPanel,
+  CronogramaSearch,
+  useCronogramaSearch,
+} from "@/shared/ui/cronograma-layout";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
+
+type ProductionTab =
+  | "all"
+  | "imported"
+  | "planning"
+  | "in_production"
+  | "ready"
+  | "finished"
+  | "delayed"
+  | "cancelled";
 
 interface ProductionOrder {
   id: string;
@@ -42,21 +56,32 @@ interface OrdersApiResponse {
   pagination: { page: number; limit: number; total: number };
 }
 
+const TAB_OPTIONS: Array<{ value: ProductionTab; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "imported", label: "Importados" },
+  { value: "planning", label: "Planeamento" },
+  { value: "in_production", label: "Em produção" },
+  { value: "ready", label: "Prontos" },
+  { value: "finished", label: "Finalizados" },
+  { value: "delayed", label: "Atrasados" },
+  { value: "cancelled", label: "Cancelados" },
+];
+
 const filtersKey = (f: {
-  status: string;
+  tab: ProductionTab;
   search: string;
   page: number;
   limit: number;
 }) => ["production-orders", f] as const;
 
 async function fetchOrders(filters: {
-  status: string;
+  tab: ProductionTab;
   search: string;
   page: number;
   limit: number;
 }): Promise<OrdersApiResponse> {
   const params = new URLSearchParams();
-  if (filters.status !== "all") params.append("status", filters.status);
+  if (filters.tab !== "all") params.append("status", filters.tab);
   if (filters.search.trim()) params.append("search", filters.search.trim());
   params.append("page", String(filters.page));
   params.append("limit", String(filters.limit));
@@ -97,13 +122,13 @@ const statusLabel: Record<string, string> = {
 };
 
 const statusPillClass: Record<string, string> = {
-  imported: "bg-slate-100 text-slate-800 border-slate-200",
-  planning: "bg-blue-50 text-blue-800 border-blue-200",
-  in_production: "bg-emerald-50 text-emerald-800 border-emerald-200",
-  ready: "bg-amber-50 text-amber-900 border-amber-200",
-  finished: "bg-slate-100 text-slate-600 border-slate-200",
-  delayed: "bg-red-50 text-red-800 border-red-200",
-  cancelled: "bg-slate-200 text-slate-700 border-slate-300",
+  imported: "bg-slate-100 text-slate-800 ring-slate-200",
+  planning: "bg-blue-50 text-blue-800 ring-blue-200",
+  in_production: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  ready: "bg-amber-50 text-amber-900 ring-amber-200",
+  finished: "bg-slate-100 text-slate-600 ring-slate-200",
+  delayed: "bg-red-50 text-red-800 ring-red-200",
+  cancelled: "bg-slate-200 text-slate-700 ring-slate-300",
 };
 
 function formatDate(iso: string | null) {
@@ -114,7 +139,6 @@ function formatDate(iso: string | null) {
   return new Date(y, m - 1, d).toLocaleDateString("pt-PT");
 }
 
-/** Prazo de entrega (data-only) já passou e o pedido não está encerrado. */
 function isDeliveryOverdue(order: ProductionOrder): boolean {
   if (!order.delivery_deadline) return false;
   if (order.status === "finished" || order.status === "cancelled") {
@@ -136,16 +160,24 @@ export default function ProductionOrdersPage() {
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
 
-  const [filters, setFilters] = useState({
-    status: "all",
-    search: "",
-    page: 1,
-    limit: 25,
-  });
+  const [activeTab, setActiveTab] = useState<ProductionTab>("all");
+  const { input: searchInput, setInput: setSearchInput, debounced: search } =
+    useCronogramaSearch();
+  const [page, setPage] = useState(1);
+  const limit = 25;
 
-  const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: filtersKey(filters),
-    queryFn: () => fetchOrders(filters),
+  useEffect(() => {
+    setPage(1);
+  }, [search, activeTab]);
+
+  const queryFilters = useMemo(
+    () => ({ tab: activeTab, search, page, limit }),
+    [activeTab, search, page, limit]
+  );
+
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: filtersKey(queryFilters),
+    queryFn: () => fetchOrders(queryFilters),
   });
 
   const handleDelete = useCallback(
@@ -166,8 +198,14 @@ export default function ProductionOrdersPage() {
   );
 
   const total = data?.pagination?.total ?? 0;
-  const totalPages =
-    filters.limit > 0 ? Math.max(1, Math.ceil(total / filters.limit)) : 1;
+  const totalPages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+
+  const rangeDescription = useMemo(() => {
+    if (!total) return "";
+    const start = (page - 1) * limit + 1;
+    const end = Math.min(page * limit, total);
+    return `${start}–${end} de ${total}`;
+  }, [total, page, limit]);
 
   const tableColumns = useMemo((): SortableTableColumn<ProductionOrder>[] => {
     return [
@@ -179,9 +217,12 @@ export default function ProductionOrdersPage() {
         accessor: (row) => row.order_number,
         truncate: false,
         render: (row) => (
-          <span className="font-mono font-medium text-slate-900">
+          <Link
+            href={`/production/orders/${row.id}`}
+            className={CRONOGRAMA_TOKENS.cellLink}
+          >
             {row.order_number}
-          </span>
+          </Link>
         ),
       },
       {
@@ -191,7 +232,9 @@ export default function ProductionOrdersPage() {
         width: "w-[22%]",
         accessor: (row) => row.client_name,
         render: (row) => (
-          <span className="text-slate-800">{row.client_name ?? "—"}</span>
+          <span className={CRONOGRAMA_TOKENS.cellText}>
+            {row.client_name ?? "—"}
+          </span>
         ),
       },
       {
@@ -205,12 +248,13 @@ export default function ProductionOrdersPage() {
           const overdue = isDeliveryOverdue(row);
           const pillClass =
             statusPillClass[row.status] ??
-            "bg-slate-100 text-slate-700 border-slate-200";
+            "bg-slate-100 text-slate-700 ring-slate-200";
           const label = statusLabel[row.status] ?? row.status;
           return (
             <span
               className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                CRONOGRAMA_TOKENS.badge,
+                "inline-flex items-center gap-1",
                 pillClass
               )}
             >
@@ -235,11 +279,16 @@ export default function ProductionOrdersPage() {
             <div className="flex items-center gap-1.5">
               {overdue ? (
                 <AlertCircle
-                  className="h-4 w-4 shrink-0 text-red-600"
+                  className="h-3.5 w-3.5 shrink-0 text-red-600"
                   aria-hidden
                 />
               ) : null}
-              <span className={cn(overdue && "text-red-700 font-medium")}>
+              <span
+                className={cn(
+                  CRONOGRAMA_TOKENS.cellMuted,
+                  overdue && "text-red-700 font-medium"
+                )}
+              >
                 {formatDate(row.delivery_deadline)}
               </span>
             </div>
@@ -254,7 +303,7 @@ export default function ProductionOrdersPage() {
         accessor: (row) => row.created_at,
         truncate: false,
         render: (row) => (
-          <span className="text-slate-600 whitespace-nowrap">
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
             {formatDate(row.created_at)}
           </span>
         ),
@@ -262,189 +311,126 @@ export default function ProductionOrdersPage() {
     ];
   }, []);
 
+  const listPanel = (
+    <CronogramaPanel
+      search={
+        <CronogramaSearch
+          value={searchInput}
+          onChange={setSearchInput}
+          placeholder="Buscar nº pedido, cliente ou data…"
+        />
+      }
+      error={
+        error ? (
+          <CronogramaError
+            message={(error as Error).message}
+            onRetry={() => void refetch()}
+          />
+        ) : null
+      }
+      footer={
+        total > 0 ? (
+          <CronogramaPagination
+            page={page}
+            totalPages={totalPages}
+            rangeDescription={rangeDescription}
+            itemCount={data?.data?.length}
+            onPageChange={setPage}
+          />
+        ) : null
+      }
+    >
+      <SortableTable
+        columns={tableColumns}
+        data={data?.data ?? []}
+        getRowKey={(row) => row.id}
+        isLoading={isLoading}
+        emptyMessage="Nenhum pedido encontrado."
+        actionsColumn={{
+          label: "Ações",
+          width: "w-[5rem]",
+          render: (order) => (
+            <div className="flex justify-end gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                title="Ver"
+                aria-label={`Ver pedido ${order.order_number}`}
+                onClick={() => router.push(`/production/orders/${order.id}`)}
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                title="Editar"
+                aria-label={`Editar pedido ${order.order_number}`}
+                onClick={() =>
+                  router.push(`/production/orders/${order.id}/edit`)
+                }
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+              {isAdmin ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0 border-red-200 text-red-700 hover:bg-red-50"
+                  title="Remover"
+                  aria-label={`Remover pedido ${order.order_number}`}
+                  disabled={isFetching}
+                  onClick={() =>
+                    void handleDelete(order.id, order.order_number)
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+          ),
+        }}
+      />
+    </CronogramaPanel>
+  );
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-brand-700 border border-brand-100">
-            <ClipboardList className="h-5 w-5" aria-hidden />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900">
-              Pedidos de produção
-            </h1>
-            <p className="text-sm text-slate-500">
-              Lista e filtros dos pedidos do tenant.
-            </p>
-          </div>
-        </div>
-        <Button onClick={() => router.push("/production/orders/new")}>
+    <AppPage
+      title="Pedidos de produção"
+      description="Cronograma operacional — prazos, estados e planeamento PCP."
+      density="comfortable"
+      width="wide"
+      actions={
+        <Button size="sm" onClick={() => router.push("/production/orders/new")}>
           <Plus className="h-4 w-4" aria-hidden />
           Novo pedido
         </Button>
-      </div>
-
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="border-b border-slate-100 py-4">
-          <CardTitle className="text-base font-semibold text-slate-900">
-            Lista de pedidos
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-              <Input
-                placeholder="Buscar por número ou cliente…"
-                value={filters.search}
-                onChange={(e) =>
-                  setFilters({
-                    ...filters,
-                    search: e.target.value,
-                    page: 1,
-                  })
-                }
-                className="pl-9"
-                aria-label="Pesquisar pedidos"
-              />
-            </div>
-            <div className="w-full md:w-[220px] shrink-0">
-              <label className="sr-only" htmlFor="prod-order-status">
-                Estado
-              </label>
-              <select
-                id="prod-order-status"
-                value={filters.status}
-                onChange={(e) =>
-                  setFilters({
-                    ...filters,
-                    status: e.target.value,
-                    page: 1,
-                  })
-                }
-                className={cn(
-                  "flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm",
-                  "shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
-                )}
-              >
-                <option value="all">Todos</option>
-                <option value="imported">Importados</option>
-                <option value="planning">Planeamento</option>
-                <option value="in_production">Em produção</option>
-                <option value="ready">Prontos</option>
-                <option value="finished">Finalizados</option>
-                <option value="delayed">Atrasados</option>
-                <option value="cancelled">Cancelados</option>
-              </select>
-            </div>
-          </div>
-
-          {error ? (
-            <p className="text-sm text-red-600" role="alert">
-              {(error as Error).message}
-            </p>
-          ) : null}
-
-          <SortableTable
-            columns={tableColumns}
-            data={data?.data ?? []}
-            getRowKey={(row) => row.id}
-            isLoading={isLoading}
-            emptyMessage="Nenhum pedido encontrado."
-            actionsColumn={{
-              label: "Ações",
-              width: "w-[5rem]",
-              render: (order) => (
-                <div className="flex justify-end gap-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    title="Ver"
-                    aria-label={`Ver pedido ${order.order_number}`}
-                    onClick={() =>
-                      router.push(`/production/orders/${order.id}`)
-                    }
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    title="Editar"
-                    aria-label={`Editar pedido ${order.order_number}`}
-                    onClick={() =>
-                      router.push(`/production/orders/${order.id}/edit`)
-                    }
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  {isAdmin ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-8 p-0 border-red-200 text-red-700 hover:bg-red-50"
-                      title="Remover"
-                      aria-label={`Remover pedido ${order.order_number}`}
-                      disabled={isFetching}
-                      onClick={() =>
-                        void handleDelete(order.id, order.order_number)
-                      }
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  ) : null}
-                </div>
-              ),
-            }}
-          />
-
-          {total > 0 ? (
-            <div className="flex flex-col sm:flex-row justify-between gap-4 items-center text-sm">
-              <p className="text-slate-500">
-                A mostrar {data?.data?.length ?? 0} de {total} pedidos
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setFilters((f) => ({ ...f, page: Math.max(1, f.page - 1) }))
-                  }
-                  disabled={filters.page <= 1 || isFetching}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Anterior
-                </Button>
-                <span className="text-slate-600 tabular-nums px-2">
-                  Página {filters.page} de {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setFilters((f) => ({
-                      ...f,
-                      page:
-                        f.page >= totalPages ? f.page : f.page + 1,
-                    }))
-                  }
-                  disabled={filters.page >= totalPages || isFetching}
-                >
-                  Seguinte
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-    </div>
+      }
+    >
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v as ProductionTab);
+          setPage(1);
+        }}
+      >
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          {TAB_OPTIONS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {TAB_OPTIONS.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value} className="mt-4">
+            {listPanel}
+          </TabsContent>
+        ))}
+      </Tabs>
+    </AppPage>
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Tags } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { AppPage } from "@/shared/ui/app-page";
 
 export const metadata = {
   title: "Classificação técnica | ERP HD",
@@ -8,20 +9,17 @@ export const metadata = {
 
 export default function ProductFamiliesHubPage() {
   return (
-    <div className="max-w-3xl mx-auto py-6 space-y-6">
-      <div className="flex items-center gap-2">
-        <Tags className="h-8 w-8 text-brand-700" aria-hidden />
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">
-            Classificação técnica
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Famílias, sub-famílias, prefixos e acabamentos são usados no cadastro de
-            produtos.
-          </p>
-        </div>
-      </div>
-
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Tags className="h-5 w-5 text-brand-700" />
+          Classificação técnica
+        </span>
+      }
+      description="Famílias, sub-famílias, prefixos e acabamentos são usados no cadastro de produtos."
+      width="narrow"
+      density="comfortable"
+    >
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Onde gerir</CardTitle>
@@ -41,6 +39,6 @@ export default function ProductFamiliesHubPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

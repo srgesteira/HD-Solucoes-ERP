@@ -7,6 +7,7 @@ import {
   rollbackSalesOrderCreation,
 } from "@/modules/vendas/lib/sales/sales-flow";
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
+import { applyFiscalToSalesOrderItems } from "@/modules/fiscal/lib/fiscal-rules-service";
 
 export type ConvertQuoteOptions = {
   payment_installments?: number;
@@ -242,6 +243,18 @@ export async function convertQuoteToSalesOrder(
       message: "Erro ao atualizar orçamento: " + uqErr.message,
       status: 500,
     };
+  }
+
+  // §7.1: dispara o motor fiscal na efetivação para sinalizar o
+  // faturamento desde já. Falhas aqui não bloqueiam o pedido — o estado
+  // fiscal pode ser revisitado manualmente.
+  try {
+    await applyFiscalToSalesOrderItems(admin, tenantId, so.id, userId || null);
+  } catch (err) {
+    console.error(
+      "[fiscal] Falha ao aplicar regras na efetivação do PV " + so.id,
+      err
+    );
   }
 
   return {

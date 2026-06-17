@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
-import { KpiCard } from "@/components/dashboard/kpi-card";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { ModuleKey } from "@/shared/auth/permissions";
+import { AppPage } from "@/shared/ui/app-page";
+import { KpiCard, LoadingState } from "@/shared/ui/page-helpers";
 import { toast } from "sonner";
 
 type KpiItem = { title: string; value: string; subtitle?: string };
@@ -49,25 +49,21 @@ export function ModuleDashboardPage({
   }, [permLoading, can, module, apiPath, mapData]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-10">
-      <h2 className="text-2xl font-semibold text-slate-900">{title}</h2>
+    <AppPage title={title} density="comfortable" width="wide">
       {loading ? (
-        <p className="flex items-center gap-2 text-slate-600 py-12 justify-center">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          A carregar…
-        </p>
+        <LoadingState label="A carregar indicadores…" />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((k) => (
             <KpiCard
               key={k.title}
-              title={k.title}
+              label={k.title}
               value={k.value}
-              subtitle={k.subtitle}
+              hint={k.subtitle}
             />
           ))}
         </div>
       )}
-    </div>
+    </AppPage>
   );
 }

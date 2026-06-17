@@ -38,6 +38,41 @@ function isRuleInDateRange(
   return true;
 }
 
+/** §7.7 — regra com `valid_until` no passado (não aplicada como válida). */
+function isRuleExpired(
+  rule: FiscalRuleRow,
+  at: Date = new Date()
+): boolean {
+  if (!rule.valid_until) return false;
+  const day = at.toISOString().slice(0, 10);
+  return day > rule.valid_until;
+}
+
+/** §7.7 — regra dentro de 60 dias de expirar. */
+function isRuleExpiringSoon(
+  rule: FiscalRuleRow,
+  at: Date = new Date()
+): boolean {
+  if (!rule.valid_until) return false;
+  const today = at.toISOString().slice(0, 10);
+  const sixtyDaysFromNow = new Date(at.getTime() + 60 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  return rule.valid_until >= today && rule.valid_until < sixtyDaysFromNow;
+}
+
+/** §7.7 — regra nunca revisada ou revisada há mais que o intervalo. */
+function isRuleStale(
+  rule: FiscalRuleRow,
+  at: Date = new Date()
+): boolean {
+  if (!rule.last_reviewed_at) return true;
+  const intervalMonths = rule.review_interval_months ?? 12;
+  const staleAfter = new Date(at);
+  staleAfter.setMonth(staleAfter.getMonth() - intervalMonths);
+  return new Date(rule.last_reviewed_at) < staleAfter;
+}
+
 type RuleScore = {
   score: number;
   matched: Record<string, string>;
@@ -143,7 +178,11 @@ function ratesFromRule(rule: FiscalRuleRow): FiscalRates | null {
   };
 }
 
-function buildWarnings(rule: FiscalRuleRow, ctx: FiscalContext): string[] {
+function buildWarnings(
+  rule: FiscalRuleRow,
+  ctx: FiscalContext,
+  at: Date
+): string[] {
   const warnings: string[] = [];
   const dest = normUf(rule.destination_uf);
   const ctxDest = normUf(ctx.destinationUf);
@@ -163,6 +202,17 @@ function buildWarnings(rule: FiscalRuleRow, ctx: FiscalContext): string[] {
   ) {
     warnings.push("Regra casou mas não tem alíquotas preenchidas.");
   }
+  // §7.7
+  if (isRuleExpiringSoon(rule, at)) {
+    warnings.push(
+      `Regra expira em ${rule.valid_until} — providenciar nova versão.`
+    );
+  }
+  if (isRuleStale(rule, at)) {
+    warnings.push(
+      "Regra sem revisão recente — confira se as alíquotas continuam corretas."
+    );
+  }
   return warnings;
 }
 
@@ -172,14 +222,16 @@ export function resolveFiscalRule(
   ctx: FiscalContext,
   at: Date = new Date()
 ): FiscalRuleMatchResult {
-  const active = rules.filter((r) => r.is_active && isRuleInDateRange(r, at));
+  const activeAndValid = rules.filter(
+    (r) => r.is_active && isRuleInDateRange(r, at)
+  );
 
   let best: FiscalRuleRow | null = null;
   let bestScore = 0;
   let bestPriority = Number.POSITIVE_INFINITY;
   let bestMatched: Record<string, string> = {};
 
-  for (const rule of active) {
+  for (const rule of activeAndValid) {
     const scored = scoreRule(rule, ctx);
     if (!scored) continue;
     const better =
@@ -194,6 +246,41 @@ export function resolveFiscalRule(
   }
 
   if (!best) {
+    // §7.7 — nenhuma regra válida casou. Verifica se há regra expirada
+    // que casaria, para sinalizar review_required em vez de no_rules.
+    const expiredCandidates = rules.filter(
+      (r) => r.is_active && isRuleExpired(r, at)
+    );
+    let expiredBest: FiscalRuleRow | null = null;
+    let expiredScore = 0;
+    for (const rule of expiredCandidates) {
+      const scored = scoreRule(rule, ctx);
+      if (!scored) continue;
+      if (scored.score > expiredScore) {
+        expiredBest = rule;
+        expiredScore = scored.score;
+      }
+    }
+    if (expiredBest) {
+      return {
+        rule: expiredBest,
+        matchScore: expiredScore,
+        matchDetail: {
+          reason: "rule_expired",
+          rule_id: expiredBest.id,
+          rule_name: expiredBest.name,
+          valid_until: expiredBest.valid_until,
+        },
+        cfop: null,
+        rates: null,
+        ibsCbsClassificacao: null,
+        warnings: [
+          `A única regra que casaria está vencida em ${expiredBest.valid_until}. Crie uma nova versão para esta operação.`,
+        ],
+        fiscalStatus: "review_required",
+      };
+    }
+
     return {
       rule: null,
       matchScore: 0,
@@ -207,7 +294,7 @@ export function resolveFiscalRule(
   }
 
   const rates = ratesFromRule(best);
-  const warnings = buildWarnings(best, ctx);
+  const warnings = buildWarnings(best, ctx, at);
   let fiscalStatus: FiscalStatus = rates ? "rules_applied" : "review_required";
   if (warnings.length > 0 && rates) {
     fiscalStatus = "review_required";
@@ -221,6 +308,8 @@ export function resolveFiscalRule(
       priority: best.priority,
       rule_id: best.id,
       rule_name: best.name,
+      stale: isRuleStale(best, at),
+      expiring_soon: isRuleExpiringSoon(best, at),
     },
     cfop: best.cfop,
     rates,

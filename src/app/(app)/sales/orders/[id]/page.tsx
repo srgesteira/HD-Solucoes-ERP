@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   Ban,
   FileText,
   History,
@@ -16,6 +15,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -33,6 +33,7 @@ import type { ReceivableStatus } from "@/modules/core/types/finance.types";
 import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
 import { defaultExpectedDeliveryForOrder } from "@/modules/vendas/lib/sales/sales-flow";
 import { SalesOrderChangeHistory } from "@/components/sales/sales-order-change-history";
+import { SalesReturnCreateModal } from "@/components/sales/sales-return-create-modal";
 
 /** Progressão permitida pelo UI (exclude cancelled via acção separada). */
 const SALES_FLOW: SalesOrderStatus[] = [
@@ -509,6 +510,35 @@ export default function SalesOrderDetailPage() {
 
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reactivateOpen, setReactivateOpen] = useState(false);
+  const [salesReturnOpen, setSalesReturnOpen] = useState(false);
+
+  const canCreateReturn =
+    isAdmin && !["draft", "cancelled", "rejected"].includes(st);
+  const salesReturnMutation = useMutation({
+    mutationFn: async (payload: Parameters<
+      Parameters<typeof SalesReturnCreateModal>[0]["onSubmit"]
+    >[0]) => {
+      const res = await fetch("/api/sales-returns", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        sales_return?: { id: string };
+        error?: string;
+      };
+      if (!res.ok)
+        throw new Error(json.error ?? "Erro ao criar devolução");
+      return json.sales_return!;
+    },
+    onSuccess: (ret) => {
+      toast.success("Devolução criada.");
+      setSalesReturnOpen(false);
+      router.push(`/sales/returns/${ret.id}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const [nfeOpen, setNfeOpen] = useState(false);
   const [nfeBusy, setNfeBusy] = useState(false);
@@ -654,92 +684,103 @@ export default function SalesOrderDetailPage() {
   const headerPill = q ? salesOrderStatusPill(q.status) : null;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link href="/sales/orders">
-          <Button type="button" variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar
-          </Button>
-        </Link>
-        {canNavigateToEdit ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => router.push(`/sales/orders/${id}/edit`)}
-          >
-            <Pencil className="h-4 w-4" />
-            Editar pedido
-          </Button>
-        ) : null}
-        {canEmitNfe ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => setNfeOpen(true)}
-          >
-            <Receipt className="h-4 w-4" />
-            Emitir NFS-e
-          </Button>
-        ) : null}
-        {canCancelAdmin ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="danger"
-            onClick={() => setCancelOpen(true)}
-          >
-            <Ban className="h-4 w-4" />
-            Cancelar
-          </Button>
-        ) : null}
-        {canReactivateAdmin ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-            onClick={() => setReactivateOpen(true)}
-          >
-            <RotateCcw className="h-4 w-4" />
-            Reativar pedido
-          </Button>
-        ) : null}
-        {showStatusControl ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Label
-              htmlFor="so-status-select"
-              className="text-sm text-slate-600 whitespace-nowrap"
+    <AppPage
+      backHref="/sales/orders"
+      title={q ? `Pedido ${q.order_number}` : "Pedido de venda"}
+      density="comfortable"
+      actions={
+        <>
+          {canNavigateToEdit ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => router.push(`/sales/orders/${id}/edit`)}
             >
-              Atualizar estado
-            </Label>
-            <select
-              id="so-status-select"
-              aria-label="Atualizar estado do pedido"
-              className={cn(
-                "h-8 rounded-md border border-slate-300 bg-white px-2 text-xs min-w-[10.5rem]",
-                "dark:bg-slate-950 dark:border-slate-600"
-              )}
-              value={st}
-              disabled={
-                statusMutation.isPending || statusOptions.length <= 1
-              }
-              onChange={(e) => {
-                const next = e.target.value as SalesOrderStatus;
-                if (next === st) return;
-                statusMutation.mutate(next);
-              }}
+              <Pencil className="h-4 w-4" />
+              Editar pedido
+            </Button>
+          ) : null}
+          {canEmitNfe ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setNfeOpen(true)}
             >
-              {statusOptions.map((s) => (
-                <option key={s} value={s}>
-                  {salesOrderStatusPill(s).label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-      </div>
+              <Receipt className="h-4 w-4" />
+              Emitir NFS-e
+            </Button>
+          ) : null}
+          {canCancelAdmin ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              onClick={() => setCancelOpen(true)}
+            >
+              <Ban className="h-4 w-4" />
+              Cancelar
+            </Button>
+          ) : null}
+          {canReactivateAdmin ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+              onClick={() => setReactivateOpen(true)}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reativar pedido
+            </Button>
+          ) : null}
+          {canCreateReturn ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setSalesReturnOpen(true)}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Iniciar devolução
+            </Button>
+          ) : null}
+          {showStatusControl ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Label
+                htmlFor="so-status-select"
+                className="text-sm text-slate-600 whitespace-nowrap"
+              >
+                Atualizar estado
+              </Label>
+              <select
+                id="so-status-select"
+                aria-label="Atualizar estado do pedido"
+                className={cn(
+                  "h-8 rounded-md border border-slate-300 bg-white px-2 text-xs min-w-[10.5rem]",
+                  "dark:bg-slate-950 dark:border-slate-600"
+                )}
+                value={st}
+                disabled={
+                  statusMutation.isPending || statusOptions.length <= 1
+                }
+                onChange={(e) => {
+                  const next = e.target.value as SalesOrderStatus;
+                  if (next === st) return;
+                  statusMutation.mutate(next);
+                }}
+              >
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {salesOrderStatusPill(s).label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+        </>
+      }
+    >
       {isAdmin && st === "confirmed" && !companyBrandingQuery.data?.focusnfe_configured ? (
         <p className="w-full text-xs text-amber-800 dark:text-amber-200">
           Para emitir NF-e, configure o token FocusNFe em{" "}
@@ -1721,6 +1762,32 @@ export default function SalesOrderDetailPage() {
           </div>
         </div>
       ) : null}
-    </div>
+
+      {salesReturnOpen && q ? (
+        <SalesReturnCreateModal
+          open={salesReturnOpen}
+          salesOrderId={q.id}
+          orderNumber={q.order_number}
+          lines={(q.items ?? []).map((it) => ({
+            sales_order_item_id: it.id,
+            description: it.description,
+            product_id:
+              typeof (
+                Array.isArray(it.product) ? it.product[0] : it.product
+              ) === "object" &&
+              (Array.isArray(it.product) ? it.product[0] : it.product) !== null
+                ? ((Array.isArray(it.product) ? it.product[0] : it.product) as {
+                    id?: string;
+                  }).id ?? null
+                : null,
+            quantity: Number(it.quantity),
+            unit_price: Number(it.unit_price),
+          }))}
+          busy={salesReturnMutation.isPending}
+          onClose={() => setSalesReturnOpen(false)}
+          onSubmit={(p) => salesReturnMutation.mutate(p)}
+        />
+      ) : null}
+    </AppPage>
   );
 }

@@ -3,7 +3,8 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { AppPage } from "@/shared/ui/app-page";
+import { EmptyState, ErrorState, LoadingState } from "@/shared/ui/page-helpers";
 import { fetchProductionLines } from "@/modules/producao/lib/production/production-lines-api";
 
 export default function ProductionLinesIndexPage() {
@@ -21,37 +22,30 @@ export default function ProductionLinesIndexPage() {
     }
   }, [linesQ.data, linesQ.isLoading, linesQ.isError, router]);
 
-  if (linesQ.isLoading) {
-    return (
-      <div className="flex items-center gap-2 py-16 text-slate-600 justify-center">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        A carregar linhas…
-      </div>
-    );
-  }
-
-  if (linesQ.isError) {
-    return (
-      <p className="text-sm text-red-600 py-8 text-center">
-        {linesQ.error instanceof Error
-          ? linesQ.error.message
-          : "Erro ao carregar linhas"}
-      </p>
-    );
-  }
-
-  if (!linesQ.data?.length) {
-    return (
-      <p className="text-sm text-slate-600 py-8 text-center">
-        Nenhuma linha de produção activa cadastrada.
-      </p>
-    );
-  }
-
   return (
-    <div className="flex items-center gap-2 py-16 text-slate-600 justify-center">
-      <Loader2 className="h-5 w-5 animate-spin" />
-      A redireccionar…
-    </div>
+    <AppPage
+      title="Linhas de produção"
+      description="A redireccionar para a primeira linha activa."
+      density="comfortable"
+    >
+      {linesQ.isLoading ? (
+        <LoadingState label="A carregar linhas…" />
+      ) : linesQ.isError ? (
+        <ErrorState
+          message={
+            linesQ.error instanceof Error
+              ? linesQ.error.message
+              : "Erro ao carregar linhas"
+          }
+        />
+      ) : !linesQ.data?.length ? (
+        <EmptyState
+          title="Nenhuma linha cadastrada"
+          description="Cadastre linhas de produção em Configurações antes de usar o planeamento."
+        />
+      ) : (
+        <LoadingState label="A redireccionar…" />
+      )}
+    </AppPage>
   );
 }

@@ -8,6 +8,7 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { AppPage } from "@/shared/ui/app-page";
 import {
   SortableTable,
   type SortableTableColumn,
@@ -171,19 +172,24 @@ export default function FinanceCashFlowEntriesPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <TrendingUp className="h-7 w-7 text-brand-700" />
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <TrendingUp className="h-5 w-5 text-brand-700" />
           Fluxo de caixa (lançamentos manuais)
-        </h1>
-        <p className="text-sm text-slate-600 mt-1">
+        </span>
+      }
+      description={
+        <>
           Saldo actual (soma entradas − saídas):{" "}
-          <strong className={balance >= 0 ? "text-green-800" : "text-red-700"}>
+          <strong className={balance >= 0 ? "text-emerald-700" : "text-rose-700"}>
             {fmtBrl(balance)}
           </strong>
-        </p>
-      </div>
+        </>
+      }
+      width="narrow"
+      density="comfortable"
+    >
 
       <Card>
         <CardHeader>
@@ -256,6 +262,6 @@ export default function FinanceCashFlowEntriesPage() {
           />
         </CardContent>
       </Card>
-    </div>
+    </AppPage>
   );
 }

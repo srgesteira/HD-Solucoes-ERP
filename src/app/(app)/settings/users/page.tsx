@@ -9,6 +9,8 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Label } from "@/shared/ui/label";
 import { Input } from "@/shared/ui/input";
+import { AppPage } from "@/shared/ui/app-page";
+import { LoadingState } from "@/shared/ui/page-helpers";
 import { useMe } from "@/hooks/use-me";
 import { APP_MODULE_KEYS } from "@/shared/auth/menu-modules";
 
@@ -299,47 +301,41 @@ export default function SettingsUsersPage() {
 
   if (meLoading || (me && me.role !== "admin")) {
     return (
-      <div className="max-w-4xl mx-auto flex justify-center py-16 text-slate-500 gap-2">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">A validar permissões…</span>
-      </div>
+      <AppPage title="Utilizadores e módulos" backHref="/settings/profile">
+        <LoadingState label="A validar permissões…" />
+      </AppPage>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto py-6 space-y-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <Link
-          href="/settings/profile"
-          className="text-sm text-brand-700 hover:underline"
-        >
-          Configurações
-        </Link>
-        <span className="text-slate-400">/</span>
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">
-          <Users className="h-7 w-7 text-brand-700" aria-hidden />
+    <AppPage
+      title={
+        <span className="flex items-center gap-2">
+          <Users className="h-5 w-5 text-brand-700" />
           Utilizadores e módulos
-        </h1>
+        </span>
+      }
+      description={
+        <>
+          Defina quais blocos do ERP aparecem no menu lateral de cada utilizador.
+          Pode combinar <strong>Admin</strong> com um cargo R2 (ex.: Supervisor
+          de Engenharia): o cargo fica registado e o acesso ao menu é total.
+        </>
+      }
+      backHref="/settings/profile"
+      density="comfortable"
+      actions={
         <Button
           type="button"
-          className="ml-auto"
+          size="sm"
           onClick={() => setInviteOpen((v) => !v)}
         >
           Convidar usuário
         </Button>
-      </div>
-
-      <p className="text-sm text-slate-600">
-        Defina quais blocos do ERP aparecem no menu lateral de cada utilizador.
-        Pode combinar <strong>Admin</strong> com um cargo R2 (ex.: Supervisor de
-        Engenharia): o cargo fica registado e o acesso ao menu é total.
-      </p>
-
+      }
+    >
       {loading ? (
-        <div className="flex justify-center py-12 text-slate-500 gap-2">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          A carregar…
-        </div>
+        <LoadingState />
       ) : users.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-sm text-slate-600">
@@ -644,6 +640,6 @@ export default function SettingsUsersPage() {
           ))}
         </div>
       )}
-    </div>
+    </AppPage>
   );
 }
