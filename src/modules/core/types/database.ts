@@ -2910,6 +2910,7 @@ export type Database = {
           code: string
           created_at: string
           description: string | null
+          hvac_cleanroom_class: string | null
           id: string
           is_active: boolean
           name: string
@@ -2922,6 +2923,7 @@ export type Database = {
           code: string
           created_at?: string
           description?: string | null
+          hvac_cleanroom_class?: string | null
           id?: string
           is_active?: boolean
           name: string
@@ -2934,6 +2936,7 @@ export type Database = {
           code?: string
           created_at?: string
           description?: string | null
+          hvac_cleanroom_class?: string | null
           id?: string
           is_active?: boolean
           name?: string

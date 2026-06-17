@@ -5,6 +5,7 @@ import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import type { Database } from "@/modules/core/types/database";
+import { normalizeHvacCleanroomClass } from "@/modules/hvac/lib/hvac-domain";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export async function GET() {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("production_lines")
-    .select("id, code, name, sort_order, is_active, description, work_center_id")
+    .select("id, code, name, sort_order, is_active, description, work_center_id, hvac_cleanroom_class")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .order("sort_order", { ascending: true })
@@ -77,9 +78,21 @@ export async function POST(request: NextRequest) {
     b.description === null || b.description === undefined
       ? null
       : String(b.description);
+  const hvac_cleanroom_class =
+    b.hvac_cleanroom_class !== undefined
+      ? normalizeHvacCleanroomClass(b.hvac_cleanroom_class)
+      : null;
 
   if (!code || !name) {
     return apiError("Código e nome são obrigatórios", 400);
+  }
+  if (
+    b.hvac_cleanroom_class !== undefined &&
+    b.hvac_cleanroom_class !== null &&
+    b.hvac_cleanroom_class !== "" &&
+    hvac_cleanroom_class === null
+  ) {
+    return apiError("Classe ISO inválida", 400);
   }
 
   const admin = createSupabaseAdminClient();
@@ -91,6 +104,7 @@ export async function POST(request: NextRequest) {
       name,
       sort_order,
       description: description ?? null,
+      hvac_cleanroom_class,
       is_active: true,
     })
     .select()

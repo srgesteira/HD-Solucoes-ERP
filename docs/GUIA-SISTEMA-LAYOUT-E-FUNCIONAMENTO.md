@@ -600,7 +600,7 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | — | **Smoke test browser** | Empenho MRP, inbox engenharia, expedição abas, roteiro→OP, conciliação com baixa/reversão |
 | — | Validação P1 comercial/financeiro | Orçamento → PV → AR provisório → confirmar → sync recebíveis |
 | 🧑‍💼 | Preencher `fiscal_rules` | Contadora usa simulador + assistente de inconsistências |
-| **Vertical HVAC V5+** | Área classificada na produção | Ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) |
+| **Vertical HVAC V5+** | — | V0–V5 concluídos — ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) |
 | Opcional | Reordenar roteiro (drag-and-drop) | UX — API já suporta sequência |
 | Opcional | Audit `rbac_*` | Antes de migration de drop |
 
@@ -614,13 +614,11 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 ### 12.5 Ordem daqui para a frente
 
 ```
-1. Smoke browser — frentes 1–7 + fluxos P1 + HVAC V1–V4 (Helder)
+1. Smoke browser — frentes 1–7 + fluxos P1 + HVAC V1–V5 (Helder)
         ↓
 2. Contadora preenche fiscal_rules  🧑‍💼
         ↓
-3. Vertical HVAC V5 — rastreio área classificada na produção
-        ↓
-4. Primeiro restore mensal (runbook)  🧑‍💼
+3. Primeiro restore mensal (runbook)  🧑‍💼
 ```
 
 **Princípio:** núcleo genérico (estoque, fiscal, financeiro) + camada vertical HVAC em cadastro, CQ e documentação.
@@ -643,6 +641,10 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | `20260927110000_backfill_order_item_operations.sql` | Backfill operações OP |
 | `20260927120000_bank_statement_applied_amount.sql` | Baixa título na conciliação |
 | `20260928100000_hvac_product_specs.sql` | Vertical HVAC — ficha técnica produto |
+| `20260929100000_hvac_integrity_tests.sql` | Vertical HVAC V2 — testes PAO/DOP |
+| `20260930100000_hvac_pop_checklist.sql` | Vertical HVAC V3 — checklist POP HEPA |
+| `20260931100000_quote_items_hvac_specs.sql` | Vertical HVAC V4 — orçamento HVAC |
+| `20261001100000_production_lines_hvac_cleanroom.sql` | Vertical HVAC V5 — ISO por linha |
 
 ---
 

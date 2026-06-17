@@ -21,7 +21,7 @@
 
 **Pós-frentes:** assistente fiscal · **vertical HVAC V1–V4** (ficha, integridade, checklist, orçamento).
 
-**Próximo foco vertical:** smoke manual V1–V4 · V5 área classificada · contadora preenche regras.
+**Próximo foco vertical:** smoke manual V1–V5 · contadora preenche regras.
 
 ## Regras de ouro (valem para TODA tarefa abaixo)
 
@@ -181,7 +181,7 @@ OFX/CSV + match com contas. **≠** conciliação NF-e compra.
 | V2 CQ integridade | ✅ |
 | V3 POPs HEPA | ✅ |
 | V4 Orçamento HVAC | ✅ |
-| V5 Área classificada | Pendente |
+| V5 Área classificada | ✅ |
 
 ---
 

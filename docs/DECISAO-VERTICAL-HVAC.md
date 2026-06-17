@@ -40,7 +40,7 @@ A HD **é** a fábrica. O diferencial não é mais um módulo genérico — é s
 | **V2 — CQ integridade** | ✅ | Tabela `hvac_integrity_tests`, CQ em `/production/quality-control`, gate na expedição |
 | **V3 — POPs e documentos HEPA** | ✅ | Template checklist na aba HVAC, execução no CQ, gate expedição, alerta POP em saúde do dado |
 | **V4 — Orçamento HVAC** | ✅ | Colunas `hvac_*` em `quote_items`, UI no editor, impressão/PDF |
-| **V5 — Área classificada** | Pendente | Rastreio de sala/linha ISO na produção |
+| **V5 — Área classificada** | ✅ | `hvac_cleanroom_class` em `production_lines`, compatibilidade PCP/CQ, gate produção e expedição |
 
 ---
 
@@ -53,6 +53,7 @@ A HD **é** a fábrica. O diferencial não é mais um módulo genérico — é s
 5. Tentar despachar pedido sem teste → bloqueio; após aprovação → expedição OK  
 6. Aba HVAC → **Aplicar template HEPA** → anexar POP em Documentos → CQ **Marcar checklist** → expedição OK  
 7. Orçamento com produto AC → preencher **classe/vazão HVAC** na linha → imprimir PDF → bloco HVAC visível  
+8. Cadastrar **ISO na linha** (`/production/lines/[id]`) → OP produto ISO 7 numa linha ISO 8 → alerta **ISO ⚠** no PCP → finalizar/expedir bloqueado; ajustar linha compatível → OK  
 
 ---
 
@@ -63,6 +64,8 @@ A HD **é** a fábrica. O diferencial não é mais um módulo genérico — é s
 - Migration `20260929100000_hvac_integrity_tests.sql`
 - Migration `20260930100000_hvac_pop_checklist.sql`
 - Migration `20260931100000_quote_items_hvac_specs.sql`
+- Migration `20261001100000_production_lines_hvac_cleanroom.sql`
 - Módulo `src/modules/hvac/lib/hvac-domain.ts`
 - Serviço `src/modules/hvac/lib/hvac-integrity-test-service.ts`
 - Serviço `src/modules/hvac/lib/hvac-pop-checklist-service.ts`
+- Serviço `src/modules/hvac/lib/hvac-cleanroom-service.ts`

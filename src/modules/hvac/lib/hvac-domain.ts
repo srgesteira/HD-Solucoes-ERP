@@ -89,6 +89,68 @@ export function emptyQuoteItemHvacSpecs(): QuoteItemHvacSpecs {
 }
 
 /** Texto compacto para impressão do orçamento (PDF). */
+/** Extrai o nível numérico ISO (5 de "ISO 5"). */
+export function parseIsoCleanroomLevel(
+  className: string | null | undefined
+): number | null {
+  if (!className?.trim()) return null;
+  const match = className.trim().match(/ISO\s*(\d+)/i);
+  if (!match) return null;
+  const level = parseInt(match[1], 10);
+  return Number.isFinite(level) ? level : null;
+}
+
+/** Produto exige sala classificada (não vazio e não "Não aplicável"). */
+export function isCleanroomClassApplicable(
+  className: string | null | undefined
+): boolean {
+  if (!className?.trim()) return false;
+  const normalized = className.trim().toLowerCase();
+  return normalized !== "não aplicável" && normalized !== "nao aplicavel";
+}
+
+/**
+ * Linha suporta o produto quando a linha é igual ou mais limpa
+ * (número ISO menor ou igual — ISO 5 é mais limpo que ISO 8).
+ */
+export function lineCanProduceForCleanroom(
+  lineClass: string | null | undefined,
+  productClass: string | null | undefined
+): boolean {
+  if (!isCleanroomClassApplicable(productClass)) return true;
+  const productLevel = parseIsoCleanroomLevel(productClass);
+  if (productLevel == null) return true;
+  const lineLevel = parseIsoCleanroomLevel(lineClass);
+  if (lineLevel == null) return false;
+  return lineLevel <= productLevel;
+}
+
+export function describeCleanroomMismatch(
+  lineClass: string | null | undefined,
+  productClass: string | null | undefined,
+  lineName?: string | null
+): string {
+  const lineLabel = lineClass?.trim() || "sem ISO cadastrada";
+  const productLabel = productClass?.trim() || "ISO não especificada";
+  const who = lineName?.trim() ? ` na linha «${lineName}»` : "";
+  return `Área classificada incompatível${who}: produto exige ${productLabel}, linha tem ${lineLabel}.`;
+}
+
+export function normalizeHvacCleanroomClass(
+  value: unknown
+): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (
+    (HVAC_CLEANROOM_CLASSES as readonly string[]).includes(trimmed)
+  ) {
+    return trimmed;
+  }
+  return null;
+}
+
 export function formatQuoteItemHvacBlock(
   specs: QuoteItemHvacSpecs | null | undefined
 ): string | null {

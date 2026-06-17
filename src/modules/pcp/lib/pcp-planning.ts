@@ -22,6 +22,12 @@ import {
   planningFieldsFromChecklistSummary,
   type PlanningHvacChecklistFields,
 } from "@/modules/hvac/lib/hvac-pop-checklist-service";
+import {
+  EMPTY_PLANNING_HVAC_CLEANROOM,
+  loadCleanroomCompatibilitySummaries,
+  planningFieldsFromCleanroomSummary,
+  type PlanningHvacCleanroomFields,
+} from "@/modules/hvac/lib/hvac-cleanroom-service";
 
 type Admin = SupabaseClient<Database>;
 
@@ -82,7 +88,8 @@ export type PcpPlanningItem = {
   origin_label: string;
 } & PlanningQualityFinishFields &
   PlanningHvacIntegrityFields &
-  PlanningHvacChecklistFields;
+  PlanningHvacChecklistFields &
+  PlanningHvacCleanroomFields;
 
 export type PcpPlanningOrder = {
   id: string;
@@ -583,6 +590,7 @@ export async function fetchPcpPlanning(
         ...EMPTY_PLANNING_QUALITY_FINISH,
         ...EMPTY_PLANNING_HVAC_INTEGRITY,
         ...EMPTY_PLANNING_HVAC_CHECKLIST,
+        ...EMPTY_PLANNING_HVAC_CLEANROOM,
       });
     }
 
@@ -631,8 +639,43 @@ export async function fetchPcpPlanning(
   await enrichPlanningOrdersWithQualityFinishBlocks(admin, tenantId, result);
   await enrichPlanningOrdersWithHvacIntegrityTests(admin, tenantId, result);
   await enrichPlanningOrdersWithHvacChecklists(admin, tenantId, result);
+  await enrichPlanningOrdersWithHvacCleanroom(admin, tenantId, result);
 
   return result;
+}
+
+async function enrichPlanningOrdersWithHvacCleanroom(
+  admin: Admin,
+  tenantId: string,
+  orders: PcpPlanningOrder[]
+): Promise<void> {
+  const orderItemIds: string[] = [];
+  for (const ord of orders) {
+    for (const it of ord.items) {
+      if (it.order_item_id) orderItemIds.push(it.order_item_id);
+    }
+  }
+  if (orderItemIds.length === 0) return;
+
+  const summaries = await loadCleanroomCompatibilitySummaries(
+    admin,
+    tenantId,
+    orderItemIds
+  );
+
+  for (const ord of orders) {
+    for (let i = 0; i < ord.items.length; i++) {
+      const it = ord.items[i];
+      if (!it.order_item_id) {
+        ord.items[i] = { ...it, ...EMPTY_PLANNING_HVAC_CLEANROOM };
+        continue;
+      }
+      const fields = planningFieldsFromCleanroomSummary(
+        summaries.get(it.order_item_id)
+      );
+      ord.items[i] = { ...it, ...fields };
+    }
+  }
 }
 
 async function enrichPlanningOrdersWithHvacChecklists(
@@ -878,6 +921,7 @@ async function fetchStockOrdersForPlanning(
         ...EMPTY_PLANNING_QUALITY_FINISH,
         ...EMPTY_PLANNING_HVAC_INTEGRITY,
         ...EMPTY_PLANNING_HVAC_CHECKLIST,
+        ...EMPTY_PLANNING_HVAC_CLEANROOM,
       });
     }
 

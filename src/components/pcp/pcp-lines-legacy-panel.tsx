@@ -197,10 +197,23 @@ export function PcpLinesLegacyPanel({
               const checklistTotal = it.hvac_checklist_total ?? 0;
               const checklistCompleted = it.hvac_checklist_completed ?? 0;
               const mrpSuggestion = it.is_mrp_suggestion === true;
+              const cleanroomApplicable = it.hvac_cleanroom_applicable === true;
+              const cleanroomCompatible = it.hvac_cleanroom_compatible !== false;
+              const cleanroomBlocked =
+                cleanroomApplicable && !cleanroomCompatible;
+              const cleanroomTitle =
+                cleanroomBlocked && it.hvac_product_cleanroom_class
+                  ? `Produto exige ${it.hvac_product_cleanroom_class}; linha: ${
+                      it.hvac_line_cleanroom_class?.trim() || "sem ISO"
+                    }`
+                  : undefined;
 
               const rowBg =
                 (cqBlocked && !qualityControlMode
                   ? "bg-amber-50/90"
+                  : null) ||
+                (cleanroomBlocked && !qualityControlMode
+                  ? "bg-red-50/80"
                   : null) ||
                 lineRowDelayClass(pcpDeadline, prodEnd || null, completed) ||
                 (idx % 2 === 0 ? "bg-white" : "bg-slate-50");
@@ -231,6 +244,20 @@ export function PcpLinesLegacyPanel({
                         title="Sugestão do MRP — ao programar datas a linha é efetivada"
                       >
                         MRP
+                      </span>
+                    ) : null}
+                    {cleanroomApplicable ? (
+                      <span
+                        className={`ml-1 inline-flex rounded border px-1 py-px text-[9px] font-semibold ${
+                          cleanroomCompatible
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border-red-300 bg-red-100 text-red-900"
+                        }`}
+                        title={cleanroomTitle}
+                      >
+                        {cleanroomCompatible
+                          ? it.hvac_product_cleanroom_class ?? "ISO"
+                          : "ISO ⚠"}
                       </span>
                     ) : null}
                   </span>
@@ -363,6 +390,14 @@ export function PcpLinesLegacyPanel({
                         Bloqueado CQ
                       </span>
                     ) : null}
+                    {cleanroomBlocked && !qualityControlMode ? (
+                      <span
+                        className="inline-flex w-fit items-center rounded border border-red-300 bg-red-100 px-1.5 py-0.5 text-[9px] font-semibold text-red-900"
+                        title={cleanroomTitle}
+                      >
+                        ISO incompatível
+                      </span>
+                    ) : null}
                     {cqBlocked && !qualityControlMode && cqReason ? (
                       <span
                         className="text-[9px] text-amber-900 leading-snug line-clamp-2"
@@ -415,13 +450,15 @@ export function PcpLinesLegacyPanel({
                             type="button"
                             size="sm"
                             className="h-6 px-2 text-[10px]"
-                            disabled={apontamentoPending || cqBlocked}
+                            disabled={apontamentoPending || cqBlocked || cleanroomBlocked}
                             title={
                               cqBlocked
                                 ? cqReason
                                   ? `Finalização bloqueada pelo CQ: ${cqReason}`
                                   : "Finalização bloqueada pelo Controle de Qualidade"
-                                : undefined
+                                : cleanroomBlocked
+                                  ? cleanroomTitle
+                                  : undefined
                             }
                             onClick={() => onFinishProduction(it.order_item_id!)}
                           >

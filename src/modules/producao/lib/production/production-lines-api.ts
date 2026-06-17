@@ -3,6 +3,7 @@ export type ProductionLineBrief = {
   code: string;
   name: string;
   is_active?: boolean;
+  hvac_cleanroom_class?: string | null;
 };
 
 export async function fetchProductionLines(): Promise<ProductionLineBrief[]> {

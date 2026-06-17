@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { loadIntegrityTestSummaries } from "@/modules/hvac/lib/hvac-integrity-test-service";
+import { loadCleanroomCompatibilitySummaries } from "@/modules/hvac/lib/hvac-cleanroom-service";
 
 /**
  * §13 do documento funcional: Saúde do dado.
@@ -357,6 +358,74 @@ export async function loadDataHealthIssues(
   } catch {
     /* ignora — migrations V3 podem ainda não existir */
   }
+
+  try {
+    const { count: acReleasedCount } = await admin
+      .from("products")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("product_nature", "AC")
+      .eq("released_for_sale", true);
+
+    if ((acReleasedCount ?? 0) > 0) {
+      const linesNoIso = await countOrZero(
+        admin
+          .from("production_lines")
+          .select("*", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .is("hvac_cleanroom_class", null)
+      );
+      if (linesNoIso > 0) {
+        issues.push({
+          rule_id: "hvac_production_line_missing_iso",
+          module: "Produção · HVAC",
+          severity: "warning",
+          title: "Linhas de produção sem classe ISO cadastrada",
+          impact:
+            "Produtos HEPA podem ser programados em área não classificada — cadastre ISO na linha.",
+          count: linesNoIso,
+          href: "/production/lines",
+        });
+      }
+    }
+
+    const { data: openOrderItems } = await admin
+      .from("order_items")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
+      .is("completed_at", null);
+
+    const openIds = (openOrderItems ?? []).map((row) => String(row.id));
+    if (openIds.length > 0) {
+      const summaries = await loadCleanroomCompatibilitySummaries(
+        admin,
+        tenantId,
+        openIds
+      );
+      let incompatible = 0;
+      for (const id of openIds) {
+        const summary = summaries.get(id);
+        if (summary?.applicable && !summary.compatible) incompatible++;
+      }
+      if (incompatible > 0) {
+        issues.push({
+          rule_id: "hvac_cleanroom_incompatible_ops",
+          module: "PCP · HVAC",
+          severity: "warning",
+          title: "OPs em linha incompatível com classe ISO do produto",
+          impact:
+            "Finalização e expedição ficam bloqueadas até ajustar linha ou ficha HVAC.",
+          count: incompatible,
+          href: "/logistics/pcp",
+        });
+      }
+    }
+  } catch {
+    /* ignora — migration V5 pode ainda não existir */
+  }
+
   const ordersNoDeadline = await countOrZero(
     admin
       .from("sales_orders")

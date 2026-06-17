@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { PcpLinesPlanningView } from "@/components/pcp/pcp-lines-planning-view";
+import { ProductionLineCleanroomPanel } from "@/components/producao/production-line-cleanroom-panel";
 import { fetchProductionLine } from "@/modules/producao/lib/production/production-lines-api";
 
 export default function ProductionLineSchedulePage() {
@@ -45,9 +46,12 @@ export default function ProductionLineSchedulePage() {
   const lineLabel = line ? `${line.code} - ${line.name}` : "";
 
   return (
-    <PcpLinesPlanningView
-      fixedLineId={lineId}
-      lineLabel={lineLabel}
-    />
+    <div className="space-y-4">
+      {line ? <ProductionLineCleanroomPanel line={line} /> : null}
+      <PcpLinesPlanningView
+        fixedLineId={lineId}
+        lineLabel={lineLabel}
+      />
+    </div>
   );
 }
