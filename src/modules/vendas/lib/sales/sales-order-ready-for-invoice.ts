@@ -71,6 +71,13 @@ export async function syncSalesOrderReadyForInvoice(
     return false;
   }
 
+  const { error: markErr } = await admin
+    .from("sales_orders")
+    .update({ ready_for_invoice: true })
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId);
+  if (markErr) throw new Error(markErr.message);
+
   return true;
 }
 

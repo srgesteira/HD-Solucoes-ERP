@@ -13,6 +13,7 @@ export const MENU_ALERT_PATHS = {
   financeCreditAnalysis: "/finance/credit-analysis",
   financeOverdueReceivables: "/reports/overdue-receivables",
   salesQuotes: "/sales/quotes",
+  salesOrders: "/sales/orders",
 } as const;
 
 export type MenuAlertPath =
@@ -115,6 +116,40 @@ export async function loadMenuAlerts(
           .eq("status", "pending");
         if (!error && (count ?? 0) > 0) {
           alerts[MENU_ALERT_PATHS.financeCreditAnalysis] = count ?? 0;
+        }
+      })()
+    );
+
+    tasks.push(
+      (async () => {
+        const { count: readyCount, error: readyErr } = await admin
+          .from("sales_orders")
+          .select("*", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .eq("ready_for_invoice", true)
+          .eq("status", "confirmed")
+          .in("fiscal_status", [
+            "rules_applied",
+            "manual_override",
+            "approved",
+          ]);
+        const { count: reviewCount, error: reviewErr } = await admin
+          .from("sales_orders")
+          .select("*", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .eq("fiscal_status", "review_required")
+          .in("status", ["confirmed", "in_production"]);
+        const { count: nfeErrCount, error: nfeErr } = await admin
+          .from("nfes")
+          .select("*", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .eq("status", "error");
+        const total =
+          (readyErr ? 0 : (readyCount ?? 0)) +
+          (reviewErr ? 0 : (reviewCount ?? 0)) +
+          (nfeErr ? 0 : (nfeErrCount ?? 0));
+        if (total > 0) {
+          alerts[MENU_ALERT_PATHS.salesOrders] = total;
         }
       })()
     );

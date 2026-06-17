@@ -23,6 +23,10 @@ import { Label } from "@/shared/ui/label";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
+import {
+  isFiscalReadyForInvoice,
+  type FiscalStatus,
+} from "@/modules/fiscal/lib/fiscal-rules-types";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
 import type { Tables } from "@/modules/core/types/database";
 import type { ReceivableStatus } from "@/modules/core/types/finance.types";
@@ -81,6 +85,8 @@ type SalesOrderDetail = {
   notes: string | null;
   quote_id: string | null;
   quote?: unknown;
+  ready_for_invoice?: boolean | null;
+  fiscal_status?: string | null;
   items?: SaleItemLine[] | null;
   nfes?: unknown;
 };
@@ -488,6 +494,11 @@ export default function SalesOrderDetailPage() {
   const canEmitNfe =
     isAdmin &&
     st === "confirmed" &&
+    q?.ready_for_invoice === true &&
+    isFiscalReadyForInvoice(
+      q?.ready_for_invoice === true,
+      (q?.fiscal_status ?? "pending") as FiscalStatus
+    ) &&
     !hasBlockingNfe &&
     Boolean(companyBrandingQuery.data?.focusnfe_configured);
   const canCancelAdmin =

@@ -7,6 +7,7 @@
 import axios, { type AxiosInstance } from "axios";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 
 export type FocusNFeEnv = "homologacao" | "producao";
 
@@ -456,7 +457,7 @@ export async function emitirNFe(
   const { data: so, error: soErr } = await admin
     .from("sales_orders")
     .select(
-      "id, status, order_date, client_name, client_document, client_address, client_email, client_phone, total"
+      "id, status, order_date, client_name, client_document, client_address, client_email, client_phone, total, ready_for_invoice, fiscal_status"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -464,25 +465,17 @@ export async function emitirNFe(
   if (soErr) throw new Error(soErr.message);
   if (!so) throw new Error("Pedido não encontrado.");
 
+  const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, salesOrderId);
+  if (!gate.ok) {
+    throw new Error(gate.reasons.join(" "));
+  }
+
   const { data: itemRows, error: itemsErr } = await admin
     .from("sales_order_items")
     .select("description, quantity")
     .eq("sales_order_id", salesOrderId)
     .eq("tenant_id", tenantId);
   if (itemsErr) throw new Error(itemsErr.message);
-  if (so.status !== "confirmed") {
-    throw new Error('Apenas pedidos "Confirmados" podem emitir NFS-e.');
-  }
-
-  const { data: blocking } = await admin
-    .from("nfes")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("sales_order_id", salesOrderId)
-    .in("status", ["pending", "processing", "authorized"]);
-  if (blocking?.length) {
-    throw new Error("Já existe NFS-e em curso ou autorizada para este pedido.");
-  }
 
   const { data: inserted, error: insErr } = await admin
     .from("nfes")
