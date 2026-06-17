@@ -39,6 +39,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       match_status,
       matched_receivable_id,
       matched_payable_id,
+      applied_amount,
       matched_receivable:receivables!bank_statement_lines_matched_receivable_id_fkey(
         id, client_name, document_number, current_amount
       ),

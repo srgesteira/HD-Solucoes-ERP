@@ -96,6 +96,9 @@ export function BankMatchModal({
                     {formatBrl(line.amount)}
                   </span>
                   {line.description ? ` · ${line.description}` : null}
+                  <span className="block text-xs text-slate-500 mt-1">
+                    Ao confirmar, regista a baixa no título (saldo actualizado).
+                  </span>
                 </p>
               ) : null}
             </div>
@@ -154,7 +157,7 @@ export function BankMatchModal({
                     </div>
                     <div className="text-xs text-slate-500 mt-1 flex justify-between">
                       <span>
-                        Venc. {fmtDay(c.due_date)} ·{" "}
+                        Venc. {fmtDay(c.due_date)} · Saldo {formatBrl(c.amount)} ·{" "}
                         {c.kind === "receivable" ? "Receber" : "Pagar"}
                       </span>
                       {idx === 0 ? (

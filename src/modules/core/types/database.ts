@@ -241,6 +241,7 @@ export type Database = {
       bank_statement_lines: {
         Row: {
           amount: number
+          applied_amount: number | null
           bank_import_id: string
           created_at: string
           description: string | null
@@ -254,6 +255,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          applied_amount?: number | null
           bank_import_id: string
           created_at?: string
           description?: string | null
@@ -267,6 +269,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          applied_amount?: number | null
           bank_import_id?: string
           created_at?: string
           description?: string | null
@@ -369,50 +372,6 @@ export type Database = {
             foreignKeyName: "bdi_settings_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: true
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      bi_forecasts: {
-        Row: {
-          actual_value: number | null
-          confidence_score: number | null
-          created_at: string | null
-          forecast_date: string
-          forecast_type: string
-          id: string
-          model_version: string | null
-          predicted_value: number
-          tenant_id: string
-        }
-        Insert: {
-          actual_value?: number | null
-          confidence_score?: number | null
-          created_at?: string | null
-          forecast_date: string
-          forecast_type: string
-          id?: string
-          model_version?: string | null
-          predicted_value: number
-          tenant_id: string
-        }
-        Update: {
-          actual_value?: number | null
-          confidence_score?: number | null
-          created_at?: string | null
-          forecast_date?: string
-          forecast_type?: string
-          id?: string
-          model_version?: string | null
-          predicted_value?: number
-          tenant_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "bi_forecasts_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -642,56 +601,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "cash_flow_entries_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      company_kpis: {
-        Row: {
-          created_at: string | null
-          current_value: number | null
-          id: string
-          kpi_category: string | null
-          kpi_name: string
-          month: number
-          target_value: number
-          tenant_id: string
-          unit: string | null
-          updated_at: string | null
-          year: number
-        }
-        Insert: {
-          created_at?: string | null
-          current_value?: number | null
-          id?: string
-          kpi_category?: string | null
-          kpi_name: string
-          month: number
-          target_value: number
-          tenant_id: string
-          unit?: string | null
-          updated_at?: string | null
-          year: number
-        }
-        Update: {
-          created_at?: string | null
-          current_value?: number | null
-          id?: string
-          kpi_category?: string | null
-          kpi_name?: string
-          month?: number
-          target_value?: number
-          tenant_id?: string
-          unit?: string | null
-          updated_at?: string | null
-          year?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "company_kpis_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1454,64 +1363,6 @@ export type Database = {
           },
         ]
       }
-      goods_receipts: {
-        Row: {
-          created_at: string
-          id: string
-          items: Json | null
-          notes: string | null
-          purchase_order_id: string
-          receipt_date: string
-          receipt_number: string
-          received_by: string | null
-          tenant_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          items?: Json | null
-          notes?: string | null
-          purchase_order_id: string
-          receipt_date?: string
-          receipt_number: string
-          received_by?: string | null
-          tenant_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          items?: Json | null
-          notes?: string | null
-          purchase_order_id?: string
-          receipt_date?: string
-          receipt_number?: string
-          received_by?: string | null
-          tenant_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "goods_receipts_purchase_order_id_fkey"
-            columns: ["purchase_order_id"]
-            isOneToOne: false
-            referencedRelation: "purchase_orders"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "goods_receipts_received_by_fkey"
-            columns: ["received_by"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "goods_receipts_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       holidays: {
         Row: {
           created_at: string
@@ -1540,59 +1391,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "holidays_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      incoming_inspections: {
-        Row: {
-          approved_at: string | null
-          created_at: string
-          id: string
-          po_number: string
-          purchase_order_id: string
-          rejected_at: string | null
-          rejection_notes: string | null
-          status: string
-          stock_posted: boolean
-          supplier_name: string | null
-          tenant_id: string
-          updated_at: string
-        }
-        Insert: {
-          approved_at?: string | null
-          created_at?: string
-          id?: string
-          po_number: string
-          purchase_order_id: string
-          rejected_at?: string | null
-          rejection_notes?: string | null
-          status?: string
-          stock_posted?: boolean
-          supplier_name?: string | null
-          tenant_id: string
-          updated_at?: string
-        }
-        Update: {
-          approved_at?: string | null
-          created_at?: string
-          id?: string
-          po_number?: string
-          purchase_order_id?: string
-          rejected_at?: string | null
-          rejection_notes?: string | null
-          status?: string
-          stock_posted?: boolean
-          supplier_name?: string | null
-          tenant_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "incoming_inspections_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -2020,52 +1818,6 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      operator_lines: {
-        Row: {
-          created_at: string
-          id: string
-          line_id: string
-          tenant_id: string
-          user_profile_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          line_id: string
-          tenant_id: string
-          user_profile_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          line_id?: string
-          tenant_id?: string
-          user_profile_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "operator_lines_line_id_fkey"
-            columns: ["line_id"]
-            isOneToOne: false
-            referencedRelation: "production_lines"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "operator_lines_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "operator_lines_user_profile_id_fkey"
-            columns: ["user_profile_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -4350,75 +4102,6 @@ export type Database = {
           },
           {
             foreignKeyName: "receivables_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      recurring_expenses: {
-        Row: {
-          active: boolean
-          amount: number
-          category: string
-          created_at: string
-          day_of_month: number | null
-          description: string
-          end_date: string | null
-          id: string
-          notes: string | null
-          recurrence: string
-          start_date: string
-          supplier_id: string | null
-          tenant_id: string
-          updated_at: string
-          weekday: number | null
-        }
-        Insert: {
-          active?: boolean
-          amount: number
-          category?: string
-          created_at?: string
-          day_of_month?: number | null
-          description: string
-          end_date?: string | null
-          id?: string
-          notes?: string | null
-          recurrence: string
-          start_date: string
-          supplier_id?: string | null
-          tenant_id: string
-          updated_at?: string
-          weekday?: number | null
-        }
-        Update: {
-          active?: boolean
-          amount?: number
-          category?: string
-          created_at?: string
-          day_of_month?: number | null
-          description?: string
-          end_date?: string | null
-          id?: string
-          notes?: string | null
-          recurrence?: string
-          start_date?: string
-          supplier_id?: string | null
-          tenant_id?: string
-          updated_at?: string
-          weekday?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "recurring_expenses_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "recurring_expenses_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"

@@ -44,14 +44,14 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createSupabaseAdminClient();
   try {
-    await matchBankStatementLine(admin, tenantId, id, {
+    const result = await matchBankStatementLine(admin, tenantId, id, {
       kind,
       target_id:
         b.target_id === null || b.target_id === undefined
           ? null
           : String(b.target_id),
     });
-    return apiOk({ success: true });
+    return apiOk({ success: true, applied_amount: result.applied_amount ?? null });
   } catch (e) {
     return apiError(e instanceof Error ? e.message : "Erro", 500);
   }

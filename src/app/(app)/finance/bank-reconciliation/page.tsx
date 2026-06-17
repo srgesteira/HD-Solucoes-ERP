@@ -46,6 +46,7 @@ type StatementLine = {
   match_status: string;
   matched_receivable_id: string | null;
   matched_payable_id: string | null;
+  applied_amount: number | null;
   matched_receivable?: MatchedReceivable | MatchedReceivable[] | null;
   matched_payable?: MatchedPayable | MatchedPayable[] | null;
 };
@@ -59,14 +60,18 @@ function matchLabel(line: StatementLine): string {
   if (line.match_status === "matched") {
     const recv = embedOne(line.matched_receivable);
     const pay = embedOne(line.matched_payable);
+    const applied =
+      line.applied_amount != null && Number(line.applied_amount) > 0
+        ? ` · baixa ${formatBrl(line.applied_amount)}`
+        : "";
     if (recv) {
       return (
-        [recv.client_name, recv.document_number].filter(Boolean).join(" · ") ||
-        "Recebível"
+        ([recv.client_name, recv.document_number].filter(Boolean).join(" · ") ||
+          "Recebível") + applied
       );
     }
-    if (pay) return pay.description || "Conta a pagar";
-    return "Conciliado";
+    if (pay) return (pay.description || "Conta a pagar") + applied;
+    return "Conciliado" + applied;
   }
   if (line.match_status === "ignored") return "Ignorado";
   return "Pendente";
@@ -127,7 +132,7 @@ export default function BankReconciliationPage() {
   async function postMatch(
     lineId: string,
     body: { kind: string; target_id?: string }
-  ) {
+  ): Promise<number | null> {
     const res = await fetch(
       `/api/finance/bank-statement-lines/${lineId}/match`,
       {
@@ -137,8 +142,12 @@ export default function BankReconciliationPage() {
         body: JSON.stringify(body),
       }
     );
-    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      applied_amount?: number | null;
+    };
     if (!res.ok) throw new Error(json.error ?? "Erro");
+    return json.applied_amount ?? null;
   }
 
   async function ignoreLine(lineId: string) {
@@ -154,7 +163,7 @@ export default function BankReconciliationPage() {
   async function unmatchLine(lineId: string) {
     try {
       await postMatch(lineId, { kind: "unmatch" });
-      toast.success("Conciliação removida.");
+      toast.success("Conciliação removida — saldo do título reposto.");
       await invalidateLines();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
@@ -168,11 +177,15 @@ export default function BankReconciliationPage() {
     if (!matchLineId) return;
     setMatchBusy(true);
     try {
-      await postMatch(matchLineId, {
+      const applied = await postMatch(matchLineId, {
         kind: candidate.kind,
         target_id: candidate.id,
       });
-      toast.success("Linha conciliada.");
+      toast.success(
+        applied != null
+          ? `Conciliado — baixa de ${formatBrl(applied)} registada.`
+          : "Linha conciliada."
+      );
       setMatchLineId(null);
       await invalidateLines();
     } catch (e) {
@@ -375,7 +388,7 @@ export default function BankReconciliationPage() {
   return (
     <AppPage
       title="Conciliação bancária"
-      description="Importação de extrato (CSV/OFX) e match com contas a pagar/receber."
+      description="Importação de extrato (CSV/OFX), match e baixa automática em recebíveis/pagar."
       width="wide"
     >
       <Card>
