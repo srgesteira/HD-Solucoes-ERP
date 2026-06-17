@@ -20,6 +20,7 @@ import {
 } from "@/components/products/product-form-fields";
 import { ProductCostHistoryTable } from "@/components/products/product-cost-history-table";
 import { ProductCompositionPanel } from "@/components/products/product-composition-panel";
+import { ProductRoutingPanel } from "@/components/products/product-routing-panel";
 import { ProductDocumentsPanel } from "@/components/products/product-documents-panel";
 import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
@@ -188,10 +189,11 @@ async function updateProduct(
   return json;
 }
 
-type EditTab = "basics" | "composition" | "documents";
+type EditTab = "basics" | "composition" | "routing" | "documents";
 
 function tabFromSearchParam(value: string | null): EditTab {
   if (value === "composition") return "composition";
+  if (value === "routing") return "routing";
   if (value === "documents") return "documents";
   return "basics";
 }
@@ -601,6 +603,9 @@ export default function EditProductPage() {
           <TabsList className="w-full sm:w-auto">
             <TabsTrigger value="basics">Informações básicas</TabsTrigger>
             <TabsTrigger value="composition">Composição</TabsTrigger>
+            {canHaveBom ? (
+              <TabsTrigger value="routing">Roteiro</TabsTrigger>
+            ) : null}
             <TabsTrigger value="documents">Documentos</TabsTrigger>
           </TabsList>
 
@@ -778,6 +783,12 @@ export default function EditProductPage() {
               </Card>
             )}
           </TabsContent>
+
+          {canHaveBom && productId ? (
+            <TabsContent value="routing" className="mt-4">
+              <ProductRoutingPanel productId={productId} embedded />
+            </TabsContent>
+          ) : null}
 
           <TabsContent value="documents" className="mt-4">
             {productId ? <ProductDocumentsPanel productId={productId} /> : null}
