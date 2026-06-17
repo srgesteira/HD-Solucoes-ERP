@@ -18,36 +18,7 @@ type ProductRow = {
   technical_code: string | null;
   code: string | null;
   product_nature: string | null;
-  hvac_filter_class: string | null;
-  hvac_airflow_m3h: number | null;
-  hvac_cleanroom_class: string | null;
 };
-
-function parseOptionalNumber(value: unknown): number | null {
-  if (value == null || value === "") return null;
-  const n =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? parseFloat(value.replace(",", "."))
-        : NaN;
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-function parseOptionalHvacClass(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed || null;
-}
-
-function hvacFromProduct(p: ProductRow) {
-  return {
-    hvac_filter_class: p.hvac_filter_class?.trim() || null,
-    hvac_airflow_m3h:
-      p.hvac_airflow_m3h != null ? Number(p.hvac_airflow_m3h) : null,
-    hvac_cleanroom_class: p.hvac_cleanroom_class?.trim() || null,
-  };
-}
 
 function productLabel(p: ProductRow): string {
   const sku = p.technical_code?.trim() || p.code?.trim() || "—";
@@ -130,9 +101,6 @@ export async function resolveQuoteItemsFromPayload(
     unit_price: number | null;
     markup_percent: number | null;
     use_markup: boolean;
-    hvac_filter_class: string | null;
-    hvac_airflow_m3h: number | null;
-    hvac_cleanroom_class: string | null;
   }> = [];
 
   for (let i = 0; i < rawItems.length; i++) {
@@ -184,9 +152,6 @@ export async function resolveQuoteItemsFromPayload(
         ? r.client_notes.trim()
         : null;
     const show_product_description = r.show_product_description === true;
-    const hvac_filter_class = parseOptionalHvacClass(r.hvac_filter_class);
-    const hvac_airflow_m3h = parseOptionalNumber(r.hvac_airflow_m3h);
-    const hvac_cleanroom_class = parseOptionalHvacClass(r.hvac_cleanroom_class);
 
     productIds.push(product_id);
     drafts.push({
@@ -199,9 +164,6 @@ export async function resolveQuoteItemsFromPayload(
       ...(description ? { description } : {}),
       client_notes,
       show_product_description,
-      hvac_filter_class,
-      hvac_airflow_m3h,
-      hvac_cleanroom_class,
     });
   }
 
@@ -211,7 +173,7 @@ export async function resolveQuoteItemsFromPayload(
   const { data: products, error: pErr } = await admin
     .from("products")
     .select(
-      "id, name, type, cost_price, unit, technical_code, code, product_nature, hvac_filter_class, hvac_airflow_m3h, hvac_cleanroom_class"
+      "id, name, type, cost_price, unit, technical_code, code, product_nature"
     )
     .eq("tenant_id", tenantId)
     .in("id", [...new Set(productIds)]);
@@ -243,8 +205,6 @@ export async function resolveQuoteItemsFromPayload(
       markup_percent = null;
     }
 
-    const productHvac = hvacFromProduct(p);
-
     lines.push({
       product_id: d.product_id,
       description: d.description || productLabel(p),
@@ -254,10 +214,6 @@ export async function resolveQuoteItemsFromPayload(
       unit: d.unit ?? (p.unit?.trim() || "UN"),
       unit_price,
       markup_percent,
-      hvac_filter_class: d.hvac_filter_class ?? productHvac.hvac_filter_class,
-      hvac_airflow_m3h: d.hvac_airflow_m3h ?? productHvac.hvac_airflow_m3h,
-      hvac_cleanroom_class:
-        d.hvac_cleanroom_class ?? productHvac.hvac_cleanroom_class,
     });
   }
 

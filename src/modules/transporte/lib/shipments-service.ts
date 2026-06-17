@@ -160,13 +160,6 @@ export async function dispatchShipment(
   if (loadErr) throw new Error(loadErr.message);
   if (!shipment) throw new Error("Despacho não encontrado.");
 
-  if (
-    shipment.source_kind === "sales_order" &&
-    shipment.sales_order_id
-  ) {
-    /* vertical HVAC/ISO desactivado — expedição sem portões HEPA/ISO */
-  }
-
   const { error } = await db
     .from("shipments")
     .update({

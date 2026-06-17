@@ -93,9 +93,6 @@ export type QuotePrintItem = {
   unit_price: number;
   markup_percent?: number | null;
   total_price: number;
-  hvac_filter_class?: string | null;
-  hvac_airflow_m3h?: number | null;
-  hvac_cleanroom_class?: string | null;
   product?: QuotePrintProduct | QuotePrintProduct[] | null;
 };
 

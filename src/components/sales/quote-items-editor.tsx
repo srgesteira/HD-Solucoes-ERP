@@ -26,9 +26,6 @@ export type QuoteLineProduct = {
   cost_price: number;
   product_nature?: string | null;
   prefix_code?: string | null;
-  hvac_filter_class?: string | null;
-  hvac_airflow_m3h?: number | null;
-  hvac_cleanroom_class?: string | null;
 };
 
 export type QuoteLineDraft = {
@@ -45,9 +42,6 @@ export type QuoteLineDraft = {
   clientNotes: string;
   /** Incluir descrição cadastrada do produto na impressão desta linha. */
   showProductDescription: boolean;
-  hvacFilterClass: string | null;
-  hvacAirflowM3h: number | null;
-  hvacCleanroomClass: string | null;
 };
 
 export function productDisplayLabel(p: QuoteLineProduct): string {
@@ -65,10 +59,6 @@ function hitToProduct(hit: ProductSearchHit): QuoteLineProduct {
     cost_price: Number(hit.cost_price ?? 0),
     product_nature: hit.product_nature ?? null,
     prefix_code: hit.prefix?.code ?? null,
-    hvac_filter_class: hit.hvac_filter_class ?? null,
-    hvac_airflow_m3h:
-      hit.hvac_airflow_m3h != null ? Number(hit.hvac_airflow_m3h) : null,
-    hvac_cleanroom_class: hit.hvac_cleanroom_class ?? null,
   };
 }
 
@@ -89,9 +79,6 @@ function lineFromProduct(
     manualPrice: unitPrice,
     unitPrice,
     unit: (p.unit && p.unit.trim()) || "UN",
-    hvacFilterClass: p.hvac_filter_class ?? null,
-    hvacAirflowM3h: p.hvac_airflow_m3h ?? null,
-    hvacCleanroomClass: p.hvac_cleanroom_class ?? null,
   };
   return { line, product: p };
 }
@@ -126,9 +113,6 @@ export function newQuoteLine(index = 0): QuoteLineDraft {
     unit: "UN",
     clientNotes: "",
     showProductDescription: false,
-    hvacFilterClass: null,
-    hvacAirflowM3h: null,
-    hvacCleanroomClass: null,
   };
 }
 
@@ -592,16 +576,6 @@ export function buildQuoteItemsPayload(
     }
 
     item.show_product_description = line.showProductDescription;
-
-    if (
-      line.hvacFilterClass?.trim() ||
-      line.hvacAirflowM3h != null ||
-      line.hvacCleanroomClass?.trim()
-    ) {
-      item.hvac_filter_class = line.hvacFilterClass?.trim() || null;
-      item.hvac_airflow_m3h = line.hvacAirflowM3h;
-      item.hvac_cleanroom_class = line.hvacCleanroomClass?.trim() || null;
-    }
 
     built.push(item);
   }

@@ -10,24 +10,6 @@ import {
   planningFieldsFromSummary,
   type PlanningQualityFinishFields,
 } from "@/modules/producao/lib/quality-finish-blocks";
-import {
-  EMPTY_PLANNING_HVAC_INTEGRITY,
-  loadIntegrityTestSummaries,
-  planningFieldsFromIntegritySummary,
-  type PlanningHvacIntegrityFields,
-} from "@/modules/hvac/lib/hvac-integrity-test-service";
-import {
-  EMPTY_PLANNING_HVAC_CHECKLIST,
-  loadChecklistExecutionSummaries,
-  planningFieldsFromChecklistSummary,
-  type PlanningHvacChecklistFields,
-} from "@/modules/hvac/lib/hvac-pop-checklist-service";
-import {
-  EMPTY_PLANNING_HVAC_CLEANROOM,
-  loadCleanroomCompatibilitySummaries,
-  planningFieldsFromCleanroomSummary,
-  type PlanningHvacCleanroomFields,
-} from "@/modules/hvac/lib/hvac-cleanroom-service";
 
 type Admin = SupabaseClient<Database>;
 
@@ -86,10 +68,7 @@ export type PcpPlanningItem = {
   origin: string;
   origin_kind: PcpItemOriginKind;
   origin_label: string;
-} & PlanningQualityFinishFields &
-  PlanningHvacIntegrityFields &
-  PlanningHvacChecklistFields &
-  PlanningHvacCleanroomFields;
+} & PlanningQualityFinishFields;
 
 export type PcpPlanningOrder = {
   id: string;
@@ -588,9 +567,6 @@ export async function fetchPcpPlanning(
         origin_kind: origin.kind,
         origin_label: origin.label,
         ...EMPTY_PLANNING_QUALITY_FINISH,
-        ...EMPTY_PLANNING_HVAC_INTEGRITY,
-        ...EMPTY_PLANNING_HVAC_CHECKLIST,
-        ...EMPTY_PLANNING_HVAC_CLEANROOM,
       });
     }
 
@@ -637,113 +613,8 @@ export async function fetchPcpPlanning(
   result.push(...stockOrders);
 
   await enrichPlanningOrdersWithQualityFinishBlocks(admin, tenantId, result);
-  await enrichPlanningOrdersWithHvacIntegrityTests(admin, tenantId, result);
-  await enrichPlanningOrdersWithHvacChecklists(admin, tenantId, result);
-  await enrichPlanningOrdersWithHvacCleanroom(admin, tenantId, result);
 
   return result;
-}
-
-async function enrichPlanningOrdersWithHvacCleanroom(
-  admin: Admin,
-  tenantId: string,
-  orders: PcpPlanningOrder[]
-): Promise<void> {
-  const orderItemIds: string[] = [];
-  for (const ord of orders) {
-    for (const it of ord.items) {
-      if (it.order_item_id) orderItemIds.push(it.order_item_id);
-    }
-  }
-  if (orderItemIds.length === 0) return;
-
-  const summaries = await loadCleanroomCompatibilitySummaries(
-    admin,
-    tenantId,
-    orderItemIds
-  );
-
-  for (const ord of orders) {
-    for (let i = 0; i < ord.items.length; i++) {
-      const it = ord.items[i];
-      if (!it.order_item_id) {
-        ord.items[i] = { ...it, ...EMPTY_PLANNING_HVAC_CLEANROOM };
-        continue;
-      }
-      const fields = planningFieldsFromCleanroomSummary(
-        summaries.get(it.order_item_id)
-      );
-      ord.items[i] = { ...it, ...fields };
-    }
-  }
-}
-
-async function enrichPlanningOrdersWithHvacChecklists(
-  admin: Admin,
-  tenantId: string,
-  orders: PcpPlanningOrder[]
-): Promise<void> {
-  const orderItemIds: string[] = [];
-  for (const ord of orders) {
-    for (const it of ord.items) {
-      if (it.order_item_id) orderItemIds.push(it.order_item_id);
-    }
-  }
-  if (orderItemIds.length === 0) return;
-
-  const summaries = await loadChecklistExecutionSummaries(
-    admin,
-    tenantId,
-    orderItemIds
-  );
-
-  for (const ord of orders) {
-    for (let i = 0; i < ord.items.length; i++) {
-      const it = ord.items[i];
-      if (!it.order_item_id) {
-        ord.items[i] = { ...it, ...EMPTY_PLANNING_HVAC_CHECKLIST };
-        continue;
-      }
-      const fields = planningFieldsFromChecklistSummary(
-        summaries.get(it.order_item_id)
-      );
-      ord.items[i] = { ...it, ...fields };
-    }
-  }
-}
-
-async function enrichPlanningOrdersWithHvacIntegrityTests(
-  admin: Admin,
-  tenantId: string,
-  orders: PcpPlanningOrder[]
-): Promise<void> {
-  const orderItemIds: string[] = [];
-  for (const ord of orders) {
-    for (const it of ord.items) {
-      if (it.order_item_id) orderItemIds.push(it.order_item_id);
-    }
-  }
-  if (orderItemIds.length === 0) return;
-
-  const summaries = await loadIntegrityTestSummaries(
-    admin,
-    tenantId,
-    orderItemIds
-  );
-
-  for (const ord of orders) {
-    for (let i = 0; i < ord.items.length; i++) {
-      const it = ord.items[i];
-      if (!it.order_item_id) {
-        ord.items[i] = { ...it, ...EMPTY_PLANNING_HVAC_INTEGRITY };
-        continue;
-      }
-      const fields = planningFieldsFromIntegritySummary(
-        summaries.get(it.order_item_id)
-      );
-      ord.items[i] = { ...it, ...fields };
-    }
-  }
 }
 
 async function enrichPlanningOrdersWithQualityFinishBlocks(
@@ -919,9 +790,6 @@ async function fetchStockOrdersForPlanning(
         origin_label: "OP Estoque",
         order_source: "stock",
         ...EMPTY_PLANNING_QUALITY_FINISH,
-        ...EMPTY_PLANNING_HVAC_INTEGRITY,
-        ...EMPTY_PLANNING_HVAC_CHECKLIST,
-        ...EMPTY_PLANNING_HVAC_CLEANROOM,
       });
     }
 

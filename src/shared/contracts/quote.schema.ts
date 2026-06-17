@@ -1,19 +1,5 @@
 import { z } from "zod";
 import { QUOTE_SHIPPING_TYPES } from "@/modules/vendas/lib/sales/quote-validity";
-import {
-  HVAC_CLEANROOM_CLASSES,
-  HVAC_FILTER_CLASSES,
-} from "@/modules/hvac/lib/hvac-domain";
-
-const optionalEnum = <T extends readonly string[]>(values: T) =>
-  z
-    .string()
-    .optional()
-    .nullable()
-    .refine(
-      (v) => v == null || v === "" || (values as readonly string[]).includes(v),
-      { message: "Valor inválido" }
-    );
 
 /** Item de orçamento: `unit_price` obrigatório; `markup_percent` opcional (recalcula preço). */
 export const quoteItemBodySchema = z.object({
@@ -33,9 +19,6 @@ export const quoteItemBodySchema = z.object({
   description: z.string().optional(),
   client_notes: z.string().nullable().optional(),
   show_product_description: z.boolean().optional(),
-  hvac_filter_class: optionalEnum(HVAC_FILTER_CLASSES),
-  hvac_airflow_m3h: z.number().min(0).nullable().optional(),
-  hvac_cleanroom_class: optionalEnum(HVAC_CLEANROOM_CLASSES),
 });
 
 /**

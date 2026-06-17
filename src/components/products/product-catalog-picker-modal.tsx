@@ -33,9 +33,6 @@ type CatalogRow = {
   cost_price: number;
   is_active: boolean;
   product_nature?: string | null;
-  hvac_filter_class?: string | null;
-  hvac_airflow_m3h?: number | null;
-  hvac_cleanroom_class?: string | null;
   default_is_external_labor?: boolean | null;
   default_labor_cost?: number | null;
   default_work_center_id?: string | null;
@@ -164,10 +161,6 @@ function rowToHit(row: CatalogRow): ProductSearchHit {
     cost_price: row.cost_price,
     unit: row.unit,
     product_nature: row.product_nature ?? null,
-    hvac_filter_class: row.hvac_filter_class ?? null,
-    hvac_airflow_m3h:
-      row.hvac_airflow_m3h != null ? Number(row.hvac_airflow_m3h) : null,
-    hvac_cleanroom_class: row.hvac_cleanroom_class ?? null,
     default_is_external_labor: row.default_is_external_labor,
     default_labor_cost: row.default_labor_cost,
     default_work_center_id: row.default_work_center_id,

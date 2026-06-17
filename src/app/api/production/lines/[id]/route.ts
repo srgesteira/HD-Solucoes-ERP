@@ -5,7 +5,6 @@ import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import type { Database } from "@/modules/core/types/database";
-import { normalizeHvacCleanroomClass } from "@/modules/hvac/lib/hvac-domain";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +27,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("production_lines")
-    .select("id, code, name, sort_order, is_active, description, hvac_cleanroom_class")
+    .select("id, code, name, sort_order, is_active, description")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -102,17 +101,6 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
   if (b.is_active !== undefined) {
     updateData.is_active = Boolean(b.is_active);
-  }
-  if (b.hvac_cleanroom_class !== undefined) {
-    const normalized = normalizeHvacCleanroomClass(b.hvac_cleanroom_class);
-    if (
-      b.hvac_cleanroom_class !== null &&
-      b.hvac_cleanroom_class !== "" &&
-      normalized === null
-    ) {
-      return apiError("Classe ISO inválida", 400);
-    }
-    updateData.hvac_cleanroom_class = normalized;
   }
 
   if (Object.keys(updateData).length === 0) {

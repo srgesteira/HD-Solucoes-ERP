@@ -1,6 +1,6 @@
 /**
  * Execução automatizada do plano macro §12.5 (GUIA-SISTEMA-LAYOUT-E-FUNCIONAMENTO).
- * Frentes 1–7 + P1 + HVAC + páginas críticas + continuidade (não-destrutiva).
+ * Frentes 1–7 + P1 + páginas críticas + continuidade (não-destrutiva).
  *
  * Uso: node scripts/smoke-plan-macro.mjs
  * Requer .env.local com Supabase. Opcional: SMOKE_BASE_URL
@@ -301,36 +301,6 @@ async function testP1(session) {
   pass("P1: tabela receivables", `count=${recvCount ?? 0}`);
 }
 
-async function testHvacPages(session) {
-  console.log("\n── HVAC V1–V5 — páginas ──");
-  const pages = [
-    ["/data-health", "Saúde do dado"],
-    ["/onboarding", "onboarding"],
-    ["/production/quality-control", "qualidade"],
-    ["/logistics/pcp", "PCP"],
-    ["/sales/quotes", "orçamento"],
-  ];
-  for (const [path, hint] of pages) {
-    await pageGet(session, path, `HVAC/página ${path}`, null);
-  }
-  const { data: line } = await admin
-    .from("production_lines")
-    .select("id")
-    .eq("tenant_id", TENANT)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
-  if (line?.id) {
-    await pageGet(
-      session,
-      `/production/lines/${line.id}`,
-      "HVAC V5: página linha com ISO"
-    );
-  } else {
-    pass("HVAC V5: página linha", "skip — sem linha activa");
-  }
-}
-
 async function testFiscalRules(session) {
   console.log("\n── Plano §12.5 passo 2 — fiscal_rules ──");
   const { count } = await admin
@@ -394,7 +364,6 @@ async function main() {
     await testFrente6(session);
     await testFrente7(session);
     await testP1(session);
-    await testHvacPages(session);
     await testFiscalRules(session);
     await testContinuidade();
   } catch (e) {
