@@ -217,8 +217,30 @@ export async function loadDataHealthIssues(
     /* ignora — empresa pode ainda não estar cadastrada (onboarding) */
   }
 
+  // ENGENHARIA / VERTICAL HVAC -------------------------------------------
+  const hvacReleasedNoClass = await countOrZero(
+    admin
+      .from("products")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("released_for_sale", true)
+      .eq("product_nature", "AC")
+      .is("hvac_filter_class", null)
+  );
+  if (hvacReleasedNoClass > 0) {
+    issues.push({
+      rule_id: "hvac_released_without_filter_class",
+      module: "Engenharia · HVAC",
+      severity: "warning",
+      title: "Produtos acabados liberados sem classe de filtro HVAC",
+      impact:
+        "Ficha técnica vertical incompleta — engenharia e CQ não têm referência HEPA/vazão.",
+      count: hvacReleasedNoClass,
+      href: "/products",
+    });
+  }
+
   // PCP -----------------------------------------------------------------
-  // Pedidos efetivados sem prazo PCP definido → linha do tempo cega.
   const ordersNoDeadline = await countOrZero(
     admin
       .from("sales_orders")

@@ -22,6 +22,7 @@ import { ProductCostHistoryTable } from "@/components/products/product-cost-hist
 import { ProductCompositionPanel } from "@/components/products/product-composition-panel";
 import { ProductRoutingPanel } from "@/components/products/product-routing-panel";
 import { ProductDocumentsPanel } from "@/components/products/product-documents-panel";
+import { ProductHvacSpecsPanel } from "@/components/products/product-hvac-specs-panel";
 import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
 import { fmtBRL } from "@/shared/utils/format-brl";
@@ -36,6 +37,7 @@ import {
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
 import { meCanManageEngineeringProducts } from "@/modules/engenharia/lib/engineering-product-access";
+import { isHvacSpecProduct } from "@/modules/hvac/lib/hvac-domain";
 import type { StructureSuggestion } from "@/modules/engenharia/lib/services/ai.service";
 import type { TaxAnalysis } from "@/modules/engenharia/lib/services/tax-ai.service";
 import type { Database } from "@/modules/core/types/database";
@@ -189,12 +191,13 @@ async function updateProduct(
   return json;
 }
 
-type EditTab = "basics" | "composition" | "routing" | "documents";
+type EditTab = "basics" | "composition" | "routing" | "documents" | "hvac";
 
 function tabFromSearchParam(value: string | null): EditTab {
   if (value === "composition") return "composition";
   if (value === "routing") return "routing";
   if (value === "documents") return "documents";
+  if (value === "hvac") return "hvac";
   return "basics";
 }
 
@@ -243,6 +246,10 @@ export default function EditProductPage() {
     prefixes.find((p) => p.id === formData?.prefix_id.trim())?.code ?? "";
   const isSimplified = isSimplifiedClassificationSuffix(prefixCode);
   const canHaveBom = canProductHaveBom(prefixCode);
+  const showHvacTab = isHvacSpecProduct({
+    product_nature: productRaw?.product_nature ?? null,
+    prefix_code: prefixCode || null,
+  });
   const seCostFromBom = seUsesBomCalculatedCost(
     prefixCode,
     Boolean(productRaw?.has_composition)
@@ -606,6 +613,9 @@ export default function EditProductPage() {
             {canHaveBom ? (
               <TabsTrigger value="routing">Roteiro</TabsTrigger>
             ) : null}
+            {showHvacTab ? (
+              <TabsTrigger value="hvac">HVAC</TabsTrigger>
+            ) : null}
             <TabsTrigger value="documents">Documentos</TabsTrigger>
           </TabsList>
 
@@ -787,6 +797,12 @@ export default function EditProductPage() {
           {canHaveBom && productId ? (
             <TabsContent value="routing" className="mt-4">
               <ProductRoutingPanel productId={productId} embedded />
+            </TabsContent>
+          ) : null}
+
+          {showHvacTab && productId ? (
+            <TabsContent value="hvac" className="mt-4">
+              <ProductHvacSpecsPanel productId={productId} />
             </TabsContent>
           ) : null}
 

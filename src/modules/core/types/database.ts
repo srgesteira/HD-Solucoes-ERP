@@ -2954,6 +2954,12 @@ export type Database = {
           family_id: string | null
           finish_id: string | null
           has_composition: boolean
+          hvac_airflow_m3h: number | null
+          hvac_cleanroom_class: string | null
+          hvac_filter_class: string | null
+          hvac_integrity_test_method: string | null
+          hvac_pressure_drop_pa: number | null
+          hvac_requires_integrity_test: boolean
           id: string
           is_active: boolean
           material_id: string | null
@@ -2993,6 +2999,12 @@ export type Database = {
           family_id?: string | null
           finish_id?: string | null
           has_composition?: boolean
+          hvac_airflow_m3h?: number | null
+          hvac_cleanroom_class?: string | null
+          hvac_filter_class?: string | null
+          hvac_integrity_test_method?: string | null
+          hvac_pressure_drop_pa?: number | null
+          hvac_requires_integrity_test?: boolean
           id?: string
           is_active?: boolean
           material_id?: string | null
@@ -3032,6 +3044,12 @@ export type Database = {
           family_id?: string | null
           finish_id?: string | null
           has_composition?: boolean
+          hvac_airflow_m3h?: number | null
+          hvac_cleanroom_class?: string | null
+          hvac_filter_class?: string | null
+          hvac_integrity_test_method?: string | null
+          hvac_pressure_drop_pa?: number | null
+          hvac_requires_integrity_test?: boolean
           id?: string
           is_active?: boolean
           material_id?: string | null

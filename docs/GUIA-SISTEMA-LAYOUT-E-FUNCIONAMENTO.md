@@ -572,6 +572,7 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | Limpeza técnica (Frente 5) | ✅ | `format-brl.ts`, drop tabelas mortas — migration `20260927100000` |
 | Roteiro N operações (Frente 6) | ✅ | `product_routing_steps`, `order_item_operations`, UI produto + OP |
 | Conciliação bancária (Frente 7) | ✅ | `/finance/bank-reconciliation`, CSV/OFX, match auto/manual, baixa título |
+| **Decisão vertical HVAC (§18)** | ✅ | [`docs/DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) — fatia V1: ficha técnica produto |
 | Runbook continuidade (doc) | ✅ | `docs/RUNBOOK-BACKUP-E-INCIDENTES.md` |
 
 > **Nota:** itens ✅ ainda podem precisar de **smoke test no navegador** e de **migrations aplicadas no Supabase remoto** (`pnpm supabase db push` ou `migration list --linked`).
@@ -596,7 +597,7 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | — | **Smoke test browser** | Empenho MRP, inbox engenharia, expedição abas, roteiro→OP, conciliação com baixa/reversão |
 | — | Validação P1 comercial/financeiro | Orçamento → PV → AR provisório → confirmar → sync recebíveis |
 | 🧑‍💼 | Preencher `fiscal_rules` | Contadora usa simulador + assistente de inconsistências |
-| 🧑‍💼 | Genérico vs. vertical HVAC | Decisão estratégica (Helder) |
+| **Vertical HVAC V2+** | CQ integridade, orçamento HVAC, área classificada | Ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) |
 | Opcional | Reordenar roteiro (drag-and-drop) | UX — API já suporta sequência |
 | Opcional | Audit `rbac_*` | Antes de migration de drop |
 
@@ -614,12 +615,12 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
         ↓
 2. Contadora preenche fiscal_rules  🧑‍💼
         ↓
-3. Primeiro restore mensal (runbook)  🧑‍💼
+3. Vertical HVAC V2 — CQ integridade (registo PAO/DOP na OP)
         ↓
-4. Decisão vertical HVAC  🧑‍💼
+4. Primeiro restore mensal (runbook)  🧑‍💼
 ```
 
-**Princípio:** código das 7 frentes está feito — foco em validação operacional e decisões de negócio.
+**Princípio:** núcleo genérico (estoque, fiscal, financeiro) + camada vertical HVAC em cadastro, CQ e documentação.
 
 ### 12.6 Migrations recentes (referência)
 
@@ -638,6 +639,7 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | `20260927100000_drop_dead_tables.sql` | Drop tabelas mortas (Frente 5) |
 | `20260927110000_backfill_order_item_operations.sql` | Backfill operações OP |
 | `20260927120000_bank_statement_applied_amount.sql` | Baixa título na conciliação |
+| `20260928100000_hvac_product_specs.sql` | Vertical HVAC — ficha técnica produto |
 
 ---
 

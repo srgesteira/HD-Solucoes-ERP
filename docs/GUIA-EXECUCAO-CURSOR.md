@@ -19,9 +19,9 @@
 | 6 Roteiro N ops | ✅ | Pendente Helder |
 | 7 Conciliação bancária | ✅ | Pendente Helder |
 
-**Pós-frentes:** assistente fiscal de inconsistências (`/api/fiscal/inconsistencies` + UI em `/settings/fiscal-rules`).
+**Pós-frentes:** assistente fiscal de inconsistências · **vertical HVAC V1** (ficha técnica produto).
 
-**Próximo foco:** smoke manual + contadora preenche regras + runbook restore.
+**Próximo foco vertical:** CQ integridade (V2) · smoke manual · contadora preenche regras.
 
 ## Regras de ouro (valem para TODA tarefa abaixo)
 
@@ -168,7 +168,20 @@ OFX/CSV + match com contas. **≠** conciliação NF-e compra.
 ## FORA DO ESCOPO DO CURSOR
 
 - Preencher `fiscal_rules` → contadora.
-- Genérico vs. vertical HVAC → Helder.
+- ~~Genérico vs. vertical HVAC~~ → **decidido: vertical** — ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md).
+
+---
+
+## VERTICAL HVAC (pós-frentes)
+
+| Fatia | Estado |
+|-------|--------|
+| V0 Decisão | ✅ |
+| V1 Ficha técnica produto | ✅ |
+| V2 CQ integridade | Pendente |
+| V3 POPs HEPA | Parcial (biblioteca documentos) |
+| V4 Orçamento HVAC | Pendente |
+| V5 Área classificada | Pendente |
 
 ---
 
