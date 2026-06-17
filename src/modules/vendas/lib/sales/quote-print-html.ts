@@ -11,7 +11,6 @@ import {
   quoteItemPrintDescription,
   type QuotePrintData,
 } from "@/modules/vendas/lib/sales/quote-display";
-import { formatQuoteItemHvacBlock } from "@/modules/hvac/lib/hvac-domain";
 
 function escapeHtml(s: string | null | undefined): string {
   if (s == null) return "";
@@ -271,16 +270,10 @@ export function buildQuotePrintHtml(
               : null;
             const code = unwrapQuoteProductCode(line.product);
             const name = unwrapQuoteProductName(line.product);
-            const hvacBlock = formatQuoteItemHvacBlock({
-              hvac_filter_class: line.hvac_filter_class ?? null,
-              hvac_airflow_m3h: line.hvac_airflow_m3h ?? null,
-              hvac_cleanroom_class: line.hvac_cleanroom_class ?? null,
-            });
             return `<tr>
               <td class="qp-code">${escapeHtml(code)}</td>
               <td>
                 <div class="qp-product-name">${escapeHtml(name)}</div>
-                ${hvacBlock ? `<p class="qp-product-desc"><strong>HVAC:</strong> ${escapeHtml(hvacBlock)}</p>` : ""}
                 ${productDesc ? `<p class="qp-product-desc"><strong>Descrição:</strong> ${escapeHtml(productDesc)}</p>` : ""}
                 ${extraDesc && extraDesc !== productDesc ? `<p class="qp-product-desc"><strong>Detalhe:</strong> ${escapeHtml(extraDesc)}</p>` : ""}
                 ${line.client_notes?.trim() ? `<p class="qp-product-desc"><strong>Observações:</strong> ${escapeHtml(line.client_notes.trim())}</p>` : ""}

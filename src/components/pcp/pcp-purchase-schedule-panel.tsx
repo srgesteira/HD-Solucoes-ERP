@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { PcpPurchaseScheduleRow } from "@/modules/pcp/lib/pcp-purchase-schedule";
 import { formatPcpDate } from "@/modules/pcp/lib/pcp-order-display";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 
 async function fetchSchedule(): Promise<PcpPurchaseScheduleRow[]> {
   const res = await fetch("/api/pcp/purchase-schedule", {
@@ -163,13 +164,12 @@ export function PcpPurchaseSchedulePanel() {
                     {formatPcpDate(row.expected_delivery)}
                   </td>
                   <td className="px-3 py-2">
-                    <input
-                      type="date"
-                      className="w-[9.5rem] rounded border border-slate-300 px-1 py-0.5 text-[10px]"
-                      defaultValue={row.follow_up_date ?? ""}
-                      onBlur={(e) => {
-                        const v = e.target.value || null;
-                        if (v !== (row.follow_up_date ?? "")) {
+                    <BrDateInput
+                      variant="compact"
+                      className="w-[9.5rem] text-[10px]"
+                      value={row.follow_up_date ?? null}
+                      onChange={(v) => {
+                        if (v !== (row.follow_up_date ?? null)) {
                           followUpMut.mutate({
                             id: row.id,
                             follow_up_date: v,

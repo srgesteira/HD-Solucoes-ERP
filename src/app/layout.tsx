@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     template: "%s · ERP HD",
   },
   description:
-    "Sistema corporativo da HD Projetos & Soluções em HVAC. Módulo 1: Agendador de Tarefas (Kanban).",
+    "Sistema corporativo HD Soluções Industriais — PCP, vendas, compras, produção e financeiro.",
 };
 
 export const viewport: Viewport = {

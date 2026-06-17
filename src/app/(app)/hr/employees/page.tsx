@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { AppPage } from "@/shared/ui/app-page";
 import { LoadingState } from "@/shared/ui/page-helpers";
@@ -504,11 +505,10 @@ export default function HrEmployeesPage() {
             </div>
             <div className="space-y-1">
               <Label>Admissão</Label>
-              <Input
-                type="date"
-                value={form.admission_date}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, admission_date: e.target.value }))
+              <BrDateInput
+                value={form.admission_date || null}
+                onChange={(iso) =>
+                  setForm((f) => ({ ...f, admission_date: iso ?? "" }))
                 }
               />
             </div>

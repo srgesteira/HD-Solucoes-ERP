@@ -19,8 +19,6 @@ import {
 } from "@/components/pcp/pcp-lines-legacy-panel";
 import { QualityCqPromptDialog } from "@/components/producao/quality-cq-prompt-dialog";
 import { QualityCqHistoryDialog } from "@/components/producao/quality-cq-history-dialog";
-import { HvacIntegrityTestDialog } from "@/components/producao/hvac-integrity-test-dialog";
-import { HvacChecklistExecutionDialog } from "@/components/producao/hvac-checklist-execution-dialog";
 import { AppPage } from "@/shared/ui/app-page";
 import { ErrorState, LoadingState } from "@/shared/ui/page-helpers";
 import "@/components/pcp/pcp-legacy.css";
@@ -30,26 +28,11 @@ type PromptState =
   | { mode: "release"; orderItemId: string; label: string }
   | null;
 
-type IntegrityPromptState = {
-  orderItemId: string;
-  label: string;
-  defaultMethod: string | null;
-} | null;
-
-type ChecklistPromptState = {
-  orderItemId: string;
-  label: string;
-} | null;
-
 export function QualityLinesControlView() {
   const qc = useQueryClient();
   const [selectedLineId, setSelectedLineId] = useState("");
   const [showFinished, setShowFinished] = useState(false);
   const [prompt, setPrompt] = useState<PromptState>(null);
-  const [integrityPrompt, setIntegrityPrompt] =
-    useState<IntegrityPromptState>(null);
-  const [checklistPrompt, setChecklistPrompt] =
-    useState<ChecklistPromptState>(null);
   const [history, setHistory] = useState<{
     orderItemId: string;
     label: string;
@@ -168,59 +151,7 @@ export function QualityLinesControlView() {
       toast.error(e instanceof Error ? e.message : "Erro"),
   });
 
-  const integrityMut = useMutation({
-    mutationFn: async (payload: {
-      order_item_id: string;
-      test_method: string;
-      test_date: string;
-      result: "pass" | "fail";
-      leakage_rate: number | null;
-      notes: string;
-    }) => {
-      const res = await fetch("/api/hvac/integrity-tests", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Erro ao registar teste");
-    },
-    onSuccess: () => {
-      toast.success("Teste de integridade registado.");
-      setIntegrityPrompt(null);
-      void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
-    },
-    onError: (e) =>
-      toast.error(e instanceof Error ? e.message : "Erro"),
-  });
-
-  const checklistMut = useMutation({
-    mutationFn: async (payload: {
-      order_item_id: string;
-      completions: Array<{ checklist_item_id: string; completed: boolean }>;
-    }) => {
-      const res = await fetch("/api/hvac/checklist-completions", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Erro ao gravar checklist");
-    },
-    onSuccess: () => {
-      toast.success("Checklist POP HEPA gravado.");
-      setChecklistPrompt(null);
-      void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
-    },
-    onError: (e) =>
-      toast.error(e instanceof Error ? e.message : "Erro"),
-  });
-
   const cqPending = blockMut.isPending || releaseMut.isPending;
-  const integrityPending = integrityMut.isPending;
-  const checklistPending = checklistMut.isPending;
 
   const findRowLabel = useCallback(
     (orderItemId: string) => {
@@ -250,7 +181,7 @@ export function QualityLinesControlView() {
   return (
     <AppPage
       title="Controle de qualidade — Produção"
-      description="Bloqueie ou libere a finalização por linha. Registe testes de integridade (PAO/DOP) e checklist POP HEPA quando exigidos — a expedição fica bloqueada sem aprovação."
+      description="Bloqueie ou libere a finalização de itens por linha de produção."
       width="full"
       density="comfortable"
       actions={
@@ -274,140 +205,100 @@ export function QualityLinesControlView() {
       }
     >
       <div className="pcp-legacy-shell space-y-4">
-      {isLoading ? (
-        <LoadingState label="A carregar linhas e pedidos…" />
-      ) : loadError ? (
-        <ErrorState message={loadError.message} />
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-2">
-            <p className="text-xs text-slate-600">
-              {showFinished
-                ? "Itens já finalizados nesta linha (consulta e histórico CQ)."
-                : "Fila actual — bloquear ou liberar finalização por item."}
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowFinished((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-brand-800 hover:bg-slate-50"
-            >
-              <History className="h-3.5 w-3.5" aria-hidden />
-              {showFinished
-                ? "Voltar aos itens em produção"
-                : "Ver finalizados nesta linha"}
-            </button>
-          </div>
+        {isLoading ? (
+          <LoadingState label="A carregar linhas e pedidos…" />
+        ) : loadError ? (
+          <ErrorState message={loadError.message} />
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-2">
+              <p className="text-xs text-slate-600">
+                {showFinished
+                  ? "Itens já finalizados nesta linha (consulta e histórico CQ)."
+                  : "Fila actual — bloquear ou liberar finalização por item."}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowFinished((v) => !v)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-brand-800 hover:bg-slate-50"
+              >
+                <History className="h-3.5 w-3.5" aria-hidden />
+                {showFinished
+                  ? "Voltar aos itens em produção"
+                  : "Ver finalizados nesta linha"}
+              </button>
+            </div>
 
-          <PcpLinesLegacyPanel
-            lines={lines}
-            selectedLineId={activeLineId}
-            onLineChange={setSelectedLineId}
-            panelTitle={
-              showFinished
-                ? `${panelTitle} — finalizados`
-                : panelTitle
-            }
-            rows={lineRows}
-            readOnly={showFinished}
-            qualityControlMode
-            emptyMessage={
-              showFinished
-                ? "Nenhum item finalizado nesta linha."
-                : "Nenhum item activo nesta linha."
-            }
-            onProgramDate={() => {}}
-            onNotes={() => {}}
-            onStartProduction={() => {}}
-            onFinishProduction={() => {}}
-            apontamentoPending={false}
-            cqActionPending={cqPending}
-            onBlockFinish={(orderItemId) =>
-              setPrompt({
-                mode: "block",
-                orderItemId,
-                label: findRowLabel(orderItemId),
-              })
-            }
-            onReleaseFinish={(orderItemId) =>
-              setPrompt({
-                mode: "release",
-                orderItemId,
-                label: findRowLabel(orderItemId),
-              })
-            }
-            onShowCqHistory={(orderItemId, label) =>
-              setHistory({ orderItemId, label })
-            }
-            onRegisterIntegrityTest={(orderItemId, label, defaultMethod) =>
-              setIntegrityPrompt({ orderItemId, label, defaultMethod })
-            }
-            integrityActionPending={integrityPending}
-            onExecuteChecklist={(orderItemId, label) =>
-              setChecklistPrompt({ orderItemId, label })
-            }
-            checklistActionPending={checklistPending}
-          />
-        </>
-      )}
+            <PcpLinesLegacyPanel
+              lines={lines}
+              selectedLineId={activeLineId}
+              onLineChange={setSelectedLineId}
+              panelTitle={
+                showFinished ? `${panelTitle} — finalizados` : panelTitle
+              }
+              rows={lineRows}
+              readOnly={showFinished}
+              qualityControlMode
+              emptyMessage={
+                showFinished
+                  ? "Nenhum item finalizado nesta linha."
+                  : "Nenhum item activo nesta linha."
+              }
+              onProgramDate={() => {}}
+              onNotes={() => {}}
+              onStartProduction={() => {}}
+              onFinishProduction={() => {}}
+              apontamentoPending={false}
+              cqActionPending={cqPending}
+              onBlockFinish={(orderItemId) =>
+                setPrompt({
+                  mode: "block",
+                  orderItemId,
+                  label: findRowLabel(orderItemId),
+                })
+              }
+              onReleaseFinish={(orderItemId) =>
+                setPrompt({
+                  mode: "release",
+                  orderItemId,
+                  label: findRowLabel(orderItemId),
+                })
+              }
+              onShowCqHistory={(orderItemId, label) =>
+                setHistory({ orderItemId, label })
+              }
+            />
+          </>
+        )}
 
-      <QualityCqPromptDialog
-        open={prompt != null}
-        mode={prompt?.mode ?? "block"}
-        itemLabel={prompt?.label ?? ""}
-        pending={cqPending}
-        onClose={() => setPrompt(null)}
-        onConfirm={(text) => {
-          if (!prompt) return;
-          if (prompt.mode === "block") {
-            blockMut.mutate({
-              order_item_id: prompt.orderItemId,
-              block_reason: text,
-            });
-          } else {
-            releaseMut.mutate({
-              order_item_id: prompt.orderItemId,
-              release_action: text,
-            });
-          }
-        }}
-      />
+        <QualityCqPromptDialog
+          open={prompt != null}
+          mode={prompt?.mode ?? "block"}
+          itemLabel={prompt?.label ?? ""}
+          pending={cqPending}
+          onClose={() => setPrompt(null)}
+          onConfirm={(text) => {
+            if (!prompt) return;
+            if (prompt.mode === "block") {
+              blockMut.mutate({
+                order_item_id: prompt.orderItemId,
+                block_reason: text,
+              });
+            } else {
+              releaseMut.mutate({
+                order_item_id: prompt.orderItemId,
+                release_action: text,
+              });
+            }
+          }}
+        />
 
-      <QualityCqHistoryDialog
-        open={history != null}
-        orderItemId={history?.orderItemId ?? null}
-        itemLabel={history?.label ?? ""}
-        onClose={() => setHistory(null)}
-      />
-
-      <HvacIntegrityTestDialog
-        open={integrityPrompt != null}
-        itemLabel={integrityPrompt?.label ?? ""}
-        defaultMethod={integrityPrompt?.defaultMethod ?? null}
-        pending={integrityPending}
-        onClose={() => setIntegrityPrompt(null)}
-        onConfirm={(payload) => {
-          if (!integrityPrompt) return;
-          integrityMut.mutate({
-            order_item_id: integrityPrompt.orderItemId,
-            ...payload,
-          });
-        }}
-      />
-
-      <HvacChecklistExecutionDialog
-        open={checklistPrompt != null}
-        orderItemId={checklistPrompt?.orderItemId ?? ""}
-        itemLabel={checklistPrompt?.label ?? ""}
-        pending={checklistPending}
-        onClose={() => setChecklistPrompt(null)}
-        onConfirm={(completions) => {
-          if (!checklistPrompt) return;
-          checklistMut.mutate({
-            order_item_id: checklistPrompt.orderItemId,
-            completions,
-          });
-        }}
-      />
+        <QualityCqHistoryDialog
+          open={history != null}
+          orderItemId={history?.orderItemId ?? null}
+          itemLabel={history?.label ?? ""}
+          onClose={() => setHistory(null)}
+        />
       </div>
     </AppPage>
   );

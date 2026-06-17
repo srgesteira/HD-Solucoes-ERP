@@ -876,7 +876,7 @@ export function AppShell({ children, user }: AppShellProps) {
             <Menu className="h-5 w-5" />
           </button>
           <h1 className="text-sm font-medium text-slate-700">
-            HD Projetos &amp; Soluções em HVAC
+            HD Soluções Industriais
           </h1>
         </header>
 

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
 import { AppPage } from "@/shared/ui/app-page";
@@ -197,20 +198,18 @@ export default function EditProductionOrderPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="po-delivery">Prazo de entrega</Label>
-              <Input
+              <BrDateInput
                 id="po-delivery"
-                type="date"
-                value={deliveryDeadline}
-                onChange={(e) => setDeliveryDeadline(e.target.value)}
+                value={deliveryDeadline || null}
+                onChange={(iso) => setDeliveryDeadline(iso ?? "")}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="po-pcp">Prazo PCP</Label>
-              <Input
+              <BrDateInput
                 id="po-pcp"
-                type="date"
-                value={pcpDeadline}
-                onChange={(e) => setPcpDeadline(e.target.value)}
+                value={pcpDeadline || null}
+                onChange={(iso) => setPcpDeadline(iso ?? "")}
               />
             </div>
             <div className="space-y-2 sm:col-span-2">

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { cn } from "@/shared/utils/cn";
 
 type Props = {
@@ -17,15 +18,9 @@ export function InlineDateEdit({
   disabled,
   className,
 }: Props) {
-  const [local, setLocal] = useState(value?.slice(0, 10) ?? "");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    setLocal(value?.slice(0, 10) ?? "");
-  }, [value]);
-
-  const commit = async () => {
-    const next = local.trim() || null;
+  const handleChange = async (next: string | null) => {
     const prev = value?.slice(0, 10) ?? null;
     if (next === prev) return;
     setBusy(true);
@@ -38,19 +33,12 @@ export function InlineDateEdit({
 
   return (
     <span className={cn("inline-flex items-center gap-1", className)}>
-      <input
-        type="date"
-        className="h-8 min-w-[7.5rem] rounded-md border border-slate-300 bg-white px-1.5 text-xs"
-        value={local}
+      <BrDateInput
+        value={value?.slice(0, 10) ?? null}
+        onChange={(iso) => void handleChange(iso)}
         disabled={disabled || busy}
-        onChange={(e) => setLocal(e.target.value)}
-        onBlur={() => void commit()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            void commit();
-          }
-        }}
+        variant="compact"
+        className="h-8 min-w-[5.5rem] max-w-[6.25rem] text-center"
       />
       {busy ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" aria-hidden />

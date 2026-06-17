@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { getActiveQualityFinishBlock } from "@/modules/producao/lib/quality-finish-blocks";
-import { assertOrderItemCleanroomCompatible } from "@/modules/hvac/lib/hvac-cleanroom-service";
 
 export type LineApontamentoStatus = "not_started" | "in_progress" | "finished";
 
@@ -58,19 +57,6 @@ export async function assertCanFinishProduction(
         : "Finalização bloqueada pelo Controle de Qualidade.";
 
     return { allowed: false, reason, code: "cq_blocked" };
-  }
-
-  try {
-    await assertOrderItemCleanroomCompatible(admin, tenantId, orderItemId);
-  } catch (err) {
-    return {
-      allowed: false,
-      reason:
-        err instanceof Error
-          ? err.message
-          : "Área classificada incompatível com a linha de produção.",
-      code: "hvac_cleanroom_incompatible",
-    };
   }
 
   return { allowed: true };

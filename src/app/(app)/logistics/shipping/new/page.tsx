@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
 import { AppPage } from "@/shared/ui/app-page";
@@ -257,11 +258,10 @@ export default function NewShipmentPage() {
           </div>
           <div>
             <Label>Agendado para</Label>
-            <Input
-              type="date"
-              value={form.scheduled_for}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, scheduled_for: e.target.value }))
+            <BrDateInput
+              value={form.scheduled_for || null}
+              onChange={(iso) =>
+                setForm((f) => ({ ...f, scheduled_for: iso ?? "" }))
               }
             />
           </div>

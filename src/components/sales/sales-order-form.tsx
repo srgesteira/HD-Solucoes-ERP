@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
 import { SalesOrderFormFields } from "@/components/sales/sales-order-form-fields";
@@ -653,12 +654,10 @@ export function SalesOrderForm({
                     Prazo de entrega ao cliente{" "}
                     <span className="text-red-600">*</span>
                   </Label>
-                  <Input
+                  <BrDateInput
                     id="so-expected-delivery-adm"
-                    type="date"
-                    required
-                    value={expectedDelivery}
-                    onChange={(e) => setExpectedDelivery(e.target.value)}
+                    value={expectedDelivery || null}
+                    onChange={(iso) => setExpectedDelivery(iso ?? "")}
                   />
                 </div>
                 <PaymentTermsFields

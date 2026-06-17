@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { Textarea } from "@/shared/ui/textarea";
@@ -145,12 +146,10 @@ export function QuoteFormFields({
 
         <div className="space-y-2">
           <Label htmlFor="quote-date">Data do orçamento *</Label>
-          <Input
+          <BrDateInput
             id="quote-date"
-            type="date"
-            value={quoteDate}
-            onChange={(e) => onQuoteDateChange(e.target.value)}
-            required
+            value={quoteDate || null}
+            onChange={(iso) => onQuoteDateChange(iso ?? "")}
           />
         </div>
 

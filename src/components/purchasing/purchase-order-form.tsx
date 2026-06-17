@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
 import { NumericInput } from "@/shared/ui/numeric-input";
@@ -586,23 +587,20 @@ export function PurchaseOrderForm({
 
             <div className="space-y-2">
               <Label htmlFor="order-date">Data do pedido *</Label>
-              <Input
+              <BrDateInput
                 id="order-date"
-                type="date"
-                value={orderDate}
-                onChange={(e) => setOrderDate(e.target.value)}
-                required
+                value={orderDate || null}
+                onChange={(iso) => setOrderDate(iso ?? "")}
                 disabled={fieldsDisabled}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="expected-delivery">Data prevista de entrega</Label>
-              <Input
+              <BrDateInput
                 id="expected-delivery"
-                type="date"
-                value={expectedDelivery}
-                onChange={(e) => setExpectedDelivery(e.target.value)}
+                value={expectedDelivery || null}
+                onChange={(iso) => setExpectedDelivery(iso ?? "")}
                 disabled={fieldsDisabled}
               />
             </div>

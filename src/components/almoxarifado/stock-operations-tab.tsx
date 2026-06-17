@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import {
   SortableTable,
@@ -446,13 +447,11 @@ export function StockOperationsTab({
             <label htmlFor="from-date" className="text-xs font-medium text-slate-600">
               De
             </label>
-            <input
+            <BrDateInput
               id="from-date"
-              type="date"
-              className={dateInputClassName}
-              value={filters.from}
-              onChange={(e) =>
-                setFilters({ ...filters, from: e.target.value, page: 1 })
+              value={filters.from || null}
+              onChange={(iso) =>
+                setFilters({ ...filters, from: iso ?? "", page: 1 })
               }
             />
           </div>
@@ -460,13 +459,11 @@ export function StockOperationsTab({
             <label htmlFor="to-date" className="text-xs font-medium text-slate-600">
               Até
             </label>
-            <input
+            <BrDateInput
               id="to-date"
-              type="date"
-              className={dateInputClassName}
-              value={filters.to}
-              onChange={(e) =>
-                setFilters({ ...filters, to: e.target.value, page: 1 })
+              value={filters.to || null}
+              onChange={(iso) =>
+                setFilters({ ...filters, to: iso ?? "", page: 1 })
               }
             />
           </div>

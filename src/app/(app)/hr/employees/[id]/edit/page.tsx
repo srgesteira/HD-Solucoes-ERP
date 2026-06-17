@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { AppPage } from "@/shared/ui/app-page";
 import { LoadingState } from "@/shared/ui/page-helpers";
@@ -340,21 +341,19 @@ export default function EditEmployeePage() {
             <div className="grid sm:grid-cols-2 gap-3 p-4 rounded-lg border border-slate-200 bg-slate-50">
               <div className="space-y-1">
                 <Label>Início *</Label>
-                <Input
-                  type="date"
-                  value={allocForm.start_date}
-                  onChange={(e) =>
-                    setAllocForm((f) => ({ ...f, start_date: e.target.value }))
+                <BrDateInput
+                  value={allocForm.start_date || null}
+                  onChange={(iso) =>
+                    setAllocForm((f) => ({ ...f, start_date: iso ?? "" }))
                   }
                 />
               </div>
               <div className="space-y-1">
                 <Label>Fim</Label>
-                <Input
-                  type="date"
-                  value={allocForm.end_date}
-                  onChange={(e) =>
-                    setAllocForm((f) => ({ ...f, end_date: e.target.value }))
+                <BrDateInput
+                  value={allocForm.end_date || null}
+                  onChange={(iso) =>
+                    setAllocForm((f) => ({ ...f, end_date: iso ?? "" }))
                   }
                 />
               </div>

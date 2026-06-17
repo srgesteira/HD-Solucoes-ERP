@@ -19,6 +19,7 @@ import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
@@ -916,29 +917,19 @@ export default function SalesOrderDetailPage() {
                   Prazo de entrega <span className="text-red-600">*</span>
                 </Label>
                 {canEditCommercialInline ? (
-                  <Input
+                  <BrDateInput
                     id="so-expected-delivery"
-                    type="date"
-                    required
                     className="max-w-xs"
-                    value={expectedDeliveryDraft}
-                    onChange={(e) =>
-                      setExpectedDeliveryDraft(e.target.value)
-                    }
-                    onBlur={async () => {
+                    value={expectedDeliveryDraft || null}
+                    onChange={async (next) => {
                       if (!id || !q) return;
-                      const next = expectedDeliveryDraft.trim();
                       const cur = q.expected_delivery
                         ? String(q.expected_delivery).slice(0, 10)
                         : "";
-                      if (next === cur) return;
+                      setExpectedDeliveryDraft(next ?? "");
+                      if ((next ?? "") === cur) return;
                       if (!next) {
                         toast.error("Prazo de entrega é obrigatório.");
-                        setExpectedDeliveryDraft(cur);
-                        return;
-                      }
-                      if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) {
-                        toast.error("Data inválida (use AAAA-MM-DD).");
                         setExpectedDeliveryDraft(cur);
                         return;
                       }
@@ -1657,12 +1648,11 @@ export default function SalesOrderDetailPage() {
               </div>
               <div>
                 <Label htmlFor="recv-dt">Data do pagamento</Label>
-                <Input
+                <BrDateInput
                   id="recv-dt"
-                  type="date"
                   className="mt-1"
-                  value={recvDate}
-                  onChange={(e) => setRecvDate(e.target.value)}
+                  value={recvDate || null}
+                  onChange={(iso) => setRecvDate(iso ?? "")}
                 />
               </div>
               <div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { IntegerInput } from "@/shared/ui/integer-input";
 import { Label } from "@/shared/ui/label";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
@@ -76,12 +77,10 @@ export function SalesOrderFormFields({
           <p className="text-xs text-slate-500">
             Obrigatório para o planeamento PCP (coluna Prazo Vendas).
           </p>
-          <Input
+          <BrDateInput
             id="so-expected-delivery"
-            type="date"
-            required
-            value={expectedDelivery}
-            onChange={(e) => onExpectedDeliveryChange(e.target.value)}
+            value={expectedDelivery || null}
+            onChange={(iso) => onExpectedDeliveryChange(iso ?? "")}
             disabled={disabled}
             className="max-w-xs"
           />

@@ -194,49 +194,6 @@ export async function loadOnboardingState(
     href: "/customers",
   });
 
-  // Vertical HVAC — ficha técnica no primeiro acabado
-  let hvacSpecsCount = 0;
-  try {
-    const { count } = await admin
-      .from("products")
-      .select("*", { count: "exact", head: true })
-      .eq("tenant_id", tenantId)
-      .eq("product_nature", "AC")
-      .not("hvac_filter_class", "is", null);
-    hvacSpecsCount = count ?? 0;
-  } catch {
-    /* migration HVAC pode ainda não existir */
-  }
-  items.push({
-    id: "hvac_first_specs",
-    title: "Preencher ficha técnica HVAC num produto acabado",
-    description:
-      "Vertical de domínio — classe HEPA, vazão e teste de integridade na aba HVAC do produto.",
-    severity: "recommended",
-    done: hvacSpecsCount > 0,
-    href: "/products",
-  });
-
-  let hvacChecklistCount = 0;
-  try {
-    const { count } = await admin
-      .from("product_hvac_checklist_items")
-      .select("*", { count: "exact", head: true })
-      .eq("tenant_id", tenantId);
-    hvacChecklistCount = count ?? 0;
-  } catch {
-    /* migration V3 pode ainda não existir */
-  }
-  items.push({
-    id: "hvac_pop_checklist",
-    title: "Configurar checklist POP HEPA num produto",
-    description:
-      "Aplicar template HEPA na aba HVAC e anexar POP na aba Documentos.",
-    severity: "recommended",
-    done: hvacChecklistCount > 0,
-    href: "/products",
-  });
-
   const total = items.length;
   const done = items.filter((i) => i.done).length;
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 100;

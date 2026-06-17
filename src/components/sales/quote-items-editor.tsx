@@ -14,11 +14,6 @@ import {
   unitPriceFromCostAndMarkup,
   type QuoteLinePriceMode,
 } from "@/modules/vendas/lib/sales/quote-line-pricing";
-import {
-  HVAC_CLEANROOM_CLASSES,
-  HVAC_FILTER_CLASSES,
-  isHvacSpecProduct,
-} from "@/modules/hvac/lib/hvac-domain";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 
@@ -473,82 +468,6 @@ export function QuoteItemsEditor({
                     Opcional. Aparece na impressão do orçamento sob o produto.
                   </p>
                 </div>
-
-                {prod &&
-                isHvacSpecProduct({
-                  product_nature: prod.product_nature ?? null,
-                  prefix_code: prod.prefix_code ?? null,
-                }) ? (
-                  <div className="md:col-span-2 rounded-lg border border-brand-200 bg-brand-50/40 px-4 py-3 space-y-3">
-                    <p className="text-sm font-medium text-brand-900">
-                      Especificações HVAC (impressão)
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="space-y-1">
-                        <Label htmlFor={`quote-hvac-class-${index}`}>
-                          Classe do filtro
-                        </Label>
-                        <select
-                          id={`quote-hvac-class-${index}`}
-                          className={SELECT_CLASS}
-                          value={line.hvacFilterClass ?? ""}
-                          onChange={(e) =>
-                            updateLineAt(index, {
-                              hvacFilterClass: e.target.value || null,
-                            })
-                          }
-                        >
-                          <option value="">—</option>
-                          {HVAC_FILTER_CLASSES.map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`quote-hvac-airflow-${index}`}>
-                          Vazão (m³/h)
-                        </Label>
-                        <NumericInput
-                          id={`quote-hvac-airflow-${index}`}
-                          value={line.hvacAirflowM3h ?? 0}
-                          onChange={(v) =>
-                            updateLineAt(index, {
-                              hvacAirflowM3h: v > 0 ? v : null,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`quote-hvac-room-${index}`}>
-                          Sala / ISO
-                        </Label>
-                        <select
-                          id={`quote-hvac-room-${index}`}
-                          className={SELECT_CLASS}
-                          value={line.hvacCleanroomClass ?? ""}
-                          onChange={(e) =>
-                            updateLineAt(index, {
-                              hvacCleanroomClass: e.target.value || null,
-                            })
-                          }
-                        >
-                          <option value="">—</option>
-                          {HVAC_CLEANROOM_CLASSES.map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-600">
-                      Pré-preenchido da ficha do produto — pode ajustar para
-                      esta proposta.
-                    </p>
-                  </div>
-                ) : null}
 
                 {prod ? (
                   <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">

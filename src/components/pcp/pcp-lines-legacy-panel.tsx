@@ -16,6 +16,7 @@ import {
   resolveLineApontamentoStatus,
 } from "@/modules/producao/lib/line-apontamento";
 import { Button } from "@/shared/ui/button";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 
 export type LineRow = PcpPlanningItem & {
   client_name: string;
@@ -52,16 +53,6 @@ type Props = {
   onReleaseFinish?: (orderItemId: string) => void;
   onShowCqHistory?: (orderItemId: string, label: string) => void;
   cqActionPending?: boolean;
-  /** CQ HVAC: registar teste PAO/DOP antes de expedir. */
-  onRegisterIntegrityTest?: (
-    orderItemId: string,
-    label: string,
-    defaultMethod: string | null
-  ) => void;
-  integrityActionPending?: boolean;
-  /** CQ HVAC: executar checklist POP HEPA. */
-  onExecuteChecklist?: (orderItemId: string, label: string) => void;
-  checklistActionPending?: boolean;
 };
 
 /** Pedido, Cliente, Cód., Descrição, Qtd, Origem, Prazo PCP, PC entrega, Início/Fim plano, Obs., Apontamento */
@@ -90,10 +81,6 @@ export function PcpLinesLegacyPanel({
   onReleaseFinish,
   onShowCqHistory,
   cqActionPending = false,
-  onRegisterIntegrityTest,
-  integrityActionPending = false,
-  onExecuteChecklist,
-  checklistActionPending = false,
 }: Props) {
   const gridCols = qualityControlMode ? LINE_GRID_COLS_CQ : LINE_GRID_COLS;
 
@@ -189,32 +176,10 @@ export function PcpLinesLegacyPanel({
               const cqBlocked = it.cq_finish_block_active === true;
               const cqReason = it.cq_finish_block_reason?.trim() ?? "";
               const priorBlocks = it.cq_finish_blocks_released_count ?? 0;
-              const hvacRequired = it.hvac_integrity_required === true;
-              const hvacPassed = it.hvac_integrity_passed === true;
-              const hvacLatest = it.hvac_integrity_latest_result;
-              const checklistRequired = it.hvac_checklist_required === true;
-              const checklistPassed = it.hvac_checklist_passed === true;
-              const checklistTotal = it.hvac_checklist_total ?? 0;
-              const checklistCompleted = it.hvac_checklist_completed ?? 0;
               const mrpSuggestion = it.is_mrp_suggestion === true;
-              const cleanroomApplicable = it.hvac_cleanroom_applicable === true;
-              const cleanroomCompatible = it.hvac_cleanroom_compatible !== false;
-              const cleanroomBlocked =
-                cleanroomApplicable && !cleanroomCompatible;
-              const cleanroomTitle =
-                cleanroomBlocked && it.hvac_product_cleanroom_class
-                  ? `Produto exige ${it.hvac_product_cleanroom_class}; linha: ${
-                      it.hvac_line_cleanroom_class?.trim() || "sem ISO"
-                    }`
-                  : undefined;
 
               const rowBg =
-                (cqBlocked && !qualityControlMode
-                  ? "bg-amber-50/90"
-                  : null) ||
-                (cleanroomBlocked && !qualityControlMode
-                  ? "bg-red-50/80"
-                  : null) ||
+                (cqBlocked && !qualityControlMode ? "bg-amber-50/90" : null) ||
                 lineRowDelayClass(pcpDeadline, prodEnd || null, completed) ||
                 (idx % 2 === 0 ? "bg-white" : "bg-slate-50");
 
@@ -244,20 +209,6 @@ export function PcpLinesLegacyPanel({
                         title="Sugestão do MRP — ao programar datas a linha é efetivada"
                       >
                         MRP
-                      </span>
-                    ) : null}
-                    {cleanroomApplicable ? (
-                      <span
-                        className={`ml-1 inline-flex rounded border px-1 py-px text-[9px] font-semibold ${
-                          cleanroomCompatible
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                            : "border-red-300 bg-red-100 text-red-900"
-                        }`}
-                        title={cleanroomTitle}
-                      >
-                        {cleanroomCompatible
-                          ? it.hvac_product_cleanroom_class ?? "ISO"
-                          : "ISO ⚠"}
                       </span>
                     ) : null}
                   </span>
@@ -301,10 +252,10 @@ export function PcpLinesLegacyPanel({
                         {formatPcpDate(prodStart || null)}
                       </span>
                     ) : (
-                      <input
-                        type="date"
-                        className="w-full min-w-[6.5rem] max-w-[7.25rem] rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-center mx-auto tabular-nums"
-                        value={prodStart}
+                      <BrDateInput
+                        variant="compact"
+                        className="w-full min-w-[5.5rem] max-w-[6.25rem] py-1 text-[10px] text-center mx-auto"
+                        value={prodStart || null}
                         title={
                           !it.order_item_id
                             ? "Item sem ordem de produção — execute o MRP no PCP"
@@ -312,12 +263,12 @@ export function PcpLinesLegacyPanel({
                               ? "Sugestão MRP — a data efetiva esta linha"
                               : undefined
                         }
-                        onChange={(e) => {
+                        onChange={(iso) => {
                           if (!it.order_item_id) return;
                           onProgramDate(
                             it.order_item_id,
                             "production_start",
-                            e.target.value || null
+                            iso
                           );
                         }}
                         disabled={!it.order_item_id}
@@ -332,10 +283,10 @@ export function PcpLinesLegacyPanel({
                         {formatPcpDate(prodEnd || null)}
                       </span>
                     ) : (
-                      <input
-                        type="date"
-                        className={`w-full min-w-[6.5rem] max-w-[7.25rem] rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-center mx-auto tabular-nums ${lineEndVsPcpTrafficClass(pcpDeadline, prodEnd || null, completed)}`}
-                        value={prodEnd}
+                      <BrDateInput
+                        variant="compact"
+                        className={`w-full min-w-[5.5rem] max-w-[6.25rem] py-1 text-[10px] text-center mx-auto ${lineEndVsPcpTrafficClass(pcpDeadline, prodEnd || null, completed)}`}
+                        value={prodEnd || null}
                         title={
                           !it.order_item_id
                             ? "Item sem ordem de produção — execute o MRP no PCP"
@@ -343,12 +294,12 @@ export function PcpLinesLegacyPanel({
                               ? "Sugestão MRP — a data efetiva esta linha"
                               : undefined
                         }
-                        onChange={(e) => {
+                        onChange={(iso) => {
                           if (!it.order_item_id) return;
                           onProgramDate(
                             it.order_item_id,
                             "production_end",
-                            e.target.value || null
+                            iso
                           );
                         }}
                         disabled={!it.order_item_id}
@@ -388,14 +339,6 @@ export function PcpLinesLegacyPanel({
                         }
                       >
                         Bloqueado CQ
-                      </span>
-                    ) : null}
-                    {cleanroomBlocked && !qualityControlMode ? (
-                      <span
-                        className="inline-flex w-fit items-center rounded border border-red-300 bg-red-100 px-1.5 py-0.5 text-[9px] font-semibold text-red-900"
-                        title={cleanroomTitle}
-                      >
-                        ISO incompatível
                       </span>
                     ) : null}
                     {cqBlocked && !qualityControlMode && cqReason ? (
@@ -450,15 +393,13 @@ export function PcpLinesLegacyPanel({
                             type="button"
                             size="sm"
                             className="h-6 px-2 text-[10px]"
-                            disabled={apontamentoPending || cqBlocked || cleanroomBlocked}
+                            disabled={apontamentoPending || cqBlocked}
                             title={
                               cqBlocked
                                 ? cqReason
                                   ? `Finalização bloqueada pelo CQ: ${cqReason}`
                                   : "Finalização bloqueada pelo Controle de Qualidade"
-                                : cleanroomBlocked
-                                  ? cleanroomTitle
-                                  : undefined
+                                : undefined
                             }
                             onClick={() => onFinishProduction(it.order_item_id!)}
                           >
@@ -547,92 +488,6 @@ export function PcpLinesLegacyPanel({
                         >
                           {cqReason}
                         </span>
-                      ) : null}
-                      {hvacRequired ? (
-                        <div className="mt-1 w-full border-t border-slate-200 pt-1 space-y-1">
-                          <span className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide">
-                            Integridade HVAC
-                          </span>
-                          <span
-                            className={`text-[10px] font-semibold block ${
-                              hvacPassed
-                                ? "text-emerald-700"
-                                : hvacLatest === "fail"
-                                  ? "text-red-700"
-                                  : "text-amber-800"
-                            }`}
-                          >
-                            {hvacPassed
-                              ? "Aprovado"
-                              : hvacLatest === "fail"
-                                ? "Reprovado"
-                                : "Pendente"}
-                          </span>
-                          {it.hvac_integrity_test_count > 0 ? (
-                            <span className="text-[9px] text-slate-500 block">
-                              {it.hvac_integrity_test_count === 1
-                                ? "1 teste registado"
-                                : `${it.hvac_integrity_test_count} testes registados`}
-                            </span>
-                          ) : null}
-                          {!readOnly &&
-                          it.order_item_id &&
-                          onRegisterIntegrityTest ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-2 text-[10px] border-brand-300 text-brand-900 hover:bg-brand-50"
-                              disabled={integrityActionPending}
-                              onClick={() =>
-                                onRegisterIntegrityTest(
-                                  it.order_item_id!,
-                                  `${it.order_number} · ${it.product_name}`,
-                                  it.hvac_integrity_test_method
-                                )
-                              }
-                            >
-                              Registar PAO/DOP
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {checklistRequired ? (
-                        <div className="mt-1 w-full border-t border-slate-200 pt-1 space-y-1">
-                          <span className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide">
-                            Checklist POP
-                          </span>
-                          <span
-                            className={`text-[10px] font-semibold block ${
-                              checklistPassed
-                                ? "text-emerald-700"
-                                : "text-amber-800"
-                            }`}
-                          >
-                            {checklistPassed
-                              ? "Concluído"
-                              : `${checklistCompleted}/${checklistTotal} itens`}
-                          </span>
-                          {!readOnly &&
-                          it.order_item_id &&
-                          onExecuteChecklist ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-2 text-[10px] border-violet-300 text-violet-900 hover:bg-violet-50"
-                              disabled={checklistActionPending}
-                              onClick={() =>
-                                onExecuteChecklist(
-                                  it.order_item_id!,
-                                  `${it.order_number} · ${it.product_name}`
-                                )
-                              }
-                            >
-                              Marcar checklist
-                            </Button>
-                          ) : null}
-                        </div>
                       ) : null}
                     </span>
                   ) : null}

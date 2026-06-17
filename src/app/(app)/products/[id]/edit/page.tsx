@@ -22,8 +22,6 @@ import { ProductCostHistoryTable } from "@/components/products/product-cost-hist
 import { ProductCompositionPanel } from "@/components/products/product-composition-panel";
 import { ProductRoutingPanel } from "@/components/products/product-routing-panel";
 import { ProductDocumentsPanel } from "@/components/products/product-documents-panel";
-import { ProductHvacSpecsPanel } from "@/components/products/product-hvac-specs-panel";
-import { ProductHvacPopChecklistPanel } from "@/components/products/product-hvac-pop-checklist-panel";
 import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
 import { fmtBRL } from "@/shared/utils/format-brl";
@@ -42,11 +40,11 @@ import {
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
 import { useMe } from "@/hooks/use-me";
 import { meCanManageEngineeringProducts } from "@/modules/engenharia/lib/engineering-product-access";
-import { isHvacSpecProduct } from "@/modules/hvac/lib/hvac-domain";
 import type { StructureSuggestion } from "@/modules/engenharia/lib/services/ai.service";
 import type { TaxAnalysis } from "@/modules/engenharia/lib/services/tax-ai.service";
 import type { Database } from "@/modules/core/types/database";
 import type { ProductType } from "@/modules/core/types/product.types";
+
 function isProductType(t: string): t is ProductType {
   return t === "finished" || t === "raw" || t === "component";
 }
@@ -196,13 +194,12 @@ async function updateProduct(
   return json;
 }
 
-type EditTab = "basics" | "composition" | "routing" | "documents" | "hvac";
+type EditTab = "basics" | "composition" | "routing" | "documents";
 
 function tabFromSearchParam(value: string | null): EditTab {
-  if (value === "composition") return "composition";
+  if (value === "composition" || value === "structure") return "composition";
   if (value === "routing") return "routing";
   if (value === "documents") return "documents";
-  if (value === "hvac") return "hvac";
   return "basics";
 }
 
@@ -268,10 +265,6 @@ export default function EditProductPage() {
       productRaw?.composition_enabled,
       productRaw?.has_composition
     );
-  const showHvacTab = isHvacSpecProduct({
-    product_nature: productRaw?.product_nature ?? null,
-    prefix_code: prefixCode || null,
-  });
 
   useEffect(() => {
     if (meLoading) return;
@@ -631,9 +624,6 @@ export default function EditProductPage() {
             {canHaveBom ? (
               <TabsTrigger value="routing">Roteiro</TabsTrigger>
             ) : null}
-            {showHvacTab ? (
-              <TabsTrigger value="hvac">HVAC</TabsTrigger>
-            ) : null}
             <TabsTrigger value="documents">Documentos</TabsTrigger>
           </TabsList>
 
@@ -889,15 +879,6 @@ export default function EditProductPage() {
           {canHaveBom && productId ? (
             <TabsContent value="routing" className="mt-4">
               <ProductRoutingPanel productId={productId} embedded />
-            </TabsContent>
-          ) : null}
-
-          {showHvacTab && productId ? (
-            <TabsContent value="hvac" className="mt-4">
-              <ProductHvacSpecsPanel productId={productId} />
-              {productRaw?.hvac_specs_enabled ? (
-                <ProductHvacPopChecklistPanel productId={productId} />
-              ) : null}
             </TabsContent>
           ) : null}
 

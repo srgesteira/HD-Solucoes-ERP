@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import type { PurchaseRequisitionRow } from "@/modules/compras/lib/purchasing-requisitions";
 import { SupplierSelectField } from "@/components/purchasing/supplier-select-field";
 import type { SupplierOption } from "@/components/purchasing/supplier-quick-create-modal";
@@ -444,13 +445,12 @@ export function PurchaseRequisitionsPanel() {
                         {formatDate(row.expected_date)}
                       </td>
                       <td className="px-3 py-2.5">
-                        <input
-                          type="date"
-                          className="h-8 rounded-md border border-slate-300 px-2 text-xs"
-                          defaultValue={row.follow_up_date ?? ""}
-                          onBlur={(e) => {
-                            const v = e.target.value || null;
-                            if (v !== (row.follow_up_date ?? "")) {
+                        <BrDateInput
+                          variant="compact"
+                          className="h-8 px-2 text-xs"
+                          value={row.follow_up_date ?? null}
+                          onChange={(v) => {
+                            if (v !== (row.follow_up_date ?? null)) {
                               followUpMut.mutate({
                                 id: row.id,
                                 follow_up_date: v,

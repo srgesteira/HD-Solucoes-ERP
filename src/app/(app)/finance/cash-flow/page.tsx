@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { AppPage } from "@/shared/ui/app-page";
 import {
@@ -211,10 +212,9 @@ export default function FinanceCashFlowEntriesPage() {
           </div>
           <div className="space-y-1">
             <Label>Data</Label>
-            <Input
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+            <BrDateInput
+              value={form.date || null}
+              onChange={(iso) => setForm((f) => ({ ...f, date: iso ?? "" }))}
             />
           </div>
           <div className="sm:col-span-2 space-y-1">

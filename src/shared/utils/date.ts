@@ -78,6 +78,46 @@ export function formatBrazilianDateTime(
   return `${format(d, BRAZIL_DATE_DISPLAY_FORMAT)} ${format(d, "HH:mm")}`;
 }
 
+/** Converte ISO `yyyy-MM-dd` para texto de input BR (`dd/mm/aa`). */
+export function isoToBrazilianDateInput(
+  iso: string | null | undefined
+): string {
+  if (!iso) return "";
+  const formatted = formatShortDate(iso.slice(0, 10));
+  return formatted === "--" ? "" : formatted;
+}
+
+/**
+ * Interpreta texto digitado `dd/mm/aa` ou `dd/mm/aaaa` → `yyyy-MM-dd`.
+ * Retorna `null` se vazio ou inválido.
+ */
+export function parseBrazilianDateInput(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+
+  const br = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
+  if (!br) return null;
+
+  const day = br[1]!.padStart(2, "0");
+  const month = br[2]!.padStart(2, "0");
+  let year = br[3]!;
+  if (year.length === 2) year = `20${year}`;
+  if (year.length !== 4) return null;
+
+  const iso = `${year}-${month}-${day}`;
+  const d = parseLocalDate(iso);
+  if (
+    d.getFullYear() !== Number(year) ||
+    d.getMonth() + 1 !== Number(month) ||
+    d.getDate() !== Number(day)
+  ) {
+    return null;
+  }
+  return iso;
+}
+
 /** Feriado da empresa: data `yyyy-MM-dd` e, se recorrente, aplica a cada ano (mês/dia). */
 export type CompanyHolidayForBusiness = {
   date: string;

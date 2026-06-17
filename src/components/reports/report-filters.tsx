@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/shared/ui/button";
 import { Label } from "@/shared/ui/label";
-import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { cn } from "@/shared/utils/cn";
 
 export type PeriodPreset = "last_month" | "last_quarter" | "year" | "custom";
@@ -96,20 +96,18 @@ export function ReportFilters({
         <div className="flex flex-wrap gap-3 items-end">
           <div className="space-y-1.5">
             <Label htmlFor="report-from">De</Label>
-            <Input
+            <BrDateInput
               id="report-from"
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
+              value={customFrom || null}
+              onChange={(iso) => setCustomFrom(iso ?? "")}
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="report-to">Até</Label>
-            <Input
+            <BrDateInput
               id="report-to"
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
+              value={customTo || null}
+              onChange={(iso) => setCustomTo(iso ?? "")}
             />
           </div>
         </div>

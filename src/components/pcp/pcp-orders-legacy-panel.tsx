@@ -21,6 +21,7 @@ import {
   trafficRowClass,
 } from "@/modules/pcp/lib/pcp-order-display";
 import { pcpItemOriginClass } from "@/modules/pcp/lib/pcp-item-origin";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { cn } from "@/shared/utils/cn";
 import {
   filterPcpOrdersByTab,
@@ -242,13 +243,12 @@ export function PcpOrdersLegacyPanel({
                     {formatPcpDate(order.expected_delivery)}
                   </div>
                   <div className="flex items-stretch min-h-[28px]">
-                    <input
+                    <BrDateInput
                       key={`pcp-${order.id}-${order.pcp_deadline ?? ""}`}
-                      type="date"
-                      className={`w-full rounded-md border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-center ${pcpDeadlineProximityClass(order.pcp_deadline)}`}
-                      defaultValue={order.pcp_deadline ?? ""}
-                      onBlur={(e) => {
-                        const novo = e.target.value || null;
+                      variant="compact"
+                      className={`w-full text-center text-[10px] ${pcpDeadlineProximityClass(order.pcp_deadline)}`}
+                      value={order.pcp_deadline ?? null}
+                      onChange={(novo) => {
                         const atual = order.pcp_deadline || null;
                         if (novo !== atual) {
                           onPcpOrderDeadline(order.id, novo, order.order_source);

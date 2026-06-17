@@ -3,9 +3,6 @@ import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
 import { releaseSalesOrderFinishedGoodsReservations } from "@/modules/almoxarifado/lib/inventory-reservations";
-import { assertSalesOrderReadyForHvacDispatch } from "@/modules/hvac/lib/hvac-integrity-test-service";
-import { assertSalesOrderReadyForHvacChecklistDispatch } from "@/modules/hvac/lib/hvac-pop-checklist-service";
-import { assertSalesOrderReadyForHvacCleanroomDispatch } from "@/modules/hvac/lib/hvac-cleanroom-service";
 
 /**
  * §9 do documento funcional: módulo Transporte / Expedição.
@@ -167,21 +164,7 @@ export async function dispatchShipment(
     shipment.source_kind === "sales_order" &&
     shipment.sales_order_id
   ) {
-    await assertSalesOrderReadyForHvacDispatch(
-      admin,
-      args.tenantId,
-      shipment.sales_order_id
-    );
-    await assertSalesOrderReadyForHvacChecklistDispatch(
-      admin,
-      args.tenantId,
-      shipment.sales_order_id
-    );
-    await assertSalesOrderReadyForHvacCleanroomDispatch(
-      admin,
-      args.tenantId,
-      shipment.sales_order_id
-    );
+    /* vertical HVAC/ISO desactivado — expedição sem portões HEPA/ISO */
   }
 
   const { error } = await db
