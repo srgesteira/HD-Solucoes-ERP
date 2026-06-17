@@ -6,6 +6,7 @@ import { requireAnyMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
 import { checkProductionDateVsPurchases } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
+import { commitMrpSuggestionsForOrderItem } from "@/modules/pcp/lib/mrp-service";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +79,8 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (!existing) return apiError("Item de produção não encontrado", 404);
+
+  await commitMrpSuggestionsForOrderItem(admin, tenantId, orderItemId);
 
   const start =
     patch.production_start !== undefined

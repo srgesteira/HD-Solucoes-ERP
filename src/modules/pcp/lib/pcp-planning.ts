@@ -62,6 +62,8 @@ export type PcpPlanningItem = {
   /** BOM: existe componente com `parent_product_id` = produto. */
   has_bom: boolean;
   quantity_on_hand: number;
+  /** Item de produção ainda é sugestão do MRP (programar datas efetiva a linha). */
+  is_mrp_suggestion: boolean;
   /** Produzir | Comprar (informativo). */
   origin: string;
   origin_kind: PcpItemOriginKind;
@@ -328,6 +330,7 @@ export async function fetchPcpPlanning(
       quality_control: string | null;
       production_notes: string | null;
       pcp_deadline: string | null;
+      is_suggestion: boolean;
     }
   >();
 
@@ -335,15 +338,14 @@ export async function fetchPcpPlanning(
     const { data: oiRows, error: oiErr } = await admin
       .from("order_items")
       .select(
-        "id, sales_order_item_id, line_id, status, production_start, production_end, apontamento_start_at, apontamento_end_at, completed_at, quality_control, production_notes, pcp_deadline"
+        "id, sales_order_item_id, line_id, status, production_start, production_end, apontamento_start_at, apontamento_end_at, completed_at, quality_control, production_notes, pcp_deadline, is_suggestion"
       )
       .eq("tenant_id", tenantId)
-      .eq("is_suggestion", false)
       .in("sales_order_item_id", allSoItemIds);
     if (oiErr) throw new Error(oiErr.message);
     for (const oi of oiRows ?? []) {
       if (!oi.sales_order_item_id) continue;
-      oiBySalesItem.set(oi.sales_order_item_id, {
+      const mapped = {
         id: oi.id,
         line_id: oi.line_id,
         status: oi.status,
@@ -355,7 +357,16 @@ export async function fetchPcpPlanning(
         quality_control: oi.quality_control ?? null,
         production_notes: oi.production_notes ?? null,
         pcp_deadline: dateOnly(oi.pcp_deadline),
-      });
+        is_suggestion: oi.is_suggestion === true,
+      };
+      const prev = oiBySalesItem.get(oi.sales_order_item_id);
+      if (!prev) {
+        oiBySalesItem.set(oi.sales_order_item_id, mapped);
+        continue;
+      }
+      if (prev.is_suggestion && !mapped.is_suggestion) {
+        oiBySalesItem.set(oi.sales_order_item_id, mapped);
+      }
     }
   }
 
@@ -551,6 +562,7 @@ export async function fetchPcpPlanning(
         has_composition: prod?.has_composition === true,
         has_bom: hasBom,
         quantity_on_hand: onHand,
+        is_mrp_suggestion: oi?.is_suggestion === true,
         origin: origin.origin,
         origin_kind: origin.kind,
         origin_label: origin.label,
@@ -772,6 +784,7 @@ async function fetchStockOrdersForPlanning(
         has_bom: hasBom,
         quantity_on_hand:
           productId != null ? (inventoryByProduct.get(productId) ?? 0) : 0,
+        is_mrp_suggestion: false,
         origin: "Estoque",
         origin_kind: stockOrigin,
         origin_label: "OP Estoque",

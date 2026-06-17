@@ -1793,6 +1793,124 @@ export async function generateMrpSuggestionsForPendingOrders(
   };
 }
 
+/** Efetiva sugestões MRP de uma linha de pedido (OP + item + compras ligadas). */
+export async function commitMrpSuggestionsForOrderItem(
+  admin: Admin,
+  tenantId: string,
+  orderItemId: string
+): Promise<{ committed: boolean }> {
+  const { data: oi, error: oiErr } = await admin
+    .from("order_items")
+    .select("id, order_id, sales_order_item_id, is_suggestion")
+    .eq("id", orderItemId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (oiErr) throw new Error(oiErr.message);
+  if (!oi?.is_suggestion) return { committed: false };
+
+  if (oi.order_id) {
+    await admin
+      .from("production_orders")
+      .update({ is_suggestion: false })
+      .eq("id", oi.order_id)
+      .eq("tenant_id", tenantId);
+  }
+
+  await admin
+    .from("order_items")
+    .update({ is_suggestion: false })
+    .eq("id", orderItemId)
+    .eq("tenant_id", tenantId);
+
+  if (oi.sales_order_item_id) {
+    const { data: pois } = await admin
+      .from("purchase_order_items")
+      .select("id, purchase_order_id")
+      .eq("tenant_id", tenantId)
+      .eq("sales_order_item_id", oi.sales_order_item_id)
+      .eq("is_suggestion", true);
+
+    const poIds = [
+      ...new Set(
+        (pois ?? [])
+          .map((p) => p.purchase_order_id)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+
+    await admin
+      .from("purchase_order_items")
+      .update({ is_suggestion: false })
+      .eq("tenant_id", tenantId)
+      .eq("sales_order_item_id", oi.sales_order_item_id)
+      .eq("is_suggestion", true);
+
+    if (poIds.length) {
+      await admin
+        .from("purchase_orders")
+        .update({ is_suggestion: false })
+        .eq("tenant_id", tenantId)
+        .in("id", poIds);
+    }
+
+    const { data: soi } = await admin
+      .from("sales_order_items")
+      .select("sales_order_id")
+      .eq("id", oi.sales_order_item_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (soi?.sales_order_id) {
+      await maybeMarkSalesOrderMrpCommitted(
+        admin,
+        tenantId,
+        soi.sales_order_id
+      );
+    }
+  }
+
+  return { committed: true };
+}
+
+async function maybeMarkSalesOrderMrpCommitted(
+  admin: Admin,
+  tenantId: string,
+  salesOrderId: string
+): Promise<void> {
+  const { data: soiRows, error: soiErr } = await admin
+    .from("sales_order_items")
+    .select("id")
+    .eq("sales_order_id", salesOrderId)
+    .eq("tenant_id", tenantId);
+  if (soiErr) throw new Error(soiErr.message);
+  if (!soiRows?.length) return;
+
+  const soiIds = soiRows.map((r) => r.id);
+  const { data: oiRows, error: oiErr } = await admin
+    .from("order_items")
+    .select("sales_order_item_id, is_suggestion")
+    .eq("tenant_id", tenantId)
+    .in("sales_order_item_id", soiIds);
+  if (oiErr) throw new Error(oiErr.message);
+
+  const realBySoi = new Set<string>();
+  for (const row of oiRows ?? []) {
+    if (row.sales_order_item_id && row.is_suggestion !== true) {
+      realBySoi.add(row.sales_order_item_id);
+    }
+  }
+
+  const allCommitted = soiIds.every((id) => realBySoi.has(id));
+  if (!allCommitted) return;
+
+  await admin
+    .from("sales_orders")
+    .update({ mrp_processed: true, status: "in_production" })
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId)
+    .in("status", ["confirmed", "pending"]);
+}
+
 /** Efetiva sugestões existentes no tenant (is_suggestion=true → false). */
 export async function commitMrpSuggestionsForTenant(
   admin: Admin,

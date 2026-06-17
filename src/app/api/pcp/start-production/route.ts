@@ -6,6 +6,7 @@ import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanProductionApontamento } from "@/modules/producao/lib/production-api-auth";
 import { resolveLineApontamentoStatus } from "@/modules/producao/lib/line-apontamento";
+import { commitMrpSuggestionsForOrderItem } from "@/modules/pcp/lib/mrp-service";
 
 export const dynamic = "force-dynamic";
 
@@ -46,8 +47,9 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (!existing) return apiError("Item de produção não encontrado", 404);
+
   if (existing.is_suggestion) {
-    return apiError("Não é possível apontar numa sugestão do MRP.", 400);
+    await commitMrpSuggestionsForOrderItem(admin, tenantId, orderItemId);
   }
 
   const apontStatus = resolveLineApontamentoStatus(existing);

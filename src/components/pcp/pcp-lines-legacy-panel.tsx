@@ -175,6 +175,7 @@ export function PcpLinesLegacyPanel({
               const cqBlocked = it.cq_finish_block_active === true;
               const cqReason = it.cq_finish_block_reason?.trim() ?? "";
               const priorBlocks = it.cq_finish_blocks_released_count ?? 0;
+              const mrpSuggestion = it.is_mrp_suggestion === true;
 
               const rowBg =
                 (cqBlocked && !qualityControlMode
@@ -203,6 +204,14 @@ export function PcpLinesLegacyPanel({
                   </span>
                   <span className="truncate" title={it.product_name}>
                     {it.product_name}
+                    {mrpSuggestion ? (
+                      <span
+                        className="ml-1 inline-flex rounded border border-violet-200 bg-violet-50 px-1 py-px text-[9px] font-semibold text-violet-800"
+                        title="Sugestão do MRP — ao programar datas a linha é efetivada"
+                      >
+                        MRP
+                      </span>
+                    ) : null}
                   </span>
                   <span className="text-right tabular-nums">{it.quantity}</span>
                   <span
@@ -246,8 +255,15 @@ export function PcpLinesLegacyPanel({
                     ) : (
                       <input
                         type="date"
-                        className="w-full max-w-[4.75rem] rounded-md border border-slate-300 bg-white px-0.5 py-0.5 text-[10px] text-center mx-auto"
+                        className="w-full min-w-[5.5rem] max-w-[6.5rem] rounded-md border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-center mx-auto"
                         value={prodStart}
+                        title={
+                          !it.order_item_id
+                            ? "Item sem ordem de produção — execute o MRP no PCP"
+                            : mrpSuggestion
+                              ? "Sugestão MRP — a data efetiva esta linha"
+                              : undefined
+                        }
                         onChange={(e) => {
                           if (!it.order_item_id) return;
                           onProgramDate(
@@ -270,8 +286,15 @@ export function PcpLinesLegacyPanel({
                     ) : (
                       <input
                         type="date"
-                        className={`w-full max-w-[4.75rem] rounded-md border border-slate-300 bg-white px-0.5 py-0.5 text-[10px] text-center mx-auto ${lineEndVsPcpTrafficClass(pcpDeadline, prodEnd || null, completed)}`}
+                        className={`w-full min-w-[5.5rem] max-w-[6.5rem] rounded-md border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-center mx-auto ${lineEndVsPcpTrafficClass(pcpDeadline, prodEnd || null, completed)}`}
                         value={prodEnd}
+                        title={
+                          !it.order_item_id
+                            ? "Item sem ordem de produção — execute o MRP no PCP"
+                            : mrpSuggestion
+                              ? "Sugestão MRP — a data efetiva esta linha"
+                              : undefined
+                        }
                         onChange={(e) => {
                           if (!it.order_item_id) return;
                           onProgramDate(
