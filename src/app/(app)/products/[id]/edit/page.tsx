@@ -23,6 +23,7 @@ import { ProductCompositionPanel } from "@/components/products/product-compositi
 import { ProductRoutingPanel } from "@/components/products/product-routing-panel";
 import { ProductDocumentsPanel } from "@/components/products/product-documents-panel";
 import { ProductHvacSpecsPanel } from "@/components/products/product-hvac-specs-panel";
+import { ProductHvacPopChecklistPanel } from "@/components/products/product-hvac-pop-checklist-panel";
 import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
 import { fmtBRL } from "@/shared/utils/format-brl";
@@ -803,6 +804,7 @@ export default function EditProductPage() {
           {showHvacTab && productId ? (
             <TabsContent value="hvac" className="mt-4">
               <ProductHvacSpecsPanel productId={productId} />
+              <ProductHvacPopChecklistPanel productId={productId} />
             </TabsContent>
           ) : null}
 

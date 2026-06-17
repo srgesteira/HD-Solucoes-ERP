@@ -20,6 +20,7 @@ import {
 import { QualityCqPromptDialog } from "@/components/producao/quality-cq-prompt-dialog";
 import { QualityCqHistoryDialog } from "@/components/producao/quality-cq-history-dialog";
 import { HvacIntegrityTestDialog } from "@/components/producao/hvac-integrity-test-dialog";
+import { HvacChecklistExecutionDialog } from "@/components/producao/hvac-checklist-execution-dialog";
 import { AppPage } from "@/shared/ui/app-page";
 import { ErrorState, LoadingState } from "@/shared/ui/page-helpers";
 import "@/components/pcp/pcp-legacy.css";
@@ -35,6 +36,11 @@ type IntegrityPromptState = {
   defaultMethod: string | null;
 } | null;
 
+type ChecklistPromptState = {
+  orderItemId: string;
+  label: string;
+} | null;
+
 export function QualityLinesControlView() {
   const qc = useQueryClient();
   const [selectedLineId, setSelectedLineId] = useState("");
@@ -42,6 +48,8 @@ export function QualityLinesControlView() {
   const [prompt, setPrompt] = useState<PromptState>(null);
   const [integrityPrompt, setIntegrityPrompt] =
     useState<IntegrityPromptState>(null);
+  const [checklistPrompt, setChecklistPrompt] =
+    useState<ChecklistPromptState>(null);
   const [history, setHistory] = useState<{
     orderItemId: string;
     label: string;
@@ -187,8 +195,32 @@ export function QualityLinesControlView() {
       toast.error(e instanceof Error ? e.message : "Erro"),
   });
 
+  const checklistMut = useMutation({
+    mutationFn: async (payload: {
+      order_item_id: string;
+      completions: Array<{ checklist_item_id: string; completed: boolean }>;
+    }) => {
+      const res = await fetch("/api/hvac/checklist-completions", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao gravar checklist");
+    },
+    onSuccess: () => {
+      toast.success("Checklist POP HEPA gravado.");
+      setChecklistPrompt(null);
+      void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro"),
+  });
+
   const cqPending = blockMut.isPending || releaseMut.isPending;
   const integrityPending = integrityMut.isPending;
+  const checklistPending = checklistMut.isPending;
 
   const findRowLabel = useCallback(
     (orderItemId: string) => {
@@ -218,7 +250,7 @@ export function QualityLinesControlView() {
   return (
     <AppPage
       title="Controle de qualidade — Produção"
-      description="Bloqueie ou libere a finalização por linha. Registe testes de integridade HVAC (PAO/DOP) quando exigidos na ficha do produto — a expedição do pedido fica bloqueada sem aprovação."
+      description="Bloqueie ou libere a finalização por linha. Registe testes de integridade (PAO/DOP) e checklist POP HEPA quando exigidos — a expedição fica bloqueada sem aprovação."
       width="full"
       density="comfortable"
       actions={
@@ -310,6 +342,10 @@ export function QualityLinesControlView() {
               setIntegrityPrompt({ orderItemId, label, defaultMethod })
             }
             integrityActionPending={integrityPending}
+            onExecuteChecklist={(orderItemId, label) =>
+              setChecklistPrompt({ orderItemId, label })
+            }
+            checklistActionPending={checklistPending}
           />
         </>
       )}
@@ -354,6 +390,21 @@ export function QualityLinesControlView() {
           integrityMut.mutate({
             order_item_id: integrityPrompt.orderItemId,
             ...payload,
+          });
+        }}
+      />
+
+      <HvacChecklistExecutionDialog
+        open={checklistPrompt != null}
+        orderItemId={checklistPrompt?.orderItemId ?? ""}
+        itemLabel={checklistPrompt?.label ?? ""}
+        pending={checklistPending}
+        onClose={() => setChecklistPrompt(null)}
+        onConfirm={(completions) => {
+          if (!checklistPrompt) return;
+          checklistMut.mutate({
+            order_item_id: checklistPrompt.orderItemId,
+            completions,
           });
         }}
       />

@@ -73,3 +73,48 @@ export function emptyHvacSpecs(): HvacProductSpecs {
     hvac_integrity_test_method: null,
   };
 }
+
+/** Item do checklist POP HEPA (template vertical V3). */
+export type HvacPopChecklistTemplateItem = {
+  label: string;
+  detail?: string | null;
+  is_required?: boolean;
+};
+
+/** Checklist padrão HEPA — engenharia pode ajustar por produto. */
+export const HVAC_HEPA_POP_CHECKLIST_TEMPLATE: HvacPopChecklistTemplateItem[] = [
+  {
+    label:
+      "Media filtrante íntegro (sem rasgos, furos ou emendas não conformes)",
+    is_required: true,
+  },
+  {
+    label: "Dimensões dentro da tolerância do desenho / ficha técnica",
+    is_required: true,
+  },
+  {
+    label: "Selagem perimetral uniforme (cola, silicone ou frame)",
+    is_required: true,
+  },
+  {
+    label:
+      "Identificação legível (código, lote, seta de fluxo quando aplicável)",
+    is_required: true,
+  },
+  {
+    label: "POP de montagem disponível e revisão actual (aba Documentos)",
+    is_required: true,
+  },
+  {
+    label: "Teste de integridade PAO/DOP executado e aprovado no CQ",
+    is_required: true,
+  },
+  {
+    label: "Embalagem limpa adequada à classe ISO do produto",
+    is_required: false,
+  },
+  {
+    label: "Registo fotográfico ou anexo arquivado (quando exigido pelo POP)",
+    is_required: false,
+  },
+];

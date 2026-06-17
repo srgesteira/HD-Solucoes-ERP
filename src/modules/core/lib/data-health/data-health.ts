@@ -294,7 +294,69 @@ export async function loadDataHealthIssues(
     /* ignora — tabela ou colunas podem ainda não existir */
   }
 
-  // PCP -----------------------------------------------------------------
+  try {
+    const { data: hvacReleased } = await admin
+      .from("products")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("released_for_sale", true)
+      .eq("product_nature", "AC");
+
+    const productIds = (hvacReleased ?? []).map((p) => String(p.id));
+    if (productIds.length > 0) {
+      const { data: popDocs } = await admin
+        .from("product_documents")
+        .select("product_id")
+        .eq("tenant_id", tenantId)
+        .eq("kind", "pop")
+        .eq("is_active", true)
+        .in("product_id", productIds);
+
+      const withPop = new Set(
+        (popDocs ?? []).map((row) => String(row.product_id))
+      );
+      const missingPop = productIds.filter((id) => !withPop.has(id)).length;
+      if (missingPop > 0) {
+        issues.push({
+          rule_id: "hvac_released_without_pop_document",
+          module: "Engenharia · HVAC",
+          severity: "warning",
+          title: "Produtos acabados liberados sem POP anexado",
+          impact:
+            "Operação e CQ não têm procedimento formal — anexe POP na aba Documentos.",
+          count: missingPop,
+          href: "/products",
+        });
+      }
+
+      const { data: checklistRows } = await admin
+        .from("product_hvac_checklist_items")
+        .select("product_id")
+        .eq("tenant_id", tenantId)
+        .in("product_id", productIds);
+
+      const withChecklist = new Set(
+        (checklistRows ?? []).map((row) => String(row.product_id))
+      );
+      const missingChecklist = productIds.filter(
+        (id) => !withChecklist.has(id)
+      ).length;
+      if (missingChecklist > 0) {
+        issues.push({
+          rule_id: "hvac_released_without_pop_checklist",
+          module: "Engenharia · HVAC",
+          severity: "warning",
+          title: "Produtos acabados sem checklist POP HEPA",
+          impact:
+            "CQ não consegue marcar verificação na linha — aplique template na aba HVAC.",
+          count: missingChecklist,
+          href: "/products",
+        });
+      }
+    }
+  } catch {
+    /* ignora — migrations V3 podem ainda não existir */
+  }
   const ordersNoDeadline = await countOrZero(
     admin
       .from("sales_orders")

@@ -4,6 +4,7 @@ import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
 import { releaseSalesOrderFinishedGoodsReservations } from "@/modules/almoxarifado/lib/inventory-reservations";
 import { assertSalesOrderReadyForHvacDispatch } from "@/modules/hvac/lib/hvac-integrity-test-service";
+import { assertSalesOrderReadyForHvacChecklistDispatch } from "@/modules/hvac/lib/hvac-pop-checklist-service";
 
 /**
  * §9 do documento funcional: módulo Transporte / Expedição.
@@ -166,6 +167,11 @@ export async function dispatchShipment(
     shipment.sales_order_id
   ) {
     await assertSalesOrderReadyForHvacDispatch(
+      admin,
+      args.tenantId,
+      shipment.sales_order_id
+    );
+    await assertSalesOrderReadyForHvacChecklistDispatch(
       admin,
       args.tenantId,
       shipment.sales_order_id

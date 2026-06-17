@@ -1398,6 +1398,78 @@ export type Database = {
           },
         ]
       }
+      hvac_checklist_completions: {
+        Row: {
+          checklist_item_id: string
+          completed: boolean
+          completed_at: string
+          completed_by: string | null
+          id: string
+          notes: string | null
+          order_item_id: string
+          product_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          checklist_item_id: string
+          completed?: boolean
+          completed_at?: string
+          completed_by?: string | null
+          id?: string
+          notes?: string | null
+          order_item_id: string
+          product_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          checklist_item_id?: string
+          completed?: boolean
+          completed_at?: string
+          completed_by?: string | null
+          id?: string
+          notes?: string | null
+          order_item_id?: string
+          product_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hvac_checklist_completions_checklist_item_id_fkey"
+            columns: ["checklist_item_id"]
+            isOneToOne: false
+            referencedRelation: "product_hvac_checklist_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hvac_checklist_completions_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hvac_checklist_completions_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hvac_checklist_completions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hvac_checklist_completions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hvac_integrity_tests: {
         Row: {
           created_at: string
@@ -2508,6 +2580,57 @@ export type Database = {
           },
           {
             foreignKeyName: "product_finishes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_hvac_checklist_items: {
+        Row: {
+          created_at: string
+          detail: string | null
+          id: string
+          is_required: boolean
+          label: string
+          product_id: string
+          sequence: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          detail?: string | null
+          id?: string
+          is_required?: boolean
+          label: string
+          product_id: string
+          sequence: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          detail?: string | null
+          id?: string
+          is_required?: boolean
+          label?: string
+          product_id?: string
+          sequence?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_hvac_checklist_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_hvac_checklist_items_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"

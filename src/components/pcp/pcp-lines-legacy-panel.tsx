@@ -59,6 +59,9 @@ type Props = {
     defaultMethod: string | null
   ) => void;
   integrityActionPending?: boolean;
+  /** CQ HVAC: executar checklist POP HEPA. */
+  onExecuteChecklist?: (orderItemId: string, label: string) => void;
+  checklistActionPending?: boolean;
 };
 
 /** Pedido, Cliente, Cód., Descrição, Qtd, Origem, Prazo PCP, PC entrega, Início/Fim plano, Obs., Apontamento */
@@ -89,6 +92,8 @@ export function PcpLinesLegacyPanel({
   cqActionPending = false,
   onRegisterIntegrityTest,
   integrityActionPending = false,
+  onExecuteChecklist,
+  checklistActionPending = false,
 }: Props) {
   const gridCols = qualityControlMode ? LINE_GRID_COLS_CQ : LINE_GRID_COLS;
 
@@ -187,6 +192,10 @@ export function PcpLinesLegacyPanel({
               const hvacRequired = it.hvac_integrity_required === true;
               const hvacPassed = it.hvac_integrity_passed === true;
               const hvacLatest = it.hvac_integrity_latest_result;
+              const checklistRequired = it.hvac_checklist_required === true;
+              const checklistPassed = it.hvac_checklist_passed === true;
+              const checklistTotal = it.hvac_checklist_total ?? 0;
+              const checklistCompleted = it.hvac_checklist_completed ?? 0;
               const mrpSuggestion = it.is_mrp_suggestion === true;
 
               const rowBg =
@@ -547,6 +556,43 @@ export function PcpLinesLegacyPanel({
                               }
                             >
                               Registar PAO/DOP
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {checklistRequired ? (
+                        <div className="mt-1 w-full border-t border-slate-200 pt-1 space-y-1">
+                          <span className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide">
+                            Checklist POP
+                          </span>
+                          <span
+                            className={`text-[10px] font-semibold block ${
+                              checklistPassed
+                                ? "text-emerald-700"
+                                : "text-amber-800"
+                            }`}
+                          >
+                            {checklistPassed
+                              ? "Concluído"
+                              : `${checklistCompleted}/${checklistTotal} itens`}
+                          </span>
+                          {!readOnly &&
+                          it.order_item_id &&
+                          onExecuteChecklist ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px] border-violet-300 text-violet-900 hover:bg-violet-50"
+                              disabled={checklistActionPending}
+                              onClick={() =>
+                                onExecuteChecklist(
+                                  it.order_item_id!,
+                                  `${it.order_number} · ${it.product_name}`
+                                )
+                              }
+                            >
+                              Marcar checklist
                             </Button>
                           ) : null}
                         </div>

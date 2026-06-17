@@ -19,9 +19,9 @@
 | 6 Roteiro N ops | ✅ | Pendente Helder |
 | 7 Conciliação bancária | ✅ | Pendente Helder |
 
-**Pós-frentes:** assistente fiscal de inconsistências · **vertical HVAC V1** (ficha técnica) · **V2 CQ integridade** (PAO/DOP + gate expedição).
+**Pós-frentes:** assistente fiscal · **vertical HVAC V1–V3** (ficha, integridade, checklist POP).
 
-**Próximo foco vertical:** smoke manual V2 · V3 POPs HEPA · contadora preenche regras.
+**Próximo foco vertical:** smoke manual V1–V3 · V4 orçamento HVAC · contadora preenche regras.
 
 ## Regras de ouro (valem para TODA tarefa abaixo)
 
@@ -179,7 +179,7 @@ OFX/CSV + match com contas. **≠** conciliação NF-e compra.
 | V0 Decisão | ✅ |
 | V1 Ficha técnica produto | ✅ |
 | V2 CQ integridade | ✅ |
-| V3 POPs HEPA | Parcial (biblioteca documentos) |
+| V3 POPs HEPA | ✅ |
 | V4 Orçamento HVAC | Pendente |
 | V5 Área classificada | Pendente |
 
