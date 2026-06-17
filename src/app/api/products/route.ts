@@ -34,6 +34,7 @@ import { productTypeFromPrefixCode } from "@/modules/engenharia/lib/products/pro
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
 import { resolveMoProductCostPrice } from "@/modules/engenharia/lib/products/mo-cost-price";
 import { productNatureFromPrefixCode } from "@/modules/engenharia/lib/products/mrp-product-nature";
+import { ENGINEERING_STATUS_PENDING } from "@/modules/engenharia/lib/products/engineering-workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -145,7 +146,16 @@ export async function GET(request: NextRequest) {
 
   const workflowPending = params.get("workflow_pending");
   if (workflowPending === "1" && hasEngineering) {
-    q = q.eq("engineering_workflow_status", "pending_composition");
+    /** Eng. pendente = qualquer produto em construção (não liberado). */
+    q = q
+      .or(
+        [
+          `engineering_workflow_status.eq.${ENGINEERING_STATUS_PENDING}`,
+          "and(product_nature.eq.SE,has_composition.eq.false)",
+          "and(type.eq.finished,released_for_sale.eq.false)",
+        ].join(",")
+      )
+      .neq("product_nature", "RV");
   }
   /** Opt-in estrito: só ?has_composition=true. Ausente/vazio/outro valor = sem filtro. */
   const filterHasComposition = params.get("has_composition") === "true";

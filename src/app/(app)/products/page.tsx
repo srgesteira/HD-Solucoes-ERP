@@ -23,6 +23,10 @@ import {
 } from "@/shared/ui/cronograma-layout";import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { meCanManageEngineeringProducts } from "@/modules/engenharia/lib/engineering-product-access";
+import {
+  isProductEngineeringPending,
+  prefixCodeFromJoin,
+} from "@/modules/engenharia/lib/products/product-lifecycle";
 import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductPrefixTabs } from "@/components/products/product-prefix-tabs";
 import { ProductRowActionsMenu } from "@/components/products/product-row-actions-menu";
@@ -424,7 +428,13 @@ export default function ProductsPage() {
         isLoading={isLoading}
         emptyMessage="Nenhum produto encontrado."
         rowClassName={(row) =>
-          row.engineering_workflow_status === "pending_composition"
+          isProductEngineeringPending({
+            product_nature: row.product_nature,
+            has_composition: row.has_composition,
+            released_for_sale: row.released_for_sale,
+            engineering_workflow_status: row.engineering_workflow_status,
+            prefix_code: prefixCodeFromJoin(row.prefix),
+          })
             ? "bg-amber-50/90 animate-pulse ring-1 ring-inset ring-amber-300/80"
             : ""
         }

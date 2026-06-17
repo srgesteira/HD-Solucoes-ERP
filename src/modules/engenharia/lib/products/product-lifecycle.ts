@@ -27,7 +27,7 @@ export type ProductLifecycleInput = {
 
 export const PRODUCT_LIFECYCLE_LABELS: Record<ProductLifecycle, string> = {
   mask: "Máscara",
-  engineering: "Em estruturação",
+  engineering: "Eng. pendente",
   released: "Liberado",
   resale: "Revenda",
 };
@@ -87,4 +87,11 @@ export function deriveProductLifecycle(
   }
 
   return null;
+}
+
+/** Produto ainda em construção / aguardando engenharia (não liberado). */
+export function isProductEngineeringPending(
+  input: ProductLifecycleInput
+): boolean {
+  return deriveProductLifecycle(input) === "engineering";
 }

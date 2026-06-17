@@ -103,8 +103,8 @@ export function ProductReleaseForSalePanel({
         )}
       >
         Cadastre pelo menos um item na composição (BOM) abaixo. Quando o custo
-        estiver correcto, clique em liberar — o badge passa de «Em
-        estruturação» para «Liberado».
+        estiver correcto, clique em liberar — o badge passa de «Eng.
+        pendente» para «Liberado».
         {isPending
           ? " O orçamento associado será destacado para o vendedor aplicar markup."
           : null}
