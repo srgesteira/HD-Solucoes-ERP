@@ -5,7 +5,11 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
-import { parseCsvBankLines } from "@/modules/finance/lib/bank-import-parser";
+import {
+  parseCsvBankLines,
+  parseOfxBankLines,
+} from "@/modules/finance/lib/bank-import-parser";
+import { autoMatchBankImport } from "@/modules/finance/lib/bank-reconciliation-service";
 
 export const dynamic = "force-dynamic";
 
@@ -81,8 +85,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const lines =
-      format === "csv"
-        ? parseCsvBankLines(content)
+      format === "ofx"
+        ? parseOfxBankLines(content)
         : parseCsvBankLines(content);
 
     if (!lines.length) {
@@ -110,7 +114,17 @@ export async function POST(request: NextRequest) {
       .update({ status: "processed" })
       .eq("id", imp.id);
 
-    return apiOk({ import_id: imp.id, lines: rows.length }, 201);
+    const matchResult = await autoMatchBankImport(admin, tenantId, imp.id);
+
+    return apiOk(
+      {
+        import_id: imp.id,
+        lines: rows.length,
+        auto_matched: matchResult.matched,
+        unmatched: matchResult.unmatched,
+      },
+      201
+    );
   } catch (e) {
     await db
       .from("bank_imports")

@@ -7,6 +7,7 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
 import { listFiscalRules } from "@/modules/fiscal/lib/fiscal-rules-service";
+import type { Database } from "@/modules/core/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
 
   const { data, error } = await db
     .from("fiscal_rules")
-    .insert(payload)
+    .insert(payload as Database["public"]["Tables"]["fiscal_rules"]["Insert"])
     .select("*")
     .single();
 

@@ -28,6 +28,7 @@ import { purchaseOrderPaymentUpdateSchema } from "@/shared/contracts/purchase-or
 import { canEditPurchaseOrderItems } from "@/modules/compras/lib/purchasing/purchase-order-edit";
 import { aggregatePurchaseLineTaxes } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import { computePurchaseOrderTotal } from "@/modules/compras/lib/purchasing/purchase-order-totals";
+import { fmtBRL } from "@/shared/utils/format-brl";
 export type PurchaseOrderFormData = {
   id: string;
   po_number: string;
@@ -96,13 +97,6 @@ type Props = {
   totalsFooter?: ReactNode;
   canSave?: boolean;
 };
-
-function fmtBRL(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(n);
-}
 
 function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);

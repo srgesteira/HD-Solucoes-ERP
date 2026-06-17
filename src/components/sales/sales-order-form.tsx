@@ -35,6 +35,7 @@ import {
 } from "@/modules/vendas/lib/sales/sales-order-status";
 import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
 import { cn } from "@/shared/utils/cn";
+import { fmtBRL } from "@/shared/utils/format-brl";
 
 export type SalesOrderFormData = {
   id: string;
@@ -118,13 +119,6 @@ type Props = {
   requireAdminForCreate?: boolean;
   isAdmin?: boolean;
 };
-
-function fmtBRL(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number.isFinite(n) ? n : 0);
-}
 
 function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);

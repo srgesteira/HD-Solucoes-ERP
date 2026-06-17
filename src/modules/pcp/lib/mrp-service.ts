@@ -9,6 +9,7 @@ import {
   shortageFromAvailability,
 } from "@/modules/almoxarifado/lib/inventory-availability";
 import { reserveMaterialsForProductionOrderItem } from "@/modules/almoxarifado/lib/inventory-reservations";
+import { ensureOrderItemOperations } from "@/modules/pcp/lib/product-routing-service";
 import {
   grossNeedsFromGraph,
   loadBomGraph,
@@ -1206,6 +1207,13 @@ export async function processMrpForSalesOrder(
         .single();
       if (oiErr) throw new Error(oiErr.message);
       productionItemId = oiRow.id;
+      await ensureOrderItemOperations(
+        admin,
+        tenantId,
+        oiRow.id,
+        row.product_id,
+        defaultLineId
+      );
     }
 
     const matIds = [...new Set(shortages.map((s) => s.product_id))];
@@ -2076,17 +2084,28 @@ export async function createProductionOrderIfFeasible(
     if (!it.product_id) continue;
     const qty = Number(it.quantity ?? 0);
     if (!Number.isFinite(qty) || qty <= 0) continue;
-    const { error: oiErr } = await admin.from("order_items").insert({
-      tenant_id: tenantId,
-      order_id: poRow.id,
-      item_number: itemNum++,
-      description: it.description || "Item",
-      quantity: qty,
-      unit: it.unit?.trim() || "UN",
-      product_id: it.product_id,
-      status: "waiting",
-    });
+    const { data: oiRow, error: oiErr } = await admin
+      .from("order_items")
+      .insert({
+        tenant_id: tenantId,
+        order_id: poRow.id,
+        item_number: itemNum++,
+        description: it.description || "Item",
+        quantity: qty,
+        unit: it.unit?.trim() || "UN",
+        product_id: it.product_id,
+        status: "waiting",
+      })
+      .select("id")
+      .single();
     if (oiErr) throw new Error(oiErr.message);
+    await ensureOrderItemOperations(
+      admin,
+      tenantId,
+      oiRow.id,
+      it.product_id,
+      null
+    );
   }
 
   const { error: upErr } = await admin

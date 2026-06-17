@@ -32,6 +32,7 @@ import type { Tables } from "@/modules/core/types/database";
 import type { ReceivableStatus } from "@/modules/core/types/finance.types";
 import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
 import { defaultExpectedDeliveryForOrder } from "@/modules/vendas/lib/sales/sales-flow";
+import { fmtBRL } from "@/shared/utils/format-brl";
 import { SalesOrderChangeHistory } from "@/components/sales/sales-order-change-history";
 import { SalesReturnCreateModal } from "@/components/sales/sales-return-create-modal";
 
@@ -157,13 +158,6 @@ function unwrapNfes(raw: unknown): NfeLineBrief[] {
     });
   }
   return out;
-}
-
-function fmtBRL(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(n ?? 0));
 }
 
 function fmtDay(iso: string | null | undefined): string {

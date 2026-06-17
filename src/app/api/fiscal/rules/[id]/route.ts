@@ -7,6 +7,7 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import type { Database } from "@/modules/core/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +72,7 @@ export async function PUT(request: NextRequest, ctx: RouteCtx) {
 
   const { data, error } = await db
     .from("fiscal_rules")
-    .update(update)
+    .update(update as Database["public"]["Tables"]["fiscal_rules"]["Update"])
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .select("*")

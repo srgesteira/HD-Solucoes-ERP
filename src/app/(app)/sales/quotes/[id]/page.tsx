@@ -31,6 +31,7 @@ import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { cn } from "@/shared/utils/cn";
+import { fmtBRL } from "@/shared/utils/format-brl";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { QuoteStatus } from "@/modules/core/types/sales.types";
@@ -106,13 +107,6 @@ type QuoteDetail = {
   items?: QuoteItemLine[] | null;
   converted_sale?: unknown;
 };
-
-function fmtBRL(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(n ?? 0));
-}
 
 function fmtDay(iso: string | null | undefined): string {
   if (iso == null || iso === "") return "—";

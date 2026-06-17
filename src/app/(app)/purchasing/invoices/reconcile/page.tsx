@@ -32,6 +32,7 @@ import type {
   ReconcileUploadResult,
 } from "@/modules/compras/lib/purchasing/purchase-invoice-reconcile";
 import { cn } from "@/shared/utils/cn";
+import { fmtBRL } from "@/shared/utils/format-brl";
 
 type LineMapping = {
   purchaseOrderItemId: string;
@@ -41,13 +42,6 @@ type LineMapping = {
   unitPrice: number;
   isNewPurchase: boolean;
 };
-
-function fmtBRL(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number.isFinite(n) ? n : 0);
-}
 
 async function uploadInvoicePdf(file: File): Promise<ReconcileUploadResult> {
   const fd = new FormData();

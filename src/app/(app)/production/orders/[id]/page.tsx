@@ -24,7 +24,7 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -54,6 +54,15 @@ interface OrderItem {
     technical_code?: string | null;
     name: string;
   } | null;
+  operations?: OrderItemOperation[];
+}
+
+interface OrderItemOperation {
+  id: string;
+  sequence: number;
+  name: string;
+  status: string;
+  planned_duration_minutes: number | null;
 }
 
 interface ProductionOrder {
@@ -109,6 +118,24 @@ async function updateItemStatus(
   return json;
 }
 
+async function updateOperationStatus(operationId: string, status: string) {
+  const res = await fetch(
+    `/api/production/order-item-operations/${operationId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+      credentials: "include",
+      cache: "no-store",
+    }
+  );
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) {
+    throw new Error(json.error ?? "Erro ao atualizar operação");
+  }
+  return json;
+}
+
 const statusConfig: Record<string, { label: string; className: string }> = {
   waiting: {
     label: "Aguardando",
@@ -125,6 +152,25 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   delayed: {
     label: "Atrasado",
     className: "bg-red-50 text-red-800 border-red-200",
+  },
+};
+
+const operationStatusConfig: Record<string, { label: string; className: string }> = {
+  pending: {
+    label: "Pendente",
+    className: "bg-slate-100 text-slate-700 border-slate-200",
+  },
+  in_progress: {
+    label: "Em curso",
+    className: "bg-blue-50 text-blue-800 border-blue-200",
+  },
+  completed: {
+    label: "Concluída",
+    className: "bg-emerald-50 text-emerald-900 border-emerald-200",
+  },
+  skipped: {
+    label: "Ignorada",
+    className: "bg-slate-200 text-slate-600 border-slate-300",
   },
 };
 
@@ -398,6 +444,23 @@ export default function ProductionOrderDetailPage() {
         queryKey: ["production-order", orderId],
       });
       void queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const operationMutation = useMutation({
+    mutationFn: ({
+      operationId,
+      status,
+    }: {
+      operationId: string;
+      status: string;
+    }) => updateOperationStatus(operationId, status),
+    onSuccess: () => {
+      toast.success("Operação atualizada.");
+      void queryClient.invalidateQueries({
+        queryKey: ["production-order", orderId],
+      });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -684,8 +747,14 @@ export default function ProductionOrderDetailPage() {
                       className:
                         "bg-slate-100 text-slate-800 border-slate-200",
                     };
+                    const operations = Array.isArray(item.operations)
+                      ? [...item.operations].sort(
+                          (a, b) => a.sequence - b.sequence
+                        )
+                      : [];
                     return (
-                      <tr key={item.id} className="hover:bg-slate-50/80">
+                      <Fragment key={item.id}>
+                      <tr className="hover:bg-slate-50/80">
                         <td className="p-3 font-mono text-slate-700">
                           {item.item_number ?? "—"}
                         </td>
@@ -753,6 +822,71 @@ export default function ProductionOrderDetailPage() {
                           )}
                         </td>
                       </tr>
+                      {operations.map((op) => {
+                        const opSt = operationStatusConfig[op.status] ?? {
+                          label: op.status,
+                          className:
+                            "bg-slate-100 text-slate-800 border-slate-200",
+                        };
+                        const nextStatus =
+                          op.status === "completed"
+                            ? "pending"
+                            : op.status === "pending"
+                              ? "in_progress"
+                              : "completed";
+                        const nextLabel =
+                          op.status === "completed"
+                            ? "Reabrir"
+                            : op.status === "pending"
+                              ? "Iniciar"
+                              : "Concluir";
+                        return (
+                          <tr
+                            key={op.id}
+                            className="bg-slate-50/60 text-xs"
+                          >
+                            <td className="p-2 pl-6 text-slate-400">
+                              {item.item_number ?? "—"}.{op.sequence}
+                            </td>
+                            <td className="p-2 text-slate-700" colSpan={2}>
+                              Operação: {op.name}
+                            </td>
+                            <td className="p-2 text-slate-500" colSpan={3}>
+                              {op.planned_duration_minutes
+                                ? `${op.planned_duration_minutes} min`
+                                : "—"}
+                            </td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  "inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                                  opSt.className
+                                )}
+                              >
+                                {opSt.label}
+                              </span>
+                            </td>
+                            <td className="p-2 text-center">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-[11px]"
+                                disabled={operationMutation.isPending}
+                                onClick={() =>
+                                  operationMutation.mutate({
+                                    operationId: op.id,
+                                    status: nextStatus,
+                                  })
+                                }
+                              >
+                                {nextLabel}
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      </Fragment>
                     );
                   })}
                 </tbody>

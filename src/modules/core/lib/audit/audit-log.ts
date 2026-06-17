@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/modules/core/types/database";
+import type { Database, Json } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 
 /**
@@ -55,7 +55,7 @@ export async function recordAuditEvent(
     table_name: args.table,
     record_id: args.recordId,
     event_kind: args.eventKind,
-    event_payload: args.payload ?? {},
+    event_payload: (args.payload ?? {}) as Json,
   });
 }
 

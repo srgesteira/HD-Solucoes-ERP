@@ -25,6 +25,7 @@ import {
   type SalesReturnReason,
   type SalesReturnStatus,
 } from "@/modules/reverse/lib/returns-types";
+import { formatBrl } from "@/shared/utils/format-brl";
 
 type ReturnTab = "all" | SalesReturnStatus;
 
@@ -75,13 +76,6 @@ const STATUS_TONE: Record<SalesReturnStatus, StatusTone> = {
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR");
-}
-
-function formatBrl(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(n);
 }
 
 export default function SalesReturnsListPage() {

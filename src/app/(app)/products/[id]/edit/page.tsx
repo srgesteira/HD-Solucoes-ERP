@@ -23,6 +23,7 @@ import { ProductCompositionPanel } from "@/components/products/product-compositi
 import { ProductDocumentsPanel } from "@/components/products/product-documents-panel";
 import { ProductLifecycleBadge } from "@/components/products/product-lifecycle-badge";
 import { ProductReleaseForSalePanel } from "@/components/products/product-release-for-sale-panel";
+import { fmtBRL } from "@/shared/utils/format-brl";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { AppPage } from "@/shared/ui/app-page";
 import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/products/prefix-classification";
@@ -123,13 +124,6 @@ async function fetchProduct(id: string): Promise<ProductLoaded> {
   }
   if (!json.data) throw new Error("Resposta sem dados.");
   return json.data;
-}
-
-function fmtBRL(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(n ?? 0));
 }
 
 function rowToForm(data: ProductLoaded): ProductFormShape {

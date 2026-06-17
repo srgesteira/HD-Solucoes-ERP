@@ -23,7 +23,8 @@ const ORDER_DETAIL_SELECT =
     *,
     product:products!order_items_product_id_fkey(*),
     line:production_lines!order_items_line_id_fkey(*),
-    completed_by_user:user_profiles!order_items_completed_by_fkey(*)
+    completed_by_user:user_profiles!order_items_completed_by_fkey(*),
+    operations:order_item_operations(*)
   )
 `.trim();
 

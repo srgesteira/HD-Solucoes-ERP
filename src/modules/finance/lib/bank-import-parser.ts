@@ -5,6 +5,59 @@ export type ParsedBankLine = {
   documentNumber: string | null;
 };
 
+function parseOfxDate(raw: string): string | null {
+  const m = raw.match(/^(\d{4})(\d{2})(\d{2})/);
+  if (!m) return null;
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
+function parseOfxAmount(raw: string): number | null {
+  const n = Number(String(raw).replace(",", ".").trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Parser OFX 1.x/2.x — extrai STMTTRN do XML/SGML. */
+export function parseOfxBankLines(content: string): ParsedBankLine[] {
+  const out: ParsedBankLine[] = [];
+  const blocks = content.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) ?? [];
+
+  for (const block of blocks) {
+    const dtPosted =
+      block.match(/<DTPOSTED>([^<\n]+)/i)?.[1] ??
+      block.match(/DTPOSTED>([^\n<]+)/i)?.[1];
+    const trnAmt =
+      block.match(/<TRNAMT>([^<\n]+)/i)?.[1] ??
+      block.match(/TRNAMT>([^\n<]+)/i)?.[1];
+    if (!dtPosted || trnAmt == null) continue;
+
+    const date = parseOfxDate(dtPosted.trim());
+    const amount = parseOfxAmount(trnAmt);
+    if (!date || amount == null) continue;
+
+    const memo =
+      block.match(/<MEMO>([^<\n]+)/i)?.[1]?.trim() ??
+      block.match(/MEMO>([^\n<]+)/i)?.[1]?.trim() ??
+      null;
+    const name =
+      block.match(/<NAME>([^<\n]+)/i)?.[1]?.trim() ??
+      block.match(/NAME>([^\n<]+)/i)?.[1]?.trim() ??
+      null;
+    const fitId =
+      block.match(/<FITID>([^<\n]+)/i)?.[1]?.trim() ??
+      block.match(/FITID>([^\n<]+)/i)?.[1]?.trim() ??
+      null;
+
+    out.push({
+      date,
+      amount,
+      description: memo || name,
+      documentNumber: fitId,
+    });
+  }
+
+  return out;
+}
+
 /** Parser CSV simples: data;valor;descrição ou data,valor,descrição */
 export function parseCsvBankLines(content: string): ParsedBankLine[] {
   const lines = content

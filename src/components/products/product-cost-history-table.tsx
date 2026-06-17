@@ -8,13 +8,7 @@ import {
   priceTypeLabel,
   type ProductPriceHistoryRow,
 } from "@/modules/engenharia/lib/products/product-price-history";
-
-function fmtBRL(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(n);
-}
+import { fmtBRL } from "@/shared/utils/format-brl";
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";

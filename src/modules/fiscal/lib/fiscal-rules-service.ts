@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/modules/core/types/database";
+import type { Database, Json } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import {
   recalcLineTaxAmounts,
@@ -127,15 +127,15 @@ export async function applyFiscalToLine(
       document_line_id: input.documentLineId,
       fiscal_rule_id: match.rule?.id ?? null,
       match_score: match.matchScore,
-      match_detail: match.matchDetail,
-      input_snapshot: ctx,
+      match_detail: match.matchDetail as Json,
+      input_snapshot: ctx as Json,
       output_snapshot: {
         cfop: match.cfop,
         rates: match.rates,
         ibs_cbs_classificacao: match.ibsCbsClassificacao,
         tax_fields: taxFields,
         warnings: match.warnings,
-      },
+      } as Json,
       source: "auto",
       applied_by: input.appliedBy ?? null,
     });

@@ -21,10 +21,6 @@ export type PurchaseOrderItem =
 export type PurchaseOrderItemInsert =
   Database["public"]["Tables"]["purchase_order_items"]["Insert"];
 
-// Goods Receipts
-export type GoodsReceipt =
-  Database["public"]["Tables"]["goods_receipts"]["Row"];
-
 // Status types
 export type PurchaseOrderStatus =
   | "draft"

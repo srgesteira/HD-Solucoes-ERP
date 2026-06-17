@@ -9,6 +9,7 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
 import type { Database } from "@/modules/core/types/database";
+import { ensureOrderItemOperations } from "@/modules/pcp/lib/product-routing-service";
 
 export const dynamic = "force-dynamic";
 
@@ -245,6 +246,23 @@ export async function POST(request: NextRequest, { params }: Params) {
       "Erro ao adicionar item: " + error.message,
       supabaseErrorToHttp(error.code)
     );
+  }
+
+  if (data?.id) {
+    try {
+      await ensureOrderItemOperations(
+        admin,
+        tenantId,
+        data.id,
+        product_id,
+        line_id
+      );
+    } catch (opErr) {
+      return apiError(
+        opErr instanceof Error ? opErr.message : "Erro ao criar operações",
+        500
+      );
+    }
   }
 
   return apiOk({ data }, 201);

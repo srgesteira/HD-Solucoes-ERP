@@ -27,14 +27,6 @@ export type Holiday = Database["public"]["Tables"]["holidays"]["Row"];
 export type HolidayInsert = Database["public"]["Tables"]["holidays"]["Insert"];
 export type HolidayUpdate = Database["public"]["Tables"]["holidays"]["Update"];
 
-/** Operadores autorizados por linha */
-export type OperatorLine =
-  Database["public"]["Tables"]["operator_lines"]["Row"];
-export type OperatorLineInsert =
-  Database["public"]["Tables"]["operator_lines"]["Insert"];
-export type OperatorLineUpdate =
-  Database["public"]["Tables"]["operator_lines"]["Update"];
-
 export type OrderStatus =
   | "imported"
   | "planning"

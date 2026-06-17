@@ -22,13 +22,7 @@ import {
   defaultBdiSettings,
   totalTaxPctFromSettingsOrCompany,
 } from "@/modules/engenharia/lib/pricing/bdi-calculate";
-
-function fmtBRL(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(n ?? 0));
-}
+import { fmtBRL } from "@/shared/utils/format-brl";
 
 type ApiGetResponse = {
   data: Tables<"bdi_settings"> | null;
