@@ -240,6 +240,17 @@ export async function getChecklistExecutionSummary(
   orderItemId: string
 ): Promise<HvacChecklistExecutionSummary> {
   const productId = await getOrderItemProductId(admin, tenantId, orderItemId);
+
+  const { data: productRow } = await admin
+    .from("products")
+    .select("hvac_specs_enabled")
+    .eq("tenant_id", tenantId)
+    .eq("id", productId)
+    .maybeSingle();
+  if (productRow?.hvac_specs_enabled !== true) {
+    return buildExecutionSummary({ items: [], completions: new Map() });
+  }
+
   const items = await listProductChecklistItems(admin, tenantId, productId);
 
   if (items.length === 0) {

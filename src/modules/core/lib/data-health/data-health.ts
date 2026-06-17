@@ -226,7 +226,7 @@ export async function loadDataHealthIssues(
       .select("*", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
       .eq("released_for_sale", true)
-      .eq("product_nature", "AC")
+      .eq("hvac_specs_enabled", true)
       .is("hvac_filter_class", null)
   );
   if (hvacReleasedNoClass > 0) {
@@ -301,7 +301,7 @@ export async function loadDataHealthIssues(
       .select("id")
       .eq("tenant_id", tenantId)
       .eq("released_for_sale", true)
-      .eq("product_nature", "AC");
+      .eq("hvac_specs_enabled", true);
 
     const productIds = (hvacReleased ?? []).map((p) => String(p.id));
     if (productIds.length > 0) {

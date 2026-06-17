@@ -6,6 +6,7 @@ import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { hvacProductSpecsSchema } from "@/shared/contracts/hvac-product.schema";
 import { isHvacSpecProduct } from "@/modules/hvac/lib/hvac-domain";
+import type { Database } from "@/modules/core/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       `
       id,
       product_nature,
+      hvac_specs_enabled,
       hvac_filter_class,
       hvac_airflow_m3h,
       hvac_pressure_drop_pa,
@@ -66,6 +68,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       product_nature: data.product_nature,
       prefix_code: prefix?.code ?? null,
     }),
+    hvac_specs_enabled: data.hvac_specs_enabled === true,
   });
 }
 
@@ -93,6 +96,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!parsed.success) {
     return apiError(parsed.error.issues[0]?.message ?? "Dados inválidos", 400);
   }
+
+  const enableFlag =
+    body && typeof body === "object" && "hvac_specs_enabled" in body
+      ? Boolean((body as { hvac_specs_enabled?: boolean }).hvac_specs_enabled)
+      : undefined;
 
   const admin = createSupabaseAdminClient();
   const { data: product, error: loadErr } = await admin
@@ -124,16 +132,29 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const b = parsed.data;
+  const patch: Database["public"]["Tables"]["products"]["Update"] = {
+    hvac_filter_class: b.hvac_filter_class?.trim() || null,
+    hvac_airflow_m3h: b.hvac_airflow_m3h ?? null,
+    hvac_pressure_drop_pa: b.hvac_pressure_drop_pa ?? null,
+    hvac_cleanroom_class: b.hvac_cleanroom_class?.trim() || null,
+    hvac_requires_integrity_test: b.hvac_requires_integrity_test ?? false,
+    hvac_integrity_test_method: b.hvac_integrity_test_method?.trim() || null,
+  };
+  if (enableFlag !== undefined) {
+    patch.hvac_specs_enabled = enableFlag;
+  } else if (
+    b.hvac_filter_class ||
+    b.hvac_airflow_m3h != null ||
+    b.hvac_pressure_drop_pa != null ||
+    b.hvac_cleanroom_class ||
+    b.hvac_requires_integrity_test
+  ) {
+    patch.hvac_specs_enabled = true;
+  }
+
   const { error: updErr } = await admin
     .from("products")
-    .update({
-      hvac_filter_class: b.hvac_filter_class?.trim() || null,
-      hvac_airflow_m3h: b.hvac_airflow_m3h ?? null,
-      hvac_pressure_drop_pa: b.hvac_pressure_drop_pa ?? null,
-      hvac_cleanroom_class: b.hvac_cleanroom_class?.trim() || null,
-      hvac_requires_integrity_test: b.hvac_requires_integrity_test ?? false,
-      hvac_integrity_test_method: b.hvac_integrity_test_method?.trim() || null,
-    })
+    .update(patch)
     .eq("id", productId)
     .eq("tenant_id", tenantId);
 

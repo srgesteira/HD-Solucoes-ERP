@@ -26,6 +26,7 @@ const SELECT_CLASS =
 async function fetchHvacSpecs(productId: string): Promise<{
   specs: HvacProductSpecs;
   applicable: boolean;
+  hvac_specs_enabled: boolean;
 }> {
   const res = await fetch(`/api/products/${productId}/hvac-specs`, {
     credentials: "include",
@@ -34,6 +35,7 @@ async function fetchHvacSpecs(productId: string): Promise<{
   const json = (await res.json().catch(() => ({}))) as {
     specs?: HvacProductSpecs;
     applicable?: boolean;
+    hvac_specs_enabled?: boolean;
     error?: string;
   };
   if (!res.ok) throw new Error(json.error ?? "Erro ao carregar specs HVAC");
@@ -47,6 +49,7 @@ async function fetchHvacSpecs(productId: string): Promise<{
       hvac_integrity_test_method: null,
     },
     applicable: json.applicable ?? false,
+    hvac_specs_enabled: json.hvac_specs_enabled === true,
   };
 }
 
@@ -66,17 +69,26 @@ export function ProductHvacSpecsPanel({ productId }: Props) {
     hvac_integrity_test_method: null,
   });
 
+  const [enabled, setEnabled] = useState(false);
+
   useEffect(() => {
     if (query.data?.specs) setForm(query.data.specs);
-  }, [query.data?.specs]);
+    if (query.data) setEnabled(query.data.hvac_specs_enabled);
+  }, [query.data?.specs, query.data?.hvac_specs_enabled, query.data]);
 
   const saveMutation = useMutation({
-    mutationFn: async (payload: HvacProductSpecs) => {
+    mutationFn: async (payload: {
+      specs: HvacProductSpecs;
+      hvac_specs_enabled?: boolean;
+    }) => {
       const res = await fetch(`/api/products/${productId}/hvac-specs`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload.specs,
+          hvac_specs_enabled: payload.hvac_specs_enabled,
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Erro ao gravar");
@@ -84,6 +96,7 @@ export function ProductHvacSpecsPanel({ productId }: Props) {
     onSuccess: () => {
       toast.success("Especificações HVAC gravadas.");
       void qc.invalidateQueries({ queryKey: ["product-hvac-specs", productId] });
+      void qc.invalidateQueries({ queryKey: ["product", productId] });
       void qc.invalidateQueries({ queryKey: ["data-health"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -117,6 +130,29 @@ export function ProductHvacSpecsPanel({ productId }: Props) {
     );
   }
 
+  if (!query.data?.applicable) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-sm text-slate-500">
+          Especificações HVAC aplicam-se a produtos acabados (prefixo AC ou
+          HD1–HD3).
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const toggleEnabled = async (next: boolean) => {
+    setEnabled(next);
+    try {
+      await saveMutation.mutateAsync({
+        specs: form,
+        hvac_specs_enabled: next,
+      });
+    } catch {
+      setEnabled(!next);
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
@@ -126,25 +162,50 @@ export function ProductHvacSpecsPanel({ productId }: Props) {
             Ficha técnica HVAC
           </CardTitle>
           <p className="text-xs text-slate-500 mt-1">
-            Vertical de domínio — filtro, vazão, sala limpa e teste de
-            integridade. Alimenta engenharia, CQ e futura liberação final.
+            Opcional — active só para produtos filtro/HEPA. Sem activar, CQ e
+            saúde do dado não exigem esta ficha.
           </p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          disabled={saveMutation.isPending}
-          onClick={() => saveMutation.mutate(form)}
-        >
-          {saveMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          Gravar
-        </Button>
+        {enabled ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={saveMutation.isPending}
+            onClick={() => saveMutation.mutate({ specs: form })}
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Gravar
+          </Button>
+        ) : null}
       </CardHeader>
-      <CardContent className="grid gap-4 sm:grid-cols-2">
+      <CardContent className="space-y-4">
+        <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            checked={enabled}
+            disabled={saveMutation.isPending}
+            onChange={(e) => void toggleEnabled(e.target.checked)}
+          />
+          <span className="text-sm text-slate-800">
+            <span className="font-medium">Usar ficha técnica HVAC neste produto</span>
+            <span className="block text-xs text-slate-500 mt-0.5">
+              Desligado = produto acabado genérico, sem exigências HEPA/CQ vertical.
+            </span>
+          </span>
+        </label>
+
+        {!enabled ? (
+          <p className="text-sm text-slate-500 pb-2">
+            Active a opção acima para preencher classe de filtro, vazão e teste de
+            integridade.
+          </p>
+        ) : (
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="hvac_filter_class">Classe do filtro</Label>
           <select
@@ -273,6 +334,8 @@ export function ProductHvacSpecsPanel({ productId }: Props) {
             </select>
           </div>
         ) : null}
+      </div>
+        )}
       </CardContent>
     </Card>
   );

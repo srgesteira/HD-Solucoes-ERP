@@ -62,6 +62,7 @@ function buildSummary(args: {
 }
 
 type ProductCleanroomRow = {
+  hvac_specs_enabled?: boolean | null;
   hvac_cleanroom_class?: string | null;
 };
 
@@ -69,6 +70,7 @@ function readProductCleanroom(
   productRaw: ProductCleanroomRow | ProductCleanroomRow[] | null
 ): string | null {
   const product = Array.isArray(productRaw) ? productRaw[0] : productRaw;
+  if (product?.hvac_specs_enabled !== true) return null;
   return product?.hvac_cleanroom_class ?? null;
 }
 
@@ -87,6 +89,7 @@ export async function loadCleanroomCompatibilitySummaries(
       id,
       line_id,
       product:products (
+        hvac_specs_enabled,
         hvac_cleanroom_class
       )
     `

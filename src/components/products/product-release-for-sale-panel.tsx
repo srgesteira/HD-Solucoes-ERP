@@ -26,10 +26,11 @@ export function ProductReleaseForSalePanel({
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
 
+  const isReleased =
+    releasedForSale || engineeringWorkflowStatus === "released";
   const isPending = engineeringWorkflowStatus === "pending_composition";
-  const isReleased = releasedForSale || engineeringWorkflowStatus === "released";
 
-  if (!isPending && isReleased) {
+  if (isReleased) {
     return (
       <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900">
         <p className="font-medium flex items-center gap-2">
@@ -42,8 +43,6 @@ export function ProductReleaseForSalePanel({
       </div>
     );
   }
-
-  if (!isPending) return null;
 
   const handleRelease = async () => {
     setBusy(true);
@@ -81,16 +80,34 @@ export function ProductReleaseForSalePanel({
   return (
     <div
       className={cn(
-        "rounded-lg border border-amber-300 bg-amber-50 px-4 py-3",
-        "animate-pulse ring-2 ring-amber-400/50"
+        "rounded-lg border px-4 py-3",
+        isPending
+          ? "border-amber-300 bg-amber-50 animate-pulse ring-2 ring-amber-400/50"
+          : "border-slate-200 bg-slate-50"
       )}
     >
-      <p className="text-sm font-semibold text-amber-950">
-        Estrutura solicitada pelo comercial
+      <p
+        className={cn(
+          "text-sm font-semibold",
+          isPending ? "text-amber-950" : "text-slate-900"
+        )}
+      >
+        {isPending
+          ? "Estrutura solicitada pelo comercial"
+          : "Pronto para liberar ao comercial?"}
       </p>
-      <p className="mt-1 text-xs text-amber-900/90">
-        Cadastre a BOM abaixo e clique em liberar quando o custo estiver correcto.
-        O orçamento associado será destacado para o vendedor aplicar markup.
+      <p
+        className={cn(
+          "mt-1 text-xs",
+          isPending ? "text-amber-900/90" : "text-slate-600"
+        )}
+      >
+        Cadastre pelo menos um item na composição (BOM) abaixo. Quando o custo
+        estiver correcto, clique em liberar — o badge passa de «Em
+        estruturação» para «Liberado».
+        {isPending
+          ? " O orçamento associado será destacado para o vendedor aplicar markup."
+          : null}
       </p>
       <Button
         type="button"

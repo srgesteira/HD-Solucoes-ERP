@@ -804,7 +804,9 @@ export default function EditProductPage() {
           {showHvacTab && productId ? (
             <TabsContent value="hvac" className="mt-4">
               <ProductHvacSpecsPanel productId={productId} />
-              <ProductHvacPopChecklistPanel productId={productId} />
+              {productRaw?.hvac_specs_enabled ? (
+                <ProductHvacPopChecklistPanel productId={productId} />
+              ) : null}
             </TabsContent>
           ) : null}
 

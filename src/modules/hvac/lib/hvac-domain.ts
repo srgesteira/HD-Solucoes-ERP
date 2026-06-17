@@ -63,6 +63,13 @@ export function isHvacSpecProduct(args: {
   return prefix === "AC" || prefix === "HD1" || prefix === "HD2" || prefix === "HD3";
 }
 
+/** Ficha HVAC activa neste produto (opcional mesmo em AC/HD1). */
+export function isHvacVerticalEnabled(args: {
+  hvac_specs_enabled?: boolean | null;
+}): boolean {
+  return args.hvac_specs_enabled === true;
+}
+
 export function emptyHvacSpecs(): HvacProductSpecs {
   return {
     hvac_filter_class: null,

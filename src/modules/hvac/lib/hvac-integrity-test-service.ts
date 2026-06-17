@@ -104,6 +104,7 @@ export async function getOrderItemIntegrityRequirement(
       id,
       product_id,
       product:products (
+        hvac_specs_enabled,
         hvac_requires_integrity_test,
         hvac_integrity_test_method
       )
@@ -118,10 +119,12 @@ export async function getOrderItemIntegrityRequirement(
 
   const productRaw = data.product as
     | {
+        hvac_specs_enabled?: boolean;
         hvac_requires_integrity_test?: boolean;
         hvac_integrity_test_method?: string | null;
       }
     | {
+        hvac_specs_enabled?: boolean;
         hvac_requires_integrity_test?: boolean;
         hvac_integrity_test_method?: string | null;
       }[]
@@ -129,7 +132,9 @@ export async function getOrderItemIntegrityRequirement(
   const product = Array.isArray(productRaw) ? productRaw[0] : productRaw;
 
   return {
-    required: product?.hvac_requires_integrity_test === true,
+    required:
+      product?.hvac_specs_enabled === true &&
+      product?.hvac_requires_integrity_test === true,
     test_method: product?.hvac_integrity_test_method ?? null,
     product_id: data.product_id,
   };
@@ -181,6 +186,7 @@ export async function loadIntegrityTestSummaries(
       `
       id,
       product:products (
+        hvac_specs_enabled,
         hvac_requires_integrity_test,
         hvac_integrity_test_method
       )
@@ -198,17 +204,21 @@ export async function loadIntegrityTestSummaries(
   for (const row of items ?? []) {
     const productRaw = row.product as
       | {
+          hvac_specs_enabled?: boolean;
           hvac_requires_integrity_test?: boolean;
           hvac_integrity_test_method?: string | null;
         }
       | {
+          hvac_specs_enabled?: boolean;
           hvac_requires_integrity_test?: boolean;
           hvac_integrity_test_method?: string | null;
         }[]
       | null;
     const product = Array.isArray(productRaw) ? productRaw[0] : productRaw;
     requirementByItem.set(String(row.id), {
-      required: product?.hvac_requires_integrity_test === true,
+      required:
+        product?.hvac_specs_enabled === true &&
+        product?.hvac_requires_integrity_test === true,
       test_method: product?.hvac_integrity_test_method ?? null,
     });
   }

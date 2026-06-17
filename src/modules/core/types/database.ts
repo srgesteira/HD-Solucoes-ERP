@@ -3157,6 +3157,7 @@ export type Database = {
           hvac_integrity_test_method: string | null
           hvac_pressure_drop_pa: number | null
           hvac_requires_integrity_test: boolean
+          hvac_specs_enabled: boolean
           id: string
           is_active: boolean
           material_id: string | null
@@ -3202,6 +3203,7 @@ export type Database = {
           hvac_integrity_test_method?: string | null
           hvac_pressure_drop_pa?: number | null
           hvac_requires_integrity_test?: boolean
+          hvac_specs_enabled?: boolean
           id?: string
           is_active?: boolean
           material_id?: string | null
@@ -3247,6 +3249,7 @@ export type Database = {
           hvac_integrity_test_method?: string | null
           hvac_pressure_drop_pa?: number | null
           hvac_requires_integrity_test?: boolean
+          hvac_specs_enabled?: boolean
           id?: string
           is_active?: boolean
           material_id?: string | null
