@@ -21,7 +21,9 @@
     "admin:create": "node scripts/create-admin.mjs",
     "admin:check": "node scripts/check-users.mjs",
     "test:smoke": "node scripts/smoke-board.mjs",
-    "test:smoke:full": "node scripts/smoke-full-system.mjs"
+    "test:smoke:full": "node scripts/smoke-full-system.mjs",
+    "test:smoke:plan": "node scripts/smoke-plan-macro.mjs",
+    "test:smoke:all": "node scripts/smoke-full-system.mjs && node scripts/smoke-plan-macro.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.0",

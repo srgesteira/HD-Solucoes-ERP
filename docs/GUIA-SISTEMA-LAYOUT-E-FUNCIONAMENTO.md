@@ -613,8 +613,17 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 
 ### 12.5 Ordem daqui para a frente
 
+**Estado jun/2026:** execução automatizada concluída (`pnpm test:smoke:all` → 55+39 OK). Itens 🧑‍💼 continuam dependentes de humanos.
+
+| Passo | Item | Estado |
+|-------|------|--------|
+| 1a | Smoke API/DB + páginas (frentes 1–7, P1, HVAC) | ✅ `pnpm test:smoke:all` |
+| 1b | Smoke browser interactivo (cliques, MRP efetivar, PAO/DOP, expedição) | 🧑‍💼 Helder — checklist `DECISAO-VERTICAL-HVAC.md` |
+| 2 | Contadora preenche `fiscal_rules` | 🧑‍💼 0 regras hoje |
+| 3 | Restore mensal em clone Supabase | 🧑‍💼 ver `docs/RUNBOOK-BACKUP-LOG.md` |
+
 ```
-1. Smoke browser — frentes 1–7 + fluxos P1 + HVAC V1–V5 (Helder)
+1. Smoke browser interactivo — Helder (após 1a verde)
         ↓
 2. Contadora preenche fiscal_rules  🧑‍💼
         ↓

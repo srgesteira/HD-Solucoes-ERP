@@ -188,12 +188,16 @@ OFX/CSV + match com contas. **≠** conciliação NF-e compra.
 ## Smoke automatizado (pós-V5)
 
 ```bash
-pnpm test:smoke:full
+pnpm test:smoke:full    # DB + APIs + HVAC + scripts unitários (55 checks)
+pnpm test:smoke:plan    # Plano macro §12.5 — frentes 1–7, P1, páginas
+pnpm test:smoke:all     # Os dois em sequência
 ```
 
-Valida DB, APIs autenticadas (incl. HVAC V1–V5), fiscal preview e scripts especializados contra `https://hd-solucoes-erp.vercel.app` (ou `SMOKE_BASE_URL`).
+Valida produção (`https://hd-solucoes-erp.vercel.app`) ou `SMOKE_BASE_URL` local.
 
-**Smoke manual no browser (Helder):** frentes 1–7, fluxo P1 comercial/financeiro, passos 1–8 em [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md).
+**Smoke manual interactivo (Helder):** cliques MRP/empenho, PAO/DOP, checklist, expedição bloqueada, conciliação com baixa — passos 1–8 em [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) + frentes em [`GUIA-EXECUCAO-CURSOR.md`](./GUIA-EXECUCAO-CURSOR.md).
+
+**Registo continuidade:** [`docs/RUNBOOK-BACKUP-LOG.md`](./RUNBOOK-BACKUP-LOG.md).
 
 ---
 
