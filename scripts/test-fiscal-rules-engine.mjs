@@ -74,6 +74,7 @@ const ctx = {
     operation_type: null,
     ncm_pattern: "8421%",
     icms_rate: 12,
+    last_reviewed_at: new Date().toISOString(),
   };
   const r = resolveFiscalRule([rule], ctx);
   assert.equal(r.rule?.id, "r2");

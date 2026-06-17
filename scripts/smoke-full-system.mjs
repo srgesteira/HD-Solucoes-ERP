@@ -154,6 +154,9 @@ async function testDatabase() {
     "product_documents",
     "production_orders",
     "order_items",
+    "hvac_integrity_tests",
+    "product_hvac_checklist_items",
+    "hvac_checklist_completions",
   ];
 
   for (const table of tables) {
@@ -229,6 +232,8 @@ async function testApis(session) {
     pass("API: company settings payload");
   }
 
+  await testHvacVertical(session, planning);
+
   const products = await admin
     .from("products")
     .select("id")
@@ -244,6 +249,128 @@ async function testApis(session) {
     if (prodApi) pass("API: produto detalhe");
   } else {
     pass("API: products/[id]", "skip — sem produto no tenant");
+  }
+}
+
+async function testHvacVertical(session, planning) {
+  console.log("\n── Vertical HVAC V1–V5 ──");
+
+  const { error: lineColErr } = await admin
+    .from("production_lines")
+    .select("id, hvac_cleanroom_class")
+    .eq("tenant_id", TENANT)
+    .limit(1);
+  if (lineColErr) fail("HVAC V5: production_lines.hvac_cleanroom_class", lineColErr.message);
+  else pass("HVAC V5: coluna hvac_cleanroom_class");
+
+  const { error: quoteColErr } = await admin
+    .from("quote_items")
+    .select("id, hvac_filter_class, hvac_airflow_m3h, hvac_cleanroom_class")
+    .eq("tenant_id", TENANT)
+    .limit(1);
+  if (quoteColErr) fail("HVAC V4: quote_items hvac_*", quoteColErr.message);
+  else pass("HVAC V4: colunas hvac_* em quote_items");
+
+  const { data: acProduct } = await admin
+    .from("products")
+    .select("id, hvac_filter_class, hvac_requires_integrity_test")
+    .eq("tenant_id", TENANT)
+    .eq("product_nature", "AC")
+    .limit(1)
+    .maybeSingle();
+  if (acProduct?.id) pass("HVAC V1: produto AC com ficha hvac_*", acProduct.id);
+  else pass("HVAC V1: produto AC", "skip — nenhum AC no tenant");
+
+  const lines = await apiGet(session, "/api/production/lines", "API: production/lines");
+  if (lines?.data?.length > 0) {
+    const first = lines.data[0];
+    if (first && "hvac_cleanroom_class" in first) {
+      pass("HVAC V5: API linhas expõe hvac_cleanroom_class");
+    } else {
+      fail("HVAC V5: API linhas sem hvac_cleanroom_class");
+    }
+  } else {
+    pass("HVAC V5: API linhas", "skip — sem linhas activas");
+  }
+
+  const { data: sampleOi } = await admin
+    .from("order_items")
+    .select("id")
+    .eq("tenant_id", TENANT)
+    .eq("is_suggestion", false)
+    .limit(1)
+    .maybeSingle();
+  if (sampleOi?.id) {
+    await apiGet(
+      session,
+      `/api/hvac/integrity-tests?order_item_id=${sampleOi.id}`,
+      "API: hvac/integrity-tests (item)"
+    );
+    await apiGet(
+      session,
+      `/api/hvac/checklist-completions?order_item_id=${sampleOi.id}`,
+      "API: hvac/checklist-completions (item)"
+    );
+  } else {
+    pass("API: hvac/integrity-tests (item)", "skip — sem order_item");
+    pass("API: hvac/checklist-completions (item)", "skip — sem order_item");
+  }
+
+  const health = await apiGet(session, "/api/data-health", "API: data-health HVAC");
+  if (health?.issues && Array.isArray(health.issues)) {
+    pass("API: data-health payload", `${health.issues.length} issue(s)`);
+  }
+
+  if (planning?.orders?.length) {
+    let itemWithOi = null;
+    for (const ord of planning.orders) {
+      for (const it of ord.items ?? []) {
+        if (it.order_item_id) {
+          itemWithOi = it;
+          break;
+        }
+      }
+      if (itemWithOi) break;
+    }
+    if (itemWithOi) {
+      const keys = [
+        "hvac_integrity_required",
+        "hvac_checklist_required",
+        "hvac_cleanroom_applicable",
+        "hvac_cleanroom_compatible",
+      ];
+      const missing = keys.filter((k) => !(k in itemWithOi));
+      if (missing.length === 0) {
+        pass("HVAC: PCP item com campos V2–V5", keys.join(", "));
+      } else {
+        fail("HVAC: PCP item campos ausentes", missing.join(", "));
+      }
+    } else {
+      pass("HVAC: PCP campos", "skip — sem order_item no planning");
+    }
+  } else {
+    pass("HVAC: PCP campos", "skip — planning vazio");
+  }
+
+  if (acProduct?.id) {
+    const specs = await apiGet(
+      session,
+      `/api/products/${acProduct.id}/hvac-specs`,
+      "API: products/[id]/hvac-specs"
+    );
+    if (specs?.data && "hvac_filter_class" in specs.data) {
+      pass("HVAC V1: API hvac-specs payload");
+    }
+    const checklist = await apiGet(
+      session,
+      `/api/products/${acProduct.id}/hvac-checklist`,
+      "API: products/[id]/hvac-checklist"
+    );
+    if (checklist && Array.isArray(checklist.data ?? checklist.items)) {
+      pass("HVAC V3: API hvac-checklist responde");
+    } else if (checklist) {
+      pass("HVAC V3: API hvac-checklist responde");
+    }
   }
 }
 

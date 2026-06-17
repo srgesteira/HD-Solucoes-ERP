@@ -19,9 +19,9 @@
 | 6 Roteiro N ops | ✅ | Pendente Helder |
 | 7 Conciliação bancária | ✅ | Pendente Helder |
 
-**Pós-frentes:** assistente fiscal · **vertical HVAC V1–V4** (ficha, integridade, checklist, orçamento).
+**Pós-frentes:** assistente fiscal · **vertical HVAC V0–V5** (ficha, integridade, checklist, orçamento, área classificada).
 
-**Próximo foco vertical:** smoke manual V1–V5 · contadora preenche regras.
+**Próximo foco:** smoke manual frentes 1–7 + HVAC V1–V5 · contadora preenche regras.
 
 ## Regras de ouro (valem para TODA tarefa abaixo)
 
@@ -182,6 +182,18 @@ OFX/CSV + match com contas. **≠** conciliação NF-e compra.
 | V3 POPs HEPA | ✅ |
 | V4 Orçamento HVAC | ✅ |
 | V5 Área classificada | ✅ |
+
+---
+
+## Smoke automatizado (pós-V5)
+
+```bash
+pnpm test:smoke:full
+```
+
+Valida DB, APIs autenticadas (incl. HVAC V1–V5), fiscal preview e scripts especializados contra `https://hd-solucoes-erp.vercel.app` (ou `SMOKE_BASE_URL`).
+
+**Smoke manual no browser (Helder):** frentes 1–7, fluxo P1 comercial/financeiro, passos 1–8 em [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md).
 
 ---
 
