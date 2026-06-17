@@ -221,7 +221,7 @@ export default function NewQuotePage() {
     <AppPage
       title="Novo orçamento"
       backHref="/sales/quotes"
-      width="narrow"
+      width="wide"
       density="comfortable"
       actions={
         <Button

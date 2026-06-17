@@ -187,7 +187,7 @@ export default function FinanceCashFlowEntriesPage() {
           </strong>
         </>
       }
-      width="narrow"
+      width="wide"
       density="comfortable"
     >
 

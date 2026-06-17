@@ -31,7 +31,7 @@ export default function SalesOrderNewPage() {
     <AppPage
       backHref="/sales/orders"
       backLabel="Lista de pedidos"
-      width="narrow"
+      width="wide"
       density="comfortable"
       title={
         <div className="flex items-center gap-2">

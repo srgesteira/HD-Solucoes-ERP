@@ -182,7 +182,7 @@ function MrpPageContent() {
       description="Calcule necessidades de materiais a partir de pedidos de venda"
       backHref="/sales/orders"
       backLabel="Pedidos de venda"
-      width="narrow"
+      width="wide"
       density="comfortable"
     >
       <Card>

@@ -557,7 +557,7 @@ export default function EditProductPage() {
   return (
     <AppPage
       backHref="/products"
-      width="narrow"
+      width="wide"
       density="comfortable"
       title={
         <div className="flex flex-wrap items-center gap-2">

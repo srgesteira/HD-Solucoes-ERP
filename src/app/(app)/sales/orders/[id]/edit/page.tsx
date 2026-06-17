@@ -35,7 +35,7 @@ export default function SalesOrderEditPage() {
       <AppPage
         title="Editar pedido de venda"
         backHref="/sales/orders"
-        width="narrow"
+        width="wide"
       >
         <EmptyState
           title="Pedido inválido"
@@ -54,7 +54,7 @@ export default function SalesOrderEditPage() {
       title="Editar pedido de venda"
       backHref={`/sales/orders/${orderId}`}
       backLabel="Voltar ao pedido"
-      width="narrow"
+      width="wide"
       density="comfortable"
     >
       <SalesOrderForm

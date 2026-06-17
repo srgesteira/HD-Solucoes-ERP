@@ -31,7 +31,7 @@ export default function NewPurchaseOrderPage() {
     <AppPage
       title="Novo pedido de compra"
       backHref="/purchasing/orders"
-      width="narrow"
+      width="wide"
       density="comfortable"
     >
       <PurchaseOrderForm

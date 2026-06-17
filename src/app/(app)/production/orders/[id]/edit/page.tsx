@@ -134,7 +134,7 @@ export default function EditProductionOrderPage() {
       <AppPage
         title="Editar pedido"
         backHref="/production/orders"
-        width="narrow"
+        width="wide"
       >
         <EmptyState title="Pedido inválido" description="ID não fornecido." />
       </AppPage>
@@ -156,7 +156,7 @@ export default function EditProductionOrderPage() {
       title={`Editar pedido ${order?.order_number ?? ""}`}
       description="Altere apenas o cabeçalho e prazos. Itens são geridos no PCP."
       backHref={`/production/orders/${id}`}
-      width="narrow"
+      width="wide"
       density="comfortable"
     >
       <form

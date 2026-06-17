@@ -547,7 +547,7 @@ export default function NewProductPage() {
     <AppPage
       title="Novo produto"
       backHref="/products"
-      width="narrow"
+      width="wide"
       density="comfortable"
     >
       <form onSubmit={(e) => void handleSubmit(e)}>

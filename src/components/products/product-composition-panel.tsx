@@ -686,15 +686,38 @@ export function ProductCompositionPanel({
               calcular o custo de lista (acabados e semi-elaborados).
             </p>
           ) : (
-            <div className="min-w-[640px] space-y-0">
-              <div className="grid grid-cols-12 gap-2 text-xs font-medium text-slate-500 uppercase tracking-wide pb-2 border-b border-slate-200">
-                <div className="col-span-4">Descrição</div>
-                <div className="col-span-2">Tipo</div>
-                <div className="col-span-2">Quantidade</div>
-                <div className="col-span-2 text-right">Custo unit.</div>
-                <div className="col-span-1 text-right">Subtotal</div>
-                <div className="col-span-1" />
-              </div>
+            <table className="w-full table-fixed text-sm min-w-[720px]">
+              <colgroup>
+                <col className="w-[38%]" />
+                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[5.5rem]" />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-slate-200 text-xs font-medium text-slate-500 uppercase tracking-wide">
+                  <th scope="col" className="py-2 pr-3 text-left font-medium">
+                    Descrição
+                  </th>
+                  <th scope="col" className="py-2 pr-3 text-left font-medium">
+                    Tipo
+                  </th>
+                  <th scope="col" className="py-2 pr-3 text-left font-medium">
+                    Quantidade
+                  </th>
+                  <th scope="col" className="py-2 pr-3 text-right font-medium">
+                    Custo unit.
+                  </th>
+                  <th scope="col" className="py-2 pr-3 text-right font-medium">
+                    Subtotal
+                  </th>
+                  <th scope="col" className="py-2 w-[5.5rem]">
+                    <span className="sr-only">Ações</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
               {components.map((comp) => {
                 const subtotal =
                   Number(comp.quantity ?? 0) * Number(comp.unit_cost ?? 0);
@@ -703,11 +726,8 @@ export function ProductCompositionPanel({
                 const moCatalogLine =
                   comp.is_labor === true && !!comp.component_product_id;
                 return (
-                  <div
-                    key={comp.id}
-                    className="grid grid-cols-12 gap-2 items-center py-2.5 border-b border-slate-100 text-sm"
-                  >
-                    <div className="col-span-4 min-w-0">
+                  <tr key={comp.id} className="align-middle">
+                    <td className="py-2.5 pr-3 min-w-0">
                       {moCatalogLine ? (
                         <div className="flex items-start gap-2 flex-wrap">
                           <Factory
@@ -782,8 +802,8 @@ export function ProductCompositionPanel({
                           </span>
                         </div>
                       )}
-                    </div>
-                    <div className="col-span-2">
+                    </td>
+                    <td className="py-2.5 pr-3">
                       <span
                         className={cn(
                           "inline-flex text-xs px-2 py-0.5 rounded-md font-medium",
@@ -800,26 +820,26 @@ export function ProductCompositionPanel({
                             ? "Mão-de-obra"
                             : "Material"}
                       </span>
-                    </div>
-                    <div className="col-span-2 tabular-nums text-slate-800">
+                    </td>
+                    <td className="py-2.5 pr-3 tabular-nums text-slate-800 whitespace-nowrap">
                       {comp.quantity}
                       {comp.is_labor && !extLabor ? " h" : null}
                       {!comp.is_labor
                         ? ` ${comp.component_product?.unit?.trim() || "—"}`
                         : null}
-                    </div>
-                    <div className="col-span-2 text-right tabular-nums text-slate-800">
+                    </td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums text-slate-800 whitespace-nowrap">
                       {formatCurrency(Number(comp.unit_cost ?? 0))}
                       {comp.is_labor && !extLabor ? (
                         <span className="block text-[10px] text-slate-500 font-normal">/h</span>
                       ) : null}
-                    </div>
-                    <div className="col-span-1 text-right tabular-nums font-medium text-slate-900">
+                    </td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums font-medium text-slate-900 whitespace-nowrap">
                       {formatCurrency(subtotal)}
-                    </div>
-                    <div className="col-span-1 flex justify-end gap-1">
+                    </td>
+                    <td className="py-2.5 w-[5.5rem]">
                       {isAdmin ? (
-                        <>
+                        <div className="flex justify-end gap-1">
                           <Button
                             type="button"
                             variant="outline"
@@ -851,19 +871,25 @@ export function ProductCompositionPanel({
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                        </>
+                        </div>
                       ) : null}
-                    </div>
-                  </div>
+                    </td>
+                  </tr>
                 );
               })}
-              <div className="grid grid-cols-12 gap-2 pt-4 font-semibold border-t border-slate-200 text-slate-900">
-                <div className="col-span-10 text-right">Custo estimado (somatório):</div>
-                <div className="col-span-2 text-right tabular-nums">
-                  {formatCurrency(sumLines)}
-                </div>
-              </div>
-            </div>
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-200 font-semibold text-slate-900">
+                  <td colSpan={4} className="py-3 pr-3 text-right">
+                    Custo estimado (somatório):
+                  </td>
+                  <td className="py-3 pr-3 text-right tabular-nums whitespace-nowrap">
+                    {formatCurrency(sumLines)}
+                  </td>
+                  <td className="py-3 w-[5.5rem]" />
+                </tr>
+              </tfoot>
+            </table>
           )}
         </CardContent>
       </Card>
