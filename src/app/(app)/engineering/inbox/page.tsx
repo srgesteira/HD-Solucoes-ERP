@@ -26,6 +26,7 @@ import {
   parseUniversalSearch,
 } from "@/shared/utils/universal-search";
 import { formatBrl } from "@/shared/utils/format-brl";
+import { formatShortDate } from "@/shared/utils/date";
 
 type SortMode = "urgency" | "oldest";
 
@@ -44,7 +45,8 @@ async function fetchDemands(sort: SortMode): Promise<EngineeringDemandRow[]> {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("pt-BR");
+  const formatted = formatShortDate(iso);
+  return formatted === "--" ? "—" : formatted;
 }
 
 export default function EngineeringInboxPage() {

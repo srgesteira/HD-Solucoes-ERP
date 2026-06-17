@@ -6,9 +6,13 @@ import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { recalculateProductCost } from "@/modules/engenharia/lib/products/recalculate-product-cost";
 import {
-  ENGINEERING_STATUS_PENDING,
+  canProductHaveBom,
+  isResaleProductPrefix,
+} from "@/modules/engenharia/lib/products/product-bom-eligibility";
+import {
   ENGINEERING_STATUS_RELEASED,
 } from "@/modules/engenharia/lib/products/engineering-workflow";
+import { prefixCodeFromJoin } from "@/modules/engenharia/lib/products/product-lifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +37,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
   const { data: product, error: pErr } = await admin
     .from("products")
     .select(
-      "id, name, engineering_workflow_status, released_for_sale, source_quote_id"
+      "id, name, cost_price, engineering_workflow_status, released_for_sale, source_quote_id, composition_enabled, has_composition, prefix:product_prefixes!products_prefix_id_fkey(code)"
     )
     .eq("id", productId)
     .eq("tenant_id", tenantId)
@@ -47,20 +51,39 @@ export async function POST(_request: NextRequest, { params }: Params) {
   }
   if (!product) return apiError("Produto não encontrado", 404);
 
-  const { count: componentCount } = await admin
-    .from("product_components")
-    .select("*", { count: "exact", head: true })
-    .eq("parent_product_id", productId)
-    .eq("tenant_id", tenantId);
+  const prefixCode = prefixCodeFromJoin(
+    product.prefix as { code?: string } | { code?: string }[] | null
+  );
+  const compositionEnabled =
+    product.composition_enabled === true &&
+    canProductHaveBom(prefixCode, product.composition_enabled);
+  const isResale = isResaleProductPrefix(prefixCode);
+  const usesBom = compositionEnabled && !isResale;
 
-  if (!componentCount || componentCount < 1) {
+  let totalCost = Number(product.cost_price ?? 0);
+
+  if (usesBom) {
+    const { count: componentCount } = await admin
+      .from("product_components")
+      .select("*", { count: "exact", head: true })
+      .eq("parent_product_id", productId)
+      .eq("tenant_id", tenantId);
+
+    if (!componentCount || componentCount < 1) {
+      return apiError(
+        "Cadastre pelo menos um item na estrutura (BOM) antes de liberar para vendas.",
+        400
+      );
+    }
+
+    totalCost = await recalculateProductCost(admin, tenantId, productId);
+  } else if (!Number.isFinite(totalCost) || totalCost <= 0) {
     return apiError(
-      "Cadastre pelo menos um item na estrutura (BOM) antes de liberar para vendas.",
+      "Defina o custo unitário manualmente ou receba uma compra antes de liberar para vendas.",
       400
     );
   }
 
-  const totalCost = await recalculateProductCost(admin, tenantId, productId);
   const now = new Date().toISOString();
 
   const { data: updated, error: upErr } = await admin
@@ -70,11 +93,14 @@ export async function POST(_request: NextRequest, { params }: Params) {
       engineering_released_at: now,
       released_for_sale: true,
       released_for_sale_at: now,
-      has_composition: true,
+      ...(usesBom ? { has_composition: true } : {}),
+      ...(!usesBom && totalCost > 0 ? { cost_price: totalCost } : {}),
     })
     .eq("id", productId)
     .eq("tenant_id", tenantId)
-    .select("id, name, cost_price, released_for_sale, engineering_workflow_status")
+    .select(
+      "id, name, cost_price, released_for_sale, engineering_workflow_status, composition_enabled"
+    )
     .single();
 
   if (upErr) {
@@ -117,5 +143,6 @@ export async function POST(_request: NextRequest, { params }: Params) {
     data: updated,
     cost_price: totalCost,
     quotes_notified: quoteIds.size,
+    release_mode: usesBom ? "bom" : "manual",
   });
 }

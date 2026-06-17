@@ -304,11 +304,12 @@ export function pcpDeadlineCellClass(deadline: string | null): string {
   return pcpDeadlineProximityClass(deadline);
 }
 
+import { formatShortDate } from "@/shared/utils/date";
+
 export function formatPcpDate(d: string | null | undefined): string {
   if (!d) return "—";
-  const [y, m, day] = d.slice(0, 10).split("-");
-  if (!y || !m || !day) return d;
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(d.slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 export function itemProductionEndDate(

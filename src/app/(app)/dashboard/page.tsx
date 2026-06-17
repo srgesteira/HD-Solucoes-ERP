@@ -23,6 +23,7 @@ import {
 } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { AppPage } from "@/shared/ui/app-page";
+import { formatShortDate } from "@/shared/utils/date";
 
 type InsightRow = {
   id: string;
@@ -409,17 +410,11 @@ export default function ConsultantDashboardPage() {
         );
       }
 
-      const receivablesByWeek = mondayKeys.map((key) => {
-        const d = new Date(`${key}T12:00:00`);
-        return {
-          key,
-          label: d.toLocaleDateString("pt-BR", {
-            day: "2-digit",
-            month: "short",
-          }),
-          total: weekTotals.get(key) ?? 0,
-        };
-      });
+      const receivablesByWeek = mondayKeys.map((key) => ({
+        key,
+        label: formatShortDate(key),
+        total: weekTotals.get(key) ?? 0,
+      }));
 
       const y = today.getFullYear();
       const m = today.getMonth() + 1;

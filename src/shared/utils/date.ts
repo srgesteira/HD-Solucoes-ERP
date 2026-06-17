@@ -30,10 +30,10 @@ export function isPastDeadline(dateStr: string | null): boolean {
 }
 
 /**
- * Padrão brasileiro de exibição no app: **d/M/yy** (ex.: 27/4/26), sem zero à esquerda em dia/mês.
+ * Padrão brasileiro de exibição no app: **dd/MM/yy** (ex.: 27/04/26).
  * Use em toda tela, export, PDF, etc. — evite `toLocaleDateString` solto.
  */
-export const BRAZIL_DATE_DISPLAY_FORMAT = "d/M/yy" as const;
+export const BRAZIL_DATE_DISPLAY_FORMAT = "dd/MM/yy" as const;
 
 /**
  * Data curta (BR): aceita `yyyy-MM-dd`, ISO com hora, ou `Date`.
@@ -68,7 +68,7 @@ export function formatShortDate(
   }
 }
 
-/** Data e hora no padrão BR: `27/4/26 14:35` (24h). */
+/** Data e hora no padrão BR: `27/04/26 14:35` (24h). */
 export function formatBrazilianDateTime(
   value: string | Date | null | undefined
 ): string {

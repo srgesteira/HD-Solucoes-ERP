@@ -28,6 +28,7 @@ import {
   useCronogramaSearch,
 } from "@/shared/ui/cronograma-layout";
 import { cn } from "@/shared/utils/cn";
+import { formatShortDate } from "@/shared/utils/date";
 import { useMe } from "@/hooks/use-me";
 
 type ProductionTab =
@@ -133,10 +134,8 @@ const statusPillClass: Record<string, string> = {
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
-  const s = iso.slice(0, 10);
-  const [y, m, d] = s.split("-").map(Number);
-  if (!y || !m || !d) return "—";
-  return new Date(y, m - 1, d).toLocaleDateString("pt-PT");
+  const formatted = formatShortDate(iso.slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 function isDeliveryOverdue(order: ProductionOrder): boolean {

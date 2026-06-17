@@ -14,6 +14,12 @@ import { loadCleanroomCompatibilitySummaries } from "@/modules/hvac/lib/hvac-cle
 
 export type DataHealthSeverity = "blocker" | "warning" | "info";
 
+export type DataHealthAffectedItem = {
+  id: string;
+  label: string;
+  href: string;
+};
+
 export type DataHealthIssue = {
   /** Identificador estável da regra (para badges, telemetria, dedup). */
   rule_id: string;
@@ -27,11 +33,38 @@ export type DataHealthIssue = {
   impact: string;
   /** Quantidade de registos afetados. */
   count: number;
-  /** Caminho da página que resolve o problema. */
+  /** Caminho da página que resolve o problema (fallback genérico). */
   href: string;
+  /** Registos concretos — para o utilizador saber o quê corrigir. */
+  items: DataHealthAffectedItem[];
 };
 
 type Admin = SupabaseClient<Database>;
+
+const AFFECTED_ITEM_LIMIT = 25;
+
+function productLabel(row: {
+  technical_code?: string | null;
+  name?: string | null;
+}): string {
+  const code = row.technical_code?.trim();
+  const name = row.name?.trim() || "—";
+  return code ? `${code} — ${name}` : name;
+}
+
+function productEditHref(
+  id: string,
+  tab?: "basics" | "documents" | "hvac" | "composition"
+): string {
+  const base = `/products/${id}/edit`;
+  return tab ? `${base}?tab=${tab}` : base;
+}
+
+function lineLabel(row: { code?: string | null; name?: string | null }): string {
+  const code = row.code?.trim();
+  const name = row.name?.trim() || "—";
+  return code ? `${code} — ${name}` : name;
+}
 
 async function countOrZero(
   promise: PromiseLike<{ count: number | null; error: unknown }>
@@ -57,15 +90,21 @@ export async function loadDataHealthIssues(
 
   // ENGENHARIA / FATURAMENTO ---------------------------------------------
   // Produtos liberados para venda sem NCM → quebram a aplicação fiscal.
-  const productsNoNcm = await countOrZero(
-    admin
-      .from("products")
-      .select("*", { count: "exact", head: true })
-      .eq("tenant_id", tenantId)
-      .eq("released_for_sale", true)
-      .or("ncm.is.null,ncm.eq.")
-  );
+  const { data: productsNoNcmRows, count: productsNoNcmCount } = await admin
+    .from("products")
+    .select("id, technical_code, name", { count: "exact" })
+    .eq("tenant_id", tenantId)
+    .eq("released_for_sale", true)
+    .or("ncm.is.null,ncm.eq.")
+    .limit(AFFECTED_ITEM_LIMIT);
+
+  const productsNoNcm = productsNoNcmCount ?? 0;
   if (productsNoNcm > 0) {
+    const items = (productsNoNcmRows ?? []).map((p) => ({
+      id: p.id,
+      label: productLabel(p),
+      href: productEditHref(p.id, "basics"),
+    }));
     issues.push({
       rule_id: "products_released_without_ncm",
       module: "Engenharia · Faturamento",
@@ -74,7 +113,8 @@ export async function loadDataHealthIssues(
       impact:
         "O motor fiscal não consegue casar regra por NCM — esses produtos não podem ser faturados.",
       count: productsNoNcm,
-      href: "/products?missing=ncm",
+      href: items[0]?.href ?? "/products",
+      items,
     });
   }
 
@@ -86,19 +126,33 @@ export async function loadDataHealthIssues(
       .select("*", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
       .eq("released_for_sale", true)
-      .eq("type", "HD")
+      .eq("type", "finished")
       .or("cost_price.is.null,cost_price.eq.0")
   );
   if (productsZeroCost > 0) {
+    const { data: zeroCostRows } = await admin
+      .from("products")
+      .select("id, technical_code, name")
+      .eq("tenant_id", tenantId)
+      .eq("released_for_sale", true)
+      .eq("type", "finished")
+      .or("cost_price.is.null,cost_price.eq.0")
+      .limit(AFFECTED_ITEM_LIMIT);
+    const items = (zeroCostRows ?? []).map((p) => ({
+      id: p.id,
+      label: productLabel(p),
+      href: productEditHref(p.id, "composition"),
+    }));
     issues.push({
       rule_id: "products_released_without_cost",
       module: "Engenharia",
       severity: "warning",
-      title: "Produtos HD liberados com custo zero",
+      title: "Produtos acabados liberados com custo zero",
       impact:
-        "Margem nos orçamentos fica falsa. Confirmar BOM e propagar custo.",
+        "Margem nos orçamentos fica falsa. Confirmar BOM ou custo manual.",
       count: productsZeroCost,
-      href: "/products?missing=cost",
+      href: items[0]?.href ?? "/products",
+      items,
     });
   }
 
@@ -113,6 +167,18 @@ export async function loadDataHealthIssues(
       .or("document.is.null,document.eq.")
   );
   if (customersNoDoc > 0) {
+    const { data: rows } = await admin
+      .from("customers")
+      .select("id, name, document")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .or("document.is.null,document.eq.")
+      .limit(AFFECTED_ITEM_LIMIT);
+    const items = (rows ?? []).map((c) => ({
+      id: c.id,
+      label: c.name?.trim() || "Cliente sem nome",
+      href: "/customers",
+    }));
     issues.push({
       rule_id: "customers_without_document",
       module: "Vendas · Faturamento",
@@ -121,6 +187,7 @@ export async function loadDataHealthIssues(
       impact: "Não é possível emitir NF-e/NFS-e para o cliente sem documento.",
       count: customersNoDoc,
       href: "/customers",
+      items,
     });
   }
 
@@ -134,6 +201,18 @@ export async function loadDataHealthIssues(
       .or("address.is.null,address.eq.")
   );
   if (customersNoAddress > 0) {
+    const { data: rows } = await admin
+      .from("customers")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .or("address.is.null,address.eq.")
+      .limit(AFFECTED_ITEM_LIMIT);
+    const items = (rows ?? []).map((c) => ({
+      id: c.id,
+      label: c.name?.trim() || "Cliente sem nome",
+      href: "/customers",
+    }));
     issues.push({
       rule_id: "customers_without_address",
       module: "Vendas · Faturamento",
@@ -143,6 +222,7 @@ export async function loadDataHealthIssues(
         "Sem UF de destino, o motor fiscal degrada para regra coringa — alíquota pode sair errada.",
       count: customersNoAddress,
       href: "/customers",
+      items,
     });
   }
 
@@ -157,6 +237,18 @@ export async function loadDataHealthIssues(
       .or("document.is.null,document.eq.")
   );
   if (suppliersNoDoc > 0) {
+    const { data: rows } = await admin
+      .from("suppliers")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .or("document.is.null,document.eq.")
+      .limit(AFFECTED_ITEM_LIMIT);
+    const items = (rows ?? []).map((s) => ({
+      id: s.id,
+      label: s.name?.trim() || "Fornecedor sem nome",
+      href: `/purchasing/suppliers/${s.id}/edit`,
+    }));
     issues.push({
       rule_id: "suppliers_without_document",
       module: "Compras",
@@ -164,7 +256,8 @@ export async function loadDataHealthIssues(
       title: "Fornecedores ativos sem CNPJ",
       impact: "Não é possível conciliar NF de compra sem CNPJ do emitente.",
       count: suppliersNoDoc,
-      href: "/purchasing/suppliers",
+      href: items[0]?.href ?? "/purchasing/suppliers",
+      items,
     });
   }
 
@@ -186,6 +279,13 @@ export async function loadDataHealthIssues(
           "Toda a emissão fiscal exige CNPJ da emitente. Cadastre antes de emitir nota.",
         count: 1,
         href: "/settings/company",
+        items: [
+          {
+            id: "company-cnpj",
+            label: "Configurações da empresa",
+            href: "/settings/company",
+          },
+        ],
       });
     }
     if (!company?.tax_regime || String(company.tax_regime).trim().length === 0) {
@@ -198,6 +298,13 @@ export async function loadDataHealthIssues(
           "Sem o regime, o motor fiscal não filtra regras específicas (Simples vs Real vs Presumido).",
         count: 1,
         href: "/settings/company",
+        items: [
+          {
+            id: "company-tax-regime",
+            label: "Configurações da empresa",
+            href: "/settings/company",
+          },
+        ],
       });
     }
     if (
@@ -213,6 +320,13 @@ export async function loadDataHealthIssues(
           "O motor fiscal precisa da UF de origem para resolver operações interestaduais.",
         count: 1,
         href: "/settings/company",
+        items: [
+          {
+            id: "company-state",
+            label: "Configurações da empresa",
+            href: "/settings/company",
+          },
+        ],
       });
     }
   } catch {
@@ -230,6 +344,19 @@ export async function loadDataHealthIssues(
       .is("hvac_filter_class", null)
   );
   if (hvacReleasedNoClass > 0) {
+    const { data: rows } = await admin
+      .from("products")
+      .select("id, technical_code, name")
+      .eq("tenant_id", tenantId)
+      .eq("released_for_sale", true)
+      .eq("hvac_specs_enabled", true)
+      .is("hvac_filter_class", null)
+      .limit(AFFECTED_ITEM_LIMIT);
+    const items = (rows ?? []).map((p) => ({
+      id: p.id,
+      label: productLabel(p),
+      href: productEditHref(p.id, "hvac"),
+    }));
     issues.push({
       rule_id: "hvac_released_without_filter_class",
       module: "Engenharia · HVAC",
@@ -238,7 +365,8 @@ export async function loadDataHealthIssues(
       impact:
         "Ficha técnica vertical incompleta — engenharia e CQ não têm referência HEPA/vazão.",
       count: hvacReleasedNoClass,
-      href: "/products",
+      href: items[0]?.href ?? "/products",
+      items,
     });
   }
 
@@ -288,6 +416,7 @@ export async function loadDataHealthIssues(
             "A expedição do pedido fica bloqueada até registar PAO/DOP aprovado no CQ.",
           count: pendingIntegrity,
           href: "/production/quality-control",
+          items: [],
         });
       }
     }
@@ -316,8 +445,19 @@ export async function loadDataHealthIssues(
       const withPop = new Set(
         (popDocs ?? []).map((row) => String(row.product_id))
       );
-      const missingPop = productIds.filter((id) => !withPop.has(id)).length;
+      const missingPopIds = productIds.filter((id) => !withPop.has(id));
+      const missingPop = missingPopIds.length;
       if (missingPop > 0) {
+        const { data: popProductRows } = await admin
+          .from("products")
+          .select("id, technical_code, name")
+          .eq("tenant_id", tenantId)
+          .in("id", missingPopIds.slice(0, AFFECTED_ITEM_LIMIT));
+        const items = (popProductRows ?? []).map((p) => ({
+          id: p.id,
+          label: productLabel(p),
+          href: productEditHref(p.id, "documents"),
+        }));
         issues.push({
           rule_id: "hvac_released_without_pop_document",
           module: "Engenharia · HVAC",
@@ -326,7 +466,8 @@ export async function loadDataHealthIssues(
           impact:
             "Operação e CQ não têm procedimento formal — anexe POP na aba Documentos.",
           count: missingPop,
-          href: "/products",
+          href: items[0]?.href ?? "/products",
+          items,
         });
       }
 
@@ -339,10 +480,21 @@ export async function loadDataHealthIssues(
       const withChecklist = new Set(
         (checklistRows ?? []).map((row) => String(row.product_id))
       );
-      const missingChecklist = productIds.filter(
+      const missingChecklistIds = productIds.filter(
         (id) => !withChecklist.has(id)
-      ).length;
+      );
+      const missingChecklist = missingChecklistIds.length;
       if (missingChecklist > 0) {
+        const { data: checklistProductRows } = await admin
+          .from("products")
+          .select("id, technical_code, name")
+          .eq("tenant_id", tenantId)
+          .in("id", missingChecklistIds.slice(0, AFFECTED_ITEM_LIMIT));
+        const items = (checklistProductRows ?? []).map((p) => ({
+          id: p.id,
+          label: productLabel(p),
+          href: productEditHref(p.id, "hvac"),
+        }));
         issues.push({
           rule_id: "hvac_released_without_pop_checklist",
           module: "Engenharia · HVAC",
@@ -351,7 +503,8 @@ export async function loadDataHealthIssues(
           impact:
             "CQ não consegue marcar verificação na linha — aplique template na aba HVAC.",
           count: missingChecklist,
-          href: "/products",
+          href: items[0]?.href ?? "/products",
+          items,
         });
       }
     }
@@ -377,6 +530,18 @@ export async function loadDataHealthIssues(
           .is("hvac_cleanroom_class", null)
       );
       if (linesNoIso > 0) {
+        const { data: lineRows } = await admin
+          .from("production_lines")
+          .select("id, code, name")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .is("hvac_cleanroom_class", null)
+          .limit(AFFECTED_ITEM_LIMIT);
+        const items = (lineRows ?? []).map((line) => ({
+          id: line.id,
+          label: lineLabel(line),
+          href: `/production/lines/${line.id}`,
+        }));
         issues.push({
           rule_id: "hvac_production_line_missing_iso",
           module: "Produção · HVAC",
@@ -385,7 +550,8 @@ export async function loadDataHealthIssues(
           impact:
             "Produtos HEPA podem ser programados em área não classificada — cadastre ISO na linha.",
           count: linesNoIso,
-          href: "/production/lines",
+          href: items[0]?.href ?? "/production/lines",
+          items,
         });
       }
     }
@@ -419,6 +585,7 @@ export async function loadDataHealthIssues(
             "Finalização e expedição ficam bloqueadas até ajustar linha ou ficha HVAC.",
           count: incompatible,
           href: "/logistics/pcp",
+          items: [],
         });
       }
     }
@@ -435,6 +602,18 @@ export async function loadDataHealthIssues(
       .is("expected_delivery_date", null)
   );
   if (ordersNoDeadline > 0) {
+    const { data: orderRows } = await admin
+      .from("sales_orders")
+      .select("id, order_number")
+      .eq("tenant_id", tenantId)
+      .in("status", ["confirmed", "in_production"])
+      .is("expected_delivery_date", null)
+      .limit(AFFECTED_ITEM_LIMIT);
+    const items = (orderRows ?? []).map((o) => ({
+      id: o.id,
+      label: o.order_number?.trim() || o.id,
+      href: `/sales/orders/${o.id}/edit`,
+    }));
     issues.push({
       rule_id: "sales_orders_without_expected_delivery",
       module: "PCP",
@@ -443,7 +622,8 @@ export async function loadDataHealthIssues(
       impact:
         "Sem prazo, o cronograma não consegue ranquear urgência de produção.",
       count: ordersNoDeadline,
-      href: "/logistics/pcp",
+      href: items[0]?.href ?? "/logistics/pcp",
+      items,
     });
   }
 

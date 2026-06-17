@@ -9,12 +9,12 @@ import {
   type ProductPriceHistoryRow,
 } from "@/modules/engenharia/lib/products/product-price-history";
 import { fmtBRL } from "@/shared/utils/format-brl";
+import { formatShortDate } from "@/shared/utils/date";
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y}`;
+  const formatted = formatShortDate(iso);
+  return formatted === "--" ? "—" : formatted;
 }
 
 async function fetchPriceHistory(productId: string): Promise<ProductPriceHistoryRow[]> {

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { BRAZIL_DATE_DISPLAY_FORMAT } from "@/shared/utils/date";
 import { SALES_ORDER_FIELD_LABELS } from "@/modules/vendas/lib/sales/sales-order-change-log";
 
 type LogUser = {
@@ -113,7 +114,7 @@ export function SalesOrderChangeHistory({ orderId }: { orderId: string }) {
               user?.email?.trim() ||
               "Sistema";
             const when = row.changed_at
-              ? format(new Date(row.changed_at), "dd/MM/yyyy HH:mm", {
+              ? format(new Date(row.changed_at), `${BRAZIL_DATE_DISPLAY_FORMAT} HH:mm`, {
                   locale: ptBR,
                 })
               : "—";

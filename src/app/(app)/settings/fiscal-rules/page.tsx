@@ -23,6 +23,7 @@ import { useMe } from "@/hooks/use-me";
 import type { FiscalRuleRow } from "@/modules/fiscal/lib/fiscal-rules-types";
 import { resolveFiscalRule } from "@/modules/fiscal/lib/fiscal-rules-engine";
 import type { FiscalInconsistency } from "@/modules/fiscal/lib/fiscal-inconsistency-scan";
+import { formatShortDate } from "@/shared/utils/date";
 
 async function fetchRules(): Promise<FiscalRuleRow[]> {
   const res = await fetch("/api/fiscal/rules", { credentials: "include" });
@@ -412,7 +413,7 @@ export default function FiscalRulesSettingsPage() {
                     </p>
                     <p className="text-xs text-slate-600 dark:text-slate-400">
                       {r.last_reviewed_at
-                        ? `Última revisão: ${new Date(r.last_reviewed_at).toLocaleDateString("pt-BR")}`
+                        ? `Última revisão: ${formatShortDate(r.last_reviewed_at)}`
                         : "Nunca revisada"}
                       {r.valid_until ? ` · vence ${r.valid_until}` : ""}
                       {" · intervalo "}

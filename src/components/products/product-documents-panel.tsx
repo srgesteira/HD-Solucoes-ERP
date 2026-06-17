@@ -13,6 +13,7 @@ import {
   PRODUCT_DOCUMENT_KINDS,
   type ProductDocumentKind,
 } from "@/modules/engenharia/lib/products/product-documents";
+import { formatBrazilianDateTime } from "@/shared/utils/date";
 
 export type ProductDocumentRow = {
   id: string;
@@ -43,10 +44,7 @@ function formatBytes(bytes: number | null | undefined): string {
 
 function formatDate(iso: string): string {
   try {
-    return new Intl.DateTimeFormat("pt-BR", {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(new Date(iso));
+    return formatBrazilianDateTime(iso);
   } catch {
     return iso;
   }

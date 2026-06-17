@@ -14,11 +14,12 @@ export function fmtQuoteBRL(n: number): string {
   }).format(Number(n ?? 0));
 }
 
+import { formatShortDate } from "@/shared/utils/date";
+
 export function fmtQuoteDay(iso: string | null | undefined): string {
   if (iso == null || iso === "") return "—";
-  const d = String(iso).slice(0, 10);
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 export function quoteStatusBadge(status: string): {

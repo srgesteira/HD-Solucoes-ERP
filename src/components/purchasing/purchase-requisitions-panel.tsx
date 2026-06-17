@@ -16,6 +16,7 @@ import {
   SUPPLIERS_ACTIVE_QUERY_KEY,
   SUPPLIERS_QUERY_KEY,
 } from "@/modules/compras/lib/suppliers/query-keys";
+import { formatShortDate } from "@/shared/utils/date";
 
 export const requisitionsQueryKey = ["purchasing-requisitions"] as const;
 export const requisitionsCountQueryKey = ["purchasing-requisitions-count"] as const;
@@ -80,10 +81,8 @@ async function fetchSuppliers(): Promise<SupplierOption[]> {
 
 function formatDate(iso: string | null | undefined): string {
   if (iso == null || iso === "") return "—";
-  const d = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return iso;
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? String(iso) : formatted;
 }
 
 export function PurchaseRequisitionsPanel() {

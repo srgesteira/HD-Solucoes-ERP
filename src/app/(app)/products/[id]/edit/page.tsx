@@ -30,9 +30,13 @@ import { fmtBRL } from "@/shared/utils/format-brl";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { AppPage } from "@/shared/ui/app-page";
 import { isSimplifiedClassificationSuffix } from "@/modules/engenharia/lib/products/prefix-classification";
+import { ProductCompositionSettingsPanel } from "@/components/products/product-composition-settings-panel";
 import {
   bomEligibilityMessage,
   canProductHaveBom,
+  finishedUsesBomCalculatedCost,
+  isResaleProductPrefix,
+  productUsesManualListCost,
   seUsesBomCalculatedCost,
 } from "@/modules/engenharia/lib/products/product-bom-eligibility";
 import { BomSuggestionCard } from "@/components/products/bom-suggestion-card";
@@ -246,15 +250,23 @@ export default function EditProductPage() {
   const prefixCode =
     prefixes.find((p) => p.id === formData?.prefix_id.trim())?.code ?? "";
   const isSimplified = isSimplifiedClassificationSuffix(prefixCode);
-  const canHaveBom = canProductHaveBom(prefixCode);
+  const isResale = isResaleProductPrefix(prefixCode);
+  const canHaveBom = canProductHaveBom(
+    prefixCode,
+    productRaw?.composition_enabled
+  );
+  const usesManualCost = productUsesManualListCost(
+    prefixCode,
+    productRaw?.composition_enabled,
+    productRaw?.has_composition
+  );
+  const costFromBom =
+    seUsesBomCalculatedCost(prefixCode, Boolean(productRaw?.has_composition)) ||
+    finishedUsesBomCalculatedCost(prefixCode, productRaw?.composition_enabled);
   const showHvacTab = isHvacSpecProduct({
     product_nature: productRaw?.product_nature ?? null,
     prefix_code: prefixCode || null,
   });
-  const seCostFromBom = seUsesBomCalculatedCost(
-    prefixCode,
-    Boolean(productRaw?.has_composition)
-  );
 
   useEffect(() => {
     if (meLoading) return;
@@ -678,11 +690,11 @@ export default function EditProductPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {seCostFromBom ? (
+            {costFromBom ? (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3 space-y-2 max-w-lg">
                 <p className="text-sm text-slate-700">
-                  Custo calculado pela composição (receita do semi-elaborado).
-                  Propaga automaticamente para produtos que usam este SE.
+                  Custo calculado pela composição (receita).
+                  Propaga automaticamente para produtos que usam este item.
                 </p>
                 <p className="text-xl font-semibold tabular-nums text-emerald-800">
                   {new Intl.NumberFormat("pt-BR", {
@@ -694,23 +706,19 @@ export default function EditProductPage() {
                   Edite materiais e mão-de-obra na aba Composição.
                 </p>
               </div>
-            ) : isSimplified ? (
+            ) : usesManualCost && !isSimplified ? (
               <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 space-y-2 max-w-md">
-                {prefixCode === "SE" ? (
-                  <>
-                    <p className="text-xs text-slate-600">
-                      Semi-elaborado sem receita: custo manual (ex.: compra
-                      pronta). Ao montar a composição, o custo passa a ser
-                      calculado automaticamente.
-                    </p>
-                    {Number(formData.cost_price ?? 0) > 0 ? (
-                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                        Se removeu a receita recentemente, o valor abaixo
-                        mantém-se como referência — pode ajustá-lo manualmente.
-                      </p>
-                    ) : null}
-                  </>
-                ) : null}
+                {isResale ? (
+                  <p className="text-xs text-sky-800 bg-sky-50 border border-sky-200 rounded px-2 py-1.5">
+                    Produto de revenda (HD3): sem composição. O custo actualiza
+                    automaticamente no recebimento de compra.
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-600">
+                    Composição desactivada: informe o custo manualmente ou
+                    aguarde o recebimento de uma compra.
+                  </p>
+                )}
                 <Label htmlFor="edit_cost_price">Custo unitário (R$)</Label>
                 <Input
                   id="edit_cost_price"
@@ -736,11 +744,73 @@ export default function EditProductPage() {
                 <p className="text-xs text-slate-600">
                   Ao guardar, o valor é registado no histórico de custos.
                 </p>
+                {productRaw ? (
+                  <div className="pt-2">
+                    <ProductReleaseForSalePanel
+                      productId={productId}
+                      productName={productRaw.name}
+                      engineeringWorkflowStatus={
+                        productRaw.engineering_workflow_status
+                      }
+                      releasedForSale={Boolean(productRaw.released_for_sale)}
+                      compositionEnabled={productRaw.composition_enabled === true}
+                      isResale={isResale}
+                      onReleased={() => {
+                        void queryClient.invalidateQueries({
+                          queryKey: ["product", productId],
+                        });
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : isSimplified ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 space-y-2 max-w-md">
+                {prefixCode === "SE" ? (
+                  <>
+                    <p className="text-xs text-slate-600">
+                      Semi-elaborado sem receita: custo manual (ex.: compra
+                      pronta). Ao montar a composição, o custo passa a ser
+                      calculado automaticamente.
+                    </p>
+                    {Number(formData.cost_price ?? 0) > 0 ? (
+                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                        Se removeu a receita recentemente, o valor abaixo
+                        mantém-se como referência — pode ajustá-lo manualmente.
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+                <Label htmlFor="edit_cost_price_simplified">Custo unitário (R$)</Label>
+                <Input
+                  id="edit_cost_price_simplified"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={
+                    Number.isFinite(formData.cost_price) ? formData.cost_price : ""
+                  }
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === "") {
+                      handleChange("cost_price", 0);
+                      return;
+                    }
+                    const n = Number(raw);
+                    handleChange(
+                      "cost_price",
+                      Number.isFinite(n) ? Math.max(0, n) : 0
+                    );
+                  }}
+                />
+                <p className="text-xs text-slate-600">
+                  Ao guardar, o valor é registado no histórico de custos.
+                </p>
               </div>
             ) : (
               <p className="text-sm text-slate-600">
-                Para produtos acabados, o custo de lista é calculado pela
-                composição (BOM). Recalcule na aba Composição para actualizar o
+                Para produtos acabados com composição activa, o custo de lista é
+                calculado pela BOM. Recalcule na aba Composição para actualizar o
                 histórico.
               </p>
             )}
@@ -749,9 +819,9 @@ export default function EditProductPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="composition" className="mt-4">
+          <TabsContent value="composition" className="mt-4 space-y-4">
             {structureSuggestion ? (
-              <div className="mb-4">
+              <div>
                 <BomSuggestionCard
                   suggestion={structureSuggestion}
                   onDismiss={() => setStructureSuggestion(null)}
@@ -760,22 +830,24 @@ export default function EditProductPage() {
               </div>
             ) : null}
 
-            {productRaw ? (
-              <div className="mb-4">
-                <ProductReleaseForSalePanel
-                  productId={productId}
-                  productName={productRaw.name}
-                  engineeringWorkflowStatus={
-                    productRaw.engineering_workflow_status
-                  }
-                  releasedForSale={Boolean(productRaw.released_for_sale)}
-                  onReleased={() => {
-                    void queryClient.invalidateQueries({
-                      queryKey: ["product", productId],
-                    });
-                  }}
-                />
-              </div>
+            <ProductCompositionSettingsPanel productId={productId} />
+
+            {productRaw && canHaveBom ? (
+              <ProductReleaseForSalePanel
+                productId={productId}
+                productName={productRaw.name}
+                engineeringWorkflowStatus={
+                  productRaw.engineering_workflow_status
+                }
+                releasedForSale={Boolean(productRaw.released_for_sale)}
+                compositionEnabled={productRaw.composition_enabled === true}
+                isResale={isResale}
+                onReleased={() => {
+                  void queryClient.invalidateQueries({
+                    queryKey: ["product", productId],
+                  });
+                }}
+              />
             ) : null}
 
             {canHaveBom ? (
@@ -784,12 +856,19 @@ export default function EditProductPage() {
               <Card>
                 <CardContent className="py-8 text-center space-y-2">
                   <p className="text-sm text-slate-600">
-                    {bomEligibilityMessage(prefixCode) ||
+                    {bomEligibilityMessage(
+                      prefixCode,
+                      productRaw?.composition_enabled
+                    ) ||
                       "Este produto não possui receita de fabricação (composição / BOM)."}
                   </p>
-                  <p className="text-xs text-slate-500">
-                    Acabados (HD1–HD3, AC) e semi-elaborados (SE) podem ter composição.
-                  </p>
+                  {!isResale ? (
+                    <p className="text-xs text-slate-500">
+                      Acabados fabricados (HD1, HD2, AC) podem activar composição
+                      acima. Semi-elaborados (SE) têm composição opcional ao
+                      adicionar linhas.
+                    </p>
+                  ) : null}
                 </CardContent>
               </Card>
             )}

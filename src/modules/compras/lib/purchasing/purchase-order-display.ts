@@ -70,12 +70,12 @@ export function fmtPoBRL(n: number): string {
   }).format(Number.isFinite(n) ? n : 0);
 }
 
+import { formatShortDate } from "@/shared/utils/date";
+
 export function fmtPoDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const d = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return iso;
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 export function formatSupplierAddressForPrint(

@@ -21,7 +21,7 @@ import { productTypeFromPrefixCode } from "@/modules/engenharia/lib/products/pro
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
 import { propagateComponentCostChange } from "@/modules/engenharia/lib/products/propagate-component-cost";
 import { roundBomCost } from "@/modules/engenharia/lib/products/bom-unit-cost-sync";
-import { seUsesBomCalculatedCost } from "@/modules/engenharia/lib/products/product-bom-eligibility";
+import { seUsesBomCalculatedCost, finishedUsesBomCalculatedCost, productUsesManualListCost, isResaleProductPrefix } from "@/modules/engenharia/lib/products/product-bom-eligibility";
 import { resolveMoProductCostPrice } from "@/modules/engenharia/lib/products/mo-cost-price";
 import { productNatureFromPrefixCode } from "@/modules/engenharia/lib/products/mrp-product-nature";
 import {
@@ -113,7 +113,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existingProduct, error: loadErr } = await admin
     .from("products")
     .select(
-      "id,code,technical_code,cost_price,has_composition,prefix_id,family_id,subfamily_id,material_id,finish_id,default_is_external_labor,default_labor_cost,default_work_center_id,default_production_line_id"
+      "id,code,technical_code,cost_price,has_composition,composition_enabled,prefix_id,family_id,subfamily_id,material_id,finish_id,default_is_external_labor,default_labor_cost,default_work_center_id,default_production_line_id"
     )
     .eq("id", productId)
     .eq("tenant_id", tenantId)
@@ -370,6 +370,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
+  if (mergedPrefixCode && isResaleProductPrefix(mergedPrefixCode)) {
+    updateRow.composition_enabled = false;
+  }
+
   if (
     validated.cost_price !== undefined &&
     seUsesBomCalculatedCost(
@@ -382,6 +386,24 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (nextCost !== prevCost) {
       return apiError(
         "Semi-elaborado com receita (BOM): o custo é calculado pela composição. Altere a aba Composição.",
+        400
+      );
+    }
+    delete updateRow.cost_price;
+  }
+
+  if (
+    validated.cost_price !== undefined &&
+    finishedUsesBomCalculatedCost(
+      mergedPrefixCode,
+      existingProduct.composition_enabled
+    )
+  ) {
+    const nextCost = roundBomCost(Number(validated.cost_price));
+    const prevCost = roundBomCost(Number(existingProduct.cost_price ?? 0));
+    if (nextCost !== prevCost) {
+      return apiError(
+        "Acabado com composição activa: o custo é calculado pela BOM. Altere a aba Composição.",
         400
       );
     }
@@ -416,10 +438,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   if (
     validated.cost_price !== undefined &&
-    mergedIsSimplified &&
-    !seUsesBomCalculatedCost(
+    productUsesManualListCost(
       mergedPrefixCode,
-      Boolean(existingProduct.has_composition)
+      existingProduct.composition_enabled,
+      existingProduct.has_composition
     )
   ) {
     const prevCost = Number(existingProduct.cost_price ?? 0);

@@ -22,6 +22,7 @@ import {
   type StatusTone,
 } from "@/shared/ui/page-helpers";
 import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
+import { formatBrazilianDateTime, formatShortDate } from "@/shared/utils/date";
 
 type Detail = {
   shipment: {
@@ -104,11 +105,14 @@ function formatBRL(n: number) {
 }
 
 function formatDate(iso: string | null) {
-  return iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+  if (!iso) return "—";
+  const formatted = formatShortDate(iso);
+  return formatted === "--" ? "—" : formatted;
 }
 
 function formatDateTime(iso: string | null) {
-  return iso ? new Date(iso).toLocaleString("pt-BR") : "—";
+  if (!iso) return "—";
+  return formatBrazilianDateTime(iso);
 }
 
 export default function ShipmentDetailPage() {

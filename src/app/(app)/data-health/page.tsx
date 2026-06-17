@@ -14,6 +14,7 @@ import {
   type StatusTone,
 } from "@/shared/ui/page-helpers";
 import type {
+  DataHealthAffectedItem,
   DataHealthIssue,
   DataHealthSeverity,
 } from "@/modules/core/lib/data-health/data-health";
@@ -123,14 +124,18 @@ export default function DataHealthPage() {
                 Itens detectados
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <ul className="divide-y divide-slate-100">
-                {issues.map((issue) => (
+            <CardContent className="p-0 sm:p-6">
+              <ul className="divide-y divide-slate-100 px-4 sm:px-0">
+                {issues.map((issue) => {
+                  const fixHref =
+                    issue.items[0]?.href ?? issue.href;
+                  return (
                   <li
                     key={issue.rule_id}
-                    className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                    className="py-3 first:pt-0 last:pb-0 border-b border-slate-100 last:border-0"
                   >
-                    <div className="min-w-0 max-w-3xl">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
                       <p className="font-medium text-slate-900 flex flex-wrap items-center gap-2">
                         <StatusBadge tone={SEVERITY_TONE[issue.severity]}>
                           {SEVERITY_LABEL[issue.severity]}
@@ -146,16 +151,46 @@ export default function DataHealthPage() {
                       <p className="text-sm text-slate-700 mt-1">
                         {issue.impact}
                       </p>
+                      {issue.items.length > 0 ? (
+                        <ul className="mt-3 space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2">
+                          {issue.items.map((item: DataHealthAffectedItem) => (
+                            <li key={item.id} className="flex flex-wrap items-center gap-2">
+                              <Link
+                                href={item.href}
+                                className="text-sm font-mono text-brand-700 hover:underline"
+                              >
+                                {item.label}
+                              </Link>
+                              <span className="text-xs text-slate-500">
+                                → abrir cadastro
+                              </span>
+                            </li>
+                          ))}
+                          {issue.count > issue.items.length ? (
+                            <li className="text-xs text-slate-500 pt-1">
+                              + {issue.count - issue.items.length} registo(s)
+                              adicional(is) — use a lista geral se necessário.
+                            </li>
+                          ) : null}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-500">
+                          Abra a área indicada para localizar e corrigir os{" "}
+                          {issue.count} registo(s).
+                        </p>
+                      )}
                     </div>
                     <Link
-                      href={issue.href}
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                      href={fixHref}
+                      className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1 text-sm text-slate-700 hover:bg-slate-50 transition-colors shrink-0"
                     >
                       Ir corrigir
                       <ArrowRight className="h-4 w-4" />
                     </Link>
+                    </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </CardContent>
           </Card>

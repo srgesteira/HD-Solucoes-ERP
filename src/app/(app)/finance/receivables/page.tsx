@@ -24,6 +24,7 @@ import {
   matchesUniversalSearchRow,
   parseUniversalSearch,
 } from "@/shared/utils/universal-search";
+import { formatShortDate } from "@/shared/utils/date";
 
 type ReceivableTab = "all" | "pending" | "partial" | "paid" | "cancelled" | "overdue";
 
@@ -54,10 +55,8 @@ function fmtBrl(n: number) {
 
 function formatDate(iso: unknown): string {
   if (iso == null || iso === "") return "—";
-  const s = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return String(iso);
-  const [y, m, d] = s.split("-");
-  return `${d}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 export default function FinanceReceivablesPage() {

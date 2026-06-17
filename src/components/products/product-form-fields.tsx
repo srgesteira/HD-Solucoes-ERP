@@ -544,7 +544,9 @@ export function ProductFormFields({
             Sufixo de entrada e sequência do código
           </p>
           <p className="mt-1">
-            <strong>HD1, HD2, HD3, AC</strong> — classificação completa (família,
+            <strong>HD1, HD2, AC</strong> — fabricados (composição opcional).{" "}
+            <strong>HD3</strong> — revenda (sem composição; custo manual/compra).
+            Classificação completa (família,
             subfamília, material, acabamento); código ex.:{" "}
             <span className="font-mono text-slate-900">HD1-A10A10-001</span>.{" "}
             <strong>MP, SE, EB, MC, RV, MO</strong> — só material e acabamento;

@@ -66,10 +66,10 @@ type Props = {
 
 /** Pedido, Cliente, Cód., Descrição, Qtd, Origem, Prazo PCP, PC entrega, Início/Fim plano, Obs., Apontamento */
 const LINE_GRID_COLS =
-  "minmax(72px,0.75fr) minmax(80px,1fr) minmax(64px,0.7fr) minmax(100px,1.25fr) 40px minmax(56px,0.55fr) 76px 76px 76px 76px minmax(72px,1fr) minmax(140px,1.35fr)";
+  "minmax(84px,0.85fr) minmax(108px,1.15fr) minmax(76px,0.8fr) minmax(180px,2.2fr) 44px minmax(68px,0.7fr) 88px 88px 96px 96px minmax(120px,1.1fr) minmax(176px,1.6fr)";
 
 const LINE_GRID_COLS_CQ =
-  "minmax(72px,0.75fr) minmax(80px,1fr) minmax(64px,0.7fr) minmax(100px,1.25fr) 40px minmax(56px,0.55fr) 76px 76px 76px 76px minmax(72px,1fr) minmax(120px,1.2fr) minmax(100px,0.95fr)";
+  "minmax(84px,0.85fr) minmax(108px,1.15fr) minmax(76px,0.8fr) minmax(160px,1.8fr) 44px minmax(68px,0.7fr) 88px 88px 96px 96px minmax(100px,1fr) minmax(140px,1.25fr) minmax(108px,1fr)";
 
 export function PcpLinesLegacyPanel({
   lines = [],
@@ -122,7 +122,7 @@ export function PcpLinesLegacyPanel({
       </div>
 
       <div className="overflow-x-auto">
-        <div className={qualityControlMode ? "min-w-[1160px]" : "min-w-[1040px]"}>
+        <div className={qualityControlMode ? "min-w-[1320px] w-full" : "min-w-[1240px] w-full"}>
           <div
             className="grid gap-1 px-3 py-2 text-[11px] font-semibold text-slate-500 border-b border-slate-200 bg-slate-50/80 items-center"
             style={{ gridTemplateColumns: gridCols }}
@@ -221,7 +221,7 @@ export function PcpLinesLegacyPanel({
               return (
                 <div
                   key={`${it.id}-${idx}`}
-                  className={`grid gap-1 px-3 py-1.5 text-[10px] sm:text-xs items-center border-b border-slate-100 ${rowBg}`}
+                  className={`grid gap-x-2 gap-y-1 px-3 py-2 text-[10px] sm:text-xs items-start border-b border-slate-100 ${rowBg}`}
                   style={{ gridTemplateColumns: gridCols }}
                 >
                   <span className="font-mono truncate font-medium text-slate-800">
@@ -303,7 +303,7 @@ export function PcpLinesLegacyPanel({
                     ) : (
                       <input
                         type="date"
-                        className="w-full min-w-[5.5rem] max-w-[6.5rem] rounded-md border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-center mx-auto"
+                        className="w-full min-w-[6.5rem] max-w-[7.25rem] rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-center mx-auto tabular-nums"
                         value={prodStart}
                         title={
                           !it.order_item_id
@@ -334,7 +334,7 @@ export function PcpLinesLegacyPanel({
                     ) : (
                       <input
                         type="date"
-                        className={`w-full min-w-[5.5rem] max-w-[6.5rem] rounded-md border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-center mx-auto ${lineEndVsPcpTrafficClass(pcpDeadline, prodEnd || null, completed)}`}
+                        className={`w-full min-w-[6.5rem] max-w-[7.25rem] rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-center mx-auto tabular-nums ${lineEndVsPcpTrafficClass(pcpDeadline, prodEnd || null, completed)}`}
                         value={prodEnd}
                         title={
                           !it.order_item_id
@@ -366,7 +366,7 @@ export function PcpLinesLegacyPanel({
                     ) : (
                       <input
                         type="text"
-                        className="w-full rounded-md border border-slate-300 bg-white px-1 py-0.5 text-[10px]"
+                        className="w-full min-w-0 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[10px]"
                         defaultValue={it.production_notes ?? ""}
                         placeholder="Obs…"
                         onBlur={(e) => {
@@ -377,7 +377,7 @@ export function PcpLinesLegacyPanel({
                       />
                     )}
                   </span>
-                  <span className="min-w-0 flex flex-col gap-1 py-0.5">
+                  <span className="min-w-0 flex flex-col gap-1.5 py-0.5">
                     {cqBlocked && !qualityControlMode ? (
                       <span
                         className="inline-flex w-fit items-center rounded border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-900"
@@ -432,7 +432,7 @@ export function PcpLinesLegacyPanel({
                       </span>
                     ) : null}
                     {!readOnly && it.order_item_id ? (
-                      <div className="flex flex-wrap gap-1 pt-0.5">
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
                         {apontStatus === "not_started" ? (
                           <Button
                             type="button"

@@ -33,6 +33,7 @@ import type { ReceivableStatus } from "@/modules/core/types/finance.types";
 import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
 import { defaultExpectedDeliveryForOrder } from "@/modules/vendas/lib/sales/sales-flow";
 import { fmtBRL } from "@/shared/utils/format-brl";
+import { formatShortDate } from "@/shared/utils/date";
 import { SalesOrderChangeHistory } from "@/components/sales/sales-order-change-history";
 import { SalesReturnCreateModal } from "@/components/sales/sales-return-create-modal";
 
@@ -162,9 +163,8 @@ function unwrapNfes(raw: unknown): NfeLineBrief[] {
 
 function fmtDay(iso: string | null | undefined): string {
   if (iso == null || iso === "") return "—";
-  const d = String(iso).slice(0, 10);
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 function salesOrderStatusPill(

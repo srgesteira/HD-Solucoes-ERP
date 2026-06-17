@@ -12,6 +12,7 @@ import {
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
 import type { ProductionSupplyPendingRow } from "@/modules/almoxarifado/lib/production-supply";
+import { formatShortDate } from "@/shared/utils/date";
 
 async function fetchPendingSupply(): Promise<ProductionSupplyPendingRow[]> {
   const res = await fetch("/api/inventory/production-supply", {
@@ -39,9 +40,8 @@ async function confirmSupply(orderItemId: string): Promise<void> {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  const d = new Date(iso.includes("T") ? iso : `${iso}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("pt-BR");
+  const formatted = formatShortDate(iso);
+  return formatted === "--" ? "—" : formatted;
 }
 
 function statusBadge(row: ProductionSupplyPendingRow) {

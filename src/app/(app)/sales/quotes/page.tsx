@@ -32,6 +32,7 @@ import {
   useCronogramaSearch,
 } from "@/shared/ui/cronograma-layout";
 import { cn } from "@/shared/utils/cn";
+import { formatShortDate } from "@/shared/utils/date";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -174,10 +175,8 @@ function formatCurrency(value: number): string {
 
 function formatDate(iso: string | null | undefined): string {
   if (iso == null || iso === "") return "—";
-  const d = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return iso;
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 export default function QuotesListPage() {

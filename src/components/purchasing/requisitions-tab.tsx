@@ -1,16 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileOutput, Loader2, Mail } from "lucide-react";
+import { FileOutput, Loader2, Mail, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
+import {
+  CRONOGRAMA_TOKENS,
+  CronogramaError,
+  CronogramaLoading,
+  CronogramaPanel,
+} from "@/shared/ui/cronograma-layout";
 import { cn } from "@/shared/utils/cn";
+import { formatShortDate } from "@/shared/utils/date";
+import {
+  matchesUniversalSearchRow,
+  parseUniversalSearch,
+} from "@/shared/utils/universal-search";
 import type { PurchaseRequisitionRow } from "@/modules/compras/lib/purchasing-requisitions";
 import {
   isMigrationRequiredError,
@@ -55,9 +66,8 @@ async function fetchSuppliers(): Promise<
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const d = String(iso).slice(0, 10);
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 function requisitionStatusLabel(row: PurchaseRequisitionRow): string {
@@ -65,10 +75,15 @@ function requisitionStatusLabel(row: PurchaseRequisitionRow): string {
   return "Pendente";
 }
 
-export function RequisitionsTab() {
+type RequisitionsTabProps = {
+  search?: string;
+};
+
+export function RequisitionsTab({ search = "" }: RequisitionsTabProps) {
   const router = useRouter();
   const qc = useQueryClient();
   const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const q = useQuery({ queryKey: requisitionsQueryKey, queryFn: fetchRequisitions });
@@ -170,8 +185,32 @@ export function RequisitionsTab() {
       toast.error(e instanceof Error ? e.message : "Erro"),
   });
 
+  const deleteMut = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/purchasing/requisitions/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao excluir requisição");
+    },
+    onSuccess: (_data, id) => {
+      toast.success("Requisição excluída.");
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      invalidate();
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro ao excluir"),
+    onSettled: () => setDeletingId(null),
+  });
+
   const rows = q.data ?? [];
   const suppliers = suppliersQ.data ?? [];
+  const searchHint = parseUniversalSearch(search);
 
   const sorted = useMemo(
     () =>
@@ -181,19 +220,44 @@ export function RequisitionsTab() {
     [rows]
   );
 
+  const filtered = useMemo(() => {
+    if (!searchHint.text) return sorted;
+    return sorted.filter((row) =>
+      matchesUniversalSearchRow(
+        searchHint,
+        [
+          row.product_name,
+          row.product_code,
+          row.description,
+          row.quantity,
+          row.unit,
+          row.sales_order_number,
+          row.production_order_number,
+          row.suggested_supplier_name,
+          row.preferred_supplier_name,
+          row.need_date,
+          requisitionStatusLabel(row),
+        ],
+        suppliers
+          .filter((s) => s.id === row.suggested_supplier_id)
+          .map((s) => s.name)
+      )
+    );
+  }, [sorted, searchHint, suppliers]);
+
   const selectedRows = useMemo(
-    () => sorted.filter((r) => selectedIds.has(r.id)),
-    [sorted, selectedIds]
+    () => filtered.filter((r) => selectedIds.has(r.id)),
+    [filtered, selectedIds]
   );
 
   const allSelected =
-    sorted.length > 0 && sorted.every((r) => selectedIds.has(r.id));
+    filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id));
 
   const toggleAll = () => {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(sorted.map((r) => r.id)));
+      setSelectedIds(new Set(filtered.map((r) => r.id)));
     }
   };
 
@@ -206,13 +270,29 @@ export function RequisitionsTab() {
     });
   };
 
+  const handleDelete = useCallback(
+    (row: PurchaseRequisitionRow) => {
+      const label = row.product_name ?? row.description;
+      if (
+        !window.confirm(
+          `Excluir a requisição de «${label}»?\n\nUse quando o item já foi comprado noutra requisição ou quando a sugestão MRP estiver duplicada.`
+        )
+      ) {
+        return;
+      }
+      setDeletingId(row.id);
+      deleteMut.mutate(row.id);
+    },
+    [deleteMut]
+  );
+
   const tableColumns = useMemo((): SortableTableColumn<PurchaseRequisitionRow>[] => {
     return [
       {
         key: "select",
         label: "",
         type: "text",
-        width: "w-[4%]",
+        width: "w-[3%]",
         sortable: false,
         truncate: false,
         render: (row) => (
@@ -228,14 +308,19 @@ export function RequisitionsTab() {
         key: "product",
         label: "Produto",
         type: "text",
-        width: "w-[22%]",
+        width: "w-[20%]",
         accessor: (row) => row.product_name ?? row.description,
         truncate: false,
         render: (row) => (
           <>
-            <span className="font-medium text-slate-900">
+            <span className={cn(CRONOGRAMA_TOKENS.cellText, "font-medium text-slate-900")}>
               {row.product_name ?? row.description}
             </span>
+            {row.product_code ? (
+              <span className="block text-xs text-slate-500 font-mono">
+                {row.product_code}
+              </span>
+            ) : null}
             {row.sales_order_number ? (
               <span className="block text-xs text-slate-500">
                 PV {row.sales_order_number}
@@ -252,12 +337,12 @@ export function RequisitionsTab() {
         key: "quantity",
         label: "Qtd",
         type: "number",
-        width: "w-[8%]",
+        width: "w-[7%]",
         align: "right",
         accessor: (row) => row.quantity,
         truncate: false,
         render: (row) => (
-          <span className="tabular-nums">
+          <span className={CRONOGRAMA_TOKENS.cellMuted}>
             {row.quantity} {row.unit}
           </span>
         ),
@@ -266,13 +351,13 @@ export function RequisitionsTab() {
         key: "suggested_supplier",
         label: "Fornecedor sugerido",
         type: "text",
-        width: "w-[18%]",
+        width: "w-[16%]",
         accessor: (row) =>
           suppliers.find((s) => s.id === row.suggested_supplier_id)?.name ?? "",
         truncate: false,
         render: (row) => (
           <select
-            className="h-8 w-full max-w-[200px] rounded-md border border-slate-300 bg-white px-2 text-xs"
+            className="h-8 w-full max-w-[220px] rounded-md border border-slate-300 bg-white px-2 text-xs"
             value={row.suggested_supplier_id ?? ""}
             disabled={supplierMut.isPending}
             onChange={(e) => {
@@ -296,11 +381,11 @@ export function RequisitionsTab() {
         key: "need_date",
         label: "Data necessidade",
         type: "date",
-        width: "w-[11%]",
+        width: "w-[10%]",
         accessor: (row) => row.need_date,
         truncate: false,
         render: (row) => (
-          <span className="text-xs tabular-nums whitespace-nowrap">
+          <span className={CRONOGRAMA_TOKENS.cellMuted}>
             {formatDate(row.need_date)}
           </span>
         ),
@@ -309,13 +394,13 @@ export function RequisitionsTab() {
         key: "status",
         label: "Status",
         type: "text",
-        width: "w-[12%]",
+        width: "w-[11%]",
         accessor: (row) => requisitionStatusLabel(row),
         truncate: false,
         render: (row) => (
           <span
             className={cn(
-              "inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1",
+              CRONOGRAMA_TOKENS.badge,
               row.quotation_sent_at
                 ? "bg-blue-50 text-blue-800 ring-blue-200"
                 : "bg-amber-50 text-amber-900 ring-amber-200"
@@ -329,7 +414,7 @@ export function RequisitionsTab() {
         key: "actions",
         label: "Ações",
         type: "text",
-        width: "w-[15%]",
+        width: "w-[18%]",
         sortable: false,
         align: "right",
         truncate: false,
@@ -374,50 +459,73 @@ export function RequisitionsTab() {
               <Mail className="h-3.5 w-3.5" />
               Solicitar orçamento
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs text-red-700 border-red-200 hover:bg-red-50"
+              disabled={deletingId === row.id || deleteMut.isPending}
+              title="Excluir requisição duplicada ou já atendida noutro PC"
+              onClick={() => handleDelete(row)}
+            >
+              {deletingId === row.id ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Excluir
+            </Button>
           </div>
         ),
       },
     ];
   }, [
-    allSelected,
     selectedIds,
     suppliers,
     supplierMut.isPending,
     issuingId,
     issueMut,
     quoteMut.isPending,
+    deletingId,
+    deleteMut.isPending,
+    handleDelete,
   ]);
 
   if (q.isLoading) {
-    return (
-      <p className="text-sm text-slate-500 flex items-center gap-2 py-12 justify-center">
-        <Loader2 className="h-4 w-4 animate-spin" /> A carregar requisições…
-      </p>
-    );
+    return <CronogramaLoading message="A carregar requisições…" />;
   }
 
   if (q.error) {
     const msg = q.error instanceof Error ? q.error.message : "Erro";
     const needsMigration = isMigrationRequiredError(msg);
-    return (
-      <div className="py-8 px-4 text-center space-y-2 max-w-lg mx-auto" role="alert">
-        <p className="text-sm text-red-700 whitespace-pre-wrap">{msg}</p>
-        {needsMigration ? (
+    if (needsMigration) {
+      return (
+        <div className="py-8 px-4 text-center space-y-2 max-w-lg mx-auto" role="alert">
+          <p className="text-sm text-red-700 whitespace-pre-wrap">{msg}</p>
           <p className="text-xs text-slate-600">{REQUISITIONS_MIGRATION_HINT}</p>
-        ) : null}
-      </div>
+        </div>
+      );
+    }
+    return (
+      <CronogramaPanel
+        error={
+          <CronogramaError message={msg} onRetry={() => void q.refetch()} />
+        }
+      >
+        {null}
+      </CronogramaPanel>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <CronogramaPanel>
       <RequisitionsBatchActionsBar
         selectedRows={selectedRows}
         onClearSelection={() => setSelectedIds(new Set())}
         onSuccess={invalidate}
       />
 
-      {sorted.length > 0 ? (
+      {filtered.length > 0 ? (
         <label className="flex items-center gap-2 text-xs text-slate-600 px-1 cursor-pointer">
           <input
             type="checkbox"
@@ -426,15 +534,25 @@ export function RequisitionsTab() {
             aria-label="Seleccionar todas as requisições"
           />
           Seleccionar todas
+          {searchHint.text ? (
+            <span className="text-slate-400">
+              ({filtered.length} de {sorted.length})
+            </span>
+          ) : null}
         </label>
       ) : null}
+
       <SortableTable
         columns={tableColumns}
-        data={sorted}
+        data={filtered}
         getRowKey={(row) => row.id}
-        emptyMessage="Sem requisições MRP pendentes."
+        emptyMessage={
+          searchHint.text
+            ? "Nenhuma requisição corresponde à busca."
+            : "Sem requisições MRP pendentes."
+        }
         tableClassName="text-sm"
       />
-    </div>
+    </CronogramaPanel>
   );
 }

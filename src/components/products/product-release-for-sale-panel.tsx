@@ -13,6 +13,8 @@ type Props = {
   productName: string;
   engineeringWorkflowStatus: string | null;
   releasedForSale: boolean;
+  compositionEnabled?: boolean;
+  isResale?: boolean;
   onReleased?: () => void;
 };
 
@@ -21,6 +23,8 @@ export function ProductReleaseForSalePanel({
   productName,
   engineeringWorkflowStatus,
   releasedForSale,
+  compositionEnabled = false,
+  isResale = false,
   onReleased,
 }: Props) {
   const queryClient = useQueryClient();
@@ -28,6 +32,8 @@ export function ProductReleaseForSalePanel({
 
   const isReleased =
     releasedForSale || engineeringWorkflowStatus === "released";
+  const usesBom = compositionEnabled && !isResale;
+
   const isPending = engineeringWorkflowStatus === "pending_composition";
 
   if (isReleased) {
@@ -102,9 +108,11 @@ export function ProductReleaseForSalePanel({
           isPending ? "text-amber-900/90" : "text-slate-600"
         )}
       >
-        Cadastre pelo menos um item na composição (BOM) abaixo. Quando o custo
-        estiver correcto, clique em liberar — o badge passa de «Eng.
-        pendente» para «Liberado».
+        {usesBom
+          ? "Cadastre pelo menos um item na composição (BOM) abaixo. Quando o custo estiver correcto, clique em liberar — o badge passa de «Eng. pendente» para «Liberado»."
+          : isResale
+            ? "Produto de revenda: defina o custo manual na aba Informações básicas (ou receba uma compra). Depois libere para o comercial."
+            : "Composição desactivada: defina o custo manual na aba Informações básicas. Depois libere para o comercial."}
         {isPending
           ? " O orçamento associado será destacado para o vendedor aplicar markup."
           : null}

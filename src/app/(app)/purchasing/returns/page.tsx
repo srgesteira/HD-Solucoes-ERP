@@ -26,6 +26,7 @@ import {
   type PurchaseReturnStatus,
 } from "@/modules/reverse/lib/returns-types";
 import { formatBrl } from "@/shared/utils/format-brl";
+import { formatShortDate } from "@/shared/utils/date";
 
 type ReturnTab = "all" | PurchaseReturnStatus;
 
@@ -75,7 +76,8 @@ const STATUS_TONE: Record<PurchaseReturnStatus, StatusTone> = {
 };
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("pt-BR");
+  const formatted = formatShortDate(iso);
+  return formatted === "--" ? "—" : formatted;
 }
 
 export default function PurchaseReturnsListPage() {

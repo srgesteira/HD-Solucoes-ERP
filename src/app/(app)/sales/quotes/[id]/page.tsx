@@ -32,6 +32,7 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { cn } from "@/shared/utils/cn";
 import { fmtBRL } from "@/shared/utils/format-brl";
+import { formatShortDate } from "@/shared/utils/date";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { QuoteStatus } from "@/modules/core/types/sales.types";
@@ -110,9 +111,8 @@ type QuoteDetail = {
 
 function fmtDay(iso: string | null | undefined): string {
   if (iso == null || iso === "") return "—";
-  const d = String(iso).slice(0, 10);
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 function unwrapProduct(p: QuoteItemLine["product"]): string {

@@ -22,6 +22,8 @@ import {
   matchesUniversalSearchRow,
   parseUniversalSearch,
 } from "@/shared/utils/universal-search";
+import { formatShortDate } from "@/shared/utils/date";
+import { formatBrl } from "@/shared/utils/format-brl";
 
 type ShipmentTab = "all" | "prepared" | "in_transit" | "delivered" | "cancelled";
 
@@ -84,10 +86,9 @@ const SOURCE_LABEL: Record<string, string> = {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("pt-BR");
+  const formatted = formatShortDate(iso);
+  return formatted === "--" ? "—" : formatted;
 }
-
-import { formatBrl } from "@/shared/utils/format-brl";
 
 type DirectionTab = "all" | "outbound" | "inbound";
 

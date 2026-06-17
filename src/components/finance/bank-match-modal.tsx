@@ -5,6 +5,7 @@ import { Loader2, X } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { formatBrl } from "@/shared/utils/format-brl";
+import { formatShortDate } from "@/shared/utils/date";
 import { cn } from "@/shared/utils/cn";
 
 type MatchCandidate = {
@@ -47,9 +48,8 @@ async function fetchCandidates(lineId: string): Promise<CandidatesResponse> {
 }
 
 function fmtDay(iso: string): string {
-  const d = iso.slice(0, 10);
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(iso.slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 export function BankMatchModal({

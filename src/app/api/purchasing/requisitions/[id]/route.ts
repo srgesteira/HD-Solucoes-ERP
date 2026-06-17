@@ -11,8 +11,44 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 
 export const dynamic = "force-dynamic";
+
+export async function DELETE(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const { id } = await context.params;
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return apiError("Não autenticado", 401);
+
+  const access = await assertMenuModuleAccess("compras");
+  if (!access.ok) return access.response;
+
+  const tenantId = await getCurrentTenantId();
+  if (!tenantId) return apiError("Tenant não encontrado", 403);
+
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("purchase_order_items")
+    .delete()
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
+    .eq("status", "draft")
+    .is("purchase_order_id", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) return apiError(error.message, 400);
+  if (!data) return apiError("Requisição não encontrada ou já processada", 404);
+
+  return apiOk({ success: true });
+}
 
 export async function PATCH(
   request: NextRequest,

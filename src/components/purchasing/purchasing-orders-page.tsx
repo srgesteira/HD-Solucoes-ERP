@@ -114,15 +114,17 @@ export function PurchasingOrdersPage() {
           </TabsTrigger>
         </TabsList>
 
-        {activeTab !== "requisitions" ? (
-          <div className="mt-4">
-            <CronogramaSearch
-              value={searchInput}
-              onChange={setSearchInput}
-              placeholder="Buscar pedido, fornecedor, data, código ou produto…"
-            />
-          </div>
-        ) : null}
+        <div className="mt-4">
+          <CronogramaSearch
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder={
+              activeTab === "requisitions"
+                ? "Buscar produto, fornecedor, PV, OP, data ou código…"
+                : "Buscar pedido, fornecedor, data, código ou produto…"
+            }
+          />
+        </div>
 
         <TabsContent value="all" className="mt-4">
           <AllOrdersTab search={search} canPurchasing={canPurchasing} />
@@ -137,7 +139,7 @@ export function PurchasingOrdersPage() {
         </TabsContent>
 
         <TabsContent value="requisitions" className="mt-4">
-          <RequisitionsTab />
+          <RequisitionsTab search={search} />
         </TabsContent>
       </Tabs>
 

@@ -3137,6 +3137,7 @@ export type Database = {
         Row: {
           code: string | null
           composition_requested_at: string | null
+          composition_enabled: boolean
           cost_price: number
           created_at: string
           custom_profit_margin: number | null
@@ -3183,6 +3184,7 @@ export type Database = {
         Insert: {
           code?: string | null
           composition_requested_at?: string | null
+          composition_enabled?: boolean
           cost_price?: number
           created_at?: string
           custom_profit_margin?: number | null
@@ -3229,6 +3231,7 @@ export type Database = {
         Update: {
           code?: string | null
           composition_requested_at?: string | null
+          composition_enabled?: boolean
           cost_price?: number
           created_at?: string
           custom_profit_margin?: number | null

@@ -65,7 +65,7 @@ export function deriveProductLifecycle(
   const hasComposition = input.has_composition === true;
   const releasedForSale = input.released_for_sale === true;
 
-  if (nature === "RV" || prefix === "RV") return "resale";
+  if (nature === "RV" || prefix === "RV" || prefix === "HD3") return "resale";
 
   if (isMoClassificationSuffix(prefix)) return "mask";
 

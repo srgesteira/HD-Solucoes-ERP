@@ -9,11 +9,12 @@ import { Button } from "@/shared/ui/button";
 import type { PurchaseRequisitionRow } from "@/modules/compras/lib/purchasing-requisitions";
 import { validateSameSuggestedSupplier } from "@/modules/compras/lib/purchasing/requisition-batch";
 
+import { formatShortDate } from "@/shared/utils/date";
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const d = String(iso).slice(0, 10);
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 type Props = {

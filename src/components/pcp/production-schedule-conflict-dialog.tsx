@@ -21,10 +21,12 @@ type Props = {
   onClose: () => void;
 };
 
+import { formatShortDate } from "@/shared/utils/date";
+
 function formatBr(iso: string | null): string {
   if (!iso) return "—";
-  const [y, m, d] = iso.slice(0, 10).split("-");
-  return `${d}/${m}/${y}`;
+  const formatted = formatShortDate(iso.slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 export function ProductionScheduleConflictDialog({

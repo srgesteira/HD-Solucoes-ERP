@@ -140,7 +140,9 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: parentProduct, error: parentErr } = await admin
     .from("products")
-    .select("id, prefix:product_prefixes!products_prefix_id_fkey(code)")
+    .select(
+      "id, composition_enabled, prefix:product_prefixes!products_prefix_id_fkey(code)"
+    )
     .eq("id", parentId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -155,7 +157,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const parentPrefixCode = (
     parentProduct.prefix as { code?: string } | null
   )?.code;
-  if (!canProductHaveBom(parentPrefixCode)) {
+  if (!canProductHaveBom(parentPrefixCode, parentProduct.composition_enabled)) {
     return apiError("Este tipo de produto não pode ter composição (BOM).", 400);
   }
 
@@ -375,7 +377,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const { data: parentProduct, error: parentErr } = await admin
     .from("products")
-    .select("id, prefix:product_prefixes!products_prefix_id_fkey(code)")
+    .select(
+      "id, composition_enabled, prefix:product_prefixes!products_prefix_id_fkey(code)"
+    )
     .eq("id", parentId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -390,7 +394,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const parentPrefixCode = (
     parentProduct.prefix as { code?: string } | null
   )?.code;
-  if (!canProductHaveBom(parentPrefixCode)) {
+  if (!canProductHaveBom(parentPrefixCode, parentProduct.composition_enabled)) {
     return apiError("Este tipo de produto não pode ter composição (BOM).", 400);
   }
 

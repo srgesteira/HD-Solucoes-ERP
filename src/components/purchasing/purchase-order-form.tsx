@@ -29,6 +29,7 @@ import { canEditPurchaseOrderItems } from "@/modules/compras/lib/purchasing/purc
 import { aggregatePurchaseLineTaxes } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import { computePurchaseOrderTotal } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 import { fmtBRL } from "@/shared/utils/format-brl";
+import { formatShortDate } from "@/shared/utils/date";
 export type PurchaseOrderFormData = {
   id: string;
   po_number: string;
@@ -207,10 +208,8 @@ async function fetchOrder(id: string): Promise<PurchaseOrderFormData> {
 
 function formatDisplayDate(iso: string | null | undefined): string {
   if (iso == null || iso === "") return "—";
-  const d = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return String(iso);
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? String(iso) : formatted;
 }
 
 export function PurchaseOrderForm({

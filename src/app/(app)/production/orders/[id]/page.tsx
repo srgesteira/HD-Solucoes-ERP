@@ -9,6 +9,7 @@ import {
   startOfDay,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { BRAZIL_DATE_DISPLAY_FORMAT, formatShortDate } from "@/shared/utils/date";
 import {
   AlertCircle,
   ArrowLeft,
@@ -207,11 +208,8 @@ const orderStatusConfig: Record<string, { label: string; className: string }> = 
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
-  try {
-    return format(parseISO(iso.slice(0, 10)), "dd/MM/yyyy", { locale: ptBR });
-  } catch {
-    return "—";
-  }
+  const formatted = formatShortDate(iso.slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 function dayOnly(iso: string) {
@@ -322,8 +320,8 @@ function GanttChart({ items }: { items: OrderItem[] }) {
       {capped ? (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-3 py-2">
           O intervalo ultrapassa {GANTT_MAX_COLS} dias: a grelha mostra desde{" "}
-          {format(gridStart, "dd/MM/yyyy", { locale: ptBR })} até{" "}
-          {format(days[days.length - 1]!, "dd/MM/yyyy", { locale: ptBR })}. As
+          {format(gridStart, BRAZIL_DATE_DISPLAY_FORMAT)} até{" "}
+          {format(days[days.length - 1]!, BRAZIL_DATE_DISPLAY_FORMAT)}. As
           barras podem estar recortadas.
         </p>
       ) : null}
@@ -340,7 +338,7 @@ function GanttChart({ items }: { items: OrderItem[] }) {
                 return (
                   <div
                     key={idx}
-                    title={format(day, "EEEE dd/MM", { locale: ptBR })}
+                    title={format(day, `EEEE ${BRAZIL_DATE_DISPLAY_FORMAT}`, { locale: ptBR })}
                     className={cn(
                       "flex-1 min-w-[24px] text-center text-[10px] leading-tight py-1 px-0.5 border-l border-slate-100 text-slate-600",
                       wk && "bg-slate-100/80 text-slate-400",
@@ -348,7 +346,7 @@ function GanttChart({ items }: { items: OrderItem[] }) {
                         "bg-brand-50 text-brand-800 font-semibold ring-1 ring-brand-200 z-[1]"
                     )}
                   >
-                    {format(day, "dd/MM", { locale: ptBR })}
+                    {format(day, BRAZIL_DATE_DISPLAY_FORMAT, { locale: ptBR })}
                   </div>
                 );
               })}

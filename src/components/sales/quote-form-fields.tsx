@@ -8,7 +8,7 @@ import { Textarea } from "@/shared/ui/textarea";
 import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
 import { formatDeliveryBusinessDaysLabel } from "@/modules/vendas/lib/sales/quote-delivery";
 import { computeValidUntil, QUOTE_SHIPPING_TYPES } from "@/modules/vendas/lib/sales/quote-validity";
-import { addBusinessDays } from "@/shared/utils/date";
+import { addBusinessDays, formatShortDate } from "@/shared/utils/date";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
 import { CustomerSearchField } from "@/components/sales/customer-search-field";
 
@@ -44,9 +44,8 @@ export interface QuoteHeaderFormProps {
 }
 
 function formatDay(iso: string): string {
-  const d = String(iso).slice(0, 10);
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
+  const formatted = formatShortDate(String(iso).slice(0, 10));
+  return formatted === "--" ? "—" : formatted;
 }
 
 export function QuoteFormFields({
