@@ -26,8 +26,13 @@ DECLARE
     'shipments'
   ];
 BEGIN
-  -- 1. Remove trigger antigo apontando para 'payables' (se existir).
-  EXECUTE 'DROP TRIGGER IF EXISTS trg_audit_log_payables ON public.payables';
+  -- 1. Remove trigger antigo apontando para 'payables' (se a tabela legado existir).
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'payables'
+  ) THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS trg_audit_log_payables ON public.payables';
+  END IF;
 
   -- 2. (Re)aplica trigger em todas as tabelas relevantes.
   FOREACH t IN ARRAY watched LOOP
