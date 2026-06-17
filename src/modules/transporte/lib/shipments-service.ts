@@ -3,6 +3,7 @@ import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
 import { releaseSalesOrderFinishedGoodsReservations } from "@/modules/almoxarifado/lib/inventory-reservations";
+import { assertSalesOrderReadyForHvacDispatch } from "@/modules/hvac/lib/hvac-integrity-test-service";
 
 /**
  * §9 do documento funcional: módulo Transporte / Expedição.
@@ -150,6 +151,27 @@ export async function dispatchShipment(
   }
 ): Promise<void> {
   const db = asUntypedAdmin(admin);
+
+  const { data: shipment, error: loadErr } = await db
+    .from("shipments")
+    .select("source_kind, sales_order_id")
+    .eq("id", args.shipmentId)
+    .eq("tenant_id", args.tenantId)
+    .maybeSingle();
+  if (loadErr) throw new Error(loadErr.message);
+  if (!shipment) throw new Error("Despacho não encontrado.");
+
+  if (
+    shipment.source_kind === "sales_order" &&
+    shipment.sales_order_id
+  ) {
+    await assertSalesOrderReadyForHvacDispatch(
+      admin,
+      args.tenantId,
+      shipment.sales_order_id
+    );
+  }
+
   const { error } = await db
     .from("shipments")
     .update({

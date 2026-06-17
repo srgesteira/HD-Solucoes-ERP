@@ -10,6 +10,12 @@ import {
   planningFieldsFromSummary,
   type PlanningQualityFinishFields,
 } from "@/modules/producao/lib/quality-finish-blocks";
+import {
+  EMPTY_PLANNING_HVAC_INTEGRITY,
+  loadIntegrityTestSummaries,
+  planningFieldsFromIntegritySummary,
+  type PlanningHvacIntegrityFields,
+} from "@/modules/hvac/lib/hvac-integrity-test-service";
 
 type Admin = SupabaseClient<Database>;
 
@@ -68,7 +74,8 @@ export type PcpPlanningItem = {
   origin: string;
   origin_kind: PcpItemOriginKind;
   origin_label: string;
-} & PlanningQualityFinishFields;
+} & PlanningQualityFinishFields &
+  PlanningHvacIntegrityFields;
 
 export type PcpPlanningOrder = {
   id: string;
@@ -567,6 +574,7 @@ export async function fetchPcpPlanning(
         origin_kind: origin.kind,
         origin_label: origin.label,
         ...EMPTY_PLANNING_QUALITY_FINISH,
+        ...EMPTY_PLANNING_HVAC_INTEGRITY,
       });
     }
 
@@ -613,8 +621,43 @@ export async function fetchPcpPlanning(
   result.push(...stockOrders);
 
   await enrichPlanningOrdersWithQualityFinishBlocks(admin, tenantId, result);
+  await enrichPlanningOrdersWithHvacIntegrityTests(admin, tenantId, result);
 
   return result;
+}
+
+async function enrichPlanningOrdersWithHvacIntegrityTests(
+  admin: Admin,
+  tenantId: string,
+  orders: PcpPlanningOrder[]
+): Promise<void> {
+  const orderItemIds: string[] = [];
+  for (const ord of orders) {
+    for (const it of ord.items) {
+      if (it.order_item_id) orderItemIds.push(it.order_item_id);
+    }
+  }
+  if (orderItemIds.length === 0) return;
+
+  const summaries = await loadIntegrityTestSummaries(
+    admin,
+    tenantId,
+    orderItemIds
+  );
+
+  for (const ord of orders) {
+    for (let i = 0; i < ord.items.length; i++) {
+      const it = ord.items[i];
+      if (!it.order_item_id) {
+        ord.items[i] = { ...it, ...EMPTY_PLANNING_HVAC_INTEGRITY };
+        continue;
+      }
+      const fields = planningFieldsFromIntegritySummary(
+        summaries.get(it.order_item_id)
+      );
+      ord.items[i] = { ...it, ...fields };
+    }
+  }
 }
 
 async function enrichPlanningOrdersWithQualityFinishBlocks(
@@ -790,6 +833,7 @@ async function fetchStockOrdersForPlanning(
         origin_label: "OP Estoque",
         order_source: "stock",
         ...EMPTY_PLANNING_QUALITY_FINISH,
+        ...EMPTY_PLANNING_HVAC_INTEGRITY,
       });
     }
 

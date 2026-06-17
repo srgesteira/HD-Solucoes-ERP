@@ -1398,6 +1398,77 @@ export type Database = {
           },
         ]
       }
+      hvac_integrity_tests: {
+        Row: {
+          created_at: string
+          id: string
+          leakage_rate: number | null
+          notes: string | null
+          order_item_id: string
+          product_id: string | null
+          result: string
+          tenant_id: string
+          test_date: string
+          test_method: string
+          tested_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          leakage_rate?: number | null
+          notes?: string | null
+          order_item_id: string
+          product_id?: string | null
+          result: string
+          tenant_id: string
+          test_date: string
+          test_method: string
+          tested_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          leakage_rate?: number | null
+          notes?: string | null
+          order_item_id?: string
+          product_id?: string | null
+          result?: string
+          tenant_id?: string
+          test_date?: string
+          test_method?: string
+          tested_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hvac_integrity_tests_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hvac_integrity_tests_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hvac_integrity_tests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hvac_integrity_tests_tested_by_fkey"
+            columns: ["tested_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory: {
         Row: {
           created_at: string

@@ -37,7 +37,7 @@ A HD **é** a fábrica. O diferencial não é mais um módulo genérico — é s
 |-------|--------|---------|
 | **V0 — Decisão registada** | ✅ | Este documento + constantes `VERTICAL_ID` |
 | **V1 — Ficha técnica produto** | ✅ | Colunas `hvac_*` em `products`, aba HVAC, API `/api/products/[id]/hvac-specs`, saúde do dado |
-| **V2 — CQ integridade** | Pendente | Registo de teste PAO/DOP ligado à OP antes de expedir |
+| **V2 — CQ integridade** | ✅ | Tabela `hvac_integrity_tests`, CQ em `/production/quality-control`, gate na expedição |
 | **V3 — POPs e documentos HEPA** | Parcial | Biblioteca `product_documents` com tipo POP — falta template/checklist HEPA |
 | **V4 — Orçamento HVAC** | Pendente | Campos de vazão/classe no orçamento e impressão PDF |
 | **V5 — Área classificada** | Pendente | Rastreio de sala/linha ISO na produção |
@@ -49,6 +49,8 @@ A HD **é** a fábrica. O diferencial não é mais um módulo genérico — é s
 1. Abrir produto acabado (AC ou HD1) → aba **HVAC** → preencher classe HEPA e vazão → gravar  
 2. `/data-health` — não deve alertar "sem classe de filtro" após preencher  
 3. `/onboarding` — item "ficha técnica HVAC" marca como feito  
+4. Marcar produto com **exige teste de integridade** → OP na linha → `/production/quality-control` → **Registar PAO/DOP** aprovado  
+5. Tentar despachar pedido sem teste → bloqueio; após aprovação → expedição OK  
 
 ---
 
@@ -56,4 +58,6 @@ A HD **é** a fábrica. O diferencial não é mais um módulo genérico — é s
 
 - §18 — `GUIA-SISTEMA-LAYOUT-E-FUNCIONAMENTO.md` (roadmap §12)
 - Migration `20260928100000_hvac_product_specs.sql`
+- Migration `20260929100000_hvac_integrity_tests.sql`
 - Módulo `src/modules/hvac/lib/hvac-domain.ts`
+- Serviço `src/modules/hvac/lib/hvac-integrity-test-service.ts`

@@ -19,6 +19,7 @@ import {
 } from "@/components/pcp/pcp-lines-legacy-panel";
 import { QualityCqPromptDialog } from "@/components/producao/quality-cq-prompt-dialog";
 import { QualityCqHistoryDialog } from "@/components/producao/quality-cq-history-dialog";
+import { HvacIntegrityTestDialog } from "@/components/producao/hvac-integrity-test-dialog";
 import { AppPage } from "@/shared/ui/app-page";
 import { ErrorState, LoadingState } from "@/shared/ui/page-helpers";
 import "@/components/pcp/pcp-legacy.css";
@@ -28,11 +29,19 @@ type PromptState =
   | { mode: "release"; orderItemId: string; label: string }
   | null;
 
+type IntegrityPromptState = {
+  orderItemId: string;
+  label: string;
+  defaultMethod: string | null;
+} | null;
+
 export function QualityLinesControlView() {
   const qc = useQueryClient();
   const [selectedLineId, setSelectedLineId] = useState("");
   const [showFinished, setShowFinished] = useState(false);
   const [prompt, setPrompt] = useState<PromptState>(null);
+  const [integrityPrompt, setIntegrityPrompt] =
+    useState<IntegrityPromptState>(null);
   const [history, setHistory] = useState<{
     orderItemId: string;
     label: string;
@@ -151,7 +160,35 @@ export function QualityLinesControlView() {
       toast.error(e instanceof Error ? e.message : "Erro"),
   });
 
+  const integrityMut = useMutation({
+    mutationFn: async (payload: {
+      order_item_id: string;
+      test_method: string;
+      test_date: string;
+      result: "pass" | "fail";
+      leakage_rate: number | null;
+      notes: string;
+    }) => {
+      const res = await fetch("/api/hvac/integrity-tests", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao registar teste");
+    },
+    onSuccess: () => {
+      toast.success("Teste de integridade registado.");
+      setIntegrityPrompt(null);
+      void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro"),
+  });
+
   const cqPending = blockMut.isPending || releaseMut.isPending;
+  const integrityPending = integrityMut.isPending;
 
   const findRowLabel = useCallback(
     (orderItemId: string) => {
@@ -181,7 +218,7 @@ export function QualityLinesControlView() {
   return (
     <AppPage
       title="Controle de qualidade — Produção"
-      description="Bloqueie ou libere a finalização por linha. A produção não consegue finalizar itens bloqueados pelo CQ."
+      description="Bloqueie ou libere a finalização por linha. Registe testes de integridade HVAC (PAO/DOP) quando exigidos na ficha do produto — a expedição do pedido fica bloqueada sem aprovação."
       width="full"
       density="comfortable"
       actions={
@@ -269,6 +306,10 @@ export function QualityLinesControlView() {
             onShowCqHistory={(orderItemId, label) =>
               setHistory({ orderItemId, label })
             }
+            onRegisterIntegrityTest={(orderItemId, label, defaultMethod) =>
+              setIntegrityPrompt({ orderItemId, label, defaultMethod })
+            }
+            integrityActionPending={integrityPending}
           />
         </>
       )}
@@ -300,6 +341,21 @@ export function QualityLinesControlView() {
         orderItemId={history?.orderItemId ?? null}
         itemLabel={history?.label ?? ""}
         onClose={() => setHistory(null)}
+      />
+
+      <HvacIntegrityTestDialog
+        open={integrityPrompt != null}
+        itemLabel={integrityPrompt?.label ?? ""}
+        defaultMethod={integrityPrompt?.defaultMethod ?? null}
+        pending={integrityPending}
+        onClose={() => setIntegrityPrompt(null)}
+        onConfirm={(payload) => {
+          if (!integrityPrompt) return;
+          integrityMut.mutate({
+            order_item_id: integrityPrompt.orderItemId,
+            ...payload,
+          });
+        }}
       />
       </div>
     </AppPage>

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { loadIntegrityTestSummaries } from "@/modules/hvac/lib/hvac-integrity-test-service";
 
 /**
  * §13 do documento funcional: Saúde do dado.
@@ -238,6 +239,59 @@ export async function loadDataHealthIssues(
       count: hvacReleasedNoClass,
       href: "/products",
     });
+  }
+
+  try {
+    const { data: finishedItems } = await admin
+      .from("order_items")
+      .select(
+        `
+        id,
+        product:products!inner (
+          hvac_requires_integrity_test
+        )
+      `
+      )
+      .eq("tenant_id", tenantId)
+      .not("production_completed_at", "is", null);
+
+    const requiringIds = (finishedItems ?? [])
+      .filter((row) => {
+        const productRaw = row.product as
+          | { hvac_requires_integrity_test?: boolean }
+          | { hvac_requires_integrity_test?: boolean }[]
+          | null;
+        const product = Array.isArray(productRaw) ? productRaw[0] : productRaw;
+        return product?.hvac_requires_integrity_test === true;
+      })
+      .map((row) => String(row.id));
+
+    if (requiringIds.length > 0) {
+      const summaries = await loadIntegrityTestSummaries(
+        admin,
+        tenantId,
+        requiringIds
+      );
+      let pendingIntegrity = 0;
+      for (const id of requiringIds) {
+        const summary = summaries.get(id);
+        if (summary && !summary.passed) pendingIntegrity++;
+      }
+      if (pendingIntegrity > 0) {
+        issues.push({
+          rule_id: "hvac_integrity_test_pending",
+          module: "Qualidade · HVAC",
+          severity: "warning",
+          title: "Produção finalizada sem teste de integridade aprovado",
+          impact:
+            "A expedição do pedido fica bloqueada até registar PAO/DOP aprovado no CQ.",
+          count: pendingIntegrity,
+          href: "/production/quality-control",
+        });
+      }
+    }
+  } catch {
+    /* ignora — tabela ou colunas podem ainda não existir */
   }
 
   // PCP -----------------------------------------------------------------

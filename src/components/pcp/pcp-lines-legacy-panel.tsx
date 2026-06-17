@@ -52,6 +52,13 @@ type Props = {
   onReleaseFinish?: (orderItemId: string) => void;
   onShowCqHistory?: (orderItemId: string, label: string) => void;
   cqActionPending?: boolean;
+  /** CQ HVAC: registar teste PAO/DOP antes de expedir. */
+  onRegisterIntegrityTest?: (
+    orderItemId: string,
+    label: string,
+    defaultMethod: string | null
+  ) => void;
+  integrityActionPending?: boolean;
 };
 
 /** Pedido, Cliente, Cód., Descrição, Qtd, Origem, Prazo PCP, PC entrega, Início/Fim plano, Obs., Apontamento */
@@ -80,6 +87,8 @@ export function PcpLinesLegacyPanel({
   onReleaseFinish,
   onShowCqHistory,
   cqActionPending = false,
+  onRegisterIntegrityTest,
+  integrityActionPending = false,
 }: Props) {
   const gridCols = qualityControlMode ? LINE_GRID_COLS_CQ : LINE_GRID_COLS;
 
@@ -175,6 +184,9 @@ export function PcpLinesLegacyPanel({
               const cqBlocked = it.cq_finish_block_active === true;
               const cqReason = it.cq_finish_block_reason?.trim() ?? "";
               const priorBlocks = it.cq_finish_blocks_released_count ?? 0;
+              const hvacRequired = it.hvac_integrity_required === true;
+              const hvacPassed = it.hvac_integrity_passed === true;
+              const hvacLatest = it.hvac_integrity_latest_result;
               const mrpSuggestion = it.is_mrp_suggestion === true;
 
               const rowBg =
@@ -489,6 +501,55 @@ export function PcpLinesLegacyPanel({
                         >
                           {cqReason}
                         </span>
+                      ) : null}
+                      {hvacRequired ? (
+                        <div className="mt-1 w-full border-t border-slate-200 pt-1 space-y-1">
+                          <span className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide">
+                            Integridade HVAC
+                          </span>
+                          <span
+                            className={`text-[10px] font-semibold block ${
+                              hvacPassed
+                                ? "text-emerald-700"
+                                : hvacLatest === "fail"
+                                  ? "text-red-700"
+                                  : "text-amber-800"
+                            }`}
+                          >
+                            {hvacPassed
+                              ? "Aprovado"
+                              : hvacLatest === "fail"
+                                ? "Reprovado"
+                                : "Pendente"}
+                          </span>
+                          {it.hvac_integrity_test_count > 0 ? (
+                            <span className="text-[9px] text-slate-500 block">
+                              {it.hvac_integrity_test_count === 1
+                                ? "1 teste registado"
+                                : `${it.hvac_integrity_test_count} testes registados`}
+                            </span>
+                          ) : null}
+                          {!readOnly &&
+                          it.order_item_id &&
+                          onRegisterIntegrityTest ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px] border-brand-300 text-brand-900 hover:bg-brand-50"
+                              disabled={integrityActionPending}
+                              onClick={() =>
+                                onRegisterIntegrityTest(
+                                  it.order_item_id!,
+                                  `${it.order_number} · ${it.product_name}`,
+                                  it.hvac_integrity_test_method
+                                )
+                              }
+                            >
+                              Registar PAO/DOP
+                            </Button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </span>
                   ) : null}

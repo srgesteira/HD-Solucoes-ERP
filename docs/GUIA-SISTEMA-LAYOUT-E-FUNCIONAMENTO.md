@@ -572,7 +572,8 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | Limpeza técnica (Frente 5) | ✅ | `format-brl.ts`, drop tabelas mortas — migration `20260927100000` |
 | Roteiro N operações (Frente 6) | ✅ | `product_routing_steps`, `order_item_operations`, UI produto + OP |
 | Conciliação bancária (Frente 7) | ✅ | `/finance/bank-reconciliation`, CSV/OFX, match auto/manual, baixa título |
-| **Decisão vertical HVAC (§18)** | ✅ | [`docs/DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) — fatia V1: ficha técnica produto |
+| **Decisão vertical HVAC (§18)** | ✅ | [`docs/DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) — V1 ficha técnica · **V2 CQ integridade** |
+| CQ integridade HVAC (V2) | ✅ | `hvac_integrity_tests`, `/production/quality-control`, gate `dispatchShipment` — migration `20260929100000` |
 | Runbook continuidade (doc) | ✅ | `docs/RUNBOOK-BACKUP-E-INCIDENTES.md` |
 
 > **Nota:** itens ✅ ainda podem precisar de **smoke test no navegador** e de **migrations aplicadas no Supabase remoto** (`pnpm supabase db push` ou `migration list --linked`).
@@ -597,7 +598,7 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | — | **Smoke test browser** | Empenho MRP, inbox engenharia, expedição abas, roteiro→OP, conciliação com baixa/reversão |
 | — | Validação P1 comercial/financeiro | Orçamento → PV → AR provisório → confirmar → sync recebíveis |
 | 🧑‍💼 | Preencher `fiscal_rules` | Contadora usa simulador + assistente de inconsistências |
-| **Vertical HVAC V2+** | CQ integridade, orçamento HVAC, área classificada | Ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) |
+| **Vertical HVAC V3+** | POPs HEPA, orçamento HVAC, área classificada | Ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) |
 | Opcional | Reordenar roteiro (drag-and-drop) | UX — API já suporta sequência |
 | Opcional | Audit `rbac_*` | Antes de migration de drop |
 
@@ -611,11 +612,11 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 ### 12.5 Ordem daqui para a frente
 
 ```
-1. Smoke browser — frentes 1–7 + fluxos P1 (Helder)
+1. Smoke browser — frentes 1–7 + fluxos P1 + HVAC V1/V2 (Helder)
         ↓
 2. Contadora preenche fiscal_rules  🧑‍💼
         ↓
-3. Vertical HVAC V2 — CQ integridade (registo PAO/DOP na OP)
+3. Vertical HVAC V3 — POPs/checklist HEPA
         ↓
 4. Primeiro restore mensal (runbook)  🧑‍💼
 ```
