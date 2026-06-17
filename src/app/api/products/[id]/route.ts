@@ -113,7 +113,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existingProduct, error: loadErr } = await admin
     .from("products")
     .select(
-      "id,code,technical_code,cost_price,has_composition,composition_enabled,prefix_id,family_id,subfamily_id,material_id,finish_id,default_is_external_labor,default_labor_cost,default_work_center_id,default_production_line_id"
+      "id,code,technical_code,cost_price,has_composition,prefix_id,family_id,subfamily_id,material_id,finish_id,default_is_external_labor,default_labor_cost,default_work_center_id,default_production_line_id"
     )
     .eq("id", productId)
     .eq("tenant_id", tenantId)
@@ -370,10 +370,6 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
-  if (mergedPrefixCode && isResaleProductPrefix(mergedPrefixCode)) {
-    updateRow.composition_enabled = false;
-  }
-
   if (
     validated.cost_price !== undefined &&
     seUsesBomCalculatedCost(
@@ -396,7 +392,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     validated.cost_price !== undefined &&
     finishedUsesBomCalculatedCost(
       mergedPrefixCode,
-      existingProduct.composition_enabled
+      undefined,
+      existingProduct.has_composition
     )
   ) {
     const nextCost = roundBomCost(Number(validated.cost_price));
@@ -440,7 +437,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     validated.cost_price !== undefined &&
     productUsesManualListCost(
       mergedPrefixCode,
-      existingProduct.composition_enabled,
+      undefined,
       existingProduct.has_composition
     )
   ) {

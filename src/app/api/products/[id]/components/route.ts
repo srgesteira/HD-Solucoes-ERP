@@ -20,6 +20,7 @@ import {
   canProductHaveBom,
   isSemiFinishedPrefix,
 } from "@/modules/engenharia/lib/products/product-bom-eligibility";
+import { loadProductCompositionFields } from "@/modules/engenharia/lib/products/product-composition-fields";
 import { syncProductHasCompositionFromBom } from "@/modules/engenharia/lib/products/sync-has-composition";
 
 export const dynamic = "force-dynamic";
@@ -138,26 +139,23 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createSupabaseAdminClient();
 
-  const { data: parentProduct, error: parentErr } = await admin
-    .from("products")
-    .select(
-      "id, composition_enabled, prefix:product_prefixes!products_prefix_id_fkey(code)"
-    )
-    .eq("id", parentId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-  if (parentErr) {
+  const { data: parentFields, error: parentLoadErr } =
+    await loadProductCompositionFields(admin, tenantId, parentId);
+  if (parentLoadErr) {
     return apiError(
-      "Erro ao carregar produto pai: " + parentErr.message,
-      supabaseErrorToHttp(parentErr.code)
+      "Erro ao carregar produto pai: " + parentLoadErr,
+      supabaseErrorToHttp(undefined)
     );
   }
-  if (!parentProduct) return apiError("Produto pai não encontrado", 404);
+  if (!parentFields) return apiError("Produto pai não encontrado", 404);
 
-  const parentPrefixCode = (
-    parentProduct.prefix as { code?: string } | null
-  )?.code;
-  if (!canProductHaveBom(parentPrefixCode, parentProduct.composition_enabled)) {
+  if (
+    !canProductHaveBom(
+      parentFields.prefix_code,
+      parentFields.composition_enabled,
+      parentFields.has_composition
+    )
+  ) {
     return apiError("Este tipo de produto não pode ter composição (BOM).", 400);
   }
 
@@ -332,7 +330,12 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   try {
-    await finalizeBomLineChange(admin, tenantId, parentId, parentPrefixCode);
+    await finalizeBomLineChange(
+      admin,
+      tenantId,
+      parentId,
+      parentFields.prefix_code ?? undefined
+    );
   } catch (propErr) {
     return apiError(
       propErr instanceof Error
@@ -375,26 +378,23 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const admin = createSupabaseAdminClient();
 
-  const { data: parentProduct, error: parentErr } = await admin
-    .from("products")
-    .select(
-      "id, composition_enabled, prefix:product_prefixes!products_prefix_id_fkey(code)"
-    )
-    .eq("id", parentId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-  if (parentErr) {
+  const { data: parentFields, error: parentLoadErr } =
+    await loadProductCompositionFields(admin, tenantId, parentId);
+  if (parentLoadErr) {
     return apiError(
-      "Erro ao carregar produto pai: " + parentErr.message,
-      supabaseErrorToHttp(parentErr.code)
+      "Erro ao carregar produto pai: " + parentLoadErr,
+      supabaseErrorToHttp(undefined)
     );
   }
-  if (!parentProduct) return apiError("Produto pai não encontrado", 404);
+  if (!parentFields) return apiError("Produto pai não encontrado", 404);
 
-  const parentPrefixCode = (
-    parentProduct.prefix as { code?: string } | null
-  )?.code;
-  if (!canProductHaveBom(parentPrefixCode, parentProduct.composition_enabled)) {
+  if (
+    !canProductHaveBom(
+      parentFields.prefix_code,
+      parentFields.composition_enabled,
+      parentFields.has_composition
+    )
+  ) {
     return apiError("Este tipo de produto não pode ter composição (BOM).", 400);
   }
 
@@ -442,7 +442,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   try {
-    await finalizeBomLineChange(admin, tenantId, parentId, parentPrefixCode);
+    await finalizeBomLineChange(
+      admin,
+      tenantId,
+      parentId,
+      parentFields.prefix_code ?? undefined
+    );
   } catch (propErr) {
     return apiError(
       propErr instanceof Error

@@ -12,7 +12,7 @@ import {
 import {
   ENGINEERING_STATUS_RELEASED,
 } from "@/modules/engenharia/lib/products/engineering-workflow";
-import { prefixCodeFromJoin } from "@/modules/engenharia/lib/products/product-lifecycle";
+import { loadProductCompositionFields } from "@/modules/engenharia/lib/products/product-composition-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -34,10 +34,24 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
   const admin = createSupabaseAdminClient();
 
+  const { data: fields, error: loadErr } = await loadProductCompositionFields(
+    admin,
+    tenantId,
+    productId
+  );
+
+  if (loadErr) {
+    return apiError(
+      "Erro ao carregar produto: " + loadErr,
+      supabaseErrorToHttp(undefined)
+    );
+  }
+  if (!fields) return apiError("Produto não encontrado", 404);
+
   const { data: product, error: pErr } = await admin
     .from("products")
     .select(
-      "id, name, cost_price, engineering_workflow_status, released_for_sale, source_quote_id, composition_enabled, has_composition, prefix:product_prefixes!products_prefix_id_fkey(code)"
+      "id, name, cost_price, engineering_workflow_status, released_for_sale, source_quote_id, has_composition"
     )
     .eq("id", productId)
     .eq("tenant_id", tenantId)
@@ -51,14 +65,14 @@ export async function POST(_request: NextRequest, { params }: Params) {
   }
   if (!product) return apiError("Produto não encontrado", 404);
 
-  const prefixCode = prefixCodeFromJoin(
-    product.prefix as { code?: string } | { code?: string }[] | null
-  );
-  const compositionEnabled =
-    product.composition_enabled === true &&
-    canProductHaveBom(prefixCode, product.composition_enabled);
+  const prefixCode = fields.prefix_code;
   const isResale = isResaleProductPrefix(prefixCode);
-  const usesBom = compositionEnabled && !isResale;
+  const usesBom =
+    canProductHaveBom(
+      prefixCode,
+      fields.composition_enabled,
+      fields.has_composition
+    ) && !isResale;
 
   let totalCost = Number(product.cost_price ?? 0);
 
@@ -99,7 +113,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
     .eq("id", productId)
     .eq("tenant_id", tenantId)
     .select(
-      "id, name, cost_price, released_for_sale, engineering_workflow_status, composition_enabled"
+      "id, name, cost_price, released_for_sale, engineering_workflow_status, has_composition"
     )
     .single();
 

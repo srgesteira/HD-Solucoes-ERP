@@ -253,7 +253,8 @@ export default function EditProductPage() {
   const isResale = isResaleProductPrefix(prefixCode);
   const canHaveBom = canProductHaveBom(
     prefixCode,
-    productRaw?.composition_enabled
+    productRaw?.composition_enabled,
+    productRaw?.has_composition
   );
   const usesManualCost = productUsesManualListCost(
     prefixCode,
@@ -262,7 +263,11 @@ export default function EditProductPage() {
   );
   const costFromBom =
     seUsesBomCalculatedCost(prefixCode, Boolean(productRaw?.has_composition)) ||
-    finishedUsesBomCalculatedCost(prefixCode, productRaw?.composition_enabled);
+    finishedUsesBomCalculatedCost(
+      prefixCode,
+      productRaw?.composition_enabled,
+      productRaw?.has_composition
+    );
   const showHvacTab = isHvacSpecProduct({
     product_nature: productRaw?.product_nature ?? null,
     prefix_code: prefixCode || null,
@@ -753,7 +758,10 @@ export default function EditProductPage() {
                         productRaw.engineering_workflow_status
                       }
                       releasedForSale={Boolean(productRaw.released_for_sale)}
-                      compositionEnabled={productRaw.composition_enabled === true}
+                      compositionEnabled={
+                  productRaw.composition_enabled === true ||
+                  productRaw.has_composition === true
+                }
                       isResale={isResale}
                       onReleased={() => {
                         void queryClient.invalidateQueries({
@@ -840,7 +848,10 @@ export default function EditProductPage() {
                   productRaw.engineering_workflow_status
                 }
                 releasedForSale={Boolean(productRaw.released_for_sale)}
-                compositionEnabled={productRaw.composition_enabled === true}
+                compositionEnabled={
+                  productRaw.composition_enabled === true ||
+                  productRaw.has_composition === true
+                }
                 isResale={isResale}
                 onReleased={() => {
                   void queryClient.invalidateQueries({
@@ -858,7 +869,8 @@ export default function EditProductPage() {
                   <p className="text-sm text-slate-600">
                     {bomEligibilityMessage(
                       prefixCode,
-                      productRaw?.composition_enabled
+                      productRaw?.composition_enabled,
+                      productRaw?.has_composition
                     ) ||
                       "Este produto não possui receita de fabricação (composição / BOM)."}
                   </p>

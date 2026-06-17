@@ -25,30 +25,47 @@ export function canToggleComposition(
   return code === "HD1" || code === "HD2" || code === "AC";
 }
 
+/**
+ * Resolve composition_enabled com fallback para bases sem a coluna nova:
+ * produtos que já tinham BOM (has_composition) continuam activos.
+ */
+export function resolveCompositionEnabled(
+  compositionEnabled: boolean | null | undefined,
+  hasComposition?: boolean | null | undefined
+): boolean {
+  if (compositionEnabled === true) return true;
+  if (compositionEnabled === false) return false;
+  return hasComposition === true;
+}
+
 /** Produtos que podem ter linhas na BOM. */
 export function canProductHaveBom(
   prefixCode: string | null | undefined,
-  compositionEnabled?: boolean | null
+  compositionEnabled?: boolean | null,
+  hasComposition?: boolean | null
 ): boolean {
   const code = String(prefixCode ?? "").trim().toUpperCase();
   if (!code || isResaleProductPrefix(code)) return false;
+  const enabled = resolveCompositionEnabled(compositionEnabled, hasComposition);
   if (code === "SE") return true;
-  if (canToggleComposition(code)) return compositionEnabled === true;
+  if (canToggleComposition(code)) return enabled;
   return false;
 }
 
 export function bomEligibilityMessage(
   prefixCode: string | null | undefined,
-  compositionEnabled?: boolean | null
+  compositionEnabled?: boolean | null,
+  hasComposition?: boolean | null
 ): string {
   const code = String(prefixCode ?? "").trim().toUpperCase();
+  const enabled = resolveCompositionEnabled(compositionEnabled, hasComposition);
   if (isResaleProductPrefix(code)) {
     return "Produtos de revenda (HD3 / RV) não possuem composição — o custo é manual ou vem da compra.";
   }
-  if (canToggleComposition(code) && compositionEnabled !== true) {
+  if (canToggleComposition(code) && !enabled) {
     return "Composição desactivada. Active na secção abaixo ou use custo manual na aba Informações básicas.";
   }
-  if (canProductHaveBom(code, compositionEnabled)) return "";
+  if (canProductHaveBom(code, compositionEnabled, hasComposition)) return "";
   if (code === "MP") {
     return "Matérias-primas não têm composição — são folhas de compra.";
   }
@@ -87,10 +104,10 @@ export function productUsesManualListCost(
   if (isResaleProductPrefix(prefixCode)) return true;
   if (seUsesBomCalculatedCost(prefixCode, Boolean(hasComposition))) return false;
   if (canToggleComposition(prefixCode)) {
-    return compositionEnabled !== true;
+    return !resolveCompositionEnabled(compositionEnabled, hasComposition);
   }
   if (isCompleteClassificationSuffix(prefixCode)) {
-    return compositionEnabled !== true;
+    return !resolveCompositionEnabled(compositionEnabled, hasComposition);
   }
   return isSimplifiedClassificationSuffix(prefixCode);
 }
@@ -98,10 +115,12 @@ export function productUsesManualListCost(
 /** Acabado fabricado com BOM activa: custo calculado pela composição. */
 export function finishedUsesBomCalculatedCost(
   prefixCode: string | null | undefined,
-  compositionEnabled: boolean | null | undefined
+  compositionEnabled: boolean | null | undefined,
+  hasComposition?: boolean | null
 ): boolean {
   return (
-    canToggleComposition(prefixCode) && compositionEnabled === true
+    canToggleComposition(prefixCode) &&
+    resolveCompositionEnabled(compositionEnabled, hasComposition)
   );
 }
 

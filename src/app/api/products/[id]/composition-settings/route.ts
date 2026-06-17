@@ -8,7 +8,11 @@ import {
   canToggleComposition,
   isResaleProductPrefix,
 } from "@/modules/engenharia/lib/products/product-bom-eligibility";
-import { prefixCodeFromJoin } from "@/modules/engenharia/lib/products/product-lifecycle";
+import {
+  COMPOSITION_ENABLED_MIGRATION_HINT,
+  isMissingCompositionEnabledColumn,
+  loadProductCompositionFields,
+} from "@/modules/engenharia/lib/products/product-composition-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -29,33 +33,26 @@ export async function GET(_request: NextRequest, { params }: Params) {
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
-    .from("products")
-    .select(
-      "composition_enabled, has_composition, prefix:product_prefixes!products_prefix_id_fkey(code)"
-    )
-    .eq("id", productId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
+  const { data, error } = await loadProductCompositionFields(
+    admin,
+    tenantId,
+    productId
+  );
 
   if (error) {
     return apiError(
-      "Erro ao carregar produto: " + error.message,
-      supabaseErrorToHttp(error.code)
+      "Erro ao carregar produto: " + error,
+      supabaseErrorToHttp(undefined)
     );
   }
   if (!data) return apiError("Produto não encontrado", 404);
 
-  const prefixCode = prefixCodeFromJoin(
-    data.prefix as { code?: string } | { code?: string }[] | null
-  );
-
   return apiOk({
-    composition_enabled: data.composition_enabled === true,
-    has_composition: data.has_composition === true,
-    can_toggle: canToggleComposition(prefixCode),
-    is_resale: isResaleProductPrefix(prefixCode),
-    prefix_code: prefixCode,
+    composition_enabled: data.composition_enabled,
+    has_composition: data.has_composition,
+    can_toggle: canToggleComposition(data.prefix_code),
+    is_resale: isResaleProductPrefix(data.prefix_code),
+    prefix_code: data.prefix_code,
   });
 }
 
@@ -90,36 +87,28 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const admin = createSupabaseAdminClient();
-
-  const { data: product, error: loadErr } = await admin
-    .from("products")
-    .select(
-      "id, composition_enabled, prefix:product_prefixes!products_prefix_id_fkey(code)"
-    )
-    .eq("id", productId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
+  const { data: product, error: loadErr } = await loadProductCompositionFields(
+    admin,
+    tenantId,
+    productId
+  );
 
   if (loadErr) {
     return apiError(
-      "Erro ao carregar produto: " + loadErr.message,
-      supabaseErrorToHttp(loadErr.code)
+      "Erro ao carregar produto: " + loadErr,
+      supabaseErrorToHttp(undefined)
     );
   }
   if (!product) return apiError("Produto não encontrado", 404);
 
-  const prefixCode = prefixCodeFromJoin(
-    product.prefix as { code?: string } | { code?: string }[] | null
-  );
-
-  if (isResaleProductPrefix(prefixCode)) {
+  if (isResaleProductPrefix(product.prefix_code)) {
     return apiError(
       "Produtos de revenda (HD3 / RV) não podem ter composição activada.",
       400
     );
   }
 
-  if (!canToggleComposition(prefixCode)) {
+  if (!canToggleComposition(product.prefix_code)) {
     return apiError(
       "Este prefixo não permite activar ou desactivar composição por aqui.",
       400
@@ -150,6 +139,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .single();
 
   if (upErr) {
+    if (isMissingCompositionEnabledColumn(upErr)) {
+      return apiError(COMPOSITION_ENABLED_MIGRATION_HINT, 503);
+    }
     return apiError(
       "Erro ao actualizar composição: " + upErr.message,
       supabaseErrorToHttp(upErr.code)
