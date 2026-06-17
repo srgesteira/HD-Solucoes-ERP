@@ -16,6 +16,7 @@ import {
 } from "@/modules/vendas/lib/sales/quote-display";
 import { getTaxRegimeLabel } from "@/components/company/company-document-branding";
 import { cn } from "@/shared/utils/cn";
+import { formatQuoteItemHvacBlock } from "@/modules/hvac/lib/hvac-domain";
 
 const BRAZIL_STATE_NAMES: Record<string, string> = {
   AC: "Acre",
@@ -746,6 +747,11 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                         line.product
                       )
                     : null;
+                  const hvacBlock = formatQuoteItemHvacBlock({
+                    hvac_filter_class: line.hvac_filter_class ?? null,
+                    hvac_airflow_m3h: line.hvac_airflow_m3h ?? null,
+                    hvac_cleanroom_class: line.hvac_cleanroom_class ?? null,
+                  });
                   return (
                   <tr key={line.id}>
                     <td className="qp-code">
@@ -755,6 +761,14 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                       <span className="qp-product-name">
                         {unwrapQuoteProductName(line.product)}
                       </span>
+                      {hvacBlock ? (
+                        <p className="qp-product-desc">
+                          <span className="qp-product-desc-label">
+                            HVAC:{" "}
+                          </span>
+                          {hvacBlock}
+                        </p>
+                      ) : null}
                       {productDesc ? (
                         <p className="qp-product-desc whitespace-pre-wrap">
                           <span className="qp-product-desc-label">

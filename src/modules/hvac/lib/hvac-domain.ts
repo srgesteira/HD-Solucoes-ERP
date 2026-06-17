@@ -74,6 +74,41 @@ export function emptyHvacSpecs(): HvacProductSpecs {
   };
 }
 
+export type QuoteItemHvacSpecs = {
+  hvac_filter_class: string | null;
+  hvac_airflow_m3h: number | null;
+  hvac_cleanroom_class: string | null;
+};
+
+export function emptyQuoteItemHvacSpecs(): QuoteItemHvacSpecs {
+  return {
+    hvac_filter_class: null,
+    hvac_airflow_m3h: null,
+    hvac_cleanroom_class: null,
+  };
+}
+
+/** Texto compacto para impressão do orçamento (PDF). */
+export function formatQuoteItemHvacBlock(
+  specs: QuoteItemHvacSpecs | null | undefined
+): string | null {
+  if (!specs) return null;
+  const parts: string[] = [];
+  if (specs.hvac_filter_class?.trim()) {
+    parts.push(`Classe: ${specs.hvac_filter_class.trim()}`);
+  }
+  if (
+    specs.hvac_airflow_m3h != null &&
+    Number.isFinite(Number(specs.hvac_airflow_m3h))
+  ) {
+    parts.push(`Vazão: ${Number(specs.hvac_airflow_m3h)} m³/h`);
+  }
+  if (specs.hvac_cleanroom_class?.trim()) {
+    parts.push(`Sala: ${specs.hvac_cleanroom_class.trim()}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 /** Item do checklist POP HEPA (template vertical V3). */
 export type HvacPopChecklistTemplateItem = {
   label: string;

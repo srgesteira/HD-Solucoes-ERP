@@ -13,6 +13,11 @@ type ApiProduct = {
   unit?: string | null;
   technical_code?: string | null;
   code?: string | null;
+  product_nature?: string | null;
+  hvac_filter_class?: string | null;
+  hvac_airflow_m3h?: number | null;
+  hvac_cleanroom_class?: string | null;
+  prefix?: { code?: string | null } | { code?: string | null }[] | null;
 } | null;
 
 export type QuoteApiItem = {
@@ -23,6 +28,9 @@ export type QuoteApiItem = {
   markup_percent?: number | null;
   client_notes?: string | null;
   show_product_description?: boolean | null;
+  hvac_filter_class?: string | null;
+  hvac_airflow_m3h?: number | null;
+  hvac_cleanroom_class?: string | null;
   product?: ApiProduct | ApiProduct[];
 };
 
@@ -45,6 +53,8 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
         : DEFAULT_QUOTE_MARKUP_PERCENT;
 
     if (prod?.id) {
+      const prefixRaw = prod.prefix;
+      const prefix = Array.isArray(prefixRaw) ? prefixRaw[0] : prefixRaw;
       cache[pid] = {
         id: prod.id,
         name: prod.name ?? "—",
@@ -52,6 +62,12 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
         unit: prod.unit ?? null,
         technical_code: prod.technical_code ?? null,
         code: prod.code ?? null,
+        product_nature: prod.product_nature ?? null,
+        prefix_code: prefix?.code ?? null,
+        hvac_filter_class: prod.hvac_filter_class ?? null,
+        hvac_airflow_m3h:
+          prod.hvac_airflow_m3h != null ? Number(prod.hvac_airflow_m3h) : null,
+        hvac_cleanroom_class: prod.hvac_cleanroom_class ?? null,
       };
     }
 
@@ -67,6 +83,15 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       clientNotes: item.client_notes?.trim() ?? "",
       showProductDescription: Boolean(item.show_product_description),
+      hvacFilterClass: item.hvac_filter_class ?? prod?.hvac_filter_class ?? null,
+      hvacAirflowM3h:
+        item.hvac_airflow_m3h != null
+          ? Number(item.hvac_airflow_m3h)
+          : prod?.hvac_airflow_m3h != null
+            ? Number(prod.hvac_airflow_m3h)
+            : null,
+      hvacCleanroomClass:
+        item.hvac_cleanroom_class ?? prod?.hvac_cleanroom_class ?? null,
     });
   });
 

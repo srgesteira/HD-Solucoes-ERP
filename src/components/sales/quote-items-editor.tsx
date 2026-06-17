@@ -14,6 +14,11 @@ import {
   unitPriceFromCostAndMarkup,
   type QuoteLinePriceMode,
 } from "@/modules/vendas/lib/sales/quote-line-pricing";
+import {
+  HVAC_CLEANROOM_CLASSES,
+  HVAC_FILTER_CLASSES,
+  isHvacSpecProduct,
+} from "@/modules/hvac/lib/hvac-domain";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 
@@ -24,6 +29,11 @@ export type QuoteLineProduct = {
   name: string;
   unit: string | null;
   cost_price: number;
+  product_nature?: string | null;
+  prefix_code?: string | null;
+  hvac_filter_class?: string | null;
+  hvac_airflow_m3h?: number | null;
+  hvac_cleanroom_class?: string | null;
 };
 
 export type QuoteLineDraft = {
@@ -40,6 +50,9 @@ export type QuoteLineDraft = {
   clientNotes: string;
   /** Incluir descrição cadastrada do produto na impressão desta linha. */
   showProductDescription: boolean;
+  hvacFilterClass: string | null;
+  hvacAirflowM3h: number | null;
+  hvacCleanroomClass: string | null;
 };
 
 export function productDisplayLabel(p: QuoteLineProduct): string {
@@ -55,6 +68,12 @@ function hitToProduct(hit: ProductSearchHit): QuoteLineProduct {
     name: hit.name,
     unit: hit.unit,
     cost_price: Number(hit.cost_price ?? 0),
+    product_nature: hit.product_nature ?? null,
+    prefix_code: hit.prefix?.code ?? null,
+    hvac_filter_class: hit.hvac_filter_class ?? null,
+    hvac_airflow_m3h:
+      hit.hvac_airflow_m3h != null ? Number(hit.hvac_airflow_m3h) : null,
+    hvac_cleanroom_class: hit.hvac_cleanroom_class ?? null,
   };
 }
 
@@ -75,6 +94,9 @@ function lineFromProduct(
     manualPrice: unitPrice,
     unitPrice,
     unit: (p.unit && p.unit.trim()) || "UN",
+    hvacFilterClass: p.hvac_filter_class ?? null,
+    hvacAirflowM3h: p.hvac_airflow_m3h ?? null,
+    hvacCleanroomClass: p.hvac_cleanroom_class ?? null,
   };
   return { line, product: p };
 }
@@ -109,6 +131,9 @@ export function newQuoteLine(index = 0): QuoteLineDraft {
     unit: "UN",
     clientNotes: "",
     showProductDescription: false,
+    hvacFilterClass: null,
+    hvacAirflowM3h: null,
+    hvacCleanroomClass: null,
   };
 }
 
@@ -449,6 +474,82 @@ export function QuoteItemsEditor({
                   </p>
                 </div>
 
+                {prod &&
+                isHvacSpecProduct({
+                  product_nature: prod.product_nature ?? null,
+                  prefix_code: prod.prefix_code ?? null,
+                }) ? (
+                  <div className="md:col-span-2 rounded-lg border border-brand-200 bg-brand-50/40 px-4 py-3 space-y-3">
+                    <p className="text-sm font-medium text-brand-900">
+                      Especificações HVAC (impressão)
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor={`quote-hvac-class-${index}`}>
+                          Classe do filtro
+                        </Label>
+                        <select
+                          id={`quote-hvac-class-${index}`}
+                          className={SELECT_CLASS}
+                          value={line.hvacFilterClass ?? ""}
+                          onChange={(e) =>
+                            updateLineAt(index, {
+                              hvacFilterClass: e.target.value || null,
+                            })
+                          }
+                        >
+                          <option value="">—</option>
+                          {HVAC_FILTER_CLASSES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`quote-hvac-airflow-${index}`}>
+                          Vazão (m³/h)
+                        </Label>
+                        <NumericInput
+                          id={`quote-hvac-airflow-${index}`}
+                          value={line.hvacAirflowM3h ?? 0}
+                          onChange={(v) =>
+                            updateLineAt(index, {
+                              hvacAirflowM3h: v > 0 ? v : null,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`quote-hvac-room-${index}`}>
+                          Sala / ISO
+                        </Label>
+                        <select
+                          id={`quote-hvac-room-${index}`}
+                          className={SELECT_CLASS}
+                          value={line.hvacCleanroomClass ?? ""}
+                          onChange={(e) =>
+                            updateLineAt(index, {
+                              hvacCleanroomClass: e.target.value || null,
+                            })
+                          }
+                        >
+                          <option value="">—</option>
+                          {HVAC_CLEANROOM_CLASSES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      Pré-preenchido da ficha do produto — pode ajustar para
+                      esta proposta.
+                    </p>
+                  </div>
+                ) : null}
+
                 {prod ? (
                   <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
                     <label
@@ -572,6 +673,16 @@ export function buildQuoteItemsPayload(
     }
 
     item.show_product_description = line.showProductDescription;
+
+    if (
+      line.hvacFilterClass?.trim() ||
+      line.hvacAirflowM3h != null ||
+      line.hvacCleanroomClass?.trim()
+    ) {
+      item.hvac_filter_class = line.hvacFilterClass?.trim() || null;
+      item.hvac_airflow_m3h = line.hvacAirflowM3h;
+      item.hvac_cleanroom_class = line.hvacCleanroomClass?.trim() || null;
+    }
 
     built.push(item);
   }

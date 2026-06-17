@@ -39,7 +39,7 @@ A HD **é** a fábrica. O diferencial não é mais um módulo genérico — é s
 | **V1 — Ficha técnica produto** | ✅ | Colunas `hvac_*` em `products`, aba HVAC, API `/api/products/[id]/hvac-specs`, saúde do dado |
 | **V2 — CQ integridade** | ✅ | Tabela `hvac_integrity_tests`, CQ em `/production/quality-control`, gate na expedição |
 | **V3 — POPs e documentos HEPA** | ✅ | Template checklist na aba HVAC, execução no CQ, gate expedição, alerta POP em saúde do dado |
-| **V4 — Orçamento HVAC** | Pendente | Campos de vazão/classe no orçamento e impressão PDF |
+| **V4 — Orçamento HVAC** | ✅ | Colunas `hvac_*` em `quote_items`, UI no editor, impressão/PDF |
 | **V5 — Área classificada** | Pendente | Rastreio de sala/linha ISO na produção |
 
 ---
@@ -52,6 +52,7 @@ A HD **é** a fábrica. O diferencial não é mais um módulo genérico — é s
 4. Marcar produto com **exige teste de integridade** → OP na linha → `/production/quality-control` → **Registar PAO/DOP** aprovado  
 5. Tentar despachar pedido sem teste → bloqueio; após aprovação → expedição OK  
 6. Aba HVAC → **Aplicar template HEPA** → anexar POP em Documentos → CQ **Marcar checklist** → expedição OK  
+7. Orçamento com produto AC → preencher **classe/vazão HVAC** na linha → imprimir PDF → bloco HVAC visível  
 
 ---
 
@@ -61,6 +62,7 @@ A HD **é** a fábrica. O diferencial não é mais um módulo genérico — é s
 - Migration `20260928100000_hvac_product_specs.sql`
 - Migration `20260929100000_hvac_integrity_tests.sql`
 - Migration `20260930100000_hvac_pop_checklist.sql`
+- Migration `20260931100000_quote_items_hvac_specs.sql`
 - Módulo `src/modules/hvac/lib/hvac-domain.ts`
 - Serviço `src/modules/hvac/lib/hvac-integrity-test-service.ts`
 - Serviço `src/modules/hvac/lib/hvac-pop-checklist-service.ts`

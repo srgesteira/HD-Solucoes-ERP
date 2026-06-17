@@ -3804,6 +3804,9 @@ export type Database = {
           client_notes: string | null
           created_at: string
           description: string
+          hvac_airflow_m3h: number | null
+          hvac_cleanroom_class: string | null
+          hvac_filter_class: string | null
           id: string
           markup_percent: number | null
           product_id: string | null
@@ -3820,6 +3823,9 @@ export type Database = {
           client_notes?: string | null
           created_at?: string
           description: string
+          hvac_airflow_m3h?: number | null
+          hvac_cleanroom_class?: string | null
+          hvac_filter_class?: string | null
           id?: string
           markup_percent?: number | null
           product_id?: string | null
@@ -3836,6 +3842,9 @@ export type Database = {
           client_notes?: string | null
           created_at?: string
           description?: string
+          hvac_airflow_m3h?: number | null
+          hvac_cleanroom_class?: string | null
+          hvac_filter_class?: string | null
           id?: string
           markup_percent?: number | null
           product_id?: string | null

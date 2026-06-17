@@ -575,6 +575,7 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | **Decisão vertical HVAC (§18)** | ✅ | [`docs/DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) — V1 ficha técnica · **V2 CQ integridade** |
 | CQ integridade HVAC (V2) | ✅ | `hvac_integrity_tests`, `/production/quality-control`, gate `dispatchShipment` — migration `20260929100000` |
 | Checklist POP HEPA (V3) | ✅ | `product_hvac_checklist_items`, execução CQ, template HEPA — migration `20260930100000` |
+| Orçamento HVAC (V4) | ✅ | `quote_items.hvac_*`, editor de linhas, PDF/impressão — migration `20260931100000` |
 | Runbook continuidade (doc) | ✅ | `docs/RUNBOOK-BACKUP-E-INCIDENTES.md` |
 
 > **Nota:** itens ✅ ainda podem precisar de **smoke test no navegador** e de **migrations aplicadas no Supabase remoto** (`pnpm supabase db push` ou `migration list --linked`).
@@ -599,7 +600,7 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | — | **Smoke test browser** | Empenho MRP, inbox engenharia, expedição abas, roteiro→OP, conciliação com baixa/reversão |
 | — | Validação P1 comercial/financeiro | Orçamento → PV → AR provisório → confirmar → sync recebíveis |
 | 🧑‍💼 | Preencher `fiscal_rules` | Contadora usa simulador + assistente de inconsistências |
-| **Vertical HVAC V4+** | Orçamento HVAC, área classificada | Ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) |
+| **Vertical HVAC V5+** | Área classificada na produção | Ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) |
 | Opcional | Reordenar roteiro (drag-and-drop) | UX — API já suporta sequência |
 | Opcional | Audit `rbac_*` | Antes de migration de drop |
 
@@ -613,11 +614,11 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 ### 12.5 Ordem daqui para a frente
 
 ```
-1. Smoke browser — frentes 1–7 + fluxos P1 + HVAC V1–V3 (Helder)
+1. Smoke browser — frentes 1–7 + fluxos P1 + HVAC V1–V4 (Helder)
         ↓
 2. Contadora preenche fiscal_rules  🧑‍💼
         ↓
-3. Vertical HVAC V4 — campos HVAC no orçamento/PDF
+3. Vertical HVAC V5 — rastreio área classificada na produção
         ↓
 4. Primeiro restore mensal (runbook)  🧑‍💼
 ```

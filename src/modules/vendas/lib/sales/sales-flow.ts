@@ -21,6 +21,9 @@ export type SaleLineInput = {
   unit?: string;
   unit_price: number;
   markup_percent?: number | null;
+  hvac_filter_class?: string | null;
+  hvac_airflow_m3h?: number | null;
+  hvac_cleanroom_class?: string | null;
   icms_rate?: number;
   icms_value?: number;
   ipi_rate?: number;
@@ -355,6 +358,9 @@ export async function insertQuoteItemsFromLines(
     unit: it.unit ?? "UN",
     unit_price: it.unit_price,
     markup_percent: it.markup_percent ?? null,
+    hvac_filter_class: it.hvac_filter_class?.trim() || null,
+    hvac_airflow_m3h: it.hvac_airflow_m3h ?? null,
+    hvac_cleanroom_class: it.hvac_cleanroom_class?.trim() || null,
   }));
   const { error } = await admin.from("quote_items").insert(rows);
   if (error) return { error: error.message };
