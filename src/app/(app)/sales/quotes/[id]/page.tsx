@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +37,7 @@ import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { QuoteStatus } from "@/modules/core/types/sales.types";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
+import { QuoteCostReviewPanel } from "@/components/sales/quote-cost-review-panel";
 import { QuoteSendEmailModal } from "@/components/sales/quote-send-email-modal";
 import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
@@ -305,7 +306,6 @@ export default function QuoteDetailPage() {
   const [productCache, setProductCache] = useState<
     Record<string, QuoteLineProduct>
   >({});
-  const structureAckRef = useRef(false);
 
   const canContentEdit =
     Boolean(q) &&
@@ -319,7 +319,6 @@ export default function QuoteDetailPage() {
   useEffect(() => {
     setEditing(false);
     setHydrated(false);
-    structureAckRef.current = false;
   }, [id]);
 
   useEffect(() => {
@@ -340,34 +339,17 @@ export default function QuoteDetailPage() {
     setHydrated(true);
   }, [q, editing, canContentEdit, hydrated]);
 
-  useEffect(() => {
-    if (
-      !id ||
-      !q?.awaiting_commercial_finalize ||
-      structureAckRef.current ||
-      !editing ||
-      !canContentEdit
-    ) {
-      return;
+  const handleApplyBdiPrices = (updatedLines: QuoteLineDraft[]) => {
+    if (editingTriggersRevision) {
+      const ok = window.confirm(
+        "Aplicar preços BDI criará uma nova revisão (rev seguinte). Continuar?"
+      );
+      if (!ok) return;
     }
-    structureAckRef.current = true;
-    toast.info(
-      "A engenharia concluiu a estrutura. Os custos foram actualizados — reveja markup e preços."
-    );
-    void (async () => {
-      await fetch(`/api/sales/quotes/${id}/acknowledge-structure`, {
-        method: "POST",
-        credentials: "include",
-      });
-      await queryClient.invalidateQueries({ queryKey: ["sales-quote", id] });
-      await queryClient.invalidateQueries({ queryKey: ["sales-quotes"] });
-      const fresh = await fetchQuoteDetail(id);
-      const apiItems = Array.isArray(fresh.data.items) ? fresh.data.items : [];
-      const { lines: loadedLines, cache } = itemsToLinesAndCache(apiItems);
-      setLines(loadedLines);
-      setProductCache(cache);
-    })();
-  }, [id, q?.awaiting_commercial_finalize, editing, canContentEdit, queryClient]);
+    setLines(updatedLines);
+    setEditing(true);
+    setHydrated(true);
+  };
 
   const productById = useMemo(() => {
     const map = new Map<string, QuoteLineProduct>();
@@ -650,6 +632,17 @@ export default function QuoteDetailPage() {
             settings={companyBrandingQuery.data ?? null}
             documentLabel="Orçamento comercial"
           />
+          {q.awaiting_commercial_finalize ? (
+            <QuoteCostReviewPanel
+              quoteId={id}
+              quoteStatus={q.status}
+              items={Array.isArray(q.items) ? q.items : []}
+              canAct={canEditQuotes}
+              onApplyBdiPrices={
+                canContentEdit ? handleApplyBdiPrices : undefined
+              }
+            />
+          ) : null}
           <Card>
             <CardHeader className="pb-3">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

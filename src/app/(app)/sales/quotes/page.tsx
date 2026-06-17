@@ -48,6 +48,11 @@ interface QuoteRow {
   total: number;
   status: string;
   awaiting_commercial_finalize?: boolean;
+  markup_alert?: {
+    list_hint: string;
+    lines_below_min: number;
+    min_markup_pct: number;
+  };
 }
 
 interface QuotesApiResponse {
@@ -319,6 +324,8 @@ export default function QuotesListPage() {
             row.revision_number,
           );
           const needsCommercial = Boolean(row.awaiting_commercial_finalize);
+          const hint =
+            row.markup_alert?.list_hint ?? "Custo actualizado — confirme o preço";
           return (
             <>
               <Link
@@ -328,8 +335,15 @@ export default function QuotesListPage() {
                 {label}
               </Link>
               {needsCommercial ? (
-                <span className="mt-1 block text-xs font-medium text-brand-800">
-                  Custo disponível — rever markup
+                <span
+                  className={cn(
+                    "mt-1 block text-xs font-medium",
+                    row.markup_alert?.lines_below_min
+                      ? "text-red-700"
+                      : "text-brand-800"
+                  )}
+                >
+                  {hint}
                 </span>
               ) : null}
             </>
@@ -447,7 +461,12 @@ export default function QuotesListPage() {
         emptyMessage={emptyMessage}
         rowClassName={(row) =>
           Boolean(row.awaiting_commercial_finalize)
-            ? "bg-brand-50/80 animate-pulse ring-1 ring-inset ring-brand-400/60"
+            ? cn(
+                "ring-1 ring-inset",
+                row.markup_alert?.lines_below_min
+                  ? "bg-red-50/70 ring-red-300/70"
+                  : "bg-brand-50/80 ring-brand-400/60"
+              )
             : ""
         }
         actionsColumn={{

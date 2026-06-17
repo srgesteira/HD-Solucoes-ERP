@@ -20,6 +20,7 @@ import {
   buildQuoteUniversalSearchOrFilter,
   resolveQuoteIdsFromUniversalSearch,
 } from "@/modules/core/lib/universal-search-query";
+import { enrichQuotesWithMarkupAlerts } from "@/modules/vendas/lib/sales/quote-markup-enrich";
 import { escapeIlike } from "@/shared/utils/universal-search";
 
 export const dynamic = "force-dynamic";
@@ -126,8 +127,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const rows = data ?? [];
+  const markupAlerts = await enrichQuotesWithMarkupAlerts(admin, tenantId, rows);
+  const enriched = rows.map((row) => {
+    const alert = markupAlerts.get(row.id);
+    return alert ? { ...row, markup_alert: alert } : row;
+  });
+
   return apiOk({
-    data: data ?? [],
+    data: enriched,
     pagination: { page, limit, total: count ?? 0 },
   });
 }
