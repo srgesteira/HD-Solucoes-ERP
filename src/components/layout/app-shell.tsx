@@ -245,6 +245,13 @@ const MENU_STRUCTURE: NavEntry[] = [
     module: "engineering",
     children: [
       {
+        title: "Inbox estrutura",
+        href: "/engineering/inbox",
+        icon: Layers,
+        module: "engineering",
+        anyOf: ["engineering", "products"],
+      },
+      {
         title: "Produtos",
         href: "/products",
         icon: Package,
@@ -327,6 +334,12 @@ const MENU_STRUCTURE: NavEntry[] = [
         title: "Contas a Pagar",
         href: "/finance/payables",
         icon: Wallet,
+        module: "finance",
+      },
+      {
+        title: "Conciliação bancária",
+        href: "/finance/bank-reconciliation",
+        icon: Activity,
         module: "finance",
       },
       {

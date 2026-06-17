@@ -20,6 +20,7 @@ import {
   canProductHaveBom,
   isSemiFinishedPrefix,
 } from "@/modules/engenharia/lib/products/product-bom-eligibility";
+import { syncProductHasCompositionFromBom } from "@/modules/engenharia/lib/products/sync-has-composition";
 
 export const dynamic = "force-dynamic";
 
@@ -95,14 +96,12 @@ async function finalizeBomLineChange(
   if (isSemiFinishedPrefix(parentPrefixCode) && (lineCountAfter ?? 0) > 0) {
     await admin
       .from("products")
-      .update({
-        cost_price: bomCost,
-        has_composition: true,
-      })
+      .update({ cost_price: bomCost })
       .eq("id", parentId)
       .eq("tenant_id", tenantId);
   }
 
+  await syncProductHasCompositionFromBom(admin, tenantId, parentId);
   await propagateComponentCostChange(admin, tenantId, parentId);
 }
 
@@ -519,11 +518,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     isSemiFinishedPrefix(parentPrefixCode) &&
     (lineCountAfter ?? 0) === 0
   ) {
-    await admin
-      .from("products")
-      .update({ has_composition: false })
-      .eq("id", parentId)
-      .eq("tenant_id", tenantId);
+    await syncProductHasCompositionFromBom(admin, tenantId, parentId);
   } else if ((lineCountAfter ?? 0) > 0) {
     try {
       await finalizeBomLineChange(admin, tenantId, parentId, parentPrefixCode);

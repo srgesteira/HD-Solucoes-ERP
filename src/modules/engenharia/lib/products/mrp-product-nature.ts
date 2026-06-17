@@ -21,10 +21,12 @@ export type MrpProductNatureMeta = {
 export function mrShouldExpandBomInExplosion(meta: MrpProductNatureMeta): boolean {
   const n = meta.product_nature;
   if (n === "MP" || n === "EB" || n === "MC" || n === "RV") return false;
-  if (n === "SE") return meta.has_composition === true;
-  if (n === "AC") return true;
+  if (n === "SE" || n === "AC") return meta.has_composition === true;
   if (n == null || n === "") {
-    return meta.type === "finished" || meta.type === "component";
+    return (
+      (meta.type === "finished" || meta.type === "component") &&
+      meta.has_composition === true
+    );
   }
   return false;
 }
@@ -34,11 +36,10 @@ export function mrSalesLineEligibleForProductionOrder(
   meta: MrpProductNatureMeta
 ): boolean {
   const n = meta.product_nature;
-  if (n === "AC") return true;
-  if (n === "SE") return meta.has_composition === true;
+  if (n === "AC" || n === "SE") return meta.has_composition === true;
   if (n === "MP" || n === "EB" || n === "MC" || n === "RV") return false;
   if (n == null || n === "") {
-    return meta.type === "finished";
+    return meta.type === "finished" && meta.has_composition === true;
   }
   return false;
 }

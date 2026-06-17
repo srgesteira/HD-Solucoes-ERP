@@ -37,6 +37,10 @@ import {
   hardDeleteSalesOrder,
   salesOrderHasAssociatedOrderItems,
 } from "@/modules/vendas/lib/sales/delete-sales-order";
+import {
+  releaseSalesOrderFinishedGoodsReservations,
+  reserveFinishedGoodsForSalesOrder,
+} from "@/modules/almoxarifado/lib/inventory-reservations";
 
 export const dynamic = "force-dynamic";
 
@@ -564,6 +568,41 @@ export async function PUT(request: NextRequest, { params }: Params) {
       "[sales-order] Falha ao sincronizar recebíveis:",
       syncErr instanceof Error ? syncErr.message : syncErr
     );
+  }
+
+  const prevStatus = String(existing.status ?? "");
+  const newStatus = String(detailRow.status ?? prevStatus);
+  if (newStatus === "confirmed" && prevStatus !== "confirmed") {
+    try {
+      await reserveFinishedGoodsForSalesOrder(admin, tenantId, id, user.id);
+    } catch (resErr) {
+      console.warn(
+        "[sales-order] Falha ao empenhar acabado:",
+        resErr instanceof Error ? resErr.message : resErr
+      );
+    }
+  }
+  if (
+    (newStatus === "cancelled" || newStatus === "shipped") &&
+    prevStatus !== newStatus
+  ) {
+    try {
+      await releaseSalesOrderFinishedGoodsReservations(admin, {
+        tenantId,
+        salesOrderId: id,
+        releaseReason:
+          newStatus === "cancelled"
+            ? "sales_order_cancelled"
+            : "sales_order_shipped",
+        userId: user.id,
+        userEmail: user.email ?? null,
+      });
+    } catch (relErr) {
+      console.warn(
+        "[sales-order] Falha ao liberar empenho:",
+        relErr instanceof Error ? relErr.message : relErr
+      );
+    }
   }
 
   const guard = await getSalesOrderEditGuard(admin, tenantId, {

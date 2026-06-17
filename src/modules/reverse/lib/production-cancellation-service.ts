@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
+import { releaseProductionOrderItemReservations } from "@/modules/almoxarifado/lib/inventory-reservations";
 import type { ProductionCancellationReason } from "./returns-types";
 
 /**
@@ -87,6 +88,13 @@ export async function cancelProductionOrder(
     .eq("id", args.productionOrderId)
     .eq("tenant_id", args.tenantId);
   if (updErr) throw new Error(updErr.message);
+
+  await releaseProductionOrderItemReservations(admin, {
+    tenantId: args.tenantId,
+    productionOrderId: args.productionOrderId,
+    userId: args.userId,
+    userEmail: args.userEmail,
+  });
 
   await recordAuditEvent(admin, {
     tenantId: args.tenantId,

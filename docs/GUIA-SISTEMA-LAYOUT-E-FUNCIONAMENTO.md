@@ -502,6 +502,7 @@ UI específica permanece em `src/components/` e páginas em `src/app/(app)/`.
 |-----------|----------|
 | `README.md` | Setup local e estrutura inicial |
 | **Este guia — §12** | Roadmap feito vs. pendente |
+| **`docs/GUIA-EXECUCAO-CURSOR.md`** | Plano de execução fatia a fatia (Cursor) |
 | `docs/REVISAO-POS-CONSOLIDACAO.md` | Auditoria técnica pós-consolidação |
 | `docs/RBAC-DECISAO.md` | Modelo de permissões |
 | `docs/RUNBOOK-BACKUP-E-INCIDENTES.md` | Operação e incidentes |
@@ -581,18 +582,20 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 
 ### 12.4 Pendente de construção
 
-| Prioridade sugerida | Item | Detalhe |
-|---------------------|------|---------|
-| — | Validação browser + migrations remoto | Antes de novo código: smoke dos fluxos ✅ acima |
+> **Plano de execução detalhado (Passo 0, fatias, validação browser):** ver [`docs/GUIA-EXECUCAO-CURSOR.md`](./GUIA-EXECUCAO-CURSOR.md).
+
+| Prioridade | Item | Detalhe |
+|------------|------|---------|
+| — | Validação browser + migrations remoto | Smoke dos fluxos ✅ acima |
 | 🧑‍💼 | Preencher `fiscal_rules` | Decisão da contadora |
-| **1** | Empenho automático | `reserved_quantity` lido pelo MRP; **sem writers** automáticos MRP→abastecimento |
-| **2** | Inbox Engenharia | Evoluir filtro actual → fila com cliente, valor orçamento, ordenação por urgência |
-| **3** | Consolidar `has_composition` | Comportamento diverge SE vs HD em `mrp-product-nature.ts` |
-| **4** | Limpeza técnica | Tabelas mortas, endpoints órfãos, helpers `fmtBRL`/data/badges duplicados |
-| **5** | Roteiro N operações | `product_routing_steps` + `order_item_operations` — inexistentes |
-| **6** | Conciliação bancária | OFX/CSV + match com contas — **não** confundir com conciliação NF-e compra |
-| **7** | Transporte UI | Abas Entrega/Coleta como navegação principal |
-| 🧑‍💼 | Genérico vs. vertical HVAC | Decisão estratégica (Helder) — recomendação: vertical de domínio |
+| **Frente 1** | Empenho automático (4 fatias) | `reserved_quantity` lido; **sem writers** automáticos — ver investigação Passo 0 |
+| **Frente 2** | Consolidar `has_composition` | Antes da inbox — SE vs HD em `mrp-product-nature.ts` |
+| **Frente 3** | Inbox Engenharia | Evoluir filtro → fila com cliente, valor, urgência |
+| **Frente 4** | Abas Entrega/Coleta | UI em `/logistics/shipping` (backend `direction` já existe) |
+| **Frente 5** | Limpeza técnica | Tabelas mortas, endpoints órfãos, helpers duplicados |
+| **Frente 6** | Roteiro N operações (P3) | `product_routing_steps` + `order_item_operations` |
+| **Frente 7** | Conciliação bancária (P3) | OFX/CSV — distinto de conciliação NF-e compra |
+| 🧑‍💼 | Genérico vs. vertical HVAC | Decisão estratégica (Helder) |
 
 #### Limpeza pendente (detalhe)
 
@@ -612,27 +615,21 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | `POST /api/pcp/complete-item` | Legado — UI usa `/api/pcp/finish-production` |
 | `POST */orders/[id]/items` | Existe; frontend só faz GET (ex.: dashboard) |
 
-### 12.5 Ordem recomendada daqui para a frente
+### 12.5 Ordem de execução (Cursor)
 
 ```
-1. Validar no browser o que já subiu (fiscal vazio OK, reverso, AR, expedição, auditoria)
-        ↓
-2. Contadora preenche fiscal_rules  🧑‍💼
-        ↓
-3. Empenho automático  ← primeiro item de dev “novo”
-        ↓
-4. Inbox Engenharia
-        ↓
-5. Consolidar has_composition
-        ↓
-6. Limpeza (tabelas, endpoints, fmtBRL)
-        ↓
-7. P3: roteiro N ops · abas Entrega/Coleta · conciliação bancária
-        ↓
-8. Decisão vertical HVAC  🧑‍💼  (em paralelo)
+FRENTE 1 — Empenho automático (4 fatias)     ← começar AQUI
+FRENTE 2 — Consolidar has_composition
+FRENTE 3 — Inbox da Engenharia
+FRENTE 4 — Abas Entrega/Coleta na Expedição
+FRENTE 5 — Limpeza técnica
+FRENTE 6 — Roteiro N operações (P3)
+FRENTE 7 — Conciliação bancária (P3)
 ```
 
-**Princípio:** fatia por fatia, validando no navegador, estendendo o que existe — nunca reimplementar módulos já marcados ✅.
+Fora do escopo Cursor: preencher `fiscal_rules` (contadora) · decisão vertical HVAC (Helder).
+
+**Princípio:** uma frente por vez · Passo 0 de investigação antes de codar · validação no browser ao fim de cada fatia · estender o que existe.
 
 ### 12.6 Migrations recentes (referência)
 

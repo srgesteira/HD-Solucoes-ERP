@@ -87,15 +87,24 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString("pt-BR");
 }
 
-function formatBrl(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(n);
-}
+import { formatBrl } from "@/shared/utils/format-brl";
+
+type DirectionTab = "all" | "outbound" | "inbound";
+
+const DIRECTION_TABS: Array<{ value: DirectionTab; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "outbound", label: "Entrega" },
+  { value: "inbound", label: "Coleta" },
+];
+
+const DIRECTION_LABEL: Record<string, string> = {
+  outbound: "Entrega",
+  inbound: "Coleta",
+};
 
 export default function LogisticsShippingPage() {
-  const [activeTab, setActiveTab] = useState<ShipmentTab>("all");
+  const [directionTab, setDirectionTab] = useState<DirectionTab>("outbound");
+  const [statusFilter, setStatusFilter] = useState<ShipmentTab>("all");
   const { input: searchInput, setInput: setSearchInput, debounced: search } =
     useCronogramaSearch();
 
@@ -108,8 +117,11 @@ export default function LogisticsShippingPage() {
   const searchHint = parseUniversalSearch(search);
   const filteredItems = useMemo(() => {
     let items = query.data ?? [];
-    if (activeTab !== "all") {
-      items = items.filter((s) => s.status === activeTab);
+    if (directionTab !== "all") {
+      items = items.filter((s) => s.direction === directionTab);
+    }
+    if (statusFilter !== "all") {
+      items = items.filter((s) => s.status === statusFilter);
     }
     if (!searchHint.text) return items;
     return items.filter((s) =>
@@ -128,7 +140,7 @@ export default function LogisticsShippingPage() {
         []
       )
     );
-  }, [query.data, activeTab, searchHint]);
+  }, [query.data, directionTab, statusFilter, searchHint]);
 
   const tableColumns = useMemo((): SortableTableColumn<ShipmentRow>[] => {
     return [
@@ -146,6 +158,18 @@ export default function LogisticsShippingPage() {
           >
             {row.shipment_number}
           </Link>
+        ),
+      },
+      {
+        key: "direction",
+        label: "Tipo",
+        type: "text",
+        width: "w-[8%]",
+        accessor: (row) => row.direction,
+        render: (row) => (
+          <span className={CRONOGRAMA_TOKENS.cellText}>
+            {DIRECTION_LABEL[row.direction] ?? row.direction}
+          </span>
         ),
       },
       {
@@ -276,17 +300,36 @@ export default function LogisticsShippingPage() {
       }
     >
       <Tabs
-        value={activeTab}
-        onValueChange={(v) => setActiveTab(v as ShipmentTab)}
+        value={directionTab}
+        onValueChange={(v) =>
+          setDirectionTab(
+            v === "inbound" || v === "all" ? v : "outbound"
+          )
+        }
       >
         <TabsList className="w-full flex flex-wrap h-auto gap-1">
-          {TAB_OPTIONS.map((tab) => (
+          {DIRECTION_TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
               {tab.label}
             </TabsTrigger>
           ))}
         </TabsList>
-        {TAB_OPTIONS.map((tab) => (
+        <div className="mt-3 flex flex-wrap gap-2 items-center">
+          <span className="text-xs text-slate-500">Status:</span>
+          {TAB_OPTIONS.map((tab) => (
+            <Button
+              key={tab.value}
+              type="button"
+              size="sm"
+              variant={statusFilter === tab.value ? "primary" : "outline"}
+              className="h-7 text-xs"
+              onClick={() => setStatusFilter(tab.value)}
+            >
+              {tab.label}
+            </Button>
+          ))}
+        </div>
+        {DIRECTION_TABS.map((tab) => (
           <TabsContent key={tab.value} value={tab.value} className="mt-4">
             {listPanel}
           </TabsContent>

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
+import { releaseSalesOrderFinishedGoodsReservations } from "@/modules/almoxarifado/lib/inventory-reservations";
 
 /**
  * §9 do documento funcional: módulo Transporte / Expedição.
@@ -192,6 +193,33 @@ export async function deliverShipment(
     .eq("tenant_id", args.tenantId)
     .in("status", ["in_transit", "prepared"]);
   if (error) throw new Error(error.message);
+
+  const { data: shipment } = await db
+    .from("shipments")
+    .select("sales_order_id, source_kind")
+    .eq("id", args.shipmentId)
+    .eq("tenant_id", args.tenantId)
+    .maybeSingle();
+
+  if (
+    shipment?.sales_order_id &&
+    shipment.source_kind === "sales_order"
+  ) {
+    try {
+      await releaseSalesOrderFinishedGoodsReservations(admin, {
+        tenantId: args.tenantId,
+        salesOrderId: shipment.sales_order_id as string,
+        releaseReason: "shipment_delivered",
+        userId: args.userId,
+        userEmail: args.userEmail,
+      });
+    } catch (relErr) {
+      console.warn(
+        "[shipment] Falha ao liberar empenho do PV:",
+        relErr instanceof Error ? relErr.message : relErr
+      );
+    }
+  }
 
   await recordAuditEvent(admin, {
     tenantId: args.tenantId,

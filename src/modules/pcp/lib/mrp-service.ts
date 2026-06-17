@@ -8,6 +8,7 @@ import {
   roundInventoryQty,
   shortageFromAvailability,
 } from "@/modules/almoxarifado/lib/inventory-availability";
+import { reserveMaterialsForProductionOrderItem } from "@/modules/almoxarifado/lib/inventory-reservations";
 import {
   grossNeedsFromGraph,
   loadBomGraph,
@@ -1869,6 +1870,15 @@ export async function commitMrpSuggestionsForOrderItem(
     }
   }
 
+  try {
+    await reserveMaterialsForProductionOrderItem(admin, tenantId, orderItemId);
+  } catch (err) {
+    console.error(
+      "[mrp] Falha ao empenhar materiais do item " + orderItemId,
+      err
+    );
+  }
+
   return { committed: true };
 }
 
@@ -1971,6 +1981,15 @@ export async function commitMrpSuggestionsForTenant(
     .eq("is_suggestion", true)
     .is("purchase_order_id", null)
     .select("id");
+
+  const committedItemIds = (updOi ?? []).map((r) => r.id);
+  for (const oiId of committedItemIds) {
+    try {
+      await reserveMaterialsForProductionOrderItem(admin, tenantId, oiId);
+    } catch (err) {
+      console.error("[mrp] Falha ao empenhar item " + oiId, err);
+    }
+  }
 
   return {
     production_orders_committed: (updOps ?? []).length,
