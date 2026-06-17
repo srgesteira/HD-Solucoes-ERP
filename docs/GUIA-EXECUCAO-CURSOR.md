@@ -2,10 +2,26 @@
 
 **Projeto:** HD Soluções ERP  
 **Papel do Cursor:** executor. As decisões de arquitetura já estão tomadas aqui. Execute fatia por fatia, na ordem. Não pule etapas, não reimplemente o que já existe.  
-**Última atualização:** junho/2026  
+**Última atualização:** junho/2026 — **frentes 1–7 concluídas no código**  
 **Documento irmão:** [`GUIA-SISTEMA-LAYOUT-E-FUNCIONAMENTO.md`](./GUIA-SISTEMA-LAYOUT-E-FUNCIONAMENTO.md) (§12 = roadmap resumido)
 
 ---
+
+## Estado actual (jun/2026)
+
+| Frente | Status código | Validação browser |
+|--------|---------------|-------------------|
+| 1 Empenho automático | ✅ | Pendente Helder |
+| 2 `has_composition` | ✅ | Pendente Helder |
+| 3 Inbox Engenharia | ✅ | Pendente Helder |
+| 4 Abas Entrega/Coleta | ✅ | Pendente Helder |
+| 5 Limpeza técnica | ✅ | Build OK |
+| 6 Roteiro N ops | ✅ | Pendente Helder |
+| 7 Conciliação bancária | ✅ | Pendente Helder |
+
+**Pós-frentes:** assistente fiscal de inconsistências (`/api/fiscal/inconsistencies` + UI em `/settings/fiscal-rules`).
+
+**Próximo foco:** smoke manual + contadora preenche regras + runbook restore.
 
 ## Regras de ouro (valem para TODA tarefa abaixo)
 
@@ -45,6 +61,7 @@ Estes módulos estão no código, com migrations aplicadas no remoto. **Não toq
 - Urgência no menu — `menu-alerts.ts`
 - Expedição (base) — `shipments`, `shipments-service`, `/logistics/shipping`
 - IA assistente de NCM — `/api/ai/suggest-ncm`
+- IA assistente inconsistências fiscais — `/api/fiscal/inconsistencies` (scan determinístico + explicação opcional)
 
 **Fundação dos 4 estados de estoque (já no MRP):**
 
@@ -60,16 +77,16 @@ necessidade (shortage) = max(0, needed − disponível)
 
 ---
 
-## ORDEM DE EXECUÇÃO
+## ORDEM DE EXECUÇÃO — ✅ CONCLUÍDA
 
 ```
-FRENTE 1 — Empenho automático          ← começar AQUI
-FRENTE 2 — Consolidar has_composition
-FRENTE 3 — Inbox da Engenharia
-FRENTE 4 — Abas Entrega/Coleta na Expedição
-FRENTE 5 — Limpeza técnica
-FRENTE 6 — Roteiro N operações (P3)
-FRENTE 7 — Conciliação bancária (P3)
+FRENTE 1 — Empenho automático          ✅
+FRENTE 2 — Consolidar has_composition  ✅
+FRENTE 3 — Inbox da Engenharia         ✅
+FRENTE 4 — Abas Entrega/Coleta         ✅
+FRENTE 5 — Limpeza técnica             ✅
+FRENTE 6 — Roteiro N operações (P3)    ✅
+FRENTE 7 — Conciliação bancária (P3)   ✅
 ```
 
 ---

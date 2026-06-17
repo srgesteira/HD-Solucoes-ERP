@@ -125,6 +125,81 @@ export async function suggestNCM(
   }
 }
 
+export type FiscalInconsistencyBrief = {
+  check_id: string;
+  severity: string;
+  title: string;
+  impact: string;
+  count?: number;
+  detail?: string;
+};
+
+export type FiscalInconsistencyExplanation = {
+  summary: string;
+  priorities: string[];
+  disclaimer: string;
+};
+
+/** IA assistente — explica inconsistências já detectadas pelo scan determinístico. */
+export async function explainFiscalInconsistencies(
+  issues: FiscalInconsistencyBrief[]
+): Promise<FiscalInconsistencyExplanation> {
+  if (issues.length === 0) {
+    return {
+      summary:
+        "Nenhuma inconsistência detectada pelo scan determinístico. Confirme se as regras têm alíquotas preenchidas pela contabilidade.",
+      priorities: [],
+      disclaimer:
+        "Esta análise não substitui parecer contábil. Alíquotas e CFOP devem ser validados pela contadora.",
+    };
+  }
+
+  const client = getAnthropicClient();
+  const payload = JSON.stringify(issues.slice(0, 20), null, 2);
+
+  const prompt =
+    `És assistente fiscal para uma contabilidade industrial brasileira (ERP HD Soluções).\n\n` +
+    `Recebes uma lista de inconsistências JÁ DETECTADAS por um motor determinístico. ` +
+    `NÃO inventes novos problemas nem alíquotas. Só explica o que está na lista e sugere ordem de correção.\n\n` +
+    `Inconsistências:\n${payload}\n\n` +
+    `Responde APENAS com um objeto JSON:\n` +
+    `{\n` +
+    `  "summary": "parágrafo curto em pt-BR para a contadora",\n` +
+    `  "priorities": ["passo 1", "passo 2", "..."],\n` +
+    `  "disclaimer": "frase lembrando que classificação definitiva é da contabilidade"\n` +
+    `}`;
+
+  try {
+    const message = await client.messages.create({
+      model: getAnthropicModelId(),
+      max_tokens: 900,
+      temperature: 0.2,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const block = message.content[0];
+    if (!block || block.type !== "text") {
+      throw new Error("Resposta vazia do modelo.");
+    }
+    const parsed = parseAnthropicJson<FiscalInconsistencyExplanation>(block.text);
+    if (!parsed.summary || !Array.isArray(parsed.priorities)) {
+      throw new Error("JSON da IA incompleto.");
+    }
+    if (!parsed.disclaimer) {
+      parsed.disclaimer =
+        "Classificação fiscal definitiva deve ser confirmada pela contabilidade.";
+    }
+    return parsed;
+  } catch (e) {
+    console.error("explainFiscalInconsistencies:", e);
+    throw new Error(
+      e instanceof Error
+        ? e.message
+        : "Falha ao gerar explicação fiscal com IA."
+    );
+  }
+}
+
 export async function suggestProductStructure(
   technicalDescription: string,
   productName: string

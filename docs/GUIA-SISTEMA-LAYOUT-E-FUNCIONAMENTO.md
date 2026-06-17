@@ -533,8 +533,8 @@ UI específica permanece em `src/components/` e páginas em `src/app/(app)/`.
 
 ## 12. Roadmap — feito vs. pendente
 
-**Última revisão:** junho/2026  
-**Metodologia:** cruzamento da Parte 2 do plano funcional com o código em `src/` e migrations `supabase/migrations/20260922*`–`20260925*`.
+**Última revisão:** junho/2026 (pós-frentes Cursor 1–7)  
+**Metodologia:** cruzamento do plano funcional com o código em `src/` e migrations `20260922*`–`20260927120000`.
 
 Esta secção não substitui o backlog de produto — indica o que **já existe no repositório**, o que está **parcial** e o que **ainda falta construir**, para evitar retrabalho.
 
@@ -564,6 +564,14 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | Urgência no menu | ✅ | `menu-alerts.ts` + estilos `app-shell` (urgent / attention / info) |
 | Transporte / expedição (base) | ✅ | `shipments`, `shipments-service`, `/logistics/shipping` — migration `20260925130000` |
 | IA assistente NCM | ✅ | `/api/ai/suggest-ncm` no edit de produto |
+| IA assistente inconsistências fiscais | ✅ | Scan determinístico + explicação IA em `/settings/fiscal-rules` — `/api/fiscal/inconsistencies` |
+| Empenho automático (Frente 1) | ✅ | `inventory_reservations`, writers MRP/abastecimento/cancel/PV — migration `20260926100000` |
+| `has_composition` consolidado (Frente 2) | ✅ | `sync-has-composition.ts`, backfill — migration `20260926110000` |
+| Inbox Engenharia (Frente 3) | ✅ | `/engineering/inbox`, `engineering-demands.ts`, API `/api/engineering/demands` |
+| Abas Entrega/Coleta (Frente 4) | ✅ | UI `/logistics/shipping` por `direction` outbound/inbound |
+| Limpeza técnica (Frente 5) | ✅ | `format-brl.ts`, drop tabelas mortas — migration `20260927100000` |
+| Roteiro N operações (Frente 6) | ✅ | `product_routing_steps`, `order_item_operations`, UI produto + OP |
+| Conciliação bancária (Frente 7) | ✅ | `/finance/bank-reconciliation`, CSV/OFX, match auto/manual, baixa título |
 | Runbook continuidade (doc) | ✅ | `docs/RUNBOOK-BACKUP-E-INCIDENTES.md` |
 
 > **Nota:** itens ✅ ainda podem precisar de **smoke test no navegador** e de **migrations aplicadas no Supabase remoto** (`pnpm supabase db push` ou `migration list --linked`).
@@ -572,64 +580,46 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 
 | Área | O que falta |
 |------|-------------|
-| Motor fiscal **operacional** | 🧑‍💼 Regras nascem vazias — contadora preenche CFOP/alíquotas. Dev: confirmar migrations no remoto. |
-| IA fiscal “inconsistências” | Só sugestão de NCM; sem assistente de inconsistência além do motor determinístico + saúde do dado. |
-| Validação P1 comercial/financeiro | Código de conversão + AR existe; falta smoke manual (orçamento → PV → AR → confirmar → sync). |
-| Fila de demandas Engenharia | Filtro `pending_composition` + destaque na lista + badge no menu — **não** é inbox com cliente, valor e urgência. |
-| Transporte (spec completa) | Backend tem `direction: outbound/inbound`; UI usa abas por **status**, não abas **Entrega / Coleta**. |
+| Motor fiscal **operacional** | 🧑‍💼 Regras nascem vazias — contadora preenche CFOP/alíquotas. Dev: usar assistente de inconsistências + simulador. |
+| Validação P1 comercial/financeiro | Código de conversão + AR + empenho + conciliação existe; falta **smoke manual** (orçamento → PV → AR → confirmar → sync → conciliar). |
+| Validação frentes 1–7 no browser | Código completo; Helder valida empenho, inbox, expedição, roteiro, conciliação com baixa/reversão. |
 | Continuidade testada | Runbook escrito; primeiro restore mensal e `RUNBOOK-BACKUP-LOG.md` ainda não executados. |
 | Onboarding “dados-semente” | Checklist sim; provisionamento automático de tenant novo — não. |
+| `rbac_*` legado | Mantido por decisão (`docs/RBAC-DECISAO.md`); auditar antes de dropar. |
 
 ### 12.4 Pendente de construção
 
-> **Plano de execução detalhado (Passo 0, fatias, validação browser):** ver [`docs/GUIA-EXECUCAO-CURSOR.md`](./GUIA-EXECUCAO-CURSOR.md).
+> **Plano de execução (frentes 1–7):** concluído — ver [`docs/GUIA-EXECUCAO-CURSOR.md`](./GUIA-EXECUCAO-CURSOR.md).
 
 | Prioridade | Item | Detalhe |
 |------------|------|---------|
-| — | Validação browser + migrations remoto | Smoke dos fluxos ✅ acima |
-| 🧑‍💼 | Preencher `fiscal_rules` | Decisão da contadora |
-| **Frente 1** | Empenho automático (4 fatias) | `reserved_quantity` lido; **sem writers** automáticos — ver investigação Passo 0 |
-| **Frente 2** | Consolidar `has_composition` | Antes da inbox — SE vs HD em `mrp-product-nature.ts` |
-| **Frente 3** | Inbox Engenharia | Evoluir filtro → fila com cliente, valor, urgência |
-| **Frente 4** | Abas Entrega/Coleta | UI em `/logistics/shipping` (backend `direction` já existe) |
-| **Frente 5** | Limpeza técnica | Tabelas mortas, endpoints órfãos, helpers duplicados |
-| **Frente 6** | Roteiro N operações (P3) | `product_routing_steps` + `order_item_operations` |
-| **Frente 7** | Conciliação bancária (P3) | OFX/CSV — distinto de conciliação NF-e compra |
+| — | **Smoke test browser** | Empenho MRP, inbox engenharia, expedição abas, roteiro→OP, conciliação com baixa/reversão |
+| — | Validação P1 comercial/financeiro | Orçamento → PV → AR provisório → confirmar → sync recebíveis |
+| 🧑‍💼 | Preencher `fiscal_rules` | Contadora usa simulador + assistente de inconsistências |
 | 🧑‍💼 | Genérico vs. vertical HVAC | Decisão estratégica (Helder) |
+| Opcional | Reordenar roteiro (drag-and-drop) | UX — API já suporta sequência |
+| Opcional | Audit `rbac_*` | Antes de migration de drop |
 
-#### Limpeza pendente (detalhe)
+#### Limpeza já feita (Frente 5)
 
-**Tabelas candidatas a remoção** (confirmar ausência de uso antes de dropar):
+- **Removido:** `goods_receipts`, `incoming_inspections`, `operator_lines`, `recurring_expenses`, `company_kpis`, `bi_forecasts`
+- **Endpoints órfãos removidos:** `POST /api/sales/quotes/[id]/convert`, `POST /api/pcp/complete-item`
+- **fmtBRL:** consolidado em `@/shared/utils/format-brl`
+- **Mantido:** `rbac_*`, `picking_suggestions`, `holidays`
 
-- `goods_receipts`, `incoming_inspections`, `operator_lines`
-- Kanban órfão, `rbac_*` legado
-- `recurring_expenses`, `company_kpis`, `bi_forecasts`
-
-**Não remover:** `picking_suggestions`, `holidays` (em uso).
-
-**Endpoints órfãos / legado:**
-
-| Rota | Situação |
-|------|----------|
-| `POST /api/sales/quotes/[id]/convert` | Duplicado — UI usa `approve` → `convertQuoteToSalesOrder` |
-| `POST /api/pcp/complete-item` | Legado — UI usa `/api/pcp/finish-production` |
-| `POST */orders/[id]/items` | Existe; frontend só faz GET (ex.: dashboard) |
-
-### 12.5 Ordem de execução (Cursor)
+### 12.5 Ordem daqui para a frente
 
 ```
-FRENTE 1 — Empenho automático (4 fatias)     ← começar AQUI
-FRENTE 2 — Consolidar has_composition
-FRENTE 3 — Inbox da Engenharia
-FRENTE 4 — Abas Entrega/Coleta na Expedição
-FRENTE 5 — Limpeza técnica
-FRENTE 6 — Roteiro N operações (P3)
-FRENTE 7 — Conciliação bancária (P3)
+1. Smoke browser — frentes 1–7 + fluxos P1 (Helder)
+        ↓
+2. Contadora preenche fiscal_rules  🧑‍💼
+        ↓
+3. Primeiro restore mensal (runbook)  🧑‍💼
+        ↓
+4. Decisão vertical HVAC  🧑‍💼
 ```
 
-Fora do escopo Cursor: preencher `fiscal_rules` (contadora) · decisão vertical HVAC (Helder).
-
-**Princípio:** uma frente por vez · Passo 0 de investigação antes de codar · validação no browser ao fim de cada fatia · estender o que existe.
+**Princípio:** código das 7 frentes está feito — foco em validação operacional e decisões de negócio.
 
 ### 12.6 Migrations recentes (referência)
 
@@ -640,7 +630,14 @@ Fora do escopo Cursor: preencher `fiscal_rules` (contadora) · decisão vertical
 | `20260925110000_audit_log.sql` | Trilha de auditoria |
 | `20260925120000_reverse_flow_returns_and_cancellation.sql` | Devoluções + cancelamento OP |
 | `20260925130000_shipments_module.sql` | Expedição / transporte |
-| `20260925140000_audit_log_reapply_triggers.sql` | Triggers de auditoria (incl. shipments) |
+| `20260925140000_audit_log_reapply_triggers.sql` | Triggers de auditoria |
+| `20260926100000_inventory_reservations.sql` | Empenho rastreável (Frente 1) |
+| `20260926110000_backfill_has_composition.sql` | Backfill `has_composition` (Frente 2) |
+| `20260926120000_product_routing_operations.sql` | Roteiro produto + OP (Frente 6) |
+| `20260926130000_bank_reconciliation.sql` | Conciliação bancária base (Frente 7) |
+| `20260927100000_drop_dead_tables.sql` | Drop tabelas mortas (Frente 5) |
+| `20260927110000_backfill_order_item_operations.sql` | Backfill operações OP |
+| `20260927120000_bank_statement_applied_amount.sql` | Baixa título na conciliação |
 
 ---
 

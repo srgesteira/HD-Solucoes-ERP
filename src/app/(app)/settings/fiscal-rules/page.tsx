@@ -9,6 +9,7 @@ import {
   Loader2,
   Plus,
   Scale,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ import { LoadingState } from "@/shared/ui/page-helpers";
 import { useMe } from "@/hooks/use-me";
 import type { FiscalRuleRow } from "@/modules/fiscal/lib/fiscal-rules-types";
 import { resolveFiscalRule } from "@/modules/fiscal/lib/fiscal-rules-engine";
+import type { FiscalInconsistency } from "@/modules/fiscal/lib/fiscal-inconsistency-scan";
 
 async function fetchRules(): Promise<FiscalRuleRow[]> {
   const res = await fetch("/api/fiscal/rules", { credentials: "include" });
@@ -104,6 +106,32 @@ async function markRuleReviewed(id: string) {
   if (!res.ok) throw new Error(json.error ?? "Erro ao marcar revisão");
 }
 
+type InconsistenciesResponse = {
+  issues: FiscalInconsistency[];
+  total: number;
+  blockers: number;
+  warnings: number;
+  explanation?: {
+    summary: string;
+    priorities: string[];
+    disclaimer: string;
+  };
+};
+
+async function fetchInconsistencies(
+  explain = false
+): Promise<InconsistenciesResponse> {
+  const url = explain
+    ? "/api/fiscal/inconsistencies?explain=1"
+    : "/api/fiscal/inconsistencies";
+  const res = await fetch(url, { credentials: "include", cache: "no-store" });
+  const json = (await res.json().catch(() => ({}))) as InconsistenciesResponse & {
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao analisar inconsistências");
+  return json;
+}
+
 const emptyForm = {
   name: "",
   operation_type: "",
@@ -140,6 +168,31 @@ export default function FiscalRulesSettingsPage() {
     enabled: isAdmin,
     staleTime: 60_000,
   });
+
+  const inconsistencyQuery = useQuery({
+    queryKey: ["fiscal-inconsistencies"],
+    queryFn: () => fetchInconsistencies(false),
+    enabled: isAdmin,
+    staleTime: 60_000,
+  });
+
+  const [aiExplanation, setAiExplanation] = useState<
+    InconsistenciesResponse["explanation"] | null
+  >(null);
+  const [explaining, setExplaining] = useState(false);
+
+  async function runAiExplain() {
+    setExplaining(true);
+    try {
+      const data = await fetchInconsistencies(true);
+      setAiExplanation(data.explanation ?? null);
+      toast.success("Análise da IA pronta.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro na IA");
+    } finally {
+      setExplaining(false);
+    }
+  }
 
   const markReviewedMutation = useMutation({
     mutationFn: markRuleReviewed,
@@ -215,6 +268,101 @@ export default function FiscalRulesSettingsPage() {
       description="Cadastre condições e resultados tributários. Alíquotas ficam vazias até a contadora preencher — o sistema não inventa valores."
       density="comfortable"
     >
+
+      <Card className="border-slate-200">
+        <CardHeader className="pb-2 flex flex-row flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-brand-700" />
+              Assistente de inconsistências fiscais
+            </CardTitle>
+            <p className="text-xs text-slate-500 mt-1">
+              Scan determinístico (regras, NCM, pedidos). A IA só explica — não
+              decide impostos.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={explaining || inconsistencyQuery.isLoading}
+            onClick={() => void runAiExplain()}
+          >
+            {explaining ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            Explicar com IA
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {inconsistencyQuery.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              A analisar…
+            </div>
+          ) : inconsistencyQuery.isError ? (
+            <p className="text-sm text-red-600">
+              {(inconsistencyQuery.error as Error).message}
+            </p>
+          ) : (inconsistencyQuery.data?.issues.length ?? 0) === 0 ? (
+            <p className="text-sm text-emerald-700 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              Nenhuma inconsistência detectada pelo scan.
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {inconsistencyQuery.data?.issues.map((issue) => (
+                <li key={issue.check_id} className="py-3 first:pt-0">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-slate-900 flex items-center gap-2">
+                        <span
+                          className={
+                            issue.severity === "blocker"
+                              ? "text-[10px] font-semibold uppercase text-red-700 bg-red-50 px-1.5 py-0.5 rounded"
+                              : issue.severity === "warning"
+                                ? "text-[10px] font-semibold uppercase text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded"
+                                : "text-[10px] font-semibold uppercase text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded"
+                          }
+                        >
+                          {issue.severity}
+                        </span>
+                        {issue.title}
+                        {issue.count != null && issue.count > 0 ? (
+                          <span className="text-slate-500 font-normal">
+                            ({issue.count})
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="text-sm text-slate-600 mt-1">{issue.impact}</p>
+                      {issue.detail ? (
+                        <p className="text-xs text-slate-500 mt-1">{issue.detail}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {aiExplanation ? (
+            <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50/40 p-3 text-sm space-y-2">
+              <p className="font-medium text-brand-900">Resumo (IA)</p>
+              <p className="text-slate-700">{aiExplanation.summary}</p>
+              {aiExplanation.priorities.length > 0 ? (
+                <ol className="list-decimal list-inside text-slate-700 space-y-1">
+                  {aiExplanation.priorities.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ol>
+              ) : null}
+              <p className="text-xs text-slate-500">{aiExplanation.disclaimer}</p>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {reviewQuery.data && reviewQuery.data.total > 0 ? (
         <Card className="border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/30">
