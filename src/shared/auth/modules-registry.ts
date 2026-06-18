@@ -23,7 +23,7 @@ export const HOME_MODULES: HomeModuleDef[] = [
     key: "faturamento",
     name: "Faturamento",
     description: "Crédito, AR/AP e fiscal",
-    href: "/finance/credit-analysis",
+    href: "/faturamento/fiscal",
   },
   {
     key: "pcp",

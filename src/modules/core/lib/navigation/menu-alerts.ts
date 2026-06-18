@@ -13,6 +13,7 @@ export const MENU_ALERT_PATHS = {
   financePayables: "/finance/payables",
   financeReceivables: "/finance/receivables",
   financeCreditAnalysis: "/finance/credit-analysis",
+  fiscalInvoicing: "/faturamento/fiscal",
   financeOverdueReceivables: "/reports/overdue-receivables",
   salesQuotes: "/sales/quotes",
   salesOrders: "/sales/orders",
@@ -224,7 +225,7 @@ export async function loadMenuAlerts(
         if (!readyErr) {
           pushAlert(
             alerts,
-            MENU_ALERT_PATHS.salesOrders,
+            MENU_ALERT_PATHS.fiscalInvoicing,
             readyCount ?? 0,
             "attention"
           );
@@ -241,7 +242,7 @@ export async function loadMenuAlerts(
         if (!pendingErr) {
           pushAlert(
             alerts,
-            MENU_ALERT_PATHS.salesOrders,
+            MENU_ALERT_PATHS.fiscalInvoicing,
             pendingFiscalCount ?? 0,
             "attention"
           );
@@ -256,7 +257,7 @@ export async function loadMenuAlerts(
         if (!reviewErr) {
           pushAlert(
             alerts,
-            MENU_ALERT_PATHS.salesOrders,
+            MENU_ALERT_PATHS.fiscalInvoicing,
             reviewCount ?? 0,
             "urgent"
           );
@@ -270,7 +271,7 @@ export async function loadMenuAlerts(
         if (!nfeErr) {
           pushAlert(
             alerts,
-            MENU_ALERT_PATHS.salesOrders,
+            MENU_ALERT_PATHS.fiscalInvoicing,
             nfeErrCount ?? 0,
             "urgent"
           );

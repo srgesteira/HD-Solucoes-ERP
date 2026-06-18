@@ -23,6 +23,7 @@ const ROUTE_MENU_MODULE_RULES: { prefix: string; moduleKey: string }[] = [
   { prefix: "/logistics/reports", moduleKey: "expedicao" },
   { prefix: "/sales", moduleKey: "vendas" },
   { prefix: "/purchasing", moduleKey: "compras" },
+  { prefix: "/faturamento", moduleKey: "faturamento" },
   { prefix: "/finance", moduleKey: "faturamento" },
   { prefix: "/production", moduleKey: "producao" },
   { prefix: "/inventory", moduleKey: "almoxarifado" },

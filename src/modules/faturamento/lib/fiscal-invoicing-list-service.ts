@@ -1,0 +1,286 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/modules/core/types/database";
+import {
+  buildSalesOrderUniversalSearchOrFilter,
+  resolveSalesOrderIdsFromUniversalSearch,
+} from "@/modules/core/lib/universal-search-query";
+import { escapeIlike } from "@/shared/utils/universal-search";
+import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
+import {
+  FISCAL_INVOICING_ORDER_STATUSES,
+  FISCAL_READY_STATUSES,
+  type FiscalInvoicingListTab,
+} from "@/modules/faturamento/lib/fiscal-invoicing-list-tabs";
+
+type Admin = SupabaseClient<Database>;
+
+type SalesOrderBase = {
+  id: string;
+  order_number: string;
+  client_name: string;
+  order_date: string;
+  total: number;
+  status: string;
+  ready_for_invoice: boolean;
+  fiscal_status: string | null;
+};
+
+type NfeSummary = {
+  id: string;
+  status: string;
+  nfe_number: string | null;
+  updated_at: string;
+};
+
+export type FiscalInvoicingListRow = SalesOrderBase & {
+  credit_status: string | null;
+  nfe_id: string | null;
+  nfe_status: string | null;
+  nfe_number: string | null;
+  can_emit: boolean;
+  emit_blockers: string[];
+};
+
+export type FiscalInvoicingListResult = {
+  data: FiscalInvoicingListRow[];
+  pagination: { page: number; limit: number; total: number };
+  tab: FiscalInvoicingListTab;
+};
+
+async function loadLatestNfesByOrder(
+  admin: Admin,
+  tenantId: string,
+  orderIds: string[]
+): Promise<Map<string, NfeSummary>> {
+  const out = new Map<string, NfeSummary>();
+  if (!orderIds.length) return out;
+
+  const { data, error } = await admin
+    .from("nfes")
+    .select("id, sales_order_id, status, nfe_number, updated_at")
+    .eq("tenant_id", tenantId)
+    .in("sales_order_id", orderIds)
+    .order("updated_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    const soId = row.sales_order_id;
+    if (!soId || out.has(soId)) continue;
+    out.set(soId, {
+      id: row.id,
+      status: row.status,
+      nfe_number: row.nfe_number,
+      updated_at: row.updated_at,
+    });
+  }
+  return out;
+}
+
+async function loadCreditStatusByOrder(
+  admin: Admin,
+  tenantId: string,
+  orderIds: string[]
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!orderIds.length) return out;
+
+  const { data, error } = await admin
+    .from("credit_analysis")
+    .select("sales_order_ref, status")
+    .eq("tenant_id", tenantId)
+    .in("sales_order_ref", orderIds);
+
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    if (row.sales_order_ref) {
+      out.set(row.sales_order_ref, row.status);
+    }
+  }
+  return out;
+}
+
+function matchesTab(
+  tab: FiscalInvoicingListTab,
+  row: SalesOrderBase,
+  nfe: NfeSummary | undefined,
+  canEmit: boolean
+): boolean {
+  const fiscal = row.fiscal_status ?? "pending";
+  const nfeStatus = nfe?.status ?? null;
+
+  switch (tab) {
+    case "all":
+      return true;
+    case "ready":
+      return canEmit;
+    case "waiting":
+      return !canEmit;
+    case "fiscal_pending":
+      return fiscal === "pending" || fiscal === "no_rules";
+    case "nfe_active":
+      return nfeStatus === "pending" || nfeStatus === "processing";
+    case "nfe_authorized":
+      return nfeStatus === "authorized";
+    case "nfe_error":
+      return nfeStatus === "error";
+    default:
+      return true;
+  }
+}
+
+export async function listFiscalInvoicingOrders(
+  admin: Admin,
+  tenantId: string,
+  opts: {
+    tab: FiscalInvoicingListTab;
+    search: string;
+    page: number;
+    limit: number;
+  }
+): Promise<FiscalInvoicingListResult> {
+  const { tab, search, page, limit } = opts;
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  let query = admin
+    .from("sales_orders")
+    .select(
+      "id, order_number, client_name, order_date, total, status, ready_for_invoice, fiscal_status",
+      { count: "exact" }
+    )
+    .eq("tenant_id", tenantId)
+    .neq("status", "superseded")
+    .in("status", [...FISCAL_INVOICING_ORDER_STATUSES]);
+
+  if (search.trim()) {
+    const orderIdsFromProducts = await resolveSalesOrderIdsFromUniversalSearch(
+      admin,
+      tenantId,
+      search.trim()
+    );
+    const orFilter = buildSalesOrderUniversalSearchOrFilter(
+      search.trim(),
+      orderIdsFromProducts
+    );
+    if (orFilter) {
+      query = query.or(orFilter);
+    } else {
+      const safe = `%${escapeIlike(search.trim())}%`;
+      query = query.or(
+        `client_name.ilike.${safe},client_document.ilike.${safe},client_email.ilike.${safe},order_number.ilike.${safe}`
+      );
+    }
+  }
+
+  switch (tab) {
+    case "ready":
+      query = query
+        .eq("ready_for_invoice", true)
+        .eq("status", "confirmed")
+        .in("fiscal_status", [...FISCAL_READY_STATUSES]);
+      break;
+    case "waiting":
+      query = query.or(
+        "ready_for_invoice.eq.false,fiscal_status.in.(pending,no_rules,review_required)"
+      );
+      break;
+    case "fiscal_pending":
+      query = query.in("fiscal_status", ["pending", "no_rules"]);
+      break;
+    case "nfe_active":
+    case "nfe_authorized":
+    case "nfe_error": {
+      const statusFilter =
+        tab === "nfe_active"
+          ? ["pending", "processing"]
+          : tab === "nfe_authorized"
+            ? ["authorized"]
+            : ["error"];
+      const { data: nfeRows, error: nfeErr } = await admin
+        .from("nfes")
+        .select("sales_order_id")
+        .eq("tenant_id", tenantId)
+        .in("status", statusFilter)
+        .not("sales_order_id", "is", null);
+      if (nfeErr) throw new Error(nfeErr.message);
+      const ids = [
+        ...new Set(
+          (nfeRows ?? [])
+            .map((r) => r.sales_order_id)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
+      if (!ids.length) {
+        return {
+          data: [],
+          pagination: { page, limit, total: 0 },
+          tab,
+        };
+      }
+      query = query.in("id", ids);
+      break;
+    }
+    default:
+      break;
+  }
+
+  const { data, error, count } = await query
+    .order("order_date", { ascending: false })
+    .range(from, to);
+
+  if (error) throw new Error(error.message);
+
+  const baseRows = (data ?? []) as SalesOrderBase[];
+  const orderIds = baseRows.map((r) => r.id);
+  const [nfesByOrder, creditByOrder] = await Promise.all([
+    loadLatestNfesByOrder(admin, tenantId, orderIds),
+    loadCreditStatusByOrder(admin, tenantId, orderIds),
+  ]);
+
+  const enriched: FiscalInvoicingListRow[] = [];
+
+  for (const row of baseRows) {
+    const nfe = nfesByOrder.get(row.id);
+    const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, row.id);
+    const item: FiscalInvoicingListRow = {
+      ...row,
+      total: Number(row.total ?? 0),
+      ready_for_invoice: row.ready_for_invoice === true,
+      credit_status: creditByOrder.get(row.id) ?? null,
+      nfe_id: nfe?.id ?? null,
+      nfe_status: nfe?.status ?? null,
+      nfe_number: nfe?.nfe_number ?? null,
+      can_emit: gate.ok,
+      emit_blockers: gate.reasons,
+    };
+
+    if (
+      tab === "ready" ||
+      tab === "waiting" ||
+      tab === "all" ||
+      tab === "fiscal_pending"
+    ) {
+      if (!matchesTab(tab, row, nfe, gate.ok)) continue;
+    }
+
+    enriched.push(item);
+  }
+
+  let total = count ?? enriched.length;
+  if (
+    tab === "ready" ||
+    tab === "waiting" ||
+    tab === "all" ||
+    tab === "fiscal_pending"
+  ) {
+    total = enriched.length;
+  }
+
+  return {
+    data: enriched,
+    pagination: { page, limit, total },
+    tab,
+  };
+}
