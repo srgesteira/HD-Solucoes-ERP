@@ -189,6 +189,13 @@ export function PurchaseOrderItemsEditor({
     );
   };
 
+  const removeLineAt = (index: number) => {
+    if (disabled || lines.length <= 1) return;
+    onLinesChange(
+      reindexPurchaseLines(lines.filter((_, i) => i !== index))
+    );
+  };
+
   const openProductPicker = (lineIndex: number | null) => {
     if (disabled) return;
     setPickerLineIndex(lineIndex);
@@ -257,7 +264,6 @@ export function PurchaseOrderItemsEditor({
               <th className="px-2 py-2 w-24">IPI (R$)</th>
               <th className="px-2 py-2 w-28">Base cálculo</th>
               <th className="px-2 py-2 w-24 text-right">Total linha</th>
-              <th className="px-2 py-2 w-10" />
             </tr>
           </thead>
           <tbody>
@@ -282,29 +288,59 @@ export function PurchaseOrderItemsEditor({
                         <span className="text-slate-800 line-clamp-2 text-xs">
                           {productLabel(prod)}
                         </span>
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => openProductPicker(index)}
+                            disabled={disabled}
+                          >
+                            <Search className="h-3 w-3" />
+                            Alterar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40"
+                            aria-label={`Excluir item ${index + 1}`}
+                            onClick={() => removeLineAt(index)}
+                            disabled={disabled || lines.length <= 1}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Excluir
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1">
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
-                          className="w-fit h-7 text-xs"
                           onClick={() => openProductPicker(index)}
                           disabled={disabled}
                         >
-                          <Search className="h-3 w-3" />
-                          Alterar
+                          <Search className="h-3.5 w-3.5" />
+                          Produto
                         </Button>
+                        {lines.length > 1 ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-fit h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40"
+                            aria-label={`Excluir item ${index + 1}`}
+                            onClick={() => removeLineAt(index)}
+                            disabled={disabled}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Excluir
+                          </Button>
+                        ) : null}
                       </div>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openProductPicker(index)}
-                        disabled={disabled}
-                      >
-                        <Search className="h-3.5 w-3.5" />
-                        Produto
-                      </Button>
                     )}
                   </td>
                   <td className="px-2 py-2 align-top">
@@ -402,27 +438,6 @@ export function PurchaseOrderItemsEditor({
                   </td>
                   <td className="px-2 py-2 align-top text-right tabular-nums font-medium text-slate-900 text-xs">
                     {formatBRL(lineTotal)}
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700"
-                      aria-label={`Remover item ${index + 1}`}
-                      onClick={() =>
-                        onLinesChange(
-                          lines.length <= 1
-                            ? lines
-                            : reindexPurchaseLines(
-                                lines.filter((_, i) => i !== index)
-                              )
-                        )
-                      }
-                      disabled={disabled || lines.length <= 1}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
                   </td>
                 </tr>
               );
