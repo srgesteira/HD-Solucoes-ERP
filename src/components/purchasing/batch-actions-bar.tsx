@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { FileOutput, Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import type { PurchaseRequisitionRow } from "@/modules/compras/lib/purchasing-requisitions";
-import { validateSameSuggestedSupplier } from "@/modules/compras/lib/purchasing/requisition-batch";
+import {
+  aggregateRequisitionsForPreview,
+  validateSameSuggestedSupplier,
+} from "@/modules/compras/lib/purchasing/requisition-batch";
 
 import { formatShortDate } from "@/shared/utils/date";
 
@@ -32,8 +35,14 @@ export function RequisitionsBatchActionsBar({
   const [bulkOpen, setBulkOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
 
-  const validation = validateSameSuggestedSupplier(selectedRows);
-  const canBatch = validation.ok;
+  const quoteValidation = validateSameSuggestedSupplier(selectedRows);
+  const canQuote = quoteValidation.ok;
+  const canIssue = selectedRows.length > 0;
+
+  const aggregatedLines = useMemo(
+    () => aggregateRequisitionsForPreview(selectedRows),
+    [selectedRows]
+  );
 
   const issueBulkMut = useMutation({
     mutationFn: async (ids: string[]) => {
@@ -41,26 +50,31 @@ export function RequisitionsBatchActionsBar({
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requisition_ids: ids,
-          supplier_id: validation.ok ? validation.supplierId : undefined,
-        }),
+        body: JSON.stringify({ requisition_ids: ids }),
       });
       const json = (await res.json().catch(() => ({}))) as {
-        data?: { purchase_order_id: string; po_number: string; linked_count: number };
+        data?: {
+          purchase_order_id: string;
+          po_number: string;
+          linked_count: number;
+          merged_count: number;
+          requisition_count: number;
+        };
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Erro ao emitir PC agrupado");
       return json.data!;
     },
     onSuccess: (data) => {
-      toast.success(
-        `PC ${data.po_number} criado com ${data.linked_count} item(ns).`
-      );
+      const mergedNote =
+        data.merged_count > 0
+          ? ` (${data.requisition_count} requisições → ${data.linked_count} linha(s))`
+          : "";
+      toast.success(`PC ${data.po_number} criado${mergedNote}. Defina o fornecedor no pedido.`);
       setBulkOpen(false);
       onClearSelection();
       onSuccess();
-      router.push("/purchasing/orders?tab=open");
+      router.push(`/purchasing/orders/${data.purchase_order_id}`);
     },
     onError: (e) =>
       toast.error(e instanceof Error ? e.message : "Erro ao emitir PC"),
@@ -92,7 +106,7 @@ export function RequisitionsBatchActionsBar({
     onSuccess: (data) => {
       if (data.warning) toast.warning(data.warning);
       toast.success(
-        `Orçamento solicitado para ${data.supplier_name} com ${data.item_count} itens.`
+        `Orçamento solicitado para ${data.supplier_name} com ${data.item_count} item(ns).`
       );
       setQuoteOpen(false);
       onClearSelection();
@@ -109,14 +123,19 @@ export function RequisitionsBatchActionsBar({
       <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-700">
           <span className="font-semibold">{selectedRows.length}</span>{" "}
-          {selectedRows.length === 1 ? "item seleccionado" : "itens seleccionados"}
-          {!canBatch ? (
+          {selectedRows.length === 1 ? "requisição seleccionada" : "requisições seleccionadas"}
+          {" · "}
+          <span className="text-slate-600">
+            {aggregatedLines.length}{" "}
+            {aggregatedLines.length === 1 ? "linha no PC" : "linhas no PC"}
+          </span>
+          {!canQuote ? (
             <span className="block text-xs text-amber-800 mt-0.5">
-              {validation.message}
+              Orçamento: {quoteValidation.message}
             </span>
           ) : (
             <span className="block text-xs text-slate-500 mt-0.5">
-              Fornecedor: {validation.supplierName}
+              Orçamento: {quoteValidation.supplierName}
             </span>
           )}
         </p>
@@ -124,7 +143,7 @@ export function RequisitionsBatchActionsBar({
           <Button
             type="button"
             size="sm"
-            disabled={!canBatch || quoteBulkMut.isPending}
+            disabled={!canQuote || quoteBulkMut.isPending}
             onClick={() => setQuoteOpen(true)}
           >
             <Mail className="h-4 w-4" />
@@ -133,7 +152,7 @@ export function RequisitionsBatchActionsBar({
           <Button
             type="button"
             size="sm"
-            disabled={!canBatch || issueBulkMut.isPending}
+            disabled={!canIssue || issueBulkMut.isPending}
             onClick={() => setBulkOpen(true)}
           >
             <FileOutput className="h-4 w-4" />
@@ -150,7 +169,7 @@ export function RequisitionsBatchActionsBar({
         </div>
       </div>
 
-      {bulkOpen && canBatch ? (
+      {bulkOpen && canIssue ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50">
           <div
             className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl space-y-4"
@@ -161,18 +180,28 @@ export function RequisitionsBatchActionsBar({
               Confirmar PC agrupado
             </h3>
             <p className="text-sm text-slate-600">
-              Será criado um único pedido de compra para{" "}
-              <strong>{validation.supplierName}</strong> com{" "}
-              {selectedRows.length} item(ns):
+              Será criado um pedido de compra em rascunho com{" "}
+              <strong>{aggregatedLines.length}</strong> linha(s). Produtos iguais
+              são somados. O fornecedor define-se no pedido.
             </p>
             <ul className="text-sm border border-slate-100 rounded-md p-2 max-h-48 overflow-y-auto space-y-1">
-              {selectedRows.map((r) => (
-                <li key={r.id} className="flex justify-between gap-2">
+              {aggregatedLines.map((line) => (
+                <li key={line.key} className="flex justify-between gap-2">
                   <span className="truncate">
-                    {r.product_name ?? r.description}
+                    {line.product_code ? (
+                      <span className="font-mono text-xs text-slate-500 mr-1">
+                        {line.product_code}
+                      </span>
+                    ) : null}
+                    {line.product_name ?? line.description}
+                    {line.source_count > 1 ? (
+                      <span className="text-xs text-slate-500 ml-1">
+                        ({line.source_count} req.)
+                      </span>
+                    ) : null}
                   </span>
                   <span className="tabular-nums text-slate-600 shrink-0">
-                    {r.quantity} {r.unit}
+                    {line.total_quantity} {line.unit}
                   </span>
                 </li>
               ))}
@@ -204,7 +233,7 @@ export function RequisitionsBatchActionsBar({
         </div>
       ) : null}
 
-      {quoteOpen && canBatch ? (
+      {quoteOpen && canQuote ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50">
           <div
             className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl space-y-4"
@@ -216,8 +245,8 @@ export function RequisitionsBatchActionsBar({
             </h3>
             <p className="text-sm text-slate-600">
               Enviar pedido de cotação para{" "}
-              <strong>{validation.supplierName}</strong> com{" "}
-              {selectedRows.length} item(ns):
+              <strong>{quoteValidation.supplierName}</strong> com{" "}
+              {selectedRows.length} requisição(ões):
             </p>
             <ul className="text-sm border border-slate-100 rounded-md p-2 max-h-48 overflow-y-auto">
               {selectedRows.map((r) => (

@@ -125,21 +125,28 @@ export function RequisitionsTab({ search = "" }: RequisitionsTabProps) {
       const json = (await res.json().catch(() => ({}))) as {
         purchase_order_id?: string;
         po_number?: string;
+        linked_count?: number;
+        merged_count?: number;
+        requisition_count?: number;
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Erro ao emitir PC");
       return json;
     },
     onSuccess: (data) => {
+      const mergedNote =
+        data.merged_count && data.merged_count > 0
+          ? ` (${data.requisition_count} → ${data.linked_count} linha(s))`
+          : "";
       toast.success(
         data.po_number
-          ? `PC ${data.po_number} criado.`
+          ? `PC ${data.po_number} criado${mergedNote}. Defina o fornecedor no pedido.`
           : "Pedido de compra criado."
       );
       invalidate();
       setSelectedIds(new Set());
       if (data.purchase_order_id) {
-        router.push("/purchasing/orders?tab=open");
+        router.push(`/purchasing/orders/${data.purchase_order_id}`);
       }
     },
     onError: (e) =>
@@ -360,6 +367,7 @@ export function RequisitionsTab({ search = "" }: RequisitionsTabProps) {
             className="h-8 w-full max-w-[220px] rounded-md border border-slate-300 bg-white px-2 text-xs"
             value={row.suggested_supplier_id ?? ""}
             disabled={supplierMut.isPending}
+            title="Opcional — só necessário para solicitar orçamento por e-mail"
             onChange={(e) => {
               const v = e.target.value || null;
               supplierMut.mutate({
@@ -368,7 +376,7 @@ export function RequisitionsTab({ search = "" }: RequisitionsTabProps) {
               });
             }}
           >
-            <option value="">— Seleccionar —</option>
+            <option value="">— Opcional —</option>
             {suppliers.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -425,12 +433,8 @@ export function RequisitionsTab({ search = "" }: RequisitionsTabProps) {
               variant="outline"
               size="sm"
               className="h-8 text-xs"
-              disabled={issuingId === row.id || !row.suggested_supplier_id}
-              title={
-                !row.suggested_supplier_id
-                  ? "Defina o fornecedor sugerido"
-                  : undefined
-              }
+              disabled={issuingId === row.id}
+              title="Cria PC em rascunho — fornecedor define-se no pedido"
               onClick={() => {
                 setIssuingId(row.id);
                 issueMut.mutate(row.id);

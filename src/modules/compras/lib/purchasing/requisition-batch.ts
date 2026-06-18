@@ -13,6 +13,59 @@ export type SameSupplierValidation =
   | { ok: true; supplierId: string; supplierName: string }
   | { ok: false; message: string };
 
+export type AggregatedRequisitionLine = {
+  key: string;
+  product_id: string | null;
+  product_code: string | null;
+  product_name: string | null;
+  description: string;
+  unit: string;
+  total_quantity: number;
+  source_count: number;
+};
+
+/** Pré-visualização de linhas do PC após somar produtos iguais. */
+export function aggregateRequisitionsForPreview(
+  rows: Pick<
+    PurchaseRequisitionRow,
+    | "id"
+    | "product_id"
+    | "product_code"
+    | "product_name"
+    | "description"
+    | "quantity"
+    | "unit"
+  >[]
+): AggregatedRequisitionLine[] {
+  const map = new Map<string, AggregatedRequisitionLine>();
+
+  for (const row of rows) {
+    const unit = (row.unit || "UN").trim().toUpperCase();
+    const key = row.product_id
+      ? `p:${row.product_id}:${unit}`
+      : `d:${row.description.trim().toLowerCase()}:${unit}`;
+
+    const cur = map.get(key);
+    if (!cur) {
+      map.set(key, {
+        key,
+        product_id: row.product_id,
+        product_code: row.product_code,
+        product_name: row.product_name,
+        description: row.description,
+        unit: row.unit,
+        total_quantity: Number(row.quantity ?? 0),
+        source_count: 1,
+      });
+      continue;
+    }
+    cur.total_quantity += Number(row.quantity ?? 0);
+    cur.source_count += 1;
+  }
+
+  return [...map.values()];
+}
+
 export function validateSameSuggestedSupplier(
   rows: Pick<PurchaseRequisitionRow, "suggested_supplier_id" | "suggested_supplier_name">[]
 ): SameSupplierValidation {

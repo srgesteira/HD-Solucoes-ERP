@@ -5,11 +5,10 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { issueRequisitionsAsPurchaseOrder } from "@/modules/compras/lib/purchasing/requisition-issue";
-import { assertRequisitionsSameSuggestedSupplier } from "@/modules/compras/lib/purchasing/requisition-batch";
 
 export const dynamic = "force-dynamic";
 
-/** Emite um único PC a partir de várias requisições (mesmo fornecedor sugerido). */
+/** Emite um único PC a partir de várias requisições (produtos iguais são somados). */
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -34,25 +33,19 @@ export async function POST(request: NextRequest) {
     : [];
   if (!ids.length) return apiError("Seleccione pelo menos uma requisição.", 400);
 
-  const admin = createSupabaseAdminClient();
+  const supplier_id =
+    typeof b.supplier_id === "string" && b.supplier_id.trim()
+      ? b.supplier_id.trim()
+      : null;
 
   try {
-    const supplierId = await assertRequisitionsSameSuggestedSupplier(
-      admin,
-      tenantId,
-      ids
-    );
-    const override =
-      typeof b.supplier_id === "string" && b.supplier_id.trim()
-        ? b.supplier_id.trim()
-        : supplierId;
-
+    const admin = createSupabaseAdminClient();
     const result = await issueRequisitionsAsPurchaseOrder(
       admin,
       tenantId,
       user.id,
       ids,
-      { supplier_id: override }
+      { supplier_id }
     );
     return apiOk({ data: result });
   } catch (e) {

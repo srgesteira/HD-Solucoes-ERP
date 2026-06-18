@@ -5,7 +5,6 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { issueRequisitionsAsPurchaseOrder } from "@/modules/compras/lib/purchasing/requisition-issue";
-import { assertRequisitionsSameSuggestedSupplier } from "@/modules/compras/lib/purchasing/requisition-batch";
 
 export const dynamic = "force-dynamic";
 
@@ -38,15 +37,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const admin = createSupabaseAdminClient();
-    const resolvedSupplier =
-      supplier_id ??
-      (await assertRequisitionsSameSuggestedSupplier(admin, tenantId, ids));
     const result = await issueRequisitionsAsPurchaseOrder(
       admin,
       tenantId,
       user.id,
       ids,
-      { supplier_id: resolvedSupplier }
+      { supplier_id }
     );
     return apiOk({ data: result });
   } catch (e) {
