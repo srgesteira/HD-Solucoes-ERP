@@ -10,7 +10,7 @@
 
 ## 1. Visão geral
 
-O **HD Soluções ERP** é um sistema corporativo modular para a **HD Projetos & Soluções em HVAC**. Cobre o ciclo operacional de uma indústria: **orçamentar → vender → comprar → produzir → expedir → faturar → receber/pagar**.
+O **HD Soluções ERP** é um sistema corporativo modular para **comercialização e operação industrial** (orçamentos, vendas, compras, produção e financeiro). Cobre o ciclo operacional: **orçamentar → vender → comprar → produzir → expedir → faturar → receber/pagar**.
 
 ### O que o sistema faz (em uma frase)
 
@@ -396,14 +396,15 @@ PV confirmado → OP → Linhas de produção → CQ → Liberação → Expedi�
 2. Integração com fluxo de transporte (quando configurado).
 3. Atualiza status do PV para expedido.
 
-### 6.7 Financeiro
+### 6.7 Faturamento e financeiro
 
 | Tela | Função |
 |------|--------|
+| **Faturamento fiscal** (`/faturamento/fiscal`) | Cronograma de pedidos liberados, conferência fiscal e emissão de NFS-e |
 | Contas a receber | Títulos de clientes, recebimentos |
 | Contas a pagar | Títulos de fornecedores, pagamentos |
 | Fluxo de caixa | Entradas/saídas consolidadas |
-| Análise de crédito | Aprovar/rejeitar crédito de clientes |
+| Análise de crédito | Aprovar/rejeitar crédito de clientes (gate Faturamento → PCP) |
 | Dashboard financeiro | KPIs do módulo |
 
 **Origem dos títulos:** confirmação de PV, recebimento de NF-e, parcelas definidas no pedido.
@@ -572,10 +573,7 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | Limpeza técnica (Frente 5) | ✅ | `format-brl.ts`, drop tabelas mortas — migration `20260927100000` |
 | Roteiro N operações (Frente 6) | ✅ | `product_routing_steps`, `order_item_operations`, UI produto + OP |
 | Conciliação bancária (Frente 7) | ✅ | `/finance/bank-reconciliation`, CSV/OFX, match auto/manual, baixa título |
-| **Decisão vertical HVAC (§18)** | ✅ | [`docs/DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) — V1 ficha técnica · **V2 CQ integridade** |
-| CQ integridade HVAC (V2) | ✅ | `hvac_integrity_tests`, `/production/quality-control`, gate `dispatchShipment` — migration `20260929100000` |
-| Checklist POP HEPA (V3) | ✅ | `product_hvac_checklist_items`, execução CQ, template HEPA — migration `20260930100000` |
-| Orçamento HVAC (V4) | ✅ | `quote_items.hvac_*`, editor de linhas, PDF/impressão — migration `20260931100000` |
+| **Faturamento fiscal** | ✅ | `/faturamento/fiscal`, emissão NFS-e FocusNFe, gates produção + fiscal + crédito |
 | Runbook continuidade (doc) | ✅ | `docs/RUNBOOK-BACKUP-E-INCIDENTES.md` |
 
 > **Nota:** itens ✅ ainda podem precisar de **smoke test no navegador** e de **migrations aplicadas no Supabase remoto** (`pnpm supabase db push` ou `migration list --linked`).
@@ -600,7 +598,6 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | — | **Smoke test browser** | Empenho MRP, inbox engenharia, expedição abas, roteiro→OP, conciliação com baixa/reversão |
 | — | Validação P1 comercial/financeiro | Orçamento → PV → AR provisório → confirmar → sync recebíveis |
 | 🧑‍💼 | Preencher `fiscal_rules` | Contadora usa simulador + assistente de inconsistências |
-| **Vertical HVAC V5+** | — | V0–V5 concluídos — ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) |
 | Opcional | Reordenar roteiro (drag-and-drop) | UX — API já suporta sequência |
 | Opcional | Audit `rbac_*` | Antes de migration de drop |
 
@@ -617,8 +614,8 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 
 | Passo | Item | Estado |
 |-------|------|--------|
-| 1a | Smoke API/DB + páginas (frentes 1–7, P1, HVAC) | ✅ `pnpm test:smoke:all` |
-| 1b | Smoke browser interactivo (cliques, MRP efetivar, PAO/DOP, expedição) | 🧑‍💼 Helder — checklist `DECISAO-VERTICAL-HVAC.md` |
+| 1a | Smoke API/DB + páginas (frentes 1–7, P1, faturamento) | ✅ `pnpm test:smoke:all` |
+| 1b | Smoke browser interactivo (cliques, MRP efetivar, expedição, conciliação) | 🧑‍💼 Helder — frentes em [`GUIA-EXECUCAO-CURSOR.md`](./GUIA-EXECUCAO-CURSOR.md) |
 | 2 | Contadora preenche `fiscal_rules` | 🧑‍💼 0 regras hoje |
 | 3 | Restore mensal em clone Supabase | 🧑‍💼 ver `docs/RUNBOOK-BACKUP-LOG.md` |
 
@@ -630,7 +627,7 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 3. Primeiro restore mensal (runbook)  🧑‍💼
 ```
 
-**Princípio:** núcleo genérico (estoque, fiscal, financeiro) + camada vertical HVAC em cadastro, CQ e documentação.
+**Princípio:** ERP genérico para comercialização — estoque, fiscal, financeiro e produção no mesmo núcleo, sem vertical de indústria fixa no código.
 
 ### 12.6 Migrations recentes (referência)
 
@@ -649,11 +646,8 @@ Esta secção não substitui o backlog de produto — indica o que **já existe 
 | `20260927100000_drop_dead_tables.sql` | Drop tabelas mortas (Frente 5) |
 | `20260927110000_backfill_order_item_operations.sql` | Backfill operações OP |
 | `20260927120000_bank_statement_applied_amount.sql` | Baixa título na conciliação |
-| `20260928100000_hvac_product_specs.sql` | Vertical HVAC — ficha técnica produto |
-| `20260929100000_hvac_integrity_tests.sql` | Vertical HVAC V2 — testes PAO/DOP |
-| `20260930100000_hvac_pop_checklist.sql` | Vertical HVAC V3 — checklist POP HEPA |
-| `20260931100000_quote_items_hvac_specs.sql` | Vertical HVAC V4 — orçamento HVAC |
-| `20261001100000_production_lines_hvac_cleanroom.sql` | Vertical HVAC V5 — ISO por linha |
+| `20261003100000_products_composition_enabled.sql` | Flag `composition_enabled` em produtos |
+| `20261004100000_drop_hvac_vertical.sql` | Remove vertical HVAC/ISO (tabelas e colunas `hvac_*`) |
 
 ---
 

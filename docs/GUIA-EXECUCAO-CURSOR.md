@@ -19,9 +19,9 @@
 | 6 Roteiro N ops | ✅ | Pendente Helder |
 | 7 Conciliação bancária | ✅ | Pendente Helder |
 
-**Pós-frentes:** assistente fiscal · **vertical HVAC V0–V5** (ficha, integridade, checklist, orçamento, área classificada).
+**Pós-frentes:** assistente fiscal · **Faturamento fiscal** (`/faturamento/fiscal`) · datas `dd/mm/aa` em todo o sistema.
 
-**Próximo foco:** smoke manual frentes 1–7 + HVAC V1–V5 · contadora preenche regras.
+**Próximo foco:** smoke manual frentes 1–7 · contadora preenche regras fiscais.
 
 ## Regras de ouro (valem para TODA tarefa abaixo)
 
@@ -168,34 +168,21 @@ OFX/CSV + match com contas. **≠** conciliação NF-e compra.
 ## FORA DO ESCOPO DO CURSOR
 
 - Preencher `fiscal_rules` → contadora.
-- ~~Genérico vs. vertical HVAC~~ → **decidido: vertical** — ver [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md).
+- ~~Vertical HVAC/ISO~~ → **removido** (migration `20261004100000`); ERP genérico para comercialização.
 
 ---
 
-## VERTICAL HVAC (pós-frentes)
-
-| Fatia | Estado |
-|-------|--------|
-| V0 Decisão | ✅ |
-| V1 Ficha técnica produto | ✅ |
-| V2 CQ integridade | ✅ |
-| V3 POPs HEPA | ✅ |
-| V4 Orçamento HVAC | ✅ |
-| V5 Área classificada | ✅ |
-
----
-
-## Smoke automatizado (pós-V5)
+## Smoke automatizado
 
 ```bash
-pnpm test:smoke:full    # DB + APIs + HVAC + scripts unitários (55 checks)
+pnpm test:smoke:full    # DB + APIs + scripts unitários
 pnpm test:smoke:plan    # Plano macro §12.5 — frentes 1–7, P1, páginas
 pnpm test:smoke:all     # Os dois em sequência
 ```
 
 Valida produção (`https://hd-solucoes-erp.vercel.app`) ou `SMOKE_BASE_URL` local.
 
-**Smoke manual interactivo (Helder):** cliques MRP/empenho, PAO/DOP, checklist, expedição bloqueada, conciliação com baixa — passos 1–8 em [`DECISAO-VERTICAL-HVAC.md`](./DECISAO-VERTICAL-HVAC.md) + frentes em [`GUIA-EXECUCAO-CURSOR.md`](./GUIA-EXECUCAO-CURSOR.md).
+**Smoke manual interactivo (Helder):** cliques MRP/empenho, expedição, conciliação com baixa — frentes 1–7 em [`GUIA-EXECUCAO-CURSOR.md`](./GUIA-EXECUCAO-CURSOR.md) e §12.5 do [`GUIA-SISTEMA-LAYOUT-E-FUNCIONAMENTO.md`](./GUIA-SISTEMA-LAYOUT-E-FUNCIONAMENTO.md).
 
 **Registo continuidade:** [`docs/RUNBOOK-BACKUP-LOG.md`](./RUNBOOK-BACKUP-LOG.md).
 

@@ -1,11 +1,10 @@
 # ERP HD Soluções Industriais
 
-Sistema corporativo da **HD Projetos & Soluções em HVAC**, construído de forma
+Sistema corporativo **HD Soluções Industriais**, construído de forma
 modular sobre Next.js 16 + Supabase.
 
-> Este repositório nasceu como uma cópia do **PCP Control** (sistema multi-tenant
-> que serve a HEPA Filtros Industriais) e está sendo evoluído módulo a módulo
-> até se tornar um ERP completo.
+> Este repositório nasceu como evolução do **PCP Control** (multi-tenant) e
+> consolidou-se num ERP genérico para comercialização, produção e financeiro.
 
 ---
 
