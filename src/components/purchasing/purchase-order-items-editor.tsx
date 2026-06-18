@@ -46,8 +46,13 @@ function formatBRL(n: number): string {
 }
 
 export function productLabel(p: PurchaseLineProduct): string {
-  const sku = p.technical_code?.trim() || p.code?.trim() || "—";
-  return `${sku} — ${p.name}`;
+  const sku = productCode(p);
+  return sku === "—" ? p.name : `${sku} — ${p.name}`;
+}
+
+export function productCode(p: PurchaseLineProduct | undefined): string {
+  if (!p) return "—";
+  return p.technical_code?.trim() || p.code?.trim() || "—";
 }
 
 function hitToProduct(hit: ProductSearchHit): PurchaseLineProduct {
@@ -65,11 +70,10 @@ function lineFromProduct(
   base?: PurchaseOrderLineDraft
 ): { line: PurchaseOrderLineDraft; product: PurchaseLineProduct } {
   const p = hitToProduct(hit);
-  const label = productLabel(p);
   const line: PurchaseOrderLineDraft = {
     ...(base ?? newPurchaseLine(0)),
     productId: p.id,
-    description: label,
+    description: p.name.trim() || productLabel(p),
     unit: (p.unit && p.unit.trim()) || "UN",
   };
   return { line, product: p };
@@ -250,20 +254,20 @@ export function PurchaseOrderItemsEditor({
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-        <table className="w-full text-sm min-w-[1280px]">
+        <table className="w-full table-fixed text-xs">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
-              <th className="px-2 py-2 min-w-[140px]">Produto</th>
-              <th className="px-2 py-2 min-w-[120px]">Descrição</th>
-              <th className="px-2 py-2 w-20">Qtd.</th>
-              <th className="px-2 py-2 w-16">Un.</th>
-              <th className="px-2 py-2 w-24">Preço un.</th>
-              <th className="px-2 py-2 w-20">% ICMS</th>
-              <th className="px-2 py-2 w-24">ICMS (R$)</th>
-              <th className="px-2 py-2 w-20">% IPI</th>
-              <th className="px-2 py-2 w-24">IPI (R$)</th>
-              <th className="px-2 py-2 w-28">Base cálculo</th>
-              <th className="px-2 py-2 w-24 text-right">Total linha</th>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
+              <th className="w-[52px] px-1 py-1.5" aria-label="Acções" />
+              <th className="w-[9%] px-1 py-1.5">Código</th>
+              <th className="w-[24%] px-1 py-1.5">Descrição</th>
+              <th className="w-[8%] px-1 py-1.5">Qtd.</th>
+              <th className="w-[5%] px-1 py-1.5">Un.</th>
+              <th className="w-[9%] px-1 py-1.5">Preço un.</th>
+              <th className="w-[7%] px-1 py-1.5">% ICMS</th>
+              <th className="w-[9%] px-1 py-1.5 text-right">ICMS</th>
+              <th className="w-[7%] px-1 py-1.5">% IPI</th>
+              <th className="w-[9%] px-1 py-1.5 text-right">IPI</th>
+              <th className="w-[10%] px-1 py-1.5 text-right">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -271,90 +275,68 @@ export function PurchaseOrderItemsEditor({
               const prod = line.productId
                 ? productById.get(line.productId)
                 : undefined;
-              const lineSub = lineSubtotal(line.quantity, line.unitPrice);
+              const code = productCode(prod);
               const lineTotal = lineDisplayTotal(
                 line.quantity,
                 line.unitPrice,
                 line.ipiValue
               );
+              const unitLocked = Boolean(line.productId);
               return (
                 <tr
                   key={line.key}
                   className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                 >
-                  <td className="px-2 py-2 align-top">
-                    {prod ? (
-                      <div className="flex flex-col gap-1">
-                        <span className="text-slate-800 line-clamp-2 text-xs">
-                          {productLabel(prod)}
-                        </span>
-                        <div className="flex flex-wrap gap-1">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => openProductPicker(index)}
-                            disabled={disabled}
-                          >
-                            <Search className="h-3 w-3" />
-                            Alterar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40"
-                            aria-label={`Excluir item ${index + 1}`}
-                            onClick={() => removeLineAt(index)}
-                            disabled={disabled || lines.length <= 1}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            Excluir
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-1">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => openProductPicker(index)}
-                          disabled={disabled}
-                        >
-                          <Search className="h-3.5 w-3.5" />
-                          Produto
-                        </Button>
-                        {lines.length > 1 ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="w-fit h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40"
-                            aria-label={`Excluir item ${index + 1}`}
-                            onClick={() => removeLineAt(index)}
-                            disabled={disabled}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            Excluir
-                          </Button>
-                        ) : null}
-                      </div>
-                    )}
+                  <td className="px-1 py-1.5 align-top">
+                    <div className="flex flex-col gap-0.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        title={prod ? "Alterar produto" : "Escolher produto"}
+                        aria-label={
+                          prod
+                            ? `Alterar produto da linha ${index + 1}`
+                            : `Escolher produto da linha ${index + 1}`
+                        }
+                        onClick={() => openProductPicker(index)}
+                        disabled={disabled}
+                      >
+                        <Search className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40"
+                        title="Excluir linha"
+                        aria-label={`Excluir item ${index + 1}`}
+                        onClick={() => removeLineAt(index)}
+                        disabled={disabled || lines.length <= 1}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </td>
-                  <td className="px-2 py-2 align-top">
+                  <td
+                    className="px-1 py-1.5 align-top font-mono text-[11px] text-slate-800 truncate"
+                    title={code}
+                  >
+                    {code}
+                  </td>
+                  <td className="px-1 py-1.5 align-top">
                     <Input
                       value={line.description}
                       onChange={(e) =>
                         updateLineAt(index, { description: e.target.value })
                       }
                       disabled={disabled}
-                      className="h-8 text-sm"
-                      placeholder="Descrição…"
+                      className="h-7 text-xs px-2"
+                      placeholder="Nome do item…"
                     />
                   </td>
-                  <td className="px-2 py-2 align-top">
+                  <td className="px-1 py-1.5 align-top">
                     <NumericInput
                       value={line.quantity}
                       onChange={(quantity) =>
@@ -362,21 +344,30 @@ export function PurchaseOrderItemsEditor({
                       }
                       maxDecimals={4}
                       disabled={disabled}
-                      className="h-8 text-sm"
+                      className="h-7 text-xs px-2"
                       placeholder="0"
                     />
                   </td>
-                  <td className="px-2 py-2 align-top">
-                    <Input
-                      value={line.unit}
-                      onChange={(e) =>
-                        updateLineAt(index, { unit: e.target.value })
-                      }
-                      disabled={disabled}
-                      className="h-8 text-sm"
-                    />
+                  <td className="px-1 py-1.5 align-top">
+                    {unitLocked ? (
+                      <span
+                        className="inline-flex h-7 w-full items-center rounded-md border border-slate-200 bg-slate-50 px-2 text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-900/40"
+                        title="Unidade definida no cadastro do produto"
+                      >
+                        {line.unit || "UN"}
+                      </span>
+                    ) : (
+                      <Input
+                        value={line.unit}
+                        onChange={(e) =>
+                          updateLineAt(index, { unit: e.target.value })
+                        }
+                        disabled={disabled}
+                        className="h-7 text-xs px-2"
+                      />
+                    )}
                   </td>
-                  <td className="px-2 py-2 align-top">
+                  <td className="px-1 py-1.5 align-top">
                     <NumericInput
                       value={line.unitPrice}
                       onChange={(unitPrice) =>
@@ -384,10 +375,10 @@ export function PurchaseOrderItemsEditor({
                       }
                       maxDecimals={2}
                       disabled={disabled}
-                      className="h-8 text-sm"
+                      className="h-7 text-xs px-2"
                     />
                   </td>
-                  <td className="px-2 py-2 align-top">
+                  <td className="px-1 py-1.5 align-top">
                     <NumericInput
                       value={line.icmsRate}
                       onChange={(icmsRate) =>
@@ -395,22 +386,16 @@ export function PurchaseOrderItemsEditor({
                       }
                       maxDecimals={2}
                       disabled={disabled}
-                      className="h-8 text-sm"
+                      className="h-7 text-xs px-2"
                       placeholder="0"
                     />
                   </td>
-                  <td className="px-2 py-2 align-top">
-                    <NumericInput
-                      value={line.icmsValue}
-                      onChange={(icmsValue) =>
-                        updateLineAt(index, { icmsValue }, "none")
-                      }
-                      maxDecimals={2}
-                      disabled={disabled}
-                      className="h-8 text-sm"
-                    />
+                  <td className="px-1 py-1.5 align-top text-right tabular-nums text-slate-700 bg-slate-50/80 dark:bg-slate-900/30">
+                    <span className="inline-flex h-7 w-full items-center justify-end px-1 text-[11px]">
+                      {formatBRL(line.icmsValue)}
+                    </span>
                   </td>
-                  <td className="px-2 py-2 align-top">
+                  <td className="px-1 py-1.5 align-top">
                     <NumericInput
                       value={line.ipiRate}
                       onChange={(ipiRate) =>
@@ -418,25 +403,16 @@ export function PurchaseOrderItemsEditor({
                       }
                       maxDecimals={2}
                       disabled={disabled}
-                      className="h-8 text-sm"
+                      className="h-7 text-xs px-2"
                       placeholder="0"
                     />
                   </td>
-                  <td className="px-2 py-2 align-top">
-                    <NumericInput
-                      value={line.ipiValue}
-                      onChange={(ipiValue) =>
-                        updateLineAt(index, { ipiValue }, "none")
-                      }
-                      maxDecimals={2}
-                      disabled={disabled}
-                      className="h-8 text-sm"
-                    />
+                  <td className="px-1 py-1.5 align-top text-right tabular-nums text-slate-700 bg-slate-50/80 dark:bg-slate-900/30">
+                    <span className="inline-flex h-7 w-full items-center justify-end px-1 text-[11px]">
+                      {formatBRL(line.ipiValue)}
+                    </span>
                   </td>
-                  <td className="px-2 py-2 align-top text-right tabular-nums text-slate-700 text-xs">
-                    {formatBRL(line.taxBase || roundMoney(lineSub + line.ipiValue))}
-                  </td>
-                  <td className="px-2 py-2 align-top text-right tabular-nums font-medium text-slate-900 text-xs">
+                  <td className="px-1 py-1.5 align-top text-right tabular-nums font-medium text-slate-900 text-[11px]">
                     {formatBRL(lineTotal)}
                   </td>
                 </tr>
@@ -445,6 +421,12 @@ export function PurchaseOrderItemsEditor({
           </tbody>
         </table>
       </div>
+
+      <p className="text-[11px] text-slate-500 leading-snug">
+        <strong>Código</strong> — SKU do cadastro (só leitura).{" "}
+        <strong>Descrição</strong> — texto do item neste pedido (editável).{" "}
+        Unidade, ICMS (R$) e IPI (R$) são calculados ou vêm do produto.
+      </p>
 
       <Button
         type="button"
