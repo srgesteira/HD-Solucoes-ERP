@@ -297,6 +297,13 @@ const MENU_STRUCTURE: NavEntry[] = [
         icon: PieChart,
         module: "hr",
       },
+      {
+        title: "Custos de MO",
+        href: "/finance/cost-dashboard",
+        icon: Calculator,
+        module: "hr",
+        anyOf: ["finance", "production", "reports", "hr"],
+      },
     ],
   },
   {
@@ -350,13 +357,6 @@ const MENU_STRUCTURE: NavEntry[] = [
     icon: DollarSign,
     module: "finance",
     children: [
-      {
-        title: "Custos de MO",
-        href: "/finance/cost-dashboard",
-        icon: Calculator,
-        module: "finance",
-        anyOf: ["finance", "production", "reports"],
-      },
       {
         title: "Conciliação bancária",
         href: "/finance/bank-reconciliation",

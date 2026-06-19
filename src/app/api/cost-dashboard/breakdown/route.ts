@@ -11,7 +11,10 @@ export async function GET(request: NextRequest) {
   const gate = await assertMenuModuleAccess("faturamento");
   if (!gate.ok) {
     const prod = await assertMenuModuleAccess("producao");
-    if (!prod.ok) return gate.response;
+    if (!prod.ok) {
+      const hr = await assertMenuModuleAccess("rh");
+      if (!hr.ok) return gate.response;
+    }
   }
 
   const tenantId = await getCurrentTenantId();
