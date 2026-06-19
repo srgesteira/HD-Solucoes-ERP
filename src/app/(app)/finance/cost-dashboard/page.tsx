@@ -100,7 +100,7 @@ export default function CostDashboardPage() {
   } | null>(null);
 
   const access =
-    can("finance") || can("production") || can("reports");
+    can("finance") || can("production") || can("reports") || can("hr");
 
   useEffect(() => {
     if (!permLoading && !access) {
@@ -242,7 +242,7 @@ export default function CostDashboardPage() {
             <CardContent className="h-80">
               {lineChartData.length === 0 ? (
                 <p className="text-sm text-slate-500 text-center py-12">
-                  Sem dados históricos. Recalcule custos em Produção → Linhas.
+                  Sem dados históricos. Recalcule custos em Configurações → Centros de trabalho.
                 </p>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
