@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import {
   getCurrentTenantId,
@@ -12,6 +13,10 @@ import {
   appendNote,
   formatManualAdjustmentNote,
 } from "@/modules/compras/lib/purchasing/purchase-payables";
+import {
+  buildPayableMovementDescription,
+  recordFinancialMovement,
+} from "@/modules/finance/lib/financial-movements";
 
 export const dynamic = "force-dynamic";
 
@@ -144,6 +149,36 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
       "Erro ao atualizar: " + error.message,
       supabaseErrorToHttp(error.code)
     );
+  }
+
+  if (b.pay_amount != null) {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const movementDate =
+      b.payment_date ?? new Date().toISOString().slice(0, 10);
+
+    try {
+      await recordFinancialMovement(admin, {
+        tenantId,
+        direction: "out",
+        amount: b.pay_amount,
+        movementDate,
+        sourceKind: "payable",
+        sourceId: id,
+        description: buildPayableMovementDescription(row.description),
+        referenceId: row.purchase_order_id,
+        createdBy: user?.id ?? null,
+      });
+    } catch (movErr) {
+      return apiError(
+        "Pagamento registado, mas falhou ao gravar movimento: " +
+          (movErr instanceof Error ? movErr.message : "erro desconhecido"),
+        500
+      );
+    }
   }
 
   return apiOk({ data });

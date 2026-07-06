@@ -358,6 +358,12 @@ const MENU_STRUCTURE: NavEntry[] = [
     module: "finance",
     children: [
       {
+        title: "Contas",
+        href: "/finance/contas",
+        icon: Wallet,
+        module: "finance",
+      },
+      {
         title: "Conciliação bancária",
         href: "/finance/bank-reconciliation",
         icon: Activity,
