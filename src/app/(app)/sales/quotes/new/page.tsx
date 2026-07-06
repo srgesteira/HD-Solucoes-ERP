@@ -80,7 +80,9 @@ export default function NewQuotePage() {
   const [clientEmail, setClientEmail] = useState("");
   const [quoteDate, setQuoteDate] = useState(todayISODate);
   const [validityDays, setValidityDays] = useState("30");
-  const [paymentTerms, setPaymentTerms] = useState("");
+  const [paymentInstallments, setPaymentInstallments] = useState("1");
+  const [paymentDaysFirst, setPaymentDaysFirst] = useState("30");
+  const [paymentDaysBetween, setPaymentDaysBetween] = useState("30");
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
@@ -188,7 +190,12 @@ export default function NewQuotePage() {
       client_email: clientEmail.trim() || null,
       quote_date: qd.slice(0, 10),
       validity_days: vd,
-      payment_terms: paymentTerms.trim() || null,
+      payment_installments: parseInt(paymentInstallments, 10) || 1,
+      payment_days_to_first_due: parseInt(paymentDaysFirst, 10) || 0,
+      payment_days_between_installments:
+        paymentDaysBetween.trim() === ""
+          ? 0
+          : parseInt(paymentDaysBetween, 10) || 0,
       delivery_business_days:
         deliveryDaysParsed != null && Number.isFinite(deliveryDaysParsed)
           ? deliveryDaysParsed
@@ -268,8 +275,12 @@ export default function NewQuotePage() {
               onQuoteDateChange={setQuoteDate}
               validityDays={validityDays}
               onValidityDaysChange={setValidityDays}
-              paymentTerms={paymentTerms}
-              onPaymentTermsChange={setPaymentTerms}
+              paymentInstallments={paymentInstallments}
+              onPaymentInstallmentsChange={setPaymentInstallments}
+              paymentDaysFirst={paymentDaysFirst}
+              onPaymentDaysFirstChange={setPaymentDaysFirst}
+              paymentDaysBetween={paymentDaysBetween}
+              onPaymentDaysBetweenChange={setPaymentDaysBetween}
               deliveryBusinessDays={deliveryBusinessDays}
               onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
               shippingType={shippingType}

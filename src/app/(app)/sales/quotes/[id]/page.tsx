@@ -20,6 +20,9 @@ import {
   formatQuoteDisplayTitle,
   formatQuoteNumberWithRevision,
   quoteStatusBadge,
+  quoteLineItemCode,
+  quoteLineItemName,
+  type QuotePrintItem,
 } from "@/modules/vendas/lib/sales/quote-display";
 import { quoteStatusAllowsContentEdit } from "@/modules/vendas/lib/sales/quote-access";
 import { inferDeliveryBusinessDaysFromQuote } from "@/modules/vendas/lib/sales/quote-delivery";
@@ -42,6 +45,7 @@ import { QuoteSendEmailModal } from "@/components/sales/quote-send-email-modal";
 import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
 import { QuoteFormFields } from "@/components/sales/quote-form-fields";
+import { PaymentTermsDisplay } from "@/components/shared/payment-terms-display";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
 import {
   QuoteItemsEditor,
@@ -114,14 +118,6 @@ function fmtDay(iso: string | null | undefined): string {
   if (iso == null || iso === "") return "—";
   const formatted = formatShortDate(String(iso).slice(0, 10));
   return formatted === "--" ? "—" : formatted;
-}
-
-function unwrapProduct(p: QuoteItemLine["product"]): string {
-  if (p == null) return "—";
-  const o = Array.isArray(p) ? p[0] : p;
-  if (!o || typeof o !== "object") return "—";
-  const n = "name" in o ? o.name : null;
-  return typeof n === "string" && n.trim() ? n : "—";
 }
 
 function unwrapConvertedSale(
@@ -297,7 +293,9 @@ export default function QuoteDetailPage() {
   const [clientEmail, setClientEmail] = useState("");
   const [quoteDate, setQuoteDate] = useState("");
   const [validityDays, setValidityDays] = useState("30");
-  const [paymentTerms, setPaymentTerms] = useState("");
+  const [paymentInstallments, setPaymentInstallments] = useState("1");
+  const [paymentDaysFirst, setPaymentDaysFirst] = useState("30");
+  const [paymentDaysBetween, setPaymentDaysBetween] = useState("30");
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
@@ -327,7 +325,9 @@ export default function QuoteDetailPage() {
     setClientEmail(q.client_email ?? "");
     setQuoteDate(String(q.quote_date ?? "").slice(0, 10));
     setValidityDays(String(q.validity_days ?? 30));
-    setPaymentTerms(q.payment_terms ?? "");
+    setPaymentInstallments(String(q.payment_installments ?? 1));
+    setPaymentDaysFirst(String(q.payment_days_to_first_due ?? 30));
+    setPaymentDaysBetween(String(q.payment_days_between_installments ?? 30));
     setDeliveryBusinessDays(inferDeliveryBusinessDaysFromQuote(q));
     setShippingType(q.shipping_type ?? "FOB");
     setFreightCost(Number(q.freight_cost ?? 0));
@@ -384,7 +384,12 @@ export default function QuoteDetailPage() {
         client_email: clientEmail.trim() || null,
         quote_date: quoteDate.slice(0, 10),
         validity_days: vd,
-        payment_terms: paymentTerms.trim() || null,
+        payment_installments: parseInt(paymentInstallments, 10) || 1,
+        payment_days_to_first_due: parseInt(paymentDaysFirst, 10) || 0,
+        payment_days_between_installments:
+          paymentDaysBetween.trim() === ""
+            ? 0
+            : parseInt(paymentDaysBetween, 10) || 0,
         delivery_business_days:
           deliveryDaysParsed != null && Number.isFinite(deliveryDaysParsed)
             ? deliveryDaysParsed
@@ -762,8 +767,12 @@ export default function QuoteDetailPage() {
                     onQuoteDateChange={setQuoteDate}
                     validityDays={validityDays}
                     onValidityDaysChange={setValidityDays}
-                    paymentTerms={paymentTerms}
-                    onPaymentTermsChange={setPaymentTerms}
+                    paymentInstallments={paymentInstallments}
+                    onPaymentInstallmentsChange={setPaymentInstallments}
+                    paymentDaysFirst={paymentDaysFirst}
+                    onPaymentDaysFirstChange={setPaymentDaysFirst}
+                    paymentDaysBetween={paymentDaysBetween}
+                    onPaymentDaysBetweenChange={setPaymentDaysBetween}
                     deliveryBusinessDays={deliveryBusinessDays}
                     onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
                     shippingType={shippingType}
@@ -854,7 +863,7 @@ export default function QuoteDetailPage() {
                 </CardContent>
               </Card>
 
-              {(q.payment_terms ||
+              {(q.payment_installments != null ||
                 q.expected_delivery_date ||
                 q.delivery_deadline ||
                 q.shipping_type) && (
@@ -865,9 +874,15 @@ export default function QuoteDetailPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="grid gap-4 sm:grid-cols-2 text-sm">
-                    <div>
-                      <p className="text-slate-500">Pagamento (texto)</p>
-                      <p className="font-medium">{q.payment_terms ?? "—"}</p>
+                    <div className="sm:col-span-2">
+                      <p className="text-slate-500 mb-2">Condições de pagamento</p>
+                      <PaymentTermsDisplay
+                        payment_installments={q.payment_installments}
+                        payment_days_to_first_due={q.payment_days_to_first_due}
+                        payment_days_between_installments={
+                          q.payment_days_between_installments
+                        }
+                      />
                     </div>
                     <div>
                       <p className="text-slate-500">Entrega prevista (data)</p>
@@ -875,24 +890,6 @@ export default function QuoteDetailPage() {
                         {q.expected_delivery_date
                           ? String(q.expected_delivery_date).slice(0, 10)
                           : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Parcelas</p>
-                      <p className="font-medium tabular-nums">
-                        {q.payment_installments ?? "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Dias até 1.ª parcela</p>
-                      <p className="font-medium tabular-nums">
-                        {q.payment_days_to_first_due ?? "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Dias entre parcelas</p>
-                      <p className="font-medium tabular-nums">
-                        {q.payment_days_between_installments ?? "—"}
                       </p>
                     </div>
                     <div className="sm:col-span-2">
@@ -925,10 +922,10 @@ export default function QuoteDetailPage() {
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
                         <th className="px-3 py-2 text-left font-medium">
-                          Produto
+                          Código
                         </th>
                         <th className="px-3 py-2 text-left font-medium">
-                          Descrição
+                          Produto
                         </th>
                         <th className="px-3 py-2 text-right font-medium">
                           Quantidade
@@ -948,13 +945,19 @@ export default function QuoteDetailPage() {
                             key={line.id}
                             className="border-b border-slate-100 dark:border-slate-800"
                           >
-                            <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
-                              {unwrapProduct(line.product)}
+                            <td className="px-3 py-2 font-mono text-xs text-slate-700 dark:text-slate-300">
+                              {quoteLineItemCode(
+                                line.product as QuotePrintItem["product"],
+                                line.description
+                              )}
                             </td>
-                            <td className="px-3 py-2">
-                              <span>{line.description ?? "—"}</span>
+                            <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
+                              {quoteLineItemName(
+                                line.product as QuotePrintItem["product"],
+                                line.description
+                              )}
                               {line.client_notes?.trim() ? (
-                                <p className="text-xs text-slate-500 mt-1 whitespace-pre-wrap">
+                                <p className="text-xs text-slate-500 mt-1 font-normal whitespace-pre-wrap">
                                   Obs. cliente: {line.client_notes.trim()}
                                 </p>
                               ) : null}

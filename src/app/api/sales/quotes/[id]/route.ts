@@ -13,6 +13,7 @@ import { quoteStatusBumpsRevisionOnContentSave } from "@/modules/vendas/lib/sale
 import { QUOTE_STATUSES, type QuoteUpdate } from "@/modules/core/types/sales.types";
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
 import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
+import { formatPaymentTermsSummary } from "@/shared/utils/payment-terms-format";
 import { resolveQuoteDeliveryFromBody } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
   computeValidUntil,
@@ -105,7 +106,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const { data: existing } = await admin
     .from("quotes")
-    .select("quote_date, validity_days, status, shipping_type, revision_number")
+    .select(
+      "quote_date, validity_days, status, shipping_type, revision_number, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+    )
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -204,7 +207,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
       b.payment_terms === null
         ? null
         : String(b.payment_terms).trim() || null;
-    if (updateData.payment_terms) {
+    const hasExplicitPayment =
+      b.payment_installments !== undefined ||
+      b.payment_days_to_first_due !== undefined ||
+      b.payment_days_between_installments !== undefined;
+    if (updateData.payment_terms && !hasExplicitPayment) {
       const parsed = parsePaymentTermsFromText(updateData.payment_terms);
       if (parsed) {
         updateData.payment_installments = parsed.installments;
@@ -283,6 +290,25 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return apiError("payment_days_between_installments inválido", 400);
     }
     updateData.payment_days_between_installments = v;
+  }
+  if (
+    (b.payment_installments !== undefined ||
+      b.payment_days_to_first_due !== undefined ||
+      b.payment_days_between_installments !== undefined) &&
+    b.payment_terms === undefined
+  ) {
+    updateData.payment_terms = formatPaymentTermsSummary({
+      payment_installments:
+        updateData.payment_installments ?? existing.payment_installments ?? 1,
+      payment_days_to_first_due:
+        updateData.payment_days_to_first_due ??
+        existing.payment_days_to_first_due ??
+        30,
+      payment_days_between_installments:
+        updateData.payment_days_between_installments ??
+        existing.payment_days_between_installments ??
+        0,
+    });
   }
   if (b.shipping_type !== undefined) {
     const st = parseShippingType(b.shipping_type);

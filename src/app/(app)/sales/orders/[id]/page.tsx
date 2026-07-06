@@ -21,6 +21,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
+import { PaymentTermsDisplay } from "@/components/shared/payment-terms-display";
+import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -955,17 +957,17 @@ export default function SalesOrderDetailPage() {
                   </p>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="so-payment-installments">Parcelas</Label>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Condições de pagamento</Label>
                 {canEditCommercialInline ? (
-                  <Input
-                    id="so-payment-installments"
-                    type="number"
-                    min={1}
-                    value={paymentInstallmentsDraft}
-                    onChange={(e) =>
-                      setPaymentInstallmentsDraft(e.target.value)
-                    }
+                  <PaymentTermsFields
+                    idPrefix="so-detail"
+                    paymentInstallments={paymentInstallmentsDraft}
+                    onPaymentInstallmentsChange={setPaymentInstallmentsDraft}
+                    paymentDaysFirst={paymentDaysFirstDraft}
+                    onPaymentDaysFirstChange={setPaymentDaysFirstDraft}
+                    paymentDaysBetween={paymentDaysBetweenDraft}
+                    onPaymentDaysBetweenChange={setPaymentDaysBetweenDraft}
                     onBlur={async () => {
                       if (!id || !q) return;
                       const pi = parseInt(paymentInstallmentsDraft, 10);
@@ -1007,59 +1009,13 @@ export default function SalesOrderDetailPage() {
                     }}
                   />
                 ) : (
-                  <p className="font-medium tabular-nums">
-                    {q.payment_installments}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="so-payment-days-first">
-                  Dias até 1.ª parcela
-                </Label>
-                {canEditCommercialInline ? (
-                  <Input
-                    id="so-payment-days-first"
-                    type="number"
-                    min={0}
-                    value={paymentDaysFirstDraft}
-                    onChange={(e) => setPaymentDaysFirstDraft(e.target.value)}
-                    onBlur={async () => {
-                      const el = document.getElementById(
-                        "so-payment-installments"
-                      ) as HTMLInputElement | null;
-                      el?.blur();
-                    }}
-                  />
-                ) : (
-                  <p className="font-medium tabular-nums">
-                    {q.payment_days_to_first_due}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="so-payment-days-between">
-                  Dias entre parcelas
-                </Label>
-                {canEditCommercialInline ? (
-                  <Input
-                    id="so-payment-days-between"
-                    type="number"
-                    min={0}
-                    value={paymentDaysBetweenDraft}
-                    onChange={(e) =>
-                      setPaymentDaysBetweenDraft(e.target.value)
+                  <PaymentTermsDisplay
+                    payment_installments={q.payment_installments}
+                    payment_days_to_first_due={q.payment_days_to_first_due}
+                    payment_days_between_installments={
+                      q.payment_days_between_installments
                     }
-                    onBlur={async () => {
-                      const el = document.getElementById(
-                        "so-payment-installments"
-                      ) as HTMLInputElement | null;
-                      el?.blur();
-                    }}
                   />
-                ) : (
-                  <p className="font-medium tabular-nums">
-                    {q.payment_days_between_installments}
-                  </p>
                 )}
               </div>
             </CardContent>
