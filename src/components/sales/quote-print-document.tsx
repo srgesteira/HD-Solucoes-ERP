@@ -14,6 +14,7 @@ import {
   unwrapQuoteProductName,
   type QuotePrintData,
 } from "@/modules/vendas/lib/sales/quote-display";
+import { resolvePaymentTermsDisplayText } from "@/shared/utils/payment-terms-format";
 import { getTaxRegimeLabel } from "@/components/company/company-document-branding";
 import { cn } from "@/shared/utils/cn";
 const BRAZIL_STATE_NAMES: Record<string, string> = {
@@ -523,6 +524,7 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
     : null;
 
   const hasCommercial =
+    quote.payment_installments != null ||
     Boolean(quote.payment_terms?.trim()) ||
     Boolean(quote.delivery_deadline?.trim()) ||
     Boolean(quote.shipping_type?.trim()) ||
@@ -694,7 +696,14 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
               <dl className="qp-box-grid">
                 <div className="qp-box-item">
                   <dt>Pagamento</dt>
-                  <dd>{quote.payment_terms?.trim() || "—"}</dd>
+                  <dd>
+                    {resolvePaymentTermsDisplayText(quote.payment_terms, {
+                      payment_installments: quote.payment_installments,
+                      payment_days_to_first_due: quote.payment_days_to_first_due,
+                      payment_days_between_installments:
+                        quote.payment_days_between_installments,
+                    })}
+                  </dd>
                 </div>
                 <div className="qp-box-item">
                   <dt>Prazo de entrega</dt>

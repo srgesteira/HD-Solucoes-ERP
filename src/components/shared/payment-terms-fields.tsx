@@ -2,6 +2,7 @@
 
 import { IntegerInput } from "@/shared/ui/integer-input";
 import { Label } from "@/shared/ui/label";
+import { PAYMENT_TERM_LABELS } from "@/shared/utils/payment-terms-format";
 
 type Props = {
   idPrefix?: string;
@@ -12,6 +13,7 @@ type Props = {
   paymentDaysBetween: string;
   onPaymentDaysBetweenChange: (value: string) => void;
   disabled?: boolean;
+  onBlur?: () => void;
 };
 
 export function PaymentTermsFields({
@@ -23,11 +25,14 @@ export function PaymentTermsFields({
   paymentDaysBetween,
   onPaymentDaysBetweenChange,
   disabled = false,
+  onBlur,
 }: Props) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-installments`}>Parcelas</Label>
+        <Label htmlFor={`${idPrefix}-installments`}>
+          {PAYMENT_TERM_LABELS.installments}
+        </Label>
         <IntegerInput
           id={`${idPrefix}-installments`}
           value={parseInt(paymentInstallments, 10) || 0}
@@ -35,21 +40,24 @@ export function PaymentTermsFields({
             onPaymentInstallmentsChange(n > 0 ? String(n) : "")
           }
           disabled={disabled}
+          onBlur={onBlur}
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-days-first`}>Dias até 1.ª parcela</Label>
+        <Label htmlFor={`${idPrefix}-days-first`}>
+          {PAYMENT_TERM_LABELS.daysToFirst}
+        </Label>
         <IntegerInput
           id={`${idPrefix}-days-first`}
           value={parseInt(paymentDaysFirst, 10) || 0}
           onValueChange={(n) => onPaymentDaysFirstChange(String(n))}
           disabled={disabled}
+          onBlur={onBlur}
         />
       </div>
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}-days-between`}>
-          Dias entre parcelas{" "}
-          <span className="text-slate-400 font-normal">(opcional)</span>
+          {PAYMENT_TERM_LABELS.daysBetween}
         </Label>
         <IntegerInput
           id={`${idPrefix}-days-between`}
@@ -63,8 +71,8 @@ export function PaymentTermsFields({
           }
           disabled={disabled}
           placeholder="0"
+          onBlur={onBlur}
         />
-        <p className="text-xs text-slate-500">Deixe vazio para usar 0.</p>
       </div>
     </div>
   );

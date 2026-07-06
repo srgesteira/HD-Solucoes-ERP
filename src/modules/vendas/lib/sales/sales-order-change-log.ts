@@ -1,5 +1,6 @@
 import type { AdminClient } from "@/modules/vendas/lib/sales/sales-flow";
 import type { SalesOrderUpdate } from "@/modules/core/types/sales.types";
+import { PAYMENT_TERM_LABELS } from "@/shared/utils/payment-terms-format";
 
 export type SalesOrderLogInsert = {
   tenant_id: string;
@@ -29,9 +30,9 @@ export const SALES_ORDER_FIELD_LABELS: Record<string, string> = {
   client_address: "Cliente (endereço)",
   expected_delivery: "Prazo de entrega",
   notes: "Observações",
-  payment_installments: "Parcelas",
-  payment_days_to_first_due: "Dias até 1.ª parcela",
-  payment_days_between_installments: "Dias entre parcelas",
+  payment_installments: PAYMENT_TERM_LABELS.installments,
+  payment_days_to_first_due: PAYMENT_TERM_LABELS.daysToFirst,
+  payment_days_between_installments: PAYMENT_TERM_LABELS.daysBetween,
   order_date: "Data do pedido",
   order_number: "Número do pedido",
   status: "Estado",

@@ -6,7 +6,7 @@ import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { Textarea } from "@/shared/ui/textarea";
-import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
+import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
 import { formatDeliveryBusinessDaysLabel } from "@/modules/vendas/lib/sales/quote-delivery";
 import { computeValidUntil, QUOTE_SHIPPING_TYPES } from "@/modules/vendas/lib/sales/quote-validity";
 import { addBusinessDays, formatShortDate } from "@/shared/utils/date";
@@ -30,8 +30,12 @@ export interface QuoteHeaderFormProps {
   onQuoteDateChange: (value: string) => void;
   validityDays: string;
   onValidityDaysChange: (value: string) => void;
-  paymentTerms: string;
-  onPaymentTermsChange: (value: string) => void;
+  paymentInstallments: string;
+  onPaymentInstallmentsChange: (value: string) => void;
+  paymentDaysFirst: string;
+  onPaymentDaysFirstChange: (value: string) => void;
+  paymentDaysBetween: string;
+  onPaymentDaysBetweenChange: (value: string) => void;
   deliveryBusinessDays: string;
   onDeliveryBusinessDaysChange: (value: string) => void;
   shippingType: string;
@@ -61,8 +65,12 @@ export function QuoteFormFields({
   onQuoteDateChange,
   validityDays,
   onValidityDaysChange,
-  paymentTerms,
-  onPaymentTermsChange,
+  paymentInstallments,
+  onPaymentInstallmentsChange,
+  paymentDaysFirst,
+  onPaymentDaysFirstChange,
+  paymentDaysBetween,
+  onPaymentDaysBetweenChange,
   deliveryBusinessDays,
   onDeliveryBusinessDaysChange,
   shippingType,
@@ -84,11 +92,6 @@ export function QuoteFormFields({
       return "";
     }
   }, [quoteDate, validityDays]);
-
-  const parsedPayment = useMemo(
-    () => parsePaymentTermsFromText(paymentTerms),
-    [paymentTerms]
-  );
 
   const computedDeliveryDate = useMemo(() => {
     const qd = quoteDate.trim().slice(0, 10);
@@ -175,27 +178,16 @@ export function QuoteFormFields({
         </div>
 
         <div className="space-y-2 md:col-span-2">
-          <Label htmlFor="quote-payment-terms">Condições de pagamento</Label>
-          <Input
-            id="quote-payment-terms"
-            value={paymentTerms}
-            onChange={(e) => onPaymentTermsChange(e.target.value)}
-            placeholder="Ex.: 28ddf, 30/60/90 ou À vista"
+          <Label>Condições de pagamento</Label>
+          <PaymentTermsFields
+            idPrefix="quote-payment"
+            paymentInstallments={paymentInstallments}
+            onPaymentInstallmentsChange={onPaymentInstallmentsChange}
+            paymentDaysFirst={paymentDaysFirst}
+            onPaymentDaysFirstChange={onPaymentDaysFirstChange}
+            paymentDaysBetween={paymentDaysBetween}
+            onPaymentDaysBetweenChange={onPaymentDaysBetweenChange}
           />
-          {parsedPayment ? (
-            <p className="text-xs text-slate-500">
-              Interpretado:{" "}
-              <span className="font-medium text-slate-700">
-                {parsedPayment.installments === 1
-                  ? `1 parcela em ${parsedPayment.daysToFirstDue} dias`
-                  : `${parsedPayment.installments} parcelas (${parsedPayment.daysToFirstDue} dias até a 1.ª, depois a cada ${parsedPayment.daysBetweenInstallments} dias)`}
-              </span>
-            </p>
-          ) : paymentTerms.trim() ? (
-            <p className="text-xs text-slate-500">
-              Texto livre — será guardado como informado no orçamento.
-            </p>
-          ) : null}
         </div>
 
         <div className="space-y-2 md:col-span-2">

@@ -104,6 +104,9 @@ export type QuotePrintData = {
   valid_until: string | null;
   validity_days: number | null;
   payment_terms: string | null;
+  payment_installments?: number | null;
+  payment_days_to_first_due?: number | null;
+  payment_days_between_installments?: number | null;
   delivery_deadline: string | null;
   shipping_type: string | null;
   freight_cost?: number | null;
@@ -195,6 +198,37 @@ export function quoteItemPrintDescription(
 
   if (!text || text === name) return null;
   return text;
+}
+
+/** Código do item (produto ou prefixo na descrição guardada). */
+export function quoteLineItemCode(
+  product: QuotePrintItem["product"],
+  description: string | null | undefined
+): string {
+  const code = unwrapQuoteProductCode(product);
+  if (code !== "—") return code;
+  const raw = description?.trim() ?? "";
+  const m = raw.match(/^([A-Z0-9][\w\-./]+)\s*[—\-]\s*/i);
+  return m?.[1]?.trim() || "—";
+}
+
+/** Nome comercial do item, sem repetir o código. */
+export function quoteLineItemName(
+  product: QuotePrintItem["product"],
+  description: string | null | undefined
+): string {
+  const name = unwrapQuoteProductName(product);
+  const code = quoteLineItemCode(product, description);
+  const raw = description?.trim() ?? "";
+  if (raw && code !== "—") {
+    const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const stripped = raw
+      .replace(new RegExp(`^${escaped}\\s*[—\\-]\\s*`, "i"), "")
+      .trim();
+    if (stripped) return stripped;
+  }
+  if (name !== "—") return name;
+  return raw || "—";
 }
 
 export function formatCompanyAddressForPrint(

@@ -1,6 +1,7 @@
 import type { QuoteInsert, QuoteUpdate } from "@/modules/core/types/sales.types";
 import { parsePaymentInt } from "@/modules/vendas/lib/sales/payment-fields";
 import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
+import { formatPaymentTermsSummary } from "@/shared/utils/payment-terms-format";
 import { resolveQuoteDeliveryFromBody } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
   computeValidUntil,
@@ -78,9 +79,15 @@ export function parseQuoteHeaderFromBody(
       ? null
       : String(b.payment_terms).trim() || null;
 
-  const parsedPayment = paymentTermsText
-    ? parsePaymentTermsFromText(paymentTermsText)
-    : null;
+  const hasExplicitPayment =
+    b.payment_installments !== undefined ||
+    b.payment_days_to_first_due !== undefined ||
+    b.payment_days_between_installments !== undefined;
+
+  const parsedPayment =
+    !hasExplicitPayment && paymentTermsText
+      ? parsePaymentTermsFromText(paymentTermsText)
+      : null;
 
   const pi = parsedPayment
     ? parsedPayment.installments
@@ -119,7 +126,13 @@ export function parseQuoteHeaderFromBody(
       quote_date,
       validity_days,
       valid_until,
-      payment_terms: paymentTermsText,
+      payment_terms:
+        paymentTermsText ??
+        formatPaymentTermsSummary({
+          payment_installments: pi as number,
+          payment_days_to_first_due: pd1 as number,
+          payment_days_between_installments: pdb as number,
+        }),
       delivery_deadline: deliveryResolved.delivery_deadline,
       expected_delivery_date: deliveryResolved.expected_delivery_date,
       payment_installments: pi as number,

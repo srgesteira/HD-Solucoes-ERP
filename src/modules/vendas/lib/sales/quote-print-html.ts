@@ -11,6 +11,7 @@ import {
   quoteItemPrintDescription,
   type QuotePrintData,
 } from "@/modules/vendas/lib/sales/quote-display";
+import { resolvePaymentTermsDisplayText } from "@/shared/utils/payment-terms-format";
 
 function escapeHtml(s: string | null | undefined): string {
   if (s == null) return "";
@@ -200,6 +201,7 @@ export function buildQuotePrintHtml(
   const taxRegimeLabel = company ? getTaxRegimeLabel(company.tax_regime) : null;
 
   const hasCommercial =
+    quote.payment_installments != null ||
     Boolean(quote.payment_terms?.trim()) ||
     Boolean(quote.delivery_deadline?.trim()) ||
     Boolean(quote.shipping_type?.trim()) ||
@@ -329,7 +331,14 @@ export function buildQuotePrintHtml(
         ? `<section class="qp-box">
             <h2>Condições comerciais</h2>
             <dl class="qp-box-grid">
-              <div><dt>Pagamento</dt><dd>${escapeHtml(quote.payment_terms?.trim() || "—")}</dd></div>
+              <div><dt>Pagamento</dt><dd>${escapeHtml(
+                resolvePaymentTermsDisplayText(quote.payment_terms, {
+                  payment_installments: quote.payment_installments,
+                  payment_days_to_first_due: quote.payment_days_to_first_due,
+                  payment_days_between_installments:
+                    quote.payment_days_between_installments,
+                })
+              )}</dd></div>
               <div><dt>Prazo de entrega</dt><dd>${escapeHtml(quote.delivery_deadline?.trim() || "—")}</dd></div>
               <div><dt>Frete</dt><dd>${escapeHtml(quote.shipping_type?.trim() || "—")}${quote.shipping_type === "CIF" && Number(quote.freight_cost ?? 0) > 0 ? ` — ${escapeHtml(fmtQuoteBRL(Number(quote.freight_cost)))}` : ""}</dd></div>
               ${taxRegimeLabel ? `<div class="full"><dt>Regime tributário</dt><dd>${escapeHtml(taxRegimeLabel)}</dd></div>` : ""}

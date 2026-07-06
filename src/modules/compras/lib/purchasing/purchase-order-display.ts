@@ -125,18 +125,12 @@ export function poComputedTotal(order: PurchaseOrderPrintData): number {
   });
 }
 
+import { formatPaymentTermsSummary } from "@/shared/utils/payment-terms-format";
+
 export function poPaymentTermsText(order: PurchaseOrderPrintData): string | null {
   const n = order.payment_installments ?? 1;
   if (n <= 0) return null;
-  const d1 = order.payment_days_to_first_due ?? 30;
-  const between = order.payment_days_between_installments ?? 0;
-  if (n === 1) {
-    return `Pagamento em parcela única (${d1} dias após emissão).`;
-  }
-  if (between > 0) {
-    return `${n} parcelas — 1.ª em ${d1} dias, intervalo de ${between} dias entre parcelas.`;
-  }
-  return `${n} parcelas — 1.ª em ${d1} dias.`;
+  return formatPaymentTermsSummary(order);
 }
 
 export { companyDisplayName, formatCompanyAddressForPrint };

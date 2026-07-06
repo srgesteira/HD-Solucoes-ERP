@@ -290,9 +290,16 @@ export function QuoteItemsEditor({
                   <Label>Produto acabado</Label>
                   {prod ? (
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <p className="text-sm text-slate-800 flex-1 min-w-0">
-                        {productDisplayLabel(prod)}
-                      </p>
+                      <div className="text-sm flex-1 min-w-0">
+                        <p className="font-mono text-xs text-slate-600 dark:text-slate-400">
+                          {prod.technical_code?.trim() ||
+                            prod.code?.trim() ||
+                            "—"}
+                        </p>
+                        <p className="text-slate-800 dark:text-slate-100">
+                          {prod.name}
+                        </p>
+                      </div>
                       <Button
                         type="button"
                         variant="outline"

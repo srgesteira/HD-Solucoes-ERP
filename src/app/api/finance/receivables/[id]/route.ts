@@ -6,6 +6,10 @@ import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import type { ReceivableUpdate } from "@/modules/core/types/finance.types";
 import { RECEIVABLE_STATUSES } from "@/modules/core/types/finance.types";
+import {
+  buildReceivableMovementDescription,
+  recordFinancialMovement,
+} from "@/modules/finance/lib/financial-movements";
 
 export const dynamic = "force-dynamic";
 
@@ -108,6 +112,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 
   const updateData: ReceivableUpdate = {};
+  let paymentMovement: { amount: number; movementDate: string } | null = null;
 
   if (b.description !== undefined) {
     updateData.description =
@@ -205,6 +210,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
       updateData.status = "partial";
       updateData.payment_date = payDateRaw;
     }
+
+    paymentMovement = { amount: recv, movementDate: payDateRaw };
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -226,6 +233,31 @@ export async function PUT(request: NextRequest, { params }: Params) {
     );
   }
   if (!updated) return apiError("Título não encontrado", 404);
+
+  if (paymentMovement) {
+    try {
+      await recordFinancialMovement(admin, {
+        tenantId,
+        direction: "in",
+        amount: paymentMovement.amount,
+        movementDate: paymentMovement.movementDate,
+        sourceKind: "receivable",
+        sourceId: id,
+        description: buildReceivableMovementDescription(
+          current.description,
+          current.client_name
+        ),
+        referenceId: current.sales_order_id,
+        createdBy: user.id,
+      });
+    } catch (movErr) {
+      return apiError(
+        "Recebimento registado, mas falhou ao gravar movimento: " +
+          (movErr instanceof Error ? movErr.message : "erro desconhecido"),
+        500
+      );
+    }
+  }
 
   const { data: detail } = await admin
     .from("receivables")
