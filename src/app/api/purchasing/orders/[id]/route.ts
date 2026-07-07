@@ -25,6 +25,7 @@ import {
 import { checkPurchaseOrderExpectedDeliveryVsProduction } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
 import {
   ensurePayablesForPurchaseOrder,
+  ensurePayablesSyncedForPurchaseOrder,
   purchaseOrderRowToPayablesInput,
 } from "@/modules/compras/lib/purchasing/purchase-payables";
 
@@ -509,6 +510,25 @@ export async function PUT(request: NextRequest, { params }: Params) {
     order_date: data.order_date,
     supplier_id: data.supplier_id,
   });
+  const payablesChangedFields = {
+    total:
+      updateData.total !== undefined ||
+      updateData.subtotal !== undefined ||
+      updateData.discount !== undefined ||
+      updateData.tax !== undefined ||
+      updateData.freight_cost !== undefined ||
+      updateData.insurance_cost !== undefined ||
+      updateData.other_costs !== undefined ||
+      updateData.total_tax_non_creditable !== undefined ||
+      b.items !== undefined,
+    payment_installments: updateData.payment_installments !== undefined,
+    payment_days_to_first_due:
+      updateData.payment_days_to_first_due !== undefined,
+    payment_days_between_installments:
+      updateData.payment_days_between_installments !== undefined,
+    order_date: updateData.order_date !== undefined,
+    supplier_id: updateData.supplier_id !== undefined,
+  };
   const payablesResult = await ensurePayablesForPurchaseOrder(
     admin,
     tenantId,
@@ -517,6 +537,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
       previousStatus,
       currentStatus: data.status,
     }
+  );
+  const payablesReconcile = await ensurePayablesSyncedForPurchaseOrder(
+    admin,
+    tenantId,
+    payablesOrder,
+    data.status,
+    payablesChangedFields
   );
 
   if (transitioningToReceived) {
@@ -535,7 +562,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return apiOk({
         data: detail ?? data,
         receive,
-        payables: payablesResult,
+        payables: { ...payablesResult, reconcile: payablesReconcile },
       });
     } catch (err) {
       return apiError(
@@ -561,5 +588,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     );
   }
 
-  return apiOk({ data: detail ?? data, payables: payablesResult });
+  return apiOk({
+    data: detail ?? data,
+    payables: { ...payablesResult, reconcile: payablesReconcile },
+  });
 }
