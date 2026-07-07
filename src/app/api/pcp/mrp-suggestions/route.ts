@@ -7,12 +7,13 @@ import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib
 import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
 import {
   commitMrpSuggestionsForTenant,
+  discardMrpSuggestionsForTenant,
   generateMrpSuggestionsForPendingOrders,
 } from "@/modules/pcp/lib/mrp-service";
 
 export const dynamic = "force-dynamic";
 
-type Action = "generate" | "commit";
+type Action = "generate" | "commit" | "discard";
 
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -41,8 +42,8 @@ export async function POST(request: NextRequest) {
   }
   const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const action = (typeof b.action === "string" ? b.action : "generate") as Action;
-  if (action !== "generate" && action !== "commit") {
-    return apiError("action deve ser generate ou commit", 400);
+  if (action !== "generate" && action !== "commit" && action !== "discard") {
+    return apiError("action deve ser generate, commit ou discard", 400);
   }
 
   const admin = createSupabaseAdminClient();
@@ -51,6 +52,10 @@ export async function POST(request: NextRequest) {
     if (action === "commit") {
       const committed = await commitMrpSuggestionsForTenant(admin, tenantId);
       return apiOk({ committed });
+    }
+    if (action === "discard") {
+      const discarded = await discardMrpSuggestionsForTenant(admin, tenantId);
+      return apiOk({ discarded });
     }
     const generated = await generateMrpSuggestionsForPendingOrders(
       admin,
