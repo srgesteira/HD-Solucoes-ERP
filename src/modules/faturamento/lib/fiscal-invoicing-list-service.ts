@@ -7,10 +7,10 @@ import {
 } from "@/modules/core/lib/universal-search-query";
 import { escapeIlike } from "@/shared/utils/universal-search";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
+import { isWithoutInvoicePlanned } from "@/modules/faturamento/lib/sales-order-billing-display";
 import { isFiscalConfigured } from "@/modules/fiscal/lib/fiscal-rules-types";
 import {
   FISCAL_INVOICING_ORDER_STATUSES,
-  FISCAL_READY_STATUSES,
   type FiscalInvoicingListTab,
 } from "@/modules/faturamento/lib/fiscal-invoicing-list-tabs";
 
@@ -26,6 +26,7 @@ type SalesOrderBase = {
   ready_for_invoice: boolean;
   fiscal_status: string | null;
   billing_closure: string | null;
+  billing_plan: string | null;
 };
 
 type NfeSummary = {
@@ -41,6 +42,7 @@ export type FiscalInvoicingListRow = SalesOrderBase & {
   nfe_status: string | null;
   nfe_number: string | null;
   can_emit: boolean;
+  can_confirm_without_invoice: boolean;
   emit_blockers: string[];
 };
 
@@ -108,28 +110,33 @@ function isBillingOpen(row: SalesOrderBase): boolean {
   return !row.billing_closure;
 }
 
+function hasActiveNfe(nfeStatus: string | null): boolean {
+  return (
+    nfeStatus === "pending" ||
+    nfeStatus === "processing" ||
+    nfeStatus === "authorized" ||
+    nfeStatus === "error"
+  );
+}
+
 function matchesTab(
   tab: FiscalInvoicingListTab,
   row: SalesOrderBase,
   nfe: NfeSummary | undefined,
-  canEmit: boolean
+  canEmit: boolean,
+  canConfirmWithoutInvoice: boolean
 ): boolean {
   const fiscal = row.fiscal_status ?? "pending";
   const nfeStatus = nfe?.status ?? null;
+  const semNota = isWithoutInvoicePlanned(row.billing_plan);
 
   switch (tab) {
     case "all":
       return true;
     case "fiscal_pending":
       if (!isBillingOpen(row)) return false;
-      if (
-        nfeStatus === "pending" ||
-        nfeStatus === "processing" ||
-        nfeStatus === "authorized" ||
-        nfeStatus === "error"
-      ) {
-        return false;
-      }
+      if (semNota) return false;
+      if (hasActiveNfe(nfeStatus)) return false;
       return (
         fiscal === "pending" ||
         fiscal === "no_rules" ||
@@ -138,7 +145,8 @@ function matchesTab(
     case "waiting":
       if (!isBillingOpen(row)) return false;
       if (nfeStatus) return false;
-      return isFiscalConfigured(fiscal) && !row.ready_for_invoice;
+      if (row.ready_for_invoice) return false;
+      return semNota || isFiscalConfigured(fiscal);
     case "ready":
       if (!isBillingOpen(row)) return false;
       if (
@@ -148,16 +156,50 @@ function matchesTab(
       ) {
         return false;
       }
-      return canEmit;
+      if (!row.ready_for_invoice) return false;
+      return semNota || canEmit;
     case "nfe_active":
       return nfeStatus === "pending" || nfeStatus === "processing";
     case "nfe_authorized":
-      return nfeStatus === "authorized";
+      return (
+        nfeStatus === "authorized" || row.billing_closure === "without_invoice"
+      );
     case "nfe_error":
       return nfeStatus === "error";
     default:
       return true;
   }
+}
+
+async function loadAuthorizedTabOrderIds(
+  admin: Admin,
+  tenantId: string
+): Promise<string[]> {
+  const db = asUntypedAdmin(admin);
+  const ids = new Set<string>();
+
+  const { data: nfeRows, error: nfeErr } = await admin
+    .from("nfes")
+    .select("sales_order_id")
+    .eq("tenant_id", tenantId)
+    .eq("status", "authorized")
+    .not("sales_order_id", "is", null);
+  if (nfeErr) throw new Error(nfeErr.message);
+  for (const row of nfeRows ?? []) {
+    if (row.sales_order_id) ids.add(row.sales_order_id);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: closedRows, error: closedErr } = await (db.from("sales_orders") as any)
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("billing_closure", "without_invoice");
+  if (closedErr) throw new Error(closedErr.message);
+  for (const row of (closedRows ?? []) as Array<{ id: string }>) {
+    ids.add(row.id);
+  }
+
+  return [...ids];
 }
 
 export async function listFiscalInvoicingOrders(
@@ -179,7 +221,7 @@ export async function listFiscalInvoicingOrders(
   let query = db
     .from("sales_orders")
     .select(
-      "id, order_number, client_name, order_date, total, status, ready_for_invoice, fiscal_status, billing_closure",
+      "id, order_number, client_name, order_date, total, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan",
       { count: "exact" }
     )
     .eq("tenant_id", tenantId)
@@ -210,34 +252,60 @@ export async function listFiscalInvoicingOrders(
     case "fiscal_pending":
       query = query
         .is("billing_closure", null)
+        .or("billing_plan.is.null,billing_plan.neq.without_invoice")
         .in("fiscal_status", ["pending", "no_rules", "review_required"]);
       break;
     case "waiting":
-      query = query
-        .is("billing_closure", null)
-        .in("fiscal_status", [...FISCAL_READY_STATUSES])
-        .eq("ready_for_invoice", false);
+      query = query.is("billing_closure", null).eq("ready_for_invoice", false);
       break;
     case "ready":
       query = query
         .is("billing_closure", null)
-        .eq("ready_for_invoice", true)
-        .in("fiscal_status", [...FISCAL_READY_STATUSES]);
+        .eq("ready_for_invoice", true);
       break;
-    case "nfe_active":
-    case "nfe_authorized":
-    case "nfe_error": {
-      const statusFilter =
-        tab === "nfe_active"
-          ? ["pending", "processing"]
-          : tab === "nfe_authorized"
-            ? ["authorized"]
-            : ["error"];
+    case "nfe_active": {
       const { data: nfeRows, error: nfeErr } = await admin
         .from("nfes")
         .select("sales_order_id")
         .eq("tenant_id", tenantId)
-        .in("status", statusFilter)
+        .in("status", ["pending", "processing"])
+        .not("sales_order_id", "is", null);
+      if (nfeErr) throw new Error(nfeErr.message);
+      const ids = [
+        ...new Set(
+          (nfeRows ?? [])
+            .map((r) => r.sales_order_id)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
+      if (!ids.length) {
+        return {
+          data: [],
+          pagination: { page, limit, total: 0 },
+          tab,
+        };
+      }
+      query = query.in("id", ids);
+      break;
+    }
+    case "nfe_authorized": {
+      const ids = await loadAuthorizedTabOrderIds(admin, tenantId);
+      if (!ids.length) {
+        return {
+          data: [],
+          pagination: { page, limit, total: 0 },
+          tab,
+        };
+      }
+      query = query.in("id", ids);
+      break;
+    }
+    case "nfe_error": {
+      const { data: nfeRows, error: nfeErr } = await admin
+        .from("nfes")
+        .select("sales_order_id")
+        .eq("tenant_id", tenantId)
+        .in("status", ["error"])
         .not("sales_order_id", "is", null);
       if (nfeErr) throw new Error(nfeErr.message);
       const ids = [
@@ -279,15 +347,29 @@ export async function listFiscalInvoicingOrders(
   for (const row of baseRows) {
     const nfe = nfesByOrder.get(row.id);
     const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, row.id);
+    const fiscal = row.fiscal_status ?? "pending";
+    const credit = creditByOrder.get(row.id) ?? null;
+    const semNota = isWithoutInvoicePlanned(row.billing_plan);
+    const canConfirmWithoutInvoice =
+      semNota &&
+      row.ready_for_invoice &&
+      isFiscalConfigured(fiscal) &&
+      !row.billing_closure &&
+      row.status !== "cancelled" &&
+      credit !== "pending" &&
+      credit !== "rejected" &&
+      !nfe?.status;
+
     const item: FiscalInvoicingListRow = {
       ...row,
       total: Number(row.total ?? 0),
       ready_for_invoice: row.ready_for_invoice === true,
-      credit_status: creditByOrder.get(row.id) ?? null,
+      credit_status: credit,
       nfe_id: nfe?.id ?? null,
       nfe_status: nfe?.status ?? null,
       nfe_number: nfe?.nfe_number ?? null,
       can_emit: gate.ok,
+      can_confirm_without_invoice: canConfirmWithoutInvoice,
       emit_blockers: gate.reasons,
     };
 
@@ -297,7 +379,17 @@ export async function listFiscalInvoicingOrders(
       tab === "all" ||
       tab === "fiscal_pending"
     ) {
-      if (!matchesTab(tab, row, nfe, gate.ok)) continue;
+      if (
+        !matchesTab(
+          tab,
+          row,
+          nfe,
+          gate.ok,
+          canConfirmWithoutInvoice
+        )
+      ) {
+        continue;
+      }
     }
 
     enriched.push(item);
@@ -308,7 +400,8 @@ export async function listFiscalInvoicingOrders(
     tab === "ready" ||
     tab === "waiting" ||
     tab === "all" ||
-    tab === "fiscal_pending"
+    tab === "fiscal_pending" ||
+    tab === "nfe_authorized"
   ) {
     total = enriched.length;
   }

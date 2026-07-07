@@ -43,6 +43,7 @@ import {
   nfeStatusPill,
   salesOrderStatusPill,
 } from "@/modules/faturamento/lib/fiscal-invoicing-list-display";
+import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-billing-display";
 import {
   FISCAL_INVOICING_LIST_TAB_DEFAULT,
   FISCAL_INVOICING_LIST_TAB_LABELS,
@@ -122,6 +123,15 @@ async function consultNfe(nfeId: string): Promise<void> {
   if (!res.ok) throw new Error(json.error ?? "Erro ao consultar NFS-e");
 }
 
+async function postPlanWithoutInvoice(orderId: string): Promise<void> {
+  const res = await fetch(
+    `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/plan-without-invoice`,
+    { method: "POST", credentials: "include" }
+  );
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao marcar sem nota");
+}
+
 async function postCloseWithoutInvoice(orderId: string): Promise<void> {
   const res = await fetch(
     `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/close-without-invoice`,
@@ -177,6 +187,9 @@ export default function FiscalInvoicingPage() {
   const [syncingNfeId, setSyncingNfeId] = useState<string | null>(null);
   const [emittingOrderId, setEmittingOrderId] = useState<string | null>(null);
   const [closingWithoutInvoiceId, setClosingWithoutInvoiceId] = useState<
+    string | null
+  >(null);
+  const [planningWithoutInvoiceId, setPlanningWithoutInvoiceId] = useState<
     string | null
   >(null);
   const [aiTarget, setAiTarget] = useState<FiscalInvoicingListRow | null>(null);
@@ -245,13 +258,30 @@ export default function FiscalInvoicingPage() {
     }
   }, []);
 
+  const planWithoutInvoiceMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      setPlanningWithoutInvoiceId(orderId);
+      await postPlanWithoutInvoice(orderId);
+    },
+    onSuccess: () => {
+      toast.success(
+        "Pedido marcado como «Sem nota» — aguardando liberação da produção."
+      );
+      setTab("waiting");
+      invalidateList();
+    },
+    onError: (err: Error) => toast.error(err.message),
+    onSettled: () => setPlanningWithoutInvoiceId(null),
+  });
+
   const closeWithoutInvoiceMutation = useMutation({
     mutationFn: async (orderId: string) => {
       setClosingWithoutInvoiceId(orderId);
       await postCloseWithoutInvoice(orderId);
     },
     onSuccess: () => {
-      toast.success("Pedido finalizado — entrega sem nota fiscal.");
+      toast.success("Pedido concluído — entrega sem nota fiscal.");
+      setTab("nfe_authorized");
       invalidateList();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -361,6 +391,23 @@ export default function FiscalInvoicingPage() {
         width: "w-[9%]",
         accessor: (row) => row.nfe_status ?? "",
         render: (row) => {
+          const semNota = billingNfeDisplayLabel({
+            billing_plan: row.billing_plan ?? null,
+            billing_closure: row.billing_closure ?? null,
+            nfe_status: row.nfe_status,
+          });
+          if (semNota.label) {
+            return (
+              <span
+                className={cn(
+                  "inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset",
+                  semNota.className
+                )}
+              >
+                {semNota.label}
+              </span>
+            );
+          }
           const pill = nfeStatusPill(row.nfe_status);
           return (
             <span
@@ -448,7 +495,8 @@ export default function FiscalInvoicingPage() {
         isLoading={isLoading}
         emptyMessage={emptyMessage}
         rowClassName={(row) =>
-          tab === "ready" && row.can_emit
+          tab === "ready" &&
+          (row.can_emit || row.billing_plan === "without_invoice")
             ? "animate-pulse bg-emerald-50/60 dark:bg-emerald-950/20"
             : ""
         }
@@ -457,6 +505,26 @@ export default function FiscalInvoicingPage() {
           width: "w-[10rem]",
           render: (row) => (
             <div className="flex flex-wrap items-center gap-1">
+              {isAdmin &&
+              tab === "fiscal_pending" &&
+              row.billing_plan !== "without_invoice" &&
+              !row.billing_closure ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  disabled={planningWithoutInvoiceId === row.id}
+                  title="Marcar entrega sem NF-e"
+                  onClick={() => planWithoutInvoiceMutation.mutate(row.id)}
+                >
+                  {planningWithoutInvoiceId === row.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <PackageCheck className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              ) : null}
               {isAdmin &&
               (row.fiscal_status === "pending" ||
                 row.fiscal_status === "no_rules" ||
@@ -477,7 +545,7 @@ export default function FiscalInvoicingPage() {
                   <Sparkles className="h-3.5 w-3.5" />
                 </Button>
               ) : null}
-              {isAdmin && row.can_emit ? (
+              {isAdmin && row.can_emit && row.billing_plan !== "without_invoice" ? (
                 <Button
                   type="button"
                   size="sm"
@@ -495,17 +563,16 @@ export default function FiscalInvoicingPage() {
                 </Button>
               ) : null}
               {isAdmin &&
-              row.ready_for_invoice &&
-              !row.nfe_id &&
-              row.fiscal_status !== "pending" &&
-              row.fiscal_status !== "no_rules" ? (
+              tab === "ready" &&
+              row.billing_plan === "without_invoice" &&
+              row.can_confirm_without_invoice ? (
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="primary"
                   className="h-7 px-2 text-[11px]"
                   disabled={closingWithoutInvoiceId === row.id}
-                  title="Entregar sem emitir nota"
+                  title="Confirmar entrega sem nota"
                   onClick={() => closeWithoutInvoiceMutation.mutate(row.id)}
                 >
                   {closingWithoutInvoiceId === row.id ? (

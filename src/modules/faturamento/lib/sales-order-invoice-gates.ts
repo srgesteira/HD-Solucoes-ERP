@@ -39,7 +39,9 @@ export async function validateSalesOrderCanEmitNfe(
 
   const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
-    .select("id, status, ready_for_invoice, fiscal_status, billing_closure")
+    .select(
+      "id, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan"
+    )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -51,6 +53,7 @@ export async function validateSalesOrderCanEmitNfe(
     ready_for_invoice: boolean;
     fiscal_status: string | null;
     billing_closure: string | null;
+    billing_plan: string | null;
   } | null;
   if (!so) {
     return { ok: false, reasons: ["Pedido não encontrado."] };
@@ -58,6 +61,10 @@ export async function validateSalesOrderCanEmitNfe(
 
   if (so.billing_closure) {
     reasons.push("Pedido já finalizado no faturamento.");
+  }
+
+  if (so.billing_plan === "without_invoice") {
+    reasons.push("Pedido marcado para entrega sem NF-e.");
   }
 
   if (so.status !== "confirmed") {

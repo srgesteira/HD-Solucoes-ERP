@@ -12,9 +12,73 @@ type SalesOrderBillingRow = {
   id: string;
   status: string;
   billing_closure: string | null;
+  billing_plan: string | null;
   ready_for_invoice: boolean;
   fiscal_status: string | null;
 };
+
+/** Marca intenção de entrega sem NF-e (aba Fiscal pendente → Aguardando liberação). */
+export async function planSalesOrderWithoutInvoice(
+  admin: Admin,
+  tenantId: string,
+  salesOrderId: string
+): Promise<{ ok: true } | { ok: false; reasons: string[] }> {
+  const db = asUntypedAdmin(admin);
+  const { data, error } = await db
+    .from("sales_orders")
+    .select("id, status, billing_closure, billing_plan")
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  const so = data as Pick<
+    SalesOrderBillingRow,
+    "id" | "status" | "billing_closure" | "billing_plan"
+  > | null;
+
+  if (!so) return { ok: false, reasons: ["Pedido não encontrado."] };
+  if (so.billing_closure) {
+    return { ok: false, reasons: ["Pedido já finalizado no faturamento."] };
+  }
+  if (so.status === "cancelled") {
+    return { ok: false, reasons: ["Pedido cancelado."] };
+  }
+  if (so.billing_plan === "without_invoice") {
+    return { ok: true };
+  }
+  if (so.billing_plan === "nfe") {
+    return {
+      ok: false,
+      reasons: ["Pedido já está marcado para emissão de NF-e."],
+    };
+  }
+
+  const { data: blocking } = await admin
+    .from("nfes")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("sales_order_id", salesOrderId)
+    .in("status", ["pending", "processing", "authorized"])
+    .limit(1);
+  if (blocking?.length) {
+    return {
+      ok: false,
+      reasons: ["Já existe NFS-e em curso ou autorizada para este pedido."],
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ordersTable = db.from("sales_orders") as any;
+  const { error: updErr } = await ordersTable
+    .update({ billing_plan: "without_invoice" })
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId)
+    .is("billing_closure", null);
+
+  if (updErr) throw new Error(updErr.message);
+  return { ok: true };
+}
 
 export async function closeSalesOrderBilling(
   admin: Admin,
@@ -26,7 +90,9 @@ export async function closeSalesOrderBilling(
   const db = asUntypedAdmin(admin);
   const { data, error } = await db
     .from("sales_orders")
-    .select("id, status, billing_closure, ready_for_invoice, fiscal_status")
+    .select(
+      "id, status, billing_closure, billing_plan, ready_for_invoice, fiscal_status"
+    )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -41,12 +107,15 @@ export async function closeSalesOrderBilling(
     return { ok: false, reasons: ["Pedido cancelado."] };
   }
 
-  if (!options?.skipEmitGate) {
-    const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, salesOrderId);
-    if (!gate.ok) {
-      return { ok: false, reasons: gate.reasons };
+  if (closure === "without_invoice") {
+    if (so.billing_plan !== "without_invoice") {
+      return {
+        ok: false,
+        reasons: [
+          "Marque o pedido como «Sem nota» na aba Fiscal pendente antes de concluir.",
+        ],
+      };
     }
-  } else if (closure === "without_invoice") {
     const fiscal = so.fiscal_status ?? "pending";
     if (!isFiscalConfigured(fiscal)) {
       return {
@@ -59,6 +128,21 @@ export async function closeSalesOrderBilling(
         ok: false,
         reasons: ["Produção ainda não liberou o pedido para faturamento."],
       };
+    }
+    if (so.status !== "confirmed") {
+      return { ok: false, reasons: ['Pedido deve estar "Confirmado".'] };
+    }
+    const { data: credit } = await admin
+      .from("credit_analysis")
+      .select("status")
+      .eq("tenant_id", tenantId)
+      .eq("sales_order_ref", salesOrderId)
+      .maybeSingle();
+    if (credit?.status === "pending") {
+      return { ok: false, reasons: ["Análise de crédito pendente."] };
+    }
+    if (credit?.status === "rejected") {
+      return { ok: false, reasons: ["Análise de crédito rejeitada."] };
     }
     const { data: blocking } = await admin
       .from("nfes")
@@ -73,6 +157,11 @@ export async function closeSalesOrderBilling(
         reasons: ["Já existe NFS-e em curso ou autorizada para este pedido."],
       };
     }
+  } else if (!options?.skipEmitGate) {
+    const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, salesOrderId);
+    if (!gate.ok) {
+      return { ok: false, reasons: gate.reasons };
+    }
   }
 
   // billing_closure: coluna pós-migração — regenerar database.ts quando possível
@@ -81,6 +170,7 @@ export async function closeSalesOrderBilling(
   const { error: updErr } = await ordersTable
     .update({
       billing_closure: closure,
+      billing_plan: closure,
       status: "delivered",
       actual_delivery: new Date().toISOString().slice(0, 10),
     })
