@@ -3,6 +3,10 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { assertFinanceOrReportsAccess } from "@/modules/core/lib/module-access";
+import {
+  cashFlowDateForReceivableOrPayable,
+  type OrderPaymentTerms,
+} from "@/modules/finance/lib/cash-flow-projection-dates";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +16,28 @@ function dayKey(iso: string | null | undefined): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
+type ReceivableRow = {
+  id: string;
+  due_date: string;
+  current_amount: number | null;
+  is_forecast: boolean;
+  sales_order_id: string | null;
+  installment_index: number | null;
+};
+
+type PayableRow = {
+  id: string;
+  due_date: string;
+  current_amount: number | null;
+  is_forecast: boolean;
+  purchase_order_id: string | null;
+  installment_index: number | null;
+};
+
 /**
  * GET /api/reports/cash-flow?horizon=90
- * Projeção: entradas (receivables por vencimento) vs saídas (AP por due_date + PCs confirmados sem AP).
+ * Projeção: entradas (receivables) vs saídas (AP + PCs confirmados sem AP).
+ * Provisórios: data = expected_delivery + prazo de pagamento por parcela.
  */
 export async function GET(request: NextRequest) {
   const gate = await assertFinanceOrReportsAccess();
@@ -45,12 +68,12 @@ export async function GET(request: NextRequest) {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const end = new Date(today);
-  end.setDate(end.getDate() + horizon);
 
   const { data: receivables, error: rErr } = await admin
     .from("receivables")
-    .select("id, due_date, current_amount, status, client_name, is_forecast")
+    .select(
+      "id, due_date, current_amount, status, client_name, is_forecast, sales_order_id, installment_index"
+    )
     .eq("tenant_id", tenantId)
     .in("status", ["pending", "partial"]);
 
@@ -60,7 +83,9 @@ export async function GET(request: NextRequest) {
 
   const { data: payables, error: apErr } = await admin
     .from("accounts_payable")
-    .select("id, due_date, current_amount, status, is_forecast")
+    .select(
+      "id, due_date, current_amount, status, is_forecast, purchase_order_id, installment_index"
+    )
     .eq("tenant_id", tenantId)
     .in("status", ["pending", "partial"]);
 
@@ -68,20 +93,82 @@ export async function GET(request: NextRequest) {
     return apiError("Contas a pagar: " + apErr.message, 500);
   }
 
-  const { data: pos, error: pErr } = await admin
-    .from("purchase_orders")
-    .select("id, total, status, expected_delivery, order_date, po_number")
-    .eq("tenant_id", tenantId)
-    .eq("is_suggestion", false)
-    .eq("status", "confirmed");
+  const salesOrderIds = [
+    ...new Set(
+      (receivables ?? [])
+        .map((r) => r.sales_order_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+  const purchaseOrderIds = [
+    ...new Set(
+      (payables ?? [])
+        .map((ap) => ap.purchase_order_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
 
-  if (pErr) {
-    return apiError("Compras: " + pErr.message, 500);
+  const salesOrderTerms = new Map<string, OrderPaymentTerms>();
+  if (salesOrderIds.length > 0) {
+    const { data: salesOrders, error: soErr } = await admin
+      .from("sales_orders")
+      .select(
+        "id, expected_delivery, payment_days_to_first_due, payment_days_between_installments"
+      )
+      .eq("tenant_id", tenantId)
+      .in("id", salesOrderIds);
+    if (soErr) {
+      return apiError("Pedidos de venda: " + soErr.message, 500);
+    }
+    for (const o of salesOrders ?? []) {
+      salesOrderTerms.set(o.id, {
+        expected_delivery: o.expected_delivery,
+        payment_days_to_first_due: o.payment_days_to_first_due ?? 30,
+        payment_days_between_installments:
+          o.payment_days_between_installments ?? 0,
+      });
+    }
   }
 
+  const purchaseOrderTerms = new Map<string, OrderPaymentTerms>();
+  if (purchaseOrderIds.length > 0) {
+    const { data: purchaseOrders, error: poErr } = await admin
+      .from("purchase_orders")
+      .select(
+        "id, expected_delivery, payment_days_to_first_due, payment_days_between_installments"
+      )
+      .eq("tenant_id", tenantId)
+      .in("id", purchaseOrderIds);
+    if (poErr) {
+      return apiError("Pedidos de compra: " + poErr.message, 500);
+    }
+    for (const o of purchaseOrders ?? []) {
+      purchaseOrderTerms.set(o.id, {
+        expected_delivery: o.expected_delivery,
+        payment_days_to_first_due: o.payment_days_to_first_due ?? 30,
+        payment_days_between_installments:
+          o.payment_days_between_installments ?? 0,
+      });
+    }
+  }
+
+  const projectionFallbacks: string[] = [];
+
   const inByDay = new Map<string, number>();
-  for (const r of receivables ?? []) {
-    const k = dayKey(r.due_date);
+  for (const r of (receivables ?? []) as ReceivableRow[]) {
+    const order = r.sales_order_id
+      ? salesOrderTerms.get(r.sales_order_id)
+      : undefined;
+    const projected = cashFlowDateForReceivableOrPayable(
+      r.is_forecast === true,
+      order,
+      r.installment_index,
+      r.due_date
+    );
+    if (projected.usedFallback && r.is_forecast) {
+      projectionFallbacks.push(`receivable:${r.id}`);
+    }
+    const k = projected.date;
     if (!k) continue;
     const amt = Number(r.current_amount ?? 0);
     if (!Number.isFinite(amt) || amt <= 0) continue;
@@ -91,8 +178,20 @@ export async function GET(request: NextRequest) {
   const outByDay = new Map<string, number>();
   const poIdsWithAp = new Set<string>();
 
-  for (const ap of payables ?? []) {
-    const k = dayKey(ap.due_date);
+  for (const ap of (payables ?? []) as PayableRow[]) {
+    const order = ap.purchase_order_id
+      ? purchaseOrderTerms.get(ap.purchase_order_id)
+      : undefined;
+    const projected = cashFlowDateForReceivableOrPayable(
+      ap.is_forecast === true,
+      order,
+      ap.installment_index,
+      ap.due_date
+    );
+    if (projected.usedFallback && ap.is_forecast) {
+      projectionFallbacks.push(`payable:${ap.id}`);
+    }
+    const k = projected.date;
     if (!k) continue;
     const amt = Number(ap.current_amount ?? 0);
     if (!Number.isFinite(amt) || amt <= 0) continue;
@@ -109,10 +208,37 @@ export async function GET(request: NextRequest) {
     if (row.purchase_order_id) poIdsWithAp.add(row.purchase_order_id);
   }
 
+  const { data: pos, error: pErr } = await admin
+    .from("purchase_orders")
+    .select(
+      "id, total, status, expected_delivery, order_date, po_number, payment_days_to_first_due, payment_days_between_installments"
+    )
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
+    .eq("status", "confirmed");
+
+  if (pErr) {
+    return apiError("Compras: " + pErr.message, 500);
+  }
+
   for (const p of pos ?? []) {
     if (poIdsWithAp.has(p.id)) continue;
-    const k =
-      dayKey(p.expected_delivery) ?? dayKey(p.order_date);
+    const terms: OrderPaymentTerms = {
+      expected_delivery: p.expected_delivery,
+      payment_days_to_first_due: p.payment_days_to_first_due ?? 30,
+      payment_days_between_installments:
+        p.payment_days_between_installments ?? 0,
+    };
+    const projected = cashFlowDateForReceivableOrPayable(
+      true,
+      terms,
+      1,
+      p.expected_delivery ?? p.order_date
+    );
+    if (projected.usedFallback) {
+      projectionFallbacks.push(`purchase_order:${p.id}`);
+    }
+    const k = projected.date ?? dayKey(p.order_date);
     if (!k) continue;
     const amt = Number(p.total ?? 0);
     if (!Number.isFinite(amt) || amt <= 0) continue;
@@ -157,15 +283,24 @@ export async function GET(request: NextRequest) {
     negative_days: series.filter((x) => x.cumulative < 0).length,
   };
 
+  if (projectionFallbacks.length > 0) {
+    console.warn(
+      "[cash-flow] Provisórios sem expected_delivery (usando due_date):",
+      projectionFallbacks.join(", ")
+    );
+  }
+
   return apiOk({
     series,
     summary,
     meta: {
       opening_balance_source: "company_settings.cash_flow_opening_balance",
       inflow_source:
-        "receivables (pending/partial, real + provisório) por due_date",
+        "receivables: reais por due_date; provisórios por expected_delivery + prazo",
       outflow_source:
-        "accounts_payable (pending/partial, real + provisório) por due_date; PCs confirmados sem AP por expected_delivery",
+        "accounts_payable: reais por due_date; provisórios por expected_delivery + prazo; PCs sem AP idem",
+      provisional_projection_fallback_count: projectionFallbacks.length,
+      provisional_projection_fallback_ids: projectionFallbacks.slice(0, 50),
     },
   });
 }
