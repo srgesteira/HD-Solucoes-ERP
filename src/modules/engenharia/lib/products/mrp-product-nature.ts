@@ -44,6 +44,14 @@ export function mrSalesLineEligibleForProductionOrder(
   return false;
 }
 
+/** Saldo futuro: AC/SE somam produção; MP/EB/MC/RV não. */
+export function mrSaldoFuturoIncludesProduction(
+  productNature: string | null | undefined
+): boolean {
+  const n = productNature?.trim() ?? "";
+  return n === "AC" || n === "SE";
+}
+
 export const PRODUCT_NATURE_LABELS: Record<ProductNatureCode, string> = {
   MP: "MP — Matéria-prima",
   SE: "SE — Semi-elaborado",
