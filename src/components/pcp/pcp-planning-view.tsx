@@ -16,6 +16,7 @@ import { PcpPurchaseDependenciesPanel } from "@/components/pcp/pcp-purchase-depe
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 import { AppPage } from "@/shared/ui/app-page";
+import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/utils/cn";
 import "@/components/pcp/pcp-legacy.css";
 
@@ -232,12 +233,6 @@ export function PcpPlanningView() {
       toast.error(e instanceof Error ? e.message : "Erro ao cancelar MRP"),
   });
 
-  const mrpBusy =
-    mrpRunMut.isPending ||
-    mrpConfirmMut.isPending ||
-    mrpDiscardMut.isPending ||
-    q.isFetching;
-
   function handleCloseMrpPreview() {
     if (mrpConfirmMut.isPending || mrpDiscardMut.isPending) return;
     if (mrpPreviewSummary) {
@@ -405,15 +400,20 @@ export function PcpPlanningView() {
           >
             Criar ordem de produção
           </button>
-          <button
+          <Button
             type="button"
-            disabled={mrpBusy}
+            variant="primary"
+            size="sm"
+            disabled={
+              mrpRunMut.isPending ||
+              mrpConfirmMut.isPending ||
+              mrpDiscardMut.isPending
+            }
             onClick={() => mrpRunMut.mutate()}
             aria-busy={mrpRunMut.isPending || q.isFetching}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-white pcp-btn-primary transition-opacity",
-              mrpBusy &&
-                "cursor-wait opacity-80 ring-2 ring-brand-300/60 ring-offset-1"
+              (mrpRunMut.isPending || q.isFetching) &&
+                "cursor-wait disabled:opacity-100"
             )}
           >
             {mrpRunMut.isPending || q.isFetching ? (
@@ -424,7 +424,7 @@ export function PcpPlanningView() {
               : q.isFetching
                 ? "A actualizar…"
                 : "Rodar MRP"}
-          </button>
+          </Button>
           <button
             type="button"
             disabled={q.isFetching}
@@ -757,17 +757,21 @@ export function PcpPlanningView() {
               >
                 Cancelar
               </button>
-              <button
+              <Button
                 type="button"
-                className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-white pcp-btn-primary disabled:opacity-70"
+                variant="primary"
+                size="sm"
                 disabled={mrpConfirmMut.isPending || mrpDiscardMut.isPending}
                 onClick={() => mrpConfirmMut.mutate()}
+                className={cn(
+                  mrpConfirmMut.isPending && "cursor-wait disabled:opacity-100"
+                )}
               >
                 {mrpConfirmMut.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : null}
                 Confirmar
-              </button>
+              </Button>
             </div>
           </div>
         </div>
