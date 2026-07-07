@@ -1,6 +1,21 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const DEFAULT_MODEL = "claude-3-5-haiku-20241022";
+const DEFAULT_MODEL = "claude-sonnet-4-6";
+
+/** Modelos descontinuados pela Anthropic → substituto activo. */
+const DEPRECATED_MODEL_MAP: Record<string, string> = {
+  "claude-3-sonnet-20241022": "claude-sonnet-4-6",
+  "claude-3-sonnet-20240229": "claude-sonnet-4-6",
+  "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
+  "claude-3-5-sonnet-20240620": "claude-sonnet-4-6",
+  "claude-3-7-sonnet-20250219": "claude-sonnet-4-6",
+  "claude-3-5-haiku-20241022": "claude-haiku-4-5-20251001",
+};
+
+export function getAnthropicModelId(): string {
+  const configured = process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL;
+  return DEPRECATED_MODEL_MAP[configured] ?? configured;
+}
 
 export function getAnthropicClient(): Anthropic {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -12,10 +27,6 @@ export function getAnthropicClient(): Anthropic {
     );
   }
   return new Anthropic({ apiKey: key });
-}
-
-export function getAnthropicModelId(): string {
-  return process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL;
 }
 
 function clip(s: string, max: number): string {

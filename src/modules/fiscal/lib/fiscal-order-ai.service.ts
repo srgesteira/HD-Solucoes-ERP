@@ -45,6 +45,103 @@ function normalizePurpose(raw: string | null | undefined): FiscalOrderAiPurpose 
   return null;
 }
 
+function isAnthropicModelNotFound(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes("not_found_error") ||
+    msg.includes("model:") ||
+    msg.includes("404")
+  );
+}
+
+function buildLocalFiscalContext(
+  userDescription: string,
+  knownUf: string | null
+): AiFiscalOrderJson {
+  const purpose = normalizePurpose(userDescription);
+  const ufMatch = userDescription.match(/\b([A-Z]{2})\b/);
+  const destination_uf =
+    ufMatch?.[1] && ufMatch[1].length === 2 ? ufMatch[1] : knownUf;
+
+  const purposeLabel =
+    purpose === "revenda"
+      ? "revenda"
+      : purpose === "industrializacao"
+        ? "industrialização"
+        : purpose === "consumidor"
+          ? "consumidor final"
+          : "operação padrão";
+
+  return {
+    destination_uf,
+    customer_purpose: purpose,
+    product_nature: purpose ? PURPOSE_TO_NATURE[purpose] : null,
+    summary: purpose
+      ? `Fiscal aplicado com base na descrição: cliente como ${purposeLabel}${destination_uf ? `, UF ${destination_uf}` : ""}.`
+      : `Fiscal aplicado com UF de destino ${destination_uf ?? "do endereço do cliente"}.`,
+  };
+}
+
+async function resolveFiscalContextWithAi(
+  userDescription: string,
+  knownUf: string | null,
+  context: {
+    orderNumber: string;
+    clientName: string;
+    clientDocument: string | null;
+    clientAddress: string | null;
+    originUf: string | null;
+    taxRegime: string | null;
+    itemLines: string;
+  }
+): Promise<AiFiscalOrderJson> {
+  const client = getAnthropicClient();
+  const model = getAnthropicModelId();
+
+  const system = `Você é assistente fiscal brasileiro para um ERP industrial.
+Com base no pedido e na descrição do utilizador, devolva APENAS JSON válido:
+{
+  "destination_uf": "UF de 2 letras do destino ou null",
+  "customer_purpose": "consumidor" | "revenda" | "industrializacao" | null,
+  "product_nature": "texto curto para regras fiscais (consumidor/revenda/industrializacao) ou null",
+  "summary": "resumo em português do que foi assumido para faturar"
+}
+Use o endereço do cliente quando possível. Não invente NCM.`;
+
+  const userPrompt = `Empresa (origem): UF ${context.originUf ?? "?"}, regime ${context.taxRegime ?? "?"}
+Pedido: ${context.orderNumber}
+Cliente: ${context.clientName}
+Documento: ${context.clientDocument ?? "—"}
+Endereço: ${context.clientAddress ?? "—"}
+UF já identificada no endereço: ${knownUf ?? "não identificada"}
+
+Itens:
+${context.itemLines || "(sem itens)"}
+
+Descrição do fiscal:
+${userDescription.trim() || "(sem descrição adicional)"}`;
+
+  try {
+    const response = await client.messages.create({
+      model,
+      max_tokens: 800,
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const textBlock = response.content.find((b) => b.type === "text");
+    return parseAnthropicJson<AiFiscalOrderJson>(
+      textBlock?.type === "text" ? textBlock.text : "{}"
+    );
+  } catch (err) {
+    if (isAnthropicModelNotFound(err) || isAnthropicModelNotFound(String(err))) {
+      console.warn("[fiscal-order-ai] Modelo IA indisponível, usando interpretação local.");
+      return buildLocalFiscalContext(userDescription, knownUf);
+    }
+    throw err;
+  }
+}
+
 export async function assistFiscalSalesOrder(
   tenantId: string,
   salesOrderId: string,
@@ -98,50 +195,27 @@ export async function assistFiscalSalesOrder(
     })
     .join("\n");
 
-  const client = getAnthropicClient();
-  const model = getAnthropicModelId();
-
-  const system = `Você é assistente fiscal brasileiro para um ERP industrial.
-Com base no pedido e na descrição do utilizador, devolva APENAS JSON válido:
-{
-  "destination_uf": "UF de 2 letras do destino ou null",
-  "customer_purpose": "consumidor" | "revenda" | "industrializacao" | null,
-  "product_nature": "texto curto para regras fiscais (consumidor/revenda/industrializacao) ou null",
-  "summary": "resumo em português do que foi assumido para faturar"
-}
-Use o endereço do cliente quando possível. Não invente NCM.`;
-
-  const userPrompt = `Empresa (origem): UF ${company?.address_state ?? "?"}, regime ${company?.tax_regime ?? "?"}
-Pedido: ${order.order_number}
-Cliente: ${order.client_name}
-Documento: ${order.client_document ?? "—"}
-Endereço: ${order.client_address ?? "—"}
-UF já identificada no endereço: ${knownUf ?? "não identificada"}
-
-Itens:
-${itemLines || "(sem itens)"}
-
-Descrição do fiscal:
-${userDescription.trim() || "(sem descrição adicional)"}`;
-
-  const response = await client.messages.create({
-    model,
-    max_tokens: 800,
-    system,
-    messages: [{ role: "user", content: userPrompt }],
-  });
-
-  const textBlock = response.content.find((b) => b.type === "text");
-  const parsed = parseAnthropicJson<AiFiscalOrderJson>(
-    textBlock?.type === "text" ? textBlock.text : "{}"
-  );
+  const parsed =
+    userDescription.trim() && normalizePurpose(userDescription)
+      ? buildLocalFiscalContext(userDescription, knownUf)
+      : await resolveFiscalContextWithAi(userDescription, knownUf, {
+          orderNumber: order.order_number,
+          clientName: order.client_name,
+          clientDocument: order.client_document,
+          clientAddress: order.client_address,
+          originUf: company?.address_state ?? null,
+          taxRegime: company?.tax_regime ?? null,
+          itemLines,
+        });
 
   const destinationUf =
     typeof parsed.destination_uf === "string" && parsed.destination_uf.length === 2
       ? parsed.destination_uf.toUpperCase()
       : knownUf;
 
-  const customerPurpose = normalizePurpose(parsed.customer_purpose);
+  const customerPurpose =
+    normalizePurpose(parsed.customer_purpose) ??
+    normalizePurpose(userDescription);
   const productNatureOverride =
     (typeof parsed.product_nature === "string" && parsed.product_nature.trim()) ||
     (customerPurpose ? PURPOSE_TO_NATURE[customerPurpose] : null);
