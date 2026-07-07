@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { BrDateInput } from "@/shared/ui/br-date-input";
+import { Label } from "@/shared/ui/label";
 import {
   SortableTable,
   type SortableTableColumn,
@@ -27,7 +31,15 @@ import { formatShortDate } from "@/shared/utils/date";
 
 type ReceivableTab = "all" | "pending" | "partial" | "paid" | "cancelled" | "overdue";
 
-type Row = Record<string, unknown>;
+type ReceivableRow = {
+  id: string;
+  client_name: string | null;
+  description?: string | null;
+  current_amount: number;
+  status: string;
+  sales_order_id: string | null;
+  due_date?: string | null;
+};
 
 const TAB_OPTIONS: Array<{ value: ReceivableTab; label: string }> = [
   { value: "all", label: "Todos" },
@@ -83,10 +95,17 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
   const [activeTab, setActiveTab] = useState<ReceivableTab>("all");
   const { input: searchInput, setInput: setSearchInput, debounced: search } =
     useCronogramaSearch();
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<ReceivableRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [recvOpen, setRecvOpen] = useState<ReceivableRow | null>(null);
+  const [recvAmount, setRecvAmount] = useState("");
+  const [recvDate, setRecvDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+  const [recvInterest, setRecvInterest] = useState("");
+  const [recvDiscount, setRecvDiscount] = useState("");
   const limit = 25;
 
   useEffect(() => {
@@ -111,7 +130,7 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
         cache: "no-store",
       });
       const j = (await res.json().catch(() => ({}))) as {
-        data?: Row[];
+        data?: ReceivableRow[];
         pagination?: { total: number };
         error?: string;
       };
@@ -139,6 +158,53 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
     void load();
   }, [permLoading, can, load]);
 
+  async function registerReceipt() {
+    if (!recvOpen) return;
+    const amt = parseFloat(recvAmount.replace(",", "."));
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast.error("Indique o valor recebido.");
+      return;
+    }
+    if (amt - Number(recvOpen.current_amount) > 0.01) {
+      toast.error("O valor não pode ser superior ao saldo actual.");
+      return;
+    }
+    const interest = parseFloat(recvInterest.replace(",", ".") || "0");
+    const discount = parseFloat(recvDiscount.replace(",", ".") || "0");
+    if (!Number.isFinite(interest) || interest < 0) {
+      toast.error("Juros inválidos.");
+      return;
+    }
+    if (!Number.isFinite(discount) || discount < 0) {
+      toast.error("Desconto inválido.");
+      return;
+    }
+
+    const res = await fetch(`/api/finance/receivables/${recvOpen.id}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        received_amount: amt,
+        payment_date: recvDate || undefined,
+        interest_adjustment: interest > 0 ? interest : undefined,
+        discount_adjustment: discount > 0 ? discount : undefined,
+      }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      toast.error(j.error ?? "Erro ao registar recebimento");
+      return;
+    }
+    toast.success("Recebimento registado.");
+    setRecvOpen(null);
+    setRecvAmount("");
+    setRecvInterest("");
+    setRecvDiscount("");
+    setRecvDate(new Date().toISOString().slice(0, 10));
+    void load();
+  }
+
   const searchHint = parseUniversalSearch(search);
   const visibleRows = useMemo(() => {
     if (!searchHint.text) return rows;
@@ -163,7 +229,7 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
       ? ""
       : `${(page - 1) * limit + 1}–${Math.min(page * limit, total)} de ${total}`;
 
-  const tableColumns = useMemo((): SortableTableColumn<Row>[] => {
+  const tableColumns = useMemo((): SortableTableColumn<ReceivableRow>[] => {
     return [
       {
         key: "client_name",
@@ -268,9 +334,30 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
       <SortableTable
         columns={tableColumns}
         data={visibleRows}
-        getRowKey={(row) => String(row.id)}
+        getRowKey={(row) => row.id}
         isLoading={loading}
         emptyMessage="Sem registos."
+        actionsColumn={{
+          label: "Acções",
+          width: "w-[8rem]",
+          render: (row) =>
+            row.status === "pending" || row.status === "partial" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setRecvOpen(row);
+                  setRecvAmount(String(row.current_amount));
+                  setRecvInterest("");
+                  setRecvDiscount("");
+                  setRecvDate(new Date().toISOString().slice(0, 10));
+                }}
+              >
+                Confirmar recebimento
+              </Button>
+            ) : null,
+        }}
       />
     </CronogramaPanel>
   );
@@ -314,6 +401,71 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
           </TabsContent>
         ))}
       </Tabs>
+
+      {recvOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="text-base">Confirmar recebimento</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-slate-600">
+                {recvOpen.client_name ?? "Cliente"} — saldo actual:{" "}
+                {fmtBrl(Number(recvOpen.current_amount))}
+              </p>
+              <div className="space-y-1">
+                <Label>Valor recebido (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={recvAmount}
+                  onChange={(e) => setRecvAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Data do recebimento</Label>
+                <BrDateInput
+                  value={recvDate || null}
+                  onChange={(iso) => setRecvDate(iso ?? "")}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Juros (opcional)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={recvInterest}
+                  onChange={(e) => setRecvInterest(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Desconto (opcional)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={recvDiscount}
+                  onChange={(e) => setRecvDiscount(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setRecvOpen(null)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={() => void registerReceipt()}>
+                  Confirmar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
     </>
   );
 }
