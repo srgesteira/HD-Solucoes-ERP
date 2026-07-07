@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
-import { FileOutput, Loader2, Mail } from "lucide-react";
+import { FileOutput, Loader2, Mail, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import type { PurchaseRequisitionRow } from "@/modules/compras/lib/purchasing-requisitions";
@@ -34,6 +34,7 @@ export function RequisitionsBatchActionsBar({
   const router = useRouter();
   const [bulkOpen, setBulkOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
+  const [dismissOpen, setDismissOpen] = useState(false);
 
   const quoteValidation = validateSameSuggestedSupplier(selectedRows);
   const canQuote = quoteValidation.ok;
@@ -78,6 +79,35 @@ export function RequisitionsBatchActionsBar({
     },
     onError: (e) =>
       toast.error(e instanceof Error ? e.message : "Erro ao emitir PC"),
+  });
+
+  const dismissBulkMut = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await fetch("/api/purchasing/requisitions/batch/dismiss", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requisition_ids: ids }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        dismissed?: number;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao excluir requisições");
+      return json.dismissed ?? 0;
+    },
+    onSuccess: (dismissed) => {
+      toast.success(
+        dismissed === 1
+          ? "1 requisição excluída."
+          : `${dismissed} requisições excluídas.`
+      );
+      setDismissOpen(false);
+      onClearSelection();
+      onSuccess();
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro ao excluir requisições"),
   });
 
   const quoteBulkMut = useMutation({
@@ -157,6 +187,16 @@ export function RequisitionsBatchActionsBar({
           >
             <FileOutput className="h-4 w-4" />
             Emitir PC agrupado
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!canIssue || dismissBulkMut.isPending}
+            onClick={() => setDismissOpen(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+            Excluir selecionadas
           </Button>
           <Button
             type="button"
@@ -284,6 +324,50 @@ export function RequisitionsBatchActionsBar({
                   <Mail className="h-4 w-4" />
                 )}
                 Enviar orçamento
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {dismissOpen && canIssue ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50">
+          <div
+            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl space-y-4"
+            role="dialog"
+            aria-labelledby="bulk-dismiss-title"
+          >
+            <h3 id="bulk-dismiss-title" className="text-lg font-semibold text-slate-900">
+              Excluir requisições
+            </h3>
+            <p className="text-sm text-slate-600">
+              Excluir <strong>{selectedRows.length}</strong>{" "}
+              {selectedRows.length === 1 ? "requisição" : "requisições"}? O MRP
+              não voltará a sugerir esta necessidade específica.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDismissOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                disabled={dismissBulkMut.isPending}
+                onClick={() =>
+                  dismissBulkMut.mutate(selectedRows.map((r) => r.id))
+                }
+              >
+                {dismissBulkMut.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Excluir {selectedRows.length}{" "}
+                {selectedRows.length === 1 ? "requisição" : "requisições"}
               </Button>
             </div>
           </div>
