@@ -12,8 +12,9 @@ import { FinanceMovementsTab } from "@/components/finance/finance-movements-tab"
 import { PayablesPanel } from "@/components/finance/payables-panel";
 import { ReceivablesPanel } from "@/components/finance/receivables-panel";
 import { CashFlowPanel } from "@/components/finance/cash-flow-panel";
+import { FixedExpensesPanel } from "@/components/finance/fixed-expenses-panel";
 
-type TabValue = "movimentacao" | "pagar" | "receber" | "fluxo";
+type TabValue = "movimentacao" | "pagar" | "receber" | "fluxo" | "fixas";
 
 const TAB_OPTIONS: Array<{
   value: TabValue;
@@ -31,11 +32,19 @@ const TAB_OPTIONS: Array<{
     label: "Contas a Receber",
     alertHref: "/finance/contas?tab=receber",
   },
+  { value: "fixas", label: "Contas Fixas" },
   { value: "fluxo", label: "Fluxo Futuro" },
 ];
 
 function parseTab(raw: string | null): TabValue {
-  if (raw === "pagar" || raw === "receber" || raw === "fluxo") return raw;
+  if (
+    raw === "pagar" ||
+    raw === "receber" ||
+    raw === "fluxo" ||
+    raw === "fixas"
+  ) {
+    return raw;
+  }
   return "movimentacao";
 }
 
@@ -76,7 +85,7 @@ export function FinanceAccountsPage() {
   return (
     <AppPage
       title="Financeiro"
-      description="Movimentação, contas a pagar e receber, e projeção de fluxo."
+      description="Movimentação, contas a pagar e receber, contas fixas e projeção de fluxo."
       density="comfortable"
       width="wide"
     >
@@ -106,6 +115,10 @@ export function FinanceAccountsPage() {
 
         <TabsContent value="receber" className="mt-4">
           <ReceivablesPanel embedded />
+        </TabsContent>
+
+        <TabsContent value="fixas" className="mt-4">
+          <FixedExpensesPanel embedded />
         </TabsContent>
 
         <TabsContent value="fluxo" className="mt-4">

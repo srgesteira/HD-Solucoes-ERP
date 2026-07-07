@@ -7,6 +7,8 @@ import {
   cashFlowDateForReceivableOrPayable,
   type OrderPaymentTerms,
 } from "@/modules/finance/lib/cash-flow-projection-dates";
+import { projectFixedExpensesToOutByDay } from "@/modules/finance/lib/fixed-expenses-projection";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -245,6 +247,75 @@ export async function GET(request: NextRequest) {
     outByDay.set(k, (outByDay.get(k) ?? 0) + amt);
   }
 
+  const db = asUntypedAdmin(admin);
+  const { data: fixedExpenses, error: feErr } = await db
+    .from("fixed_expenses")
+    .select("id, amount, due_day, is_active, start_date, end_date")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true);
+
+  if (feErr) {
+    return apiError("Contas fixas: " + feErr.message, 500);
+  }
+
+  const expenseIds = (fixedExpenses ?? []).map((r: { id: string }) =>
+    String(r.id)
+  );
+  let overrides: Array<{
+    fixed_expense_id: string;
+    competencia: string;
+    amount: number;
+  }> = [];
+
+  if (expenseIds.length > 0) {
+    const rangeEndDate = new Date(today);
+    rangeEndDate.setDate(rangeEndDate.getDate() + horizon);
+    const competenciaStart = today.toISOString().slice(0, 7);
+    const competenciaEnd = rangeEndDate.toISOString().slice(0, 7);
+
+    const { data: overrideRows, error: ovErr } = await db
+      .from("fixed_expense_overrides")
+      .select("fixed_expense_id, competencia, amount")
+      .eq("tenant_id", tenantId)
+      .in("fixed_expense_id", expenseIds)
+      .gte("competencia", competenciaStart)
+      .lte("competencia", competenciaEnd);
+
+    if (ovErr) {
+      return apiError("Overrides de contas fixas: " + ovErr.message, 500);
+    }
+    overrides = (overrideRows ?? []).map(
+      (row: { fixed_expense_id: string; competencia: string; amount: number }) => ({
+        fixed_expense_id: String(row.fixed_expense_id),
+        competencia: String(row.competencia),
+        amount: Number(row.amount),
+      })
+    );
+  }
+
+  projectFixedExpensesToOutByDay(
+    outByDay,
+    (fixedExpenses ?? []).map(
+      (row: {
+        id: string;
+        amount: number;
+        due_day: number;
+        is_active: boolean;
+        start_date: string;
+        end_date: string | null;
+      }) => ({
+      id: String(row.id),
+      amount: Number(row.amount),
+      due_day: Number(row.due_day),
+      is_active: row.is_active === true,
+      start_date: String(row.start_date),
+      end_date: row.end_date ? String(row.end_date) : null,
+    })),
+    overrides,
+    today,
+    horizon
+  );
+
   const series: Array<{
     date: string;
     inflow: number;
@@ -298,7 +369,7 @@ export async function GET(request: NextRequest) {
       inflow_source:
         "receivables: reais por due_date; provisórios por expected_delivery + prazo",
       outflow_source:
-        "accounts_payable: reais por due_date; provisórios por expected_delivery + prazo; PCs sem AP idem",
+        "accounts_payable: reais por due_date; provisórios por expected_delivery + prazo; PCs sem AP; contas fixas mensais",
       provisional_projection_fallback_count: projectionFallbacks.length,
       provisional_projection_fallback_ids: projectionFallbacks.slice(0, 50),
     },
