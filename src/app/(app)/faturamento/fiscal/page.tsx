@@ -564,15 +564,21 @@ export default function FiscalInvoicingPage() {
               ) : null}
               {isAdmin &&
               tab === "ready" &&
-              row.billing_plan === "without_invoice" &&
-              row.can_confirm_without_invoice ? (
+              row.billing_plan === "without_invoice" ? (
                 <Button
                   type="button"
                   size="sm"
                   variant="primary"
-                  className="h-7 px-2 text-[11px]"
-                  disabled={closingWithoutInvoiceId === row.id}
-                  title="Confirmar entrega sem nota"
+                  className="h-7 gap-1 px-2 text-[11px]"
+                  disabled={
+                    !row.can_confirm_without_invoice ||
+                    closingWithoutInvoiceId === row.id
+                  }
+                  title={
+                    row.can_confirm_without_invoice
+                      ? "Confirmar entrega sem nota — vai para Autorizadas"
+                      : "Conferência fiscal pendente: clique no ✨ e aplique as regras antes de confirmar"
+                  }
                   onClick={() => closeWithoutInvoiceMutation.mutate(row.id)}
                 >
                   {closingWithoutInvoiceId === row.id ? (
@@ -580,6 +586,7 @@ export default function FiscalInvoicingPage() {
                   ) : (
                     <PackageCheck className="h-3.5 w-3.5" />
                   )}
+                  Confirmar sem nota
                 </Button>
               ) : null}
               {row.nfe_id &&

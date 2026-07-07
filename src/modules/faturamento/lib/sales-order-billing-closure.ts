@@ -129,8 +129,13 @@ export async function closeSalesOrderBilling(
         reasons: ["Produção ainda não liberou o pedido para faturamento."],
       };
     }
-    if (so.status !== "confirmed") {
-      return { ok: false, reasons: ['Pedido deve estar "Confirmado".'] };
+    if (
+      !["confirmed", "in_production", "shipped", "delivered"].includes(so.status)
+    ) {
+      return {
+        ok: false,
+        reasons: ["Pedido não está num estado válido para fechar o faturamento."],
+      };
     }
     const { data: credit } = await admin
       .from("credit_analysis")
