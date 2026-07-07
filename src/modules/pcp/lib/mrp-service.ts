@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nextPurchaseOrderNumber } from "@/modules/compras/lib/purchasing/purchase-order-number";
+import { findDismissedRequisitionForNeed } from "@/modules/compras/lib/purchasing/requisition-dismiss";
 import {
   computePurchaseNeedDate,
 } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
@@ -667,6 +668,20 @@ async function upsertPurchaseRequisition(
     .eq("id", args.productId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
+
+  const dismissed = await findDismissedRequisitionForNeed(admin, tenantId, {
+    productId: args.productId,
+    salesOrderItemId,
+    productionOrderItemId,
+  });
+  if (dismissed) {
+    return {
+      id: dismissed.id,
+      po_number: args.traceKey,
+      supplier_id: preferredSupplierId,
+      requisition: false,
+    };
+  }
 
   if (salesOrderItemId && args.productId) {
     const needDate = computePurchaseNeedDate(

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
+import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import {
   isMissingColumnError,
   REQUISITIONS_MIGRATION_HINT,
@@ -11,7 +12,9 @@ import {
   getCurrentTenantId,
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
-import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
+import {
+  dismissPurchaseRequisitions,
+} from "@/modules/compras/lib/purchasing/requisition-dismiss";
 
 export const dynamic = "force-dynamic";
 
@@ -33,21 +36,12 @@ export async function DELETE(
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
-    .from("purchase_order_items")
-    .delete()
-    .eq("id", id)
-    .eq("tenant_id", tenantId)
-    .eq("is_suggestion", false)
-    .eq("status", "draft")
-    .is("purchase_order_id", null)
-    .select("id")
-    .maybeSingle();
+  const { dismissed } = await dismissPurchaseRequisitions(admin, tenantId, [id]);
+  if (dismissed === 0) {
+    return apiError("Requisição não encontrada ou já processada", 404);
+  }
 
-  if (error) return apiError(error.message, 400);
-  if (!data) return apiError("Requisição não encontrada ou já processada", 404);
-
-  return apiOk({ success: true });
+  return apiOk({ success: true, dismissed });
 }
 
 export async function PATCH(
