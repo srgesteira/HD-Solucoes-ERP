@@ -3,7 +3,7 @@ import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
-import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import type { ReceivableUpdate } from "@/modules/core/types/finance.types";
 import { RECEIVABLE_STATUSES } from "@/modules/core/types/finance.types";
 import {
@@ -113,6 +113,28 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const updateData: ReceivableUpdate = {};
   let paymentMovement: { amount: number; movementDate: string } | null = null;
+
+  if (b.adjust_amount !== undefined && b.received_amount !== undefined) {
+    return apiError(
+      "Use apenas ajuste de valor ou registo de recebimento, não ambos.",
+      400
+    );
+  }
+
+  if (b.adjust_amount !== undefined) {
+    const newAmt = roundMoney(
+      typeof b.adjust_amount === "number"
+        ? b.adjust_amount
+        : parseFloat(String(b.adjust_amount))
+    );
+    if (!Number.isFinite(newAmt) || newAmt <= 0) {
+      return apiError("Valor ajustado inválido", 400);
+    }
+    updateData.current_amount = newAmt;
+    if (Number(current.paid_amount ?? 0) < 0.001) {
+      updateData.original_amount = newAmt;
+    }
+  }
 
   if (b.description !== undefined) {
     updateData.description =
@@ -267,4 +289,34 @@ export async function PUT(request: NextRequest, { params }: Params) {
     .maybeSingle();
 
   return apiOk({ data: detail ?? updated });
+}
+
+export async function DELETE(_request: NextRequest, { params }: Params) {
+  if (!(await isCurrentUserTenantAdmin())) {
+    return apiError("Apenas administradores podem excluir.", 403);
+  }
+
+  const moduleDenied = await requireMenuModule("faturamento");
+  if (moduleDenied) return moduleDenied;
+
+  const tenantId = await getCurrentTenantId();
+  if (!tenantId) return apiError("Tenant não encontrado", 403);
+
+  const { id } = await params;
+  const admin = createSupabaseAdminClient();
+
+  const { error } = await admin
+    .from("receivables")
+    .delete()
+    .eq("id", id)
+    .eq("tenant_id", tenantId);
+
+  if (error) {
+    return apiError(
+      "Erro ao excluir título: " + error.message,
+      supabaseErrorToHttp(error.code)
+    );
+  }
+
+  return apiOk({ ok: true });
 }

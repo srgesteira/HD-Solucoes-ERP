@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { AppPage } from "@/shared/ui/app-page";
 import { usePermissions } from "@/hooks/use-permissions";
+import { alertEntryForHref, useMenuAlerts } from "@/hooks/use-menu-alerts";
+import { TabLabelWithAlert } from "@/components/layout/menu-alert-ui";
 import { FinanceMovementsTab } from "@/components/finance/finance-movements-tab";
 import { PayablesPanel } from "@/components/finance/payables-panel";
 import { ReceivablesPanel } from "@/components/finance/receivables-panel";
@@ -13,10 +15,22 @@ import { CashFlowPanel } from "@/components/finance/cash-flow-panel";
 
 type TabValue = "movimentacao" | "pagar" | "receber" | "fluxo";
 
-const TAB_OPTIONS: Array<{ value: TabValue; label: string }> = [
+const TAB_OPTIONS: Array<{
+  value: TabValue;
+  label: string;
+  alertHref?: string;
+}> = [
   { value: "movimentacao", label: "Movimentação" },
-  { value: "pagar", label: "Contas a Pagar" },
-  { value: "receber", label: "Contas a Receber" },
+  {
+    value: "pagar",
+    label: "Contas a Pagar",
+    alertHref: "/finance/contas?tab=pagar",
+  },
+  {
+    value: "receber",
+    label: "Contas a Receber",
+    alertHref: "/finance/contas?tab=receber",
+  },
   { value: "fluxo", label: "Fluxo Futuro" },
 ];
 
@@ -29,6 +43,7 @@ export function FinanceAccountsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { can, isLoading: permLoading } = usePermissions();
+  const { data: menuAlerts } = useMenuAlerts();
 
   const canView = !permLoading && can("finance");
 
@@ -69,7 +84,14 @@ export function FinanceAccountsPage() {
         <TabsList className="w-full flex flex-wrap h-auto gap-1">
           {TAB_OPTIONS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value}>
-              {tab.label}
+              {tab.alertHref ? (
+                <TabLabelWithAlert
+                  label={tab.label}
+                  entry={alertEntryForHref(menuAlerts?.alerts, tab.alertHref)}
+                />
+              ) : (
+                tab.label
+              )}
             </TabsTrigger>
           ))}
         </TabsList>

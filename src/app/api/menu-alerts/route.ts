@@ -26,5 +26,5 @@ export async function GET() {
     pcp: menuModules.pcp === true,
   });
 
-  return apiOk({ alerts });
+  return apiOk(alerts);
 }

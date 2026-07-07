@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
@@ -16,20 +16,48 @@ import {
 } from "@/shared/ui/sortable-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import {
-  CRONOGRAMA_TOKENS,
   CronogramaPagination,
   CronogramaPanel,
   CronogramaSearch,
   useCronogramaSearch,
 } from "@/shared/ui/cronograma-layout";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useMe } from "@/hooks/use-me";
 import {
   matchesUniversalSearchRow,
   parseUniversalSearch,
 } from "@/shared/utils/universal-search";
-import { formatShortDate } from "@/shared/utils/date";
+import { formatShortFinanceDescription } from "@/modules/finance/lib/finance-line-format";
+import {
+  FinanceAmountCell,
+  FinanceBalanceCell,
+  FinanceDateCell,
+  FinanceDirectionBadge,
+  FinanceTextCell,
+  FINANCE_TABLE_WIDTHS,
+} from "@/components/finance/finance-table-ui";
+import { FinanceRowActions } from "@/components/finance/finance-row-actions";
+import { FinanceTitleEditDialog } from "@/components/finance/finance-title-edit-dialog";
 
 type ReceivableTab = "all" | "pending" | "partial" | "paid" | "cancelled" | "overdue";
+
+function parseReceivableTab(raw: string | null): ReceivableTab {
+  if (
+    raw === "pending" ||
+    raw === "partial" ||
+    raw === "paid" ||
+    raw === "cancelled" ||
+    raw === "overdue"
+  ) {
+    return raw;
+  }
+  return "all";
+}
+
+function initialReceivableTab(searchParams: URLSearchParams): ReceivableTab {
+  if (searchParams.get("overdue") === "1") return "overdue";
+  return parseReceivableTab(searchParams.get("status"));
+}
 
 type ReceivableRow = {
   id: string;
@@ -70,20 +98,16 @@ function fmtBrl(n: number) {
   }).format(n);
 }
 
-function formatDate(iso: unknown): string {
-  if (iso == null || iso === "") return "—";
-  const formatted = formatShortDate(String(iso).slice(0, 10));
-  return formatted === "--" ? "—" : formatted;
+function receivableValor(row: ReceivableRow): number {
+  if (row.status === "paid") {
+    return row.paid_amount ?? row.original_amount ?? row.current_amount;
+  }
+  return row.original_amount ?? row.current_amount;
 }
 
-/** Saldo em aberto; para pagos, o valor recebido (não o saldo zero). */
-function receivableDisplayAmount(row: ReceivableRow): number {
-  if (row.status === "paid") {
-    const paid = Number(row.paid_amount ?? 0);
-    if (paid > 0.001) return paid;
-    return Number(row.original_amount ?? row.current_amount ?? 0);
-  }
-  return Number(row.current_amount ?? 0);
+function receivableSaldo(row: ReceivableRow): number {
+  if (row.status === "paid") return 0;
+  return row.current_amount;
 }
 
 export function ReceivablesPanelRefreshButton({
@@ -103,8 +127,13 @@ export function ReceivablesPanelRefreshButton({
 
 export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { can, isLoading: permLoading } = usePermissions();
-  const [activeTab, setActiveTab] = useState<ReceivableTab>("all");
+  const { data: me } = useMe();
+  const isAdmin = me?.role === "admin";
+  const [activeTab, setActiveTab] = useState<ReceivableTab>(() =>
+    embedded ? initialReceivableTab(searchParams) : "all"
+  );
   const { input: searchInput, setInput: setSearchInput, debounced: search } =
     useCronogramaSearch();
   const [rows, setRows] = useState<ReceivableRow[]>([]);
@@ -118,7 +147,16 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
   );
   const [recvInterest, setRecvInterest] = useState("");
   const [recvDiscount, setRecvDiscount] = useState("");
+  const [editOpen, setEditOpen] = useState<ReceivableRow | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const limit = 25;
+
+  useEffect(() => {
+    if (embedded) {
+      setActiveTab(initialReceivableTab(searchParams));
+    }
+  }, [embedded, searchParams]);
 
   useEffect(() => {
     setPage(1);
@@ -217,6 +255,53 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
     void load();
   }
 
+  async function submitEdit(data: { amount: number; dueDate: string }) {
+    if (!editOpen) return;
+    setEditSaving(true);
+    try {
+      const body: Record<string, unknown> = { due_date: data.dueDate };
+      if (Math.abs(data.amount - editOpen.current_amount) > 0.001) {
+        body.adjust_amount = data.amount;
+      }
+      const res = await fetch(`/api/finance/receivables/${editOpen.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(j.error ?? "Erro ao guardar");
+        return;
+      }
+      toast.success("Título actualizado.");
+      setEditOpen(null);
+      void load();
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function removeRow(id: string) {
+    if (!confirm("Excluir esta conta a receber?")) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/finance/receivables/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(j.error ?? "Erro");
+        return;
+      }
+      toast.success("Excluído.");
+      void load();
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const searchHint = parseUniversalSearch(search);
   const visibleRows = useMemo(() => {
     if (!searchHint.text) return rows;
@@ -225,8 +310,10 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
         searchHint,
         [
           String(row.client_name ?? ""),
+          formatShortFinanceDescription(String(row.description ?? "")),
           String(row.due_date ?? ""),
-          Number(receivableDisplayAmount(row)),
+          receivableValor(row),
+          receivableSaldo(row),
           String(row.status ?? ""),
           RECEIVABLE_STATUS_LABELS[String(row.status ?? "")] ?? "",
         ],
@@ -244,80 +331,79 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
   const tableColumns = useMemo((): SortableTableColumn<ReceivableRow>[] => {
     return [
       {
-        key: "client_name",
-        label: "Cliente",
+        key: "description",
+        label: "Descrição",
         type: "text",
-        width: "w-[24%]",
-        accessor: (row) => String(row.client_name ?? ""),
-        render: (row) => (
-          <span className={CRONOGRAMA_TOKENS.cellText}>
-            {String(row.client_name ?? "—")}
-          </span>
-        ),
-      },
-      {
-        key: "due_date",
-        label: "Vencimento",
-        type: "date",
-        width: "w-[14%]",
-        accessor: (row) => row.due_date,
-        truncate: false,
-        render: (row) => (
-          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
-            {formatDate(row.due_date)}
-          </span>
-        ),
-      },
-      {
-        key: "current_amount",
-        label: "Valor",
-        type: "number",
-        width: "w-[14%]",
-        align: "right",
-        accessor: (row) => receivableDisplayAmount(row),
-        truncate: false,
-        render: (row) => (
-          <span className="text-xs tabular-nums font-medium">
-            {fmtBrl(receivableDisplayAmount(row))}
-          </span>
-        ),
-      },
-      {
-        key: "status",
-        label: "Estado",
-        type: "text",
-        width: "w-[14%]",
+        width: FINANCE_TABLE_WIDTHS.description,
         accessor: (row) =>
-          RECEIVABLE_STATUS_LABELS[String(row.status ?? "")] ??
-          String(row.status ?? ""),
-        truncate: false,
+          formatShortFinanceDescription(String(row.description ?? "")),
         render: (row) => {
-          const label =
-            RECEIVABLE_STATUS_LABELS[String(row.status ?? "")] ??
-            String(row.status ?? "—");
-          return (
-            <span className={CRONOGRAMA_TOKENS.badge}>{label}</span>
+          const label = formatShortFinanceDescription(
+            String(row.description ?? row.client_name ?? "—")
           );
+          if (row.sales_order_id) {
+            return (
+              <Link
+                href={`/sales/orders/${String(row.sales_order_id)}`}
+                className="text-sm font-medium text-brand-700 hover:text-brand-900 hover:underline"
+              >
+                {label}
+              </Link>
+            );
+          }
+          return <FinanceTextCell>{label}</FinanceTextCell>;
         },
       },
       {
-        key: "document",
-        label: "Documento",
+        key: "client_name",
+        label: "Entidade",
         type: "text",
-        width: "w-[29%]",
-        accessor: (row) => (row.sales_order_id ? "Ver pedido" : "—"),
+        width: FINANCE_TABLE_WIDTHS.entity,
+        accessor: (row) => String(row.client_name ?? ""),
+        render: (row) => (
+          <FinanceTextCell className="text-slate-700">
+            {String(row.client_name ?? "—")}
+          </FinanceTextCell>
+        ),
+      },
+      {
+        key: "direction",
+        label: "Tipo",
+        type: "text",
+        width: FINANCE_TABLE_WIDTHS.type,
+        accessor: () => "in",
+        render: () => <FinanceDirectionBadge direction="in" />,
+      },
+      {
+        key: "due_date",
+        label: "Data",
+        type: "date",
+        width: FINANCE_TABLE_WIDTHS.date,
+        accessor: (row) => row.due_date,
         truncate: false,
-        render: (row) =>
-          row.sales_order_id ? (
-            <Link
-              href={`/sales/orders/${String(row.sales_order_id)}`}
-              className={CRONOGRAMA_TOKENS.cellLink}
-            >
-              Ver pedido
-            </Link>
-          ) : (
-            "—"
-          ),
+        render: (row) => <FinanceDateCell iso={row.due_date} />,
+      },
+      {
+        key: "valor",
+        label: "Valor",
+        type: "number",
+        width: FINANCE_TABLE_WIDTHS.amount,
+        align: "right",
+        accessor: (row) => receivableValor(row),
+        truncate: false,
+        render: (row) => (
+          <FinanceAmountCell direction="in" amount={receivableValor(row)} />
+        ),
+      },
+      {
+        key: "saldo",
+        label: "Saldo acumulado",
+        type: "number",
+        width: FINANCE_TABLE_WIDTHS.balance,
+        align: "right",
+        accessor: (row) => receivableSaldo(row),
+        truncate: false,
+        render: (row) => <FinanceBalanceCell amount={receivableSaldo(row)} />,
       },
     ];
   }, []);
@@ -351,24 +437,29 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
         emptyMessage="Sem registos."
         actionsColumn={{
           label: "Acções",
-          width: "w-[8rem]",
-          render: (row) =>
-            row.status === "pending" || row.status === "partial" ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
+          width: "w-[7rem]",
+          render: (row) => {
+            const open =
+              row.status === "pending" || row.status === "partial";
+            return (
+              <FinanceRowActions
+                canSettle={open}
+                canEdit={open}
+                canDelete={isAdmin}
+                deleting={deletingId === row.id}
+                settleLabel="Concretizar recebimento"
+                onSettle={() => {
                   setRecvOpen(row);
                   setRecvAmount(String(row.current_amount));
                   setRecvInterest("");
                   setRecvDiscount("");
                   setRecvDate(new Date().toISOString().slice(0, 10));
                 }}
-              >
-                Confirmar recebimento
-              </Button>
-            ) : null,
+                onEdit={() => setEditOpen(row)}
+                onDelete={() => void removeRow(row.id)}
+              />
+            );
+          },
         }}
       />
     </CronogramaPanel>
@@ -414,11 +505,23 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
         ))}
       </Tabs>
 
+      <FinanceTitleEditDialog
+        open={Boolean(editOpen)}
+        title="Editar conta a receber"
+        description={String(editOpen?.description ?? editOpen?.client_name ?? "")}
+        currentAmount={editOpen?.current_amount ?? 0}
+        originalAmount={editOpen?.original_amount}
+        dueDate={String(editOpen?.due_date ?? "").slice(0, 10)}
+        saving={editSaving}
+        onClose={() => setEditOpen(null)}
+        onSave={submitEdit}
+      />
+
       {recvOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <Card className="w-full max-w-md">
             <CardHeader>
-              <CardTitle className="text-base">Confirmar recebimento</CardTitle>
+              <CardTitle className="text-base">Concretizar recebimento</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-slate-600">

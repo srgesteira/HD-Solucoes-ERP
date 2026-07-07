@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
@@ -15,7 +16,6 @@ import {
 } from "@/shared/ui/sortable-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import {
-  CRONOGRAMA_TOKENS,
   CronogramaPanel,
   CronogramaSearch,
   useCronogramaSearch,
@@ -32,6 +32,17 @@ import {
   PAYABLES_LIST_TABS,
   type PayablesListTab,
 } from "@/modules/faturamento/lib/payables-list-tabs";
+import { formatShortFinanceDescription } from "@/modules/finance/lib/finance-line-format";
+import { FinanceRowActions } from "@/components/finance/finance-row-actions";
+import { FinanceTitleEditDialog } from "@/components/finance/finance-title-edit-dialog";
+import {
+  FinanceAmountCell,
+  FinanceBalanceCell,
+  FinanceDateCell,
+  FinanceDirectionBadge,
+  FinanceTextCell,
+  FINANCE_TABLE_WIDTHS,
+} from "@/components/finance/finance-table-ui";
 
 type Payable = {
   id: string;
@@ -89,6 +100,7 @@ export function PayablesPanel({
   onShowNewChange,
 }: PayablesPanelProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { can, isLoading: permLoading } = usePermissions();
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
@@ -100,15 +112,18 @@ export function PayablesPanel({
   );
   const { input: searchInput, setInput: setSearchInput, debounced: search } =
     useCronogramaSearch();
-  const [overdue, setOverdue] = useState(false);
+  const [overdue, setOverdue] = useState(
+    () => searchParams.get("overdue") === "1"
+  );
   const [supplierId, setSupplierId] = useState("");
   const [showNewInternal, setShowNewInternal] = useState(false);
   const showNew = showNewProp ?? showNewInternal;
   const setShowNew = onShowNewChange ?? setShowNewInternal;
   const [payOpen, setPayOpen] = useState<Payable | null>(null);
   const [payAmount, setPayAmount] = useState("");
-  const [adjustOpen, setAdjustOpen] = useState<Payable | null>(null);
-  const [adjustAmount, setAdjustAmount] = useState("");
+  const [editOpen, setEditOpen] = useState<Payable | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     description: "",
@@ -165,6 +180,12 @@ export function PayablesPanel({
   }, [embedded, permLoading, can, router]);
 
   useEffect(() => {
+    if (embedded) {
+      setOverdue(searchParams.get("overdue") === "1");
+    }
+  }, [embedded, searchParams]);
+
+  useEffect(() => {
     if (permLoading || !can("finance")) return;
     void load();
     void loadSuppliers();
@@ -207,28 +228,31 @@ export function PayablesPanel({
     void load();
   }
 
-  async function submitAdjustAmount() {
-    if (!adjustOpen) return;
-    const amt = parseFloat(adjustAmount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      toast.error("Indique um valor válido.");
-      return;
+  async function submitEdit(data: { amount: number; dueDate: string }) {
+    if (!editOpen) return;
+    setEditSaving(true);
+    try {
+      const body: Record<string, unknown> = { due_date: data.dueDate };
+      if (Math.abs(data.amount - editOpen.current_amount) > 0.001) {
+        body.adjust_amount = data.amount;
+      }
+      const res = await fetch(`/api/finance/payables/${editOpen.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(j.error ?? "Erro ao guardar");
+        return;
+      }
+      toast.success("Título actualizado.");
+      setEditOpen(null);
+      void load();
+    } finally {
+      setEditSaving(false);
     }
-    const res = await fetch(`/api/finance/payables/${adjustOpen.id}`, {
-      method: "PUT",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adjust_amount: amt }),
-    });
-    const j = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
-      toast.error(j.error ?? "Erro ao ajustar");
-      return;
-    }
-    toast.success("Valor ajustado e travado para recálculo automático.");
-    setAdjustOpen(null);
-    setAdjustAmount("");
-    void load();
   }
 
   async function registerPayment() {
@@ -256,18 +280,23 @@ export function PayablesPanel({
   }
 
   async function removeRow(id: string) {
-    if (!confirm("Eliminar esta conta a pagar?")) return;
-    const res = await fetch(`/api/finance/payables/${id}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    const j = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
-      toast.error(j.error ?? "Erro");
-      return;
+    if (!confirm("Excluir esta conta a pagar?")) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/finance/payables/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(j.error ?? "Erro");
+        return;
+      }
+      toast.success("Excluído.");
+      void load();
+    } finally {
+      setDeletingId(null);
     }
-    toast.success("Eliminado.");
-    void load();
   }
 
   const supplierName = useMemo(() => {
@@ -301,66 +330,82 @@ export function PayablesPanel({
         key: "description",
         label: "Descrição",
         type: "text",
-        width: "w-[22%]",
-        accessor: (row) => row.description,
+        width: FINANCE_TABLE_WIDTHS.description,
+        accessor: (row) => formatShortFinanceDescription(row.description),
+        render: (row) => {
+          const label = formatShortFinanceDescription(row.description);
+          if (row.purchase_order_id) {
+            return (
+              <Link
+                href={`/purchasing/orders/${row.purchase_order_id}`}
+                className="text-sm font-medium text-brand-700 hover:text-brand-900 hover:underline"
+              >
+                {label}
+              </Link>
+            );
+          }
+          return <FinanceTextCell>{label}</FinanceTextCell>;
+        },
+      },
+      {
+        key: "entity",
+        label: "Entidade",
+        type: "text",
+        width: FINANCE_TABLE_WIDTHS.entity,
+        accessor: (row) => supplierName(row.supplier_id),
         render: (row) => (
-          <span className={CRONOGRAMA_TOKENS.cellText}>{row.description}</span>
+          <FinanceTextCell className="text-slate-700">
+            {supplierName(row.supplier_id)}
+          </FinanceTextCell>
         ),
       },
       {
-        key: "supplier",
-        label: "Fornecedor",
+        key: "direction",
+        label: "Tipo",
         type: "text",
-        width: "w-[18%]",
-        accessor: (row) => supplierName(row.supplier_id),
+        width: FINANCE_TABLE_WIDTHS.type,
+        accessor: () => "out",
+        render: () => <FinanceDirectionBadge direction="out" />,
       },
       {
         key: "due_date",
-        label: "Vencimento",
+        label: "Data",
         type: "date",
-        width: "w-[12%]",
+        width: FINANCE_TABLE_WIDTHS.date,
         accessor: (row) => row.due_date,
         truncate: false,
-        render: (row) => (
-          <span className="whitespace-nowrap">{row.due_date}</span>
-        ),
+        render: (row) => <FinanceDateCell iso={row.due_date} />,
       },
       {
         key: "original_amount",
-        label: "Original",
+        label: "Valor",
         type: "number",
-        width: "w-[11%]",
+        width: FINANCE_TABLE_WIDTHS.amount,
+        align: "right",
         accessor: (row) => row.original_amount,
         truncate: false,
         render: (row) => (
-          <span className="text-slate-600">{fmtBrl(row.original_amount)}</span>
+          <FinanceAmountCell direction="out" amount={row.original_amount} />
         ),
       },
       {
         key: "current_amount",
-        label: "Saldo",
+        label: "Saldo acumulado",
         type: "number",
-        width: "w-[11%]",
+        width: FINANCE_TABLE_WIDTHS.balance,
+        align: "right",
         accessor: (row) => row.current_amount,
         truncate: false,
         render: (row) => (
-          <span>
-            {fmtBrl(row.current_amount)}
+          <span className="inline-flex items-center gap-1">
+            <FinanceBalanceCell amount={row.current_amount} />
             {row.amount_locked ? (
-              <span className="ml-1 text-xs text-amber-700" title="Ajuste manual">
+              <span className="text-xs text-amber-700" title="Ajuste manual">
                 *
               </span>
             ) : null}
           </span>
         ),
-      },
-      {
-        key: "status",
-        label: "Estado",
-        type: "text",
-        width: "w-[12%]",
-        accessor: (row) =>
-          PAYABLE_STATUS_LABELS[row.status] ?? row.status,
       },
     ];
   }, [supplierName]);
@@ -515,48 +560,26 @@ export function PayablesPanel({
                 emptyMessage={`Sem contas em «${PAYABLES_LIST_TAB_LABELS[activeTab]}».`}
                 actionsColumn={{
                   label: "Acções",
-                  width: "w-[5rem]",
-                  render: (r) => (
-                    <div className="flex flex-col items-end gap-1">
-                      {r.status !== "paid" && r.status !== "cancelled" ? (
-                        <>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setAdjustOpen(r);
-                              setAdjustAmount(String(r.current_amount));
-                            }}
-                          >
-                            Ajustar valor
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setPayOpen(r);
-                              setPayAmount(String(r.current_amount));
-                            }}
-                          >
-                            Registrar pagamento
-                          </Button>
-                        </>
-                      ) : null}
-                      {isAdmin ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-700"
-                          onClick={() => void removeRow(r.id)}
-                        >
-                          Eliminar
-                        </Button>
-                      ) : null}
-                    </div>
-                  ),
+                  width: "w-[7rem]",
+                  render: (r) => {
+                    const open =
+                      r.status !== "paid" && r.status !== "cancelled";
+                    return (
+                      <FinanceRowActions
+                        canSettle={open}
+                        canEdit={open}
+                        canDelete={isAdmin}
+                        deleting={deletingId === r.id}
+                        settleLabel="Concretizar pagamento"
+                        onSettle={() => {
+                          setPayOpen(r);
+                          setPayAmount(String(r.current_amount));
+                        }}
+                        onEdit={() => setEditOpen(r)}
+                        onDelete={() => void removeRow(r.id)}
+                      />
+                    );
+                  },
                 }}
               />
             </CronogramaPanel>
@@ -564,69 +587,24 @@ export function PayablesPanel({
         ))}
       </Tabs>
 
-      {adjustOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="text-base">Ajustar valor</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-slate-600">{adjustOpen.description}</p>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-slate-500">Valor original (pedido)</p>
-                  <p className="font-medium">{fmtBrl(adjustOpen.original_amount)}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Saldo actual</p>
-                  <p className="font-medium">{fmtBrl(adjustOpen.current_amount)}</p>
-                </div>
-              </div>
-              {adjustOpen.amount_locked ? (
-                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                  Esta parcela já foi ajustada manualmente. Um novo ajuste actualiza o
-                  saldo e mantém a trava activa.
-                </p>
-              ) : (
-                <p className="text-xs text-slate-500">
-                  Ao confirmar, o valor fica travado e não será alterado por recálculos
-                  do pedido de compra.
-                </p>
-              )}
-              <div className="space-y-1">
-                <Label>Novo saldo (R$)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={adjustAmount}
-                  onChange={(e) => setAdjustAmount(e.target.value)}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setAdjustOpen(null);
-                    setAdjustAmount("");
-                  }}
-                >
-                  Cancelar
-                </Button>
-                <Button type="button" onClick={() => void submitAdjustAmount()}>
-                  Confirmar ajuste
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
+      <FinanceTitleEditDialog
+        open={Boolean(editOpen)}
+        title="Editar conta a pagar"
+        description={editOpen?.description ?? ""}
+        currentAmount={editOpen?.current_amount ?? 0}
+        originalAmount={editOpen?.original_amount}
+        dueDate={editOpen?.due_date ?? ""}
+        amountLocked={editOpen?.amount_locked}
+        saving={editSaving}
+        onClose={() => setEditOpen(null)}
+        onSave={submitEdit}
+      />
 
       {payOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <Card className="w-full max-w-md">
             <CardHeader>
-              <CardTitle className="text-base">Registrar pagamento</CardTitle>
+              <CardTitle className="text-base">Concretizar pagamento</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-slate-600">

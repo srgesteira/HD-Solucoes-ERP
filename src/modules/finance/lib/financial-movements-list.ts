@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { formatShortFinanceDescription } from "@/modules/finance/lib/finance-line-format";
 
 type Admin = SupabaseClient<Database>;
 
@@ -30,6 +31,8 @@ export type FinancialMovementListItem = {
   direction: "in" | "out";
   amount: number;
   description: string;
+  short_description: string;
+  entity_name: string | null;
   cumulative_balance: number;
   origin: FinancialMovementOrigin;
   source_kind: "payable" | "receivable" | "manual";
@@ -143,6 +146,72 @@ async function buildFinancialOriginMaps(
   }
 
   return { poMap, soMap };
+}
+
+async function buildEntityMaps(
+  admin: Admin,
+  tenantId: string,
+  rows: UnifiedRow[]
+): Promise<{
+  payableEntity: Map<string, string>;
+  receivableEntity: Map<string, string>;
+}> {
+  const payableEntity = new Map<string, string>();
+  const receivableEntity = new Map<string, string>();
+
+  const payableIds = [
+    ...new Set(
+      rows.filter((r) => r.source_kind === "payable").map((r) => r.source_id)
+    ),
+  ];
+  const receivableIds = [
+    ...new Set(
+      rows.filter((r) => r.source_kind === "receivable").map((r) => r.source_id)
+    ),
+  ];
+
+  if (payableIds.length) {
+    const { data, error } = await admin
+      .from("accounts_payable")
+      .select("id, supplier_id, suppliers(name)")
+      .eq("tenant_id", tenantId)
+      .in("id", payableIds);
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const supplier = row.suppliers as { name?: string } | null;
+      const name = supplier?.name?.trim();
+      if (row.id && name) payableEntity.set(row.id, name);
+    }
+  }
+
+  if (receivableIds.length) {
+    const { data, error } = await admin
+      .from("receivables")
+      .select("id, client_name")
+      .eq("tenant_id", tenantId)
+      .in("id", receivableIds);
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const name = row.client_name?.trim();
+      if (row.id && name) receivableEntity.set(row.id, name);
+    }
+  }
+
+  return { payableEntity, receivableEntity };
+}
+
+function resolveEntityName(
+  row: UnifiedRow,
+  payableEntity: Map<string, string>,
+  receivableEntity: Map<string, string>
+): string | null {
+  if (row.source_kind === "payable") {
+    return payableEntity.get(row.source_id) ?? null;
+  }
+  if (row.source_kind === "receivable") {
+    return receivableEntity.get(row.source_id) ?? null;
+  }
+  return null;
 }
 
 function resolveOrigin(
@@ -325,6 +394,11 @@ export async function listFinancialMovements(
     tenantId,
     pageRows
   );
+  const { payableEntity, receivableEntity } = await buildEntityMaps(
+    admin,
+    tenantId,
+    pageRows
+  );
 
   const data: FinancialMovementListItem[] = pageRows.map((row) => ({
     id: row.uid,
@@ -333,6 +407,8 @@ export async function listFinancialMovements(
     direction: row.direction,
     amount: roundMoney(Math.abs(row.amount)),
     description: row.description,
+    short_description: formatShortFinanceDescription(row.description),
+    entity_name: resolveEntityName(row, payableEntity, receivableEntity),
     cumulative_balance: cumulativeByUid.get(row.uid) ?? openingBalance,
     origin: resolveOrigin(row, poMap, soMap),
     source_kind: row.source_kind,

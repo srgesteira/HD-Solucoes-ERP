@@ -2,25 +2,31 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type {
+  MenuAlertDetail,
   MenuAlertEntry,
   MenuAlertsMap,
+  MenuAlertsPayload,
 } from "@/modules/core/lib/navigation/menu-alerts";
 
 export const menuAlertsQueryKey = ["menu-alerts"] as const;
 
-async function fetchMenuAlerts(): Promise<MenuAlertsMap> {
+async function fetchMenuAlerts(): Promise<MenuAlertsPayload> {
   const res = await fetch("/api/menu-alerts", {
     credentials: "include",
     cache: "no-store",
   });
   const json = (await res.json().catch(() => ({}))) as {
     alerts?: MenuAlertsMap;
+    details?: MenuAlertDetail[];
     error?: string;
   };
   if (!res.ok) {
     throw new Error(json.error ?? "Erro ao carregar alertas do menu");
   }
-  return json.alerts ?? {};
+  return {
+    alerts: json.alerts ?? {},
+    details: json.details ?? [],
+  };
 }
 
 export function useMenuAlerts() {

@@ -67,6 +67,10 @@ import {
   type MenuAlertEntry,
   type MenuAlertLevel,
 } from "@/modules/core/lib/navigation/menu-alerts";
+import {
+  MenuAlertBadge,
+  PagePendingAlerts,
+} from "@/components/layout/menu-alert-ui";
 
 const PRODUCTION_MENU_TITLE = "Produção";
 const LOADING_LINES_NAV_HREF = "__loading_lines__";
@@ -582,14 +586,7 @@ function MenuItemLabel({
     <>
       <span className="truncate">{title}</span>
       {entry && entry.count > 0 ? (
-        <span
-          className={cn(
-            "ml-auto inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none min-w-[20px]",
-            badgeClassForLevel(entry.level)
-          )}
-        >
-          {entry.count}
-        </span>
+        <MenuAlertBadge entry={entry} className="ml-auto" />
       ) : null}
     </>
   );
@@ -610,7 +607,7 @@ export function AppShell({ children, user }: AppShellProps) {
   });
 
   const menuAlertsQ = useMenuAlerts();
-  const menuAlerts = menuAlertsQ.data;
+  const menuAlerts = menuAlertsQ.data?.alerts;
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const o: Record<string, boolean> = {};
@@ -881,6 +878,7 @@ export function AppShell({ children, user }: AppShellProps) {
             isQuotePrintRoute && "print:p-0"
           )}
         >
+          {!isQuotePrintRoute ? <PagePendingAlerts /> : null}
           {children}
         </main>
       </div>

@@ -15,11 +15,19 @@ import {
   CronogramaPagination,
 } from "@/shared/ui/cronograma-layout";
 import { cn } from "@/shared/utils/cn";
-import { formatShortDate } from "@/shared/utils/date";
 import type {
   FinancialMovementListItem,
   ListFinancialMovementsResult,
 } from "@/modules/finance/lib/financial-movements-list";
+import { formatShortFinanceDescription } from "@/modules/finance/lib/finance-line-format";
+import {
+  FinanceAmountCell,
+  FinanceBalanceCell,
+  FinanceDateCell,
+  FinanceDirectionBadge,
+  FinanceTextCell,
+  FINANCE_TABLE_WIDTHS,
+} from "@/components/finance/finance-table-ui";
 
 type DirectionFilter = "all" | "in" | "out";
 
@@ -43,64 +51,6 @@ function fmtBrl(n: number) {
     style: "currency",
     currency: "BRL",
   }).format(n);
-}
-
-function formatMovementDate(iso: string): string {
-  const formatted = formatShortDate(iso.slice(0, 10));
-  return formatted === "--" ? "—" : formatted;
-}
-
-function directionBadge(direction: "in" | "out") {
-  if (direction === "in") {
-    return (
-      <span className="inline-flex rounded-md px-2 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200">
-        Entrada
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex rounded-md px-2 py-0.5 text-xs font-medium bg-red-50 text-red-800 ring-1 ring-red-200">
-      Saída
-    </span>
-  );
-}
-
-function amountCell(direction: "in" | "out", amount: number) {
-  const formatted = fmtBrl(amount);
-  if (direction === "in") {
-    return (
-      <span className="tabular-nums font-medium text-emerald-700">
-        +{formatted}
-      </span>
-    );
-  }
-  return (
-    <span className="tabular-nums font-medium text-red-700">−{formatted}</span>
-  );
-}
-
-function originCell(origin: FinancialMovementListItem["origin"]) {
-  if (origin.kind === "purchase_order") {
-    return (
-      <Link
-        href={`/purchasing/orders/${origin.purchase_order_id}`}
-        className="text-sm font-medium text-brand-700 hover:text-brand-900 hover:underline"
-      >
-        {origin.label}
-      </Link>
-    );
-  }
-  if (origin.kind === "sales_order") {
-    return (
-      <Link
-        href={`/sales/orders/${origin.sales_order_id}`}
-        className="text-sm font-medium text-brand-700 hover:text-brand-900 hover:underline"
-      >
-        {origin.label}
-      </Link>
-    );
-  }
-  return <span className="text-sm text-slate-700">{origin.label}</span>;
 }
 
 async function fetchMovements(
@@ -173,77 +123,94 @@ export function FinanceMovementsTab() {
   const columns = useMemo((): SortableTableColumn<FinancialMovementListItem>[] => {
     return [
       {
-        key: "movement_date",
-        label: "Data",
-        type: "text",
-        width: "w-[11%]",
-        accessor: (row) => row.movement_date,
-        sortable: false,
-        render: (row) => (
-          <span className="text-sm text-slate-700 whitespace-nowrap">
-            {formatMovementDate(row.movement_date)}
-          </span>
-        ),
-      },
-      {
-        key: "description",
+        key: "short_description",
         label: "Descrição",
         type: "text",
-        width: "w-[28%]",
-        accessor: (row) => row.description,
+        width: FINANCE_TABLE_WIDTHS.description,
+        accessor: (row) => row.short_description,
+        sortable: false,
+        render: (row) => {
+          const label =
+            row.short_description ||
+            formatShortFinanceDescription(row.description);
+          if (row.origin.kind === "purchase_order") {
+            return (
+              <Link
+                href={`/purchasing/orders/${row.origin.purchase_order_id}`}
+                className="text-sm font-medium text-brand-700 hover:text-brand-900 hover:underline"
+              >
+                {label}
+              </Link>
+            );
+          }
+          if (row.origin.kind === "sales_order") {
+            return (
+              <Link
+                href={`/sales/orders/${row.origin.sales_order_id}`}
+                className="text-sm font-medium text-brand-700 hover:text-brand-900 hover:underline"
+              >
+                {label}
+              </Link>
+            );
+          }
+          return <FinanceTextCell>{label}</FinanceTextCell>;
+        },
+      },
+      {
+        key: "entity_name",
+        label: "Entidade",
+        type: "text",
+        width: FINANCE_TABLE_WIDTHS.entity,
+        accessor: (row) => row.entity_name ?? "",
         sortable: false,
         render: (row) => (
-          <span className="text-sm text-slate-800">{row.description}</span>
+          <FinanceTextCell className="text-slate-700">
+            {row.entity_name ?? "—"}
+          </FinanceTextCell>
         ),
       },
       {
         key: "direction",
         label: "Tipo",
         type: "text",
-        width: "w-[10%]",
+        width: FINANCE_TABLE_WIDTHS.type,
         accessor: (row) => row.direction,
         sortable: false,
-        render: (row) => directionBadge(row.direction),
+        render: (row) => <FinanceDirectionBadge direction={row.direction} />,
+      },
+      {
+        key: "movement_date",
+        label: "Data",
+        type: "text",
+        width: FINANCE_TABLE_WIDTHS.date,
+        accessor: (row) => row.movement_date,
+        sortable: false,
+        render: (row) => <FinanceDateCell iso={row.movement_date} />,
       },
       {
         key: "amount",
         label: "Valor",
         type: "number",
-        width: "w-[13%]",
+        width: FINANCE_TABLE_WIDTHS.amount,
         align: "right",
         accessor: (row) => row.amount,
         sortable: false,
         truncate: false,
-        render: (row) => amountCell(row.direction, row.amount),
-      },
-      {
-        key: "origin",
-        label: "Origem",
-        type: "text",
-        width: "w-[22%]",
-        accessor: (row) => row.origin.label,
-        sortable: false,
-        truncate: false,
-        render: (row) => originCell(row.origin),
+        render: (row) => (
+          <FinanceAmountCell direction={row.direction} amount={row.amount} />
+        ),
       },
       {
         key: "cumulative_balance",
         label: "Saldo acumulado",
         type: "number",
-        width: "w-[16%]",
+        width: FINANCE_TABLE_WIDTHS.balance,
         align: "right",
         accessor: (row) => row.cumulative_balance,
         sortable: false,
         truncate: false,
         render: (row) => (
-          <span
-            className={cn(
-              "tabular-nums text-sm font-medium",
-              row.cumulative_balance < 0 ? "text-red-700" : "text-slate-800"
-            )}
-          >
-            {fmtBrl(row.cumulative_balance)}
-          </span>
+          <FinanceBalanceCell amount={row.cumulative_balance} />
         ),
       },
     ];

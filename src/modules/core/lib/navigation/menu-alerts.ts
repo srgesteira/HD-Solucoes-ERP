@@ -12,10 +12,11 @@ export const MENU_ALERT_PATHS = {
   pcpPlanning: "/logistics/pcp",
   financeContas: "/finance/contas",
   financePayables: "/finance/contas?tab=pagar",
+  financePayablesOverdue: "/finance/contas?tab=pagar&overdue=1",
   financeReceivables: "/finance/contas?tab=receber",
+  financeReceivablesOverdue: "/finance/contas?tab=receber&overdue=1",
   financeCreditAnalysis: "/finance/credit-analysis",
   fiscalInvoicing: "/faturamento/fiscal",
-  financeOverdueReceivables: "/finance/contas?tab=receber",
   salesQuotes: "/sales/quotes",
   salesOrders: "/sales/orders",
   dataHealth: "/data-health",
@@ -40,6 +41,20 @@ export type MenuAlertEntry = {
 
 export type MenuAlertsMap = Record<string, MenuAlertEntry>;
 
+/** Item descritivo para o rastro de pendências dentro de cada módulo. */
+export type MenuAlertDetail = {
+  id: string;
+  href: string;
+  label: string;
+  count: number;
+  level: MenuAlertLevel;
+};
+
+export type MenuAlertsPayload = {
+  alerts: MenuAlertsMap;
+  details: MenuAlertDetail[];
+};
+
 const LEVEL_RANK: Record<MenuAlertLevel, number> = {
   info: 0,
   attention: 1,
@@ -54,21 +69,43 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function countLabel(count: number, singular: string, plural: string): string {
+  return count === 1 ? `1 ${singular}` : `${count} ${plural}`;
+}
+
+type PushAlertOptions = {
+  detailId?: string;
+  detailHref?: string;
+  detailLabel?: string;
+};
+
 /** Soma uma contribuição ao alerta de um caminho, elevando o nível se necessário. */
 function pushAlert(
   alerts: MenuAlertsMap,
+  details: MenuAlertDetail[],
   href: string,
   count: number,
-  level: MenuAlertLevel
+  level: MenuAlertLevel,
+  options?: PushAlertOptions
 ): void {
   if (!count || count <= 0) return;
   const cur = alerts[href];
   if (!cur) {
     alerts[href] = { count, level };
-    return;
+  } else {
+    cur.count += count;
+    cur.level = maxLevel(cur.level, level);
   }
-  cur.count += count;
-  cur.level = maxLevel(cur.level, level);
+
+  if (options?.detailLabel) {
+    details.push({
+      id: options.detailId ?? `${href}:${level}:${details.length}`,
+      href: options.detailHref ?? href,
+      label: options.detailLabel,
+      count,
+      level,
+    });
+  }
 }
 
 export async function loadMenuAlerts(
@@ -81,8 +118,9 @@ export async function loadMenuAlerts(
     vendas: boolean;
     pcp: boolean;
   }
-): Promise<MenuAlertsMap> {
+): Promise<MenuAlertsPayload> {
   const alerts: MenuAlertsMap = {};
+  const details: MenuAlertDetail[] = [];
   const today = todayIso();
 
   const tasks: Promise<void>[] = [];
@@ -90,7 +128,21 @@ export async function loadMenuAlerts(
   if (access.compras) {
     tasks.push(
       countPurchaseRequisitions(admin, tenantId).then((n) => {
-        pushAlert(alerts, MENU_ALERT_PATHS.purchasingOrders, n, "attention");
+        pushAlert(
+          alerts,
+          details,
+          MENU_ALERT_PATHS.purchasingOrders,
+          n,
+          "attention",
+          {
+            detailId: "purchasing.requisitions",
+            detailLabel: countLabel(
+              n,
+              "requisição de compra pendente",
+              "requisições de compra pendentes"
+            ),
+          }
+        );
       })
     );
   }
@@ -104,11 +156,21 @@ export async function loadMenuAlerts(
           .eq("tenant_id", tenantId)
           .eq("engineering_workflow_status", ENGINEERING_STATUS_PENDING);
         if (!error) {
+          const n = count ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.products,
-            count ?? 0,
-            "attention"
+            n,
+            "attention",
+            {
+              detailId: "engineering.products",
+              detailLabel: countLabel(
+                n,
+                "produto aguardando engenharia",
+                "produtos aguardando engenharia"
+              ),
+            }
           );
         }
       })()
@@ -126,11 +188,22 @@ export async function loadMenuAlerts(
           .in("status", ["pending", "overdue"])
           .lt("due_date", today);
         if (!e1) {
+          const n = overdue ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.financePayables,
-            overdue ?? 0,
-            "urgent"
+            n,
+            "urgent",
+            {
+              detailId: "finance.payables.overdue",
+              detailHref: MENU_ALERT_PATHS.financePayablesOverdue,
+              detailLabel: countLabel(
+                n,
+                "conta a pagar vencida",
+                "contas a pagar vencidas"
+              ),
+            }
           );
         }
         // Contas a pagar VENCENDO HOJE — atenção.
@@ -141,11 +214,22 @@ export async function loadMenuAlerts(
           .in("status", ["pending", "overdue"])
           .eq("due_date", today);
         if (!e2) {
+          const n = today_ ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.financePayables,
-            today_ ?? 0,
-            "attention"
+            n,
+            "attention",
+            {
+              detailId: "finance.payables.today",
+              detailHref: MENU_ALERT_PATHS.financePayables,
+              detailLabel: countLabel(
+                n,
+                "conta a pagar vence hoje",
+                "contas a pagar vencem hoje"
+              ),
+            }
           );
         }
       })()
@@ -161,11 +245,22 @@ export async function loadMenuAlerts(
           .in("status", ["pending", "partial"])
           .eq("due_date", today);
         if (!error) {
+          const n = count ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.financeReceivables,
-            count ?? 0,
-            "attention"
+            n,
+            "attention",
+            {
+              detailId: "finance.receivables.today",
+              detailHref: `${MENU_ALERT_PATHS.financeReceivables}&status=pending`,
+              detailLabel: countLabel(
+                n,
+                "conta a receber vence hoje",
+                "contas a receber vencem hoje"
+              ),
+            }
           );
         }
       })()
@@ -181,11 +276,22 @@ export async function loadMenuAlerts(
           .in("status", ["pending", "partial"])
           .lt("due_date", today);
         if (!error) {
+          const n = count ?? 0;
           pushAlert(
             alerts,
-            MENU_ALERT_PATHS.financeOverdueReceivables,
-            count ?? 0,
-            "urgent"
+            details,
+            MENU_ALERT_PATHS.financeReceivables,
+            n,
+            "urgent",
+            {
+              detailId: "finance.receivables.overdue",
+              detailHref: MENU_ALERT_PATHS.financeReceivablesOverdue,
+              detailLabel: countLabel(
+                n,
+                "conta a receber vencida",
+                "contas a receber vencidas"
+              ),
+            }
           );
         }
       })()
@@ -199,11 +305,21 @@ export async function loadMenuAlerts(
           .eq("tenant_id", tenantId)
           .eq("status", "pending");
         if (!error) {
+          const n = count ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.financeCreditAnalysis,
-            count ?? 0,
-            "attention"
+            n,
+            "attention",
+            {
+              detailId: "finance.credit-analysis",
+              detailLabel: countLabel(
+                n,
+                "análise de crédito pendente",
+                "análises de crédito pendentes"
+              ),
+            }
           );
         }
       })()
@@ -224,11 +340,21 @@ export async function loadMenuAlerts(
             "approved",
           ]);
         if (!readyErr) {
+          const n = readyCount ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.fiscalInvoicing,
-            readyCount ?? 0,
-            "attention"
+            n,
+            "attention",
+            {
+              detailId: "fiscal.ready-for-invoice",
+              detailLabel: countLabel(
+                n,
+                "pedido pronto para faturar",
+                "pedidos prontos para faturar"
+              ),
+            }
           );
         }
         // §7.1: pedidos efetivados com fiscal por conferir desde já,
@@ -241,11 +367,21 @@ export async function loadMenuAlerts(
           .in("status", ["pending", "confirmed", "in_production"])
           .in("fiscal_status", ["pending", "no_rules"]);
         if (!pendingErr) {
+          const n = pendingFiscalCount ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.fiscalInvoicing,
-            pendingFiscalCount ?? 0,
-            "attention"
+            n,
+            "attention",
+            {
+              detailId: "fiscal.pending-review",
+              detailLabel: countLabel(
+                n,
+                "pedido com fiscal por conferir",
+                "pedidos com fiscal por conferir"
+              ),
+            }
           );
         }
         // Pedidos com fiscal pedindo revisão — urgente (algo travou o motor).
@@ -256,11 +392,21 @@ export async function loadMenuAlerts(
           .eq("fiscal_status", "review_required")
           .in("status", ["pending", "confirmed", "in_production"]);
         if (!reviewErr) {
+          const n = reviewCount ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.fiscalInvoicing,
-            reviewCount ?? 0,
-            "urgent"
+            n,
+            "urgent",
+            {
+              detailId: "fiscal.review-required",
+              detailLabel: countLabel(
+                n,
+                "pedido com fiscal a rever",
+                "pedidos com fiscal a rever"
+              ),
+            }
           );
         }
         // NF-e em erro — urgente.
@@ -270,11 +416,17 @@ export async function loadMenuAlerts(
           .eq("tenant_id", tenantId)
           .eq("status", "error");
         if (!nfeErr) {
+          const n = nfeErrCount ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.fiscalInvoicing,
-            nfeErrCount ?? 0,
-            "urgent"
+            n,
+            "urgent",
+            {
+              detailId: "fiscal.nfe-error",
+              detailLabel: countLabel(n, "NF-e em erro", "NF-e em erro"),
+            }
           );
         }
       })()
@@ -290,11 +442,21 @@ export async function loadMenuAlerts(
           .eq("tenant_id", tenantId)
           .eq("awaiting_commercial_finalize", true);
         if (!error) {
+          const n = count ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.salesQuotes,
-            count ?? 0,
-            "attention"
+            n,
+            "attention",
+            {
+              detailId: "sales.quotes.finalize",
+              detailLabel: countLabel(
+                n,
+                "orçamento aguardando finalização",
+                "orçamentos aguardando finalização"
+              ),
+            }
           );
         }
       })()
@@ -311,11 +473,21 @@ export async function loadMenuAlerts(
           .eq("mrp_processed", false)
           .in("status", ["pending", "confirmed", "in_production"]);
         if (!error) {
+          const n = count ?? 0;
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.pcpPlanning,
-            count ?? 0,
-            "attention"
+            n,
+            "attention",
+            {
+              detailId: "pcp.mrp-pending",
+              detailLabel: countLabel(
+                n,
+                "pedido aguardando planeamento MRP",
+                "pedidos aguardando planeamento MRP"
+              ),
+            }
           );
         }
       })()
@@ -330,10 +502,38 @@ export async function loadMenuAlerts(
         const blockers = issues.filter((i) => i.severity === "blocker").length;
         const warnings = issues.filter((i) => i.severity === "warning").length;
         if (blockers > 0) {
-          pushAlert(alerts, MENU_ALERT_PATHS.dataHealth, blockers, "urgent");
+          pushAlert(
+            alerts,
+            details,
+            MENU_ALERT_PATHS.dataHealth,
+            blockers,
+            "urgent",
+            {
+              detailId: "data-health.blockers",
+              detailLabel: countLabel(
+                blockers,
+                "bloqueio de dados",
+                "bloqueios de dados"
+              ),
+            }
+          );
         }
         if (warnings > 0) {
-          pushAlert(alerts, MENU_ALERT_PATHS.dataHealth, warnings, "attention");
+          pushAlert(
+            alerts,
+            details,
+            MENU_ALERT_PATHS.dataHealth,
+            warnings,
+            "attention",
+            {
+              detailId: "data-health.warnings",
+              detailLabel: countLabel(
+                warnings,
+                "aviso de dados",
+                "avisos de dados"
+              ),
+            }
+          );
         }
       } catch {
         /* ignora — não pode bloquear o menu */
@@ -355,16 +555,34 @@ export async function loadMenuAlerts(
         if (pendingBlockers > 0) {
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.onboarding,
             pendingBlockers,
-            "urgent"
+            "urgent",
+            {
+              detailId: "onboarding.blockers",
+              detailLabel: countLabel(
+                pendingBlockers,
+                "passo obrigatório de configuração",
+                "passos obrigatórios de configuração"
+              ),
+            }
           );
         } else if (pendingRecommended > 0) {
           pushAlert(
             alerts,
+            details,
             MENU_ALERT_PATHS.onboarding,
             pendingRecommended,
-            "info"
+            "info",
+            {
+              detailId: "onboarding.recommended",
+              detailLabel: countLabel(
+                pendingRecommended,
+                "recomendação de configuração",
+                "recomendações de configuração"
+              ),
+            }
           );
         }
       } catch {
@@ -374,7 +592,7 @@ export async function loadMenuAlerts(
   );
 
   await Promise.all(tasks);
-  return alerts;
+  return { alerts, details };
 }
 
 /** Soma alertas dos filhos de um grupo (propaga para o título do grupo). */
@@ -391,4 +609,15 @@ export function groupAlertTotal(
     level = maxLevel(level, e.level);
   }
   return { count, level };
+}
+
+/** Pendências visíveis na página actual (mesmo destino ou sub-rota do alerta). */
+export function getPendingDetailsForPath(
+  pathname: string,
+  details: MenuAlertDetail[]
+): MenuAlertDetail[] {
+  return details.filter((d) => {
+    const base = d.href.split("?")[0];
+    return pathname === base || pathname.startsWith(`${base}/`);
+  });
 }
