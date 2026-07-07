@@ -31,6 +31,7 @@ import {
 import { parseSaleLines } from "@/modules/vendas/lib/sales/sales-flow";
 import {
   ensureReceivablesSyncedForSalesOrder,
+  confirmProvisionalReceivablesForSalesOrder,
   salesOrderRowToReceivablesInput,
 } from "@/modules/vendas/lib/sales/sales-receivables";
 import {
@@ -572,6 +573,16 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const prevStatus = String(existing.status ?? "");
   const newStatus = String(detailRow.status ?? prevStatus);
+  if (newStatus === "delivered" && prevStatus !== "delivered") {
+    try {
+      await confirmProvisionalReceivablesForSalesOrder(admin, tenantId, id);
+    } catch (recvErr) {
+      console.warn(
+        "[sales-order] Falha ao confirmar recebíveis na entrega:",
+        recvErr instanceof Error ? recvErr.message : recvErr
+      );
+    }
+  }
   if (newStatus === "confirmed" && prevStatus !== "confirmed") {
     try {
       await reserveFinishedGoodsForSalesOrder(admin, tenantId, id, user.id);

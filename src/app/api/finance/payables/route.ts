@@ -41,7 +41,8 @@ export async function GET(request: NextRequest) {
   let q = admin
     .from("accounts_payable")
     .select("*", { count: "exact" })
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .eq("is_forecast", false);
 
   if (tab === "open") {
     q = q.in("status", [...UNPAID_STATUSES]).lte("due_date", today);

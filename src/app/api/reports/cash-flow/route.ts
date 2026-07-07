@@ -50,10 +50,9 @@ export async function GET(request: NextRequest) {
 
   const { data: receivables, error: rErr } = await admin
     .from("receivables")
-    .select("id, due_date, current_amount, status, client_name")
+    .select("id, due_date, current_amount, status, client_name, is_forecast")
     .eq("tenant_id", tenantId)
-    .in("status", ["pending", "partial"])
-    .eq("is_forecast", false);
+    .in("status", ["pending", "partial"]);
 
   if (rErr) {
     return apiError("Recebíveis: " + rErr.message, 500);
@@ -163,7 +162,8 @@ export async function GET(request: NextRequest) {
     summary,
     meta: {
       opening_balance_source: "company_settings.cash_flow_opening_balance",
-      inflow_source: "receivables (pending/partial) por due_date",
+      inflow_source:
+        "receivables (pending/partial, real + provisório) por due_date",
       outflow_source:
         "accounts_payable (pending/partial) por due_date; PCs confirmados sem AP por expected_delivery",
     },

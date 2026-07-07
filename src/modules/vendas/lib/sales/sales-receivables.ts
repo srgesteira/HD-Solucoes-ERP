@@ -198,7 +198,7 @@ export async function ensureReceivablesSyncedForSalesOrder(
   return syncReceivablesForSalesOrder(admin, tenantId, order);
 }
 
-/** Títulos provisórios (conversão) → definitivos após crédito aprovado. */
+/** Títulos provisórios → definitivos após entrega do pedido (status delivered). */
 export async function confirmProvisionalReceivablesForSalesOrder(
   admin: Admin,
   tenantId: string,
@@ -209,7 +209,6 @@ export async function confirmProvisionalReceivablesForSalesOrder(
     .update({ is_forecast: false })
     .eq("tenant_id", tenantId)
     .eq("sales_order_id", salesOrderId)
-    .eq("is_forecast", true)
     .eq("status", "pending")
     .select("id");
 

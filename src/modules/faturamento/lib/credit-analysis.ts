@@ -2,8 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { publishEvent } from "@/shared/events/publish";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
-import { confirmProvisionalReceivablesForSalesOrder } from "@/modules/vendas/lib/sales/sales-receivables";
-
 type Admin = SupabaseClient<Database>;
 
 export type CreditAnalysisRow = {
@@ -71,19 +69,6 @@ export async function approveCreditAnalysis(
     .single();
 
   if (error) throw new Error(error.message);
-
-  try {
-    await confirmProvisionalReceivablesForSalesOrder(
-      admin,
-      tenantId,
-      String(row.sales_order_ref)
-    );
-  } catch (recvErr) {
-    console.warn(
-      "[credit-analysis] Falha ao confirmar recebíveis provisórios:",
-      recvErr instanceof Error ? recvErr.message : recvErr
-    );
-  }
 
   await publishEvent(
     admin,
