@@ -117,7 +117,10 @@ export async function closeSalesOrderBilling(
       };
     }
     const fiscal = so.fiscal_status ?? "pending";
-    if (!isFiscalConfigured(fiscal)) {
+    if (
+      !isFiscalConfigured(fiscal) &&
+      so.billing_plan !== "without_invoice"
+    ) {
       return {
         ok: false,
         reasons: ["Conferência fiscal pendente — configure impostos antes de fechar."],

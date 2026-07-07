@@ -577,7 +577,7 @@ export default function FiscalInvoicingPage() {
                   title={
                     row.can_confirm_without_invoice
                       ? "Confirmar entrega sem nota — vai para Autorizadas"
-                      : "Conferência fiscal pendente: clique no ✨ e aplique as regras antes de confirmar"
+                      : "Aguardando liberação da produção ou crédito para confirmar sem nota"
                   }
                   onClick={() => closeWithoutInvoiceMutation.mutate(row.id)}
                 >

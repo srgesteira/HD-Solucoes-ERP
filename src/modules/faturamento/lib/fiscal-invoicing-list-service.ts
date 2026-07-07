@@ -353,7 +353,6 @@ export async function listFiscalInvoicingOrders(
     const canConfirmWithoutInvoice =
       semNota &&
       row.ready_for_invoice &&
-      isFiscalConfigured(fiscal) &&
       !row.billing_closure &&
       row.status !== "cancelled" &&
       credit !== "pending" &&

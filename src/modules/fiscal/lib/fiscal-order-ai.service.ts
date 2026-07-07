@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import {
   getAnthropicClient,
   getAnthropicModelId,
@@ -8,6 +9,10 @@ import {
   applyFiscalToSalesOrderItems,
   parseUfFromAddress,
 } from "@/modules/fiscal/lib/fiscal-rules-service";
+import {
+  FISCAL_STATUS_LABELS,
+  type FiscalStatus,
+} from "@/modules/fiscal/lib/fiscal-rules-types";
 
 export type FiscalOrderAiPurpose =
   | "consumidor"
@@ -231,15 +236,44 @@ export async function assistFiscalSalesOrder(
     }
   );
 
+  if (applied.itemsProcessed === 0) {
+    throw new Error(
+      "Nenhum item do pedido tem produto vinculado. Associe produtos com NCM ao pedido antes de aplicar o fiscal."
+    );
+  }
+
+  let fiscalStatus = applied.fiscalStatus;
+  const hasBusinessContext = Boolean(customerPurpose || productNatureOverride);
+
+  if (
+    hasBusinessContext &&
+    (fiscalStatus === "no_rules" || fiscalStatus === "pending")
+  ) {
+    const db = asUntypedAdmin(admin);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: updErr } = await (db.from("sales_orders") as any)
+      .update({ fiscal_status: "manual_override" })
+      .eq("id", salesOrderId)
+      .eq("tenant_id", tenantId);
+    if (updErr) throw new Error(updErr.message);
+    fiscalStatus = "manual_override";
+  }
+
+  const statusKey = (
+    fiscalStatus in FISCAL_STATUS_LABELS ? fiscalStatus : "pending"
+  ) as FiscalStatus;
+  const statusLabel = FISCAL_STATUS_LABELS[statusKey];
+  const baseSummary =
+    typeof parsed.summary === "string" && parsed.summary.trim()
+      ? parsed.summary.trim()
+      : "Contexto fiscal registado para o pedido.";
+
   return {
     destinationUf,
     customerPurpose,
     productNatureOverride,
-    summary:
-      typeof parsed.summary === "string" && parsed.summary.trim()
-        ? parsed.summary.trim()
-        : "Regras fiscais aplicadas com base no contexto do pedido.",
-    fiscalStatus: applied.fiscalStatus,
+    summary: `${baseSummary} Estado fiscal: ${statusLabel}.`,
+    fiscalStatus,
     itemsProcessed: applied.itemsProcessed,
   };
 }
