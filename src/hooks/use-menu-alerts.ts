@@ -46,5 +46,28 @@ export function alertEntryForHref(
   href: string
 ): MenuAlertEntry | undefined {
   if (!alerts || !href) return undefined;
-  return alerts[href];
+  const direct = alerts[href];
+  if (direct) return direct;
+
+  if (href === "/finance/contas") {
+    const parts = [
+      alerts["/finance/contas?tab=pagar"],
+      alerts["/finance/contas?tab=receber"],
+    ].filter(Boolean) as MenuAlertEntry[];
+    if (!parts.length) return undefined;
+    return parts.reduce<MenuAlertEntry>(
+      (acc, entry) => ({
+        count: acc.count + entry.count,
+        level:
+          entry.level === "urgent" || acc.level === "urgent"
+            ? "urgent"
+            : entry.level === "attention" || acc.level === "attention"
+              ? "attention"
+              : "info",
+      }),
+      { count: 0, level: "info" }
+    );
+  }
+
+  return undefined;
 }
