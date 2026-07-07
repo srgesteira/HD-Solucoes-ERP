@@ -98,6 +98,8 @@ type Props = {
   /** Ex.: botão de recebimento (só na página de detalhe). */
   totalsFooter?: ReactNode;
   canSave?: boolean;
+  /** Admin pode ajustar condições de pagamento mesmo após recebimento. */
+  isAdmin?: boolean;
 };
 
 function todayISODate(): string {
@@ -221,6 +223,7 @@ export function PurchaseOrderForm({
   embedded = false,
   totalsFooter,
   canSave = true,
+  isAdmin = false,
 }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -257,9 +260,14 @@ export function PurchaseOrderForm({
   const order = orderQuery.data;
   const canEditItems =
     !isEdit || Boolean(order && canEditPurchaseOrderItems(order.status));
+  const canEditPayment =
+    !isEdit ||
+    canEditItems ||
+    Boolean(isAdmin && order && order.status !== "cancelled");
   const canEditExtras = !isEdit || canEditItems;
   const fieldsDisabled = isEdit && !canEditItems;
-  const showSave = canSave && canEditItems;
+  const paymentFieldsDisabled = isEdit && !canEditPayment;
+  const showSave = canSave && (canEditItems || canEditPayment);
 
   const prevStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -445,6 +453,12 @@ export function PurchaseOrderForm({
       const itemsResult = buildPurchaseOrderItemsPayload(lines);
       if ("error" in itemsResult) throw new Error(itemsResult.error);
       body.items = itemsResult;
+    } else if (canEditPayment) {
+      body.payment_installments = paymentParsed.data.payment_installments;
+      body.payment_days_to_first_due =
+        paymentParsed.data.payment_days_to_first_due;
+      body.payment_days_between_installments =
+        paymentParsed.data.payment_days_between_installments;
     }
 
     return body;
@@ -524,6 +538,8 @@ export function PurchaseOrderForm({
           {order?.status === "received" || order?.status === "cancelled" ? (
             order?.status === "cancelled" ? (
               "Pedido cancelado: visualização apenas."
+            ) : canEditPayment ? (
+              "Pedido já recebido: itens e valores bloqueados. Condições de pagamento podem ser ajustadas — as contas a pagar serão recalculadas ao guardar."
             ) : (
               "Pedido já recebido: visualização apenas."
             )
@@ -662,7 +678,7 @@ export function PurchaseOrderForm({
             onPaymentDaysFirstChange={setPaymentDaysFirst}
             paymentDaysBetween={paymentDaysBetween}
             onPaymentDaysBetweenChange={setPaymentDaysBetween}
-            disabled={fieldsDisabled}
+            disabled={paymentFieldsDisabled}
           />
         </CardContent>
       </Card>

@@ -513,6 +513,7 @@ export default function PurchaseOrderDetailPage() {
         cancelHref="/purchasing/orders"
         embedded
         canSave={canPurchasing}
+        isAdmin={isAdmin}
         onSaved={async () => {
           await queryClient.invalidateQueries({
             queryKey: ["purchasing-order", orderId],
@@ -521,6 +522,7 @@ export default function PurchaseOrderDetailPage() {
             queryKey: ["purchasing-order-header", orderId],
           });
           await queryClient.invalidateQueries({ queryKey: ["purchasing-orders"] });
+          await queryClient.invalidateQueries({ queryKey: ["finance-payables"] });
           await refetch();
         }}
         totalsFooter={

@@ -73,6 +73,8 @@ export type GeneratePayablesResult = {
 
 export type SyncPayablesResult = {
   updated: number;
+  created: number;
+  deleted: number;
   lockedSkipped: number;
   warnings: string[];
 };
@@ -200,25 +202,62 @@ export async function generatePayablesForPurchaseOrder(
   return { created: rows.length };
 }
 
+type PayableRow = {
+  id: string;
+  installment_index: number | null;
+  original_amount: number;
+  current_amount: number;
+  status: string;
+  amount_locked: boolean;
+  due_date: string | null;
+  is_forecast: boolean;
+};
+
+function payableRowIsMutable(row: PayableRow): boolean {
+  const orig = Number(row.original_amount ?? 0);
+  const cur = Number(row.current_amount ?? 0);
+  const hasPayment = Math.abs(cur - orig) > 0.001;
+  return (
+    !row.amount_locked && row.status === "pending" && !hasPayment
+  );
+}
+
+function isForecastForPurchaseOrderStatus(status: string): boolean {
+  return status !== "received";
+}
+
 /**
- * Recalcula parcelas pendentes não travadas e sem pagamento parcial.
- * Parcelas com amount_locked ou saldo ≠ original não são alteradas.
+ * Alinha AP ao PC: atualiza parcelas mutáveis, cria faltantes e remove excedentes
+ * quando o número de parcelas ou valores/prazos mudam.
  */
-export async function syncPayablesForPurchaseOrder(
+export async function reconcilePayablesForPurchaseOrder(
   admin: Admin,
   tenantId: string,
-  order: PurchaseOrderForPayables
+  order: PurchaseOrderForPayables,
+  poStatus: string
 ): Promise<SyncPayablesResult> {
-  if (order.is_suggestion) {
-    return { updated: 0, lockedSkipped: 0, warnings: [] };
-  }
+  const empty: SyncPayablesResult = {
+    updated: 0,
+    created: 0,
+    deleted: 0,
+    lockedSkipped: 0,
+    warnings: [],
+  };
+
+  if (order.is_suggestion) return empty;
+
+  const total = purchaseOrderPayableTotal(order);
+  if (total <= 0) return empty;
+
   const warnings: string[] = [];
   const targets = buildPurchaseOrderPayableTargets(order);
+  const n = targets.amounts.length;
+  const isForecast = isForecastForPurchaseOrderStatus(poStatus);
 
   const { data: existing, error: loadErr } = await admin
     .from("accounts_payable")
     .select(
-      "id, installment_index, original_amount, current_amount, status, amount_locked, notes, due_date"
+      "id, installment_index, original_amount, current_amount, status, amount_locked, due_date, is_forecast"
     )
     .eq("tenant_id", tenantId)
     .eq("purchase_order_id", order.id)
@@ -226,64 +265,92 @@ export async function syncPayablesForPurchaseOrder(
     .order("installment_index", { ascending: true });
 
   if (loadErr) {
-    return { updated: 0, lockedSkipped: 0, warnings: [loadErr.message] };
+    return { ...empty, warnings: [loadErr.message] };
   }
-  if (!existing?.length) {
-    return { updated: 0, lockedSkipped: 0, warnings };
+
+  const byIndex = new Map<number, PayableRow>();
+  for (const row of existing ?? []) {
+    const idx = row.installment_index ?? 0;
+    if (idx > 0 && !byIndex.has(idx)) {
+      byIndex.set(idx, row as PayableRow);
+    }
   }
 
   let updated = 0;
+  let created = 0;
+  let deleted = 0;
   let lockedSkipped = 0;
 
-  for (const row of existing) {
-    const idx = (row.installment_index ?? 1) - 1;
-    const newAmt = targets.amounts[idx];
-    const newDue = targets.dueDates[idx];
-    const newDesc = targets.descriptions[idx];
-    if (newAmt === undefined || !newDue) continue;
+  for (let i = 0; i < n; i++) {
+    const installment = i + 1;
+    const newAmt = targets.amounts[i] ?? 0;
+    const newDue = targets.dueDates[i];
+    const newDesc =
+      targets.descriptions[i] ??
+      `Parcela ${installment}/${n} — PC ${order.po_number}`;
+    if (!newDue) continue;
+
+    const row = byIndex.get(installment);
+    if (!row) {
+      const { error } = await admin.from("accounts_payable").insert({
+        tenant_id: tenantId,
+        purchase_order_id: order.id,
+        source_kind: PAYABLE_SOURCE_PO,
+        installment_index: installment,
+        is_forecast: isForecast,
+        amount_locked: false,
+        description: newDesc,
+        category: "Fornecedor",
+        supplier_id: order.supplier_id,
+        original_amount: newAmt,
+        current_amount: newAmt,
+        due_date: newDue,
+        status: "pending",
+        notes: null,
+      });
+      if (error) {
+        warnings.push(`Criar parcela ${installment}: ${error.message}`);
+      } else {
+        created += 1;
+      }
+      continue;
+    }
+
+    if (!payableRowIsMutable(row)) {
+      lockedSkipped += 1;
+      const orig = Number(row.original_amount ?? 0);
+      const dueChanged =
+        row.due_date && newDue !== String(row.due_date).slice(0, 10);
+      if (
+        Math.abs(newAmt - orig) > 0.001 ||
+        dueChanged ||
+        row.is_forecast !== isForecast
+      ) {
+        warnings.push(
+          `Parcela ${installment} (${row.status}) não recalculada — requer decisão manual.`
+        );
+      }
+      continue;
+    }
 
     const orig = Number(row.original_amount ?? 0);
-    const cur = Number(row.current_amount ?? 0);
-    const hasPayment = Math.abs(cur - orig) > 0.001;
-
-    if (row.amount_locked) {
-      lockedSkipped += 1;
-      const dueChanged =
-        row.due_date && newDue !== String(row.due_date).slice(0, 10);
-      if (Math.abs(newAmt - orig) > 0.001 || dueChanged) {
-        warnings.push(
-          `Parcela ${row.installment_index ?? "?"} travada — PC alterado; mantido valor ${orig.toFixed(2)} e vencimento ${String(row.due_date).slice(0, 10)}.`
-        );
-      }
-      continue;
-    }
-
-    if (row.status !== "pending" || hasPayment) {
-      lockedSkipped += 1;
-      const dueChanged =
-        row.due_date && newDue !== String(row.due_date).slice(0, 10);
-      if (Math.abs(newAmt - orig) > 0.001 || dueChanged) {
-        warnings.push(
-          `Parcela ${row.installment_index ?? "?"} (${row.status}) não recalculada — requer decisão manual.`
-        );
-      }
-      continue;
-    }
-
     const dueChanged =
       row.due_date && newDue !== String(row.due_date).slice(0, 10);
     const amtChanged = Math.abs(newAmt - orig) > 0.001;
+    const forecastChanged = row.is_forecast !== isForecast;
 
-    if (!amtChanged && !dueChanged) continue;
+    if (!amtChanged && !dueChanged && !forecastChanged) continue;
 
-    const patch: Database["public"]["Tables"]["accounts_payable"]["Update"] =
-      {};
+    const patch: Database["public"]["Tables"]["accounts_payable"]["Update"] = {
+      description: newDesc,
+      supplier_id: order.supplier_id,
+      is_forecast: isForecast,
+    };
     if (amtChanged) {
       patch.original_amount = newAmt;
       patch.current_amount = newAmt;
     }
     if (dueChanged) patch.due_date = newDue;
-    if (newDesc) patch.description = newDesc;
 
     const { error } = await admin
       .from("accounts_payable")
@@ -292,13 +359,48 @@ export async function syncPayablesForPurchaseOrder(
       .eq("tenant_id", tenantId);
 
     if (error) {
-      warnings.push(`Parcela ${row.installment_index}: ${error.message}`);
+      warnings.push(`Parcela ${installment}: ${error.message}`);
     } else {
       updated += 1;
     }
   }
 
-  return { updated, lockedSkipped, warnings };
+  for (const row of existing ?? []) {
+    const idx = row.installment_index ?? 0;
+    if (idx <= 0 || idx <= n) continue;
+
+    if (!payableRowIsMutable(row as PayableRow)) {
+      lockedSkipped += 1;
+      warnings.push(
+        `Parcela ${idx} excedente (${row.status}) não removida — requer decisão manual.`
+      );
+      continue;
+    }
+
+    const { error } = await admin
+      .from("accounts_payable")
+      .delete()
+      .eq("id", row.id)
+      .eq("tenant_id", tenantId);
+
+    if (error) {
+      warnings.push(`Remover parcela ${idx}: ${error.message}`);
+    } else {
+      deleted += 1;
+    }
+  }
+
+  return { updated, created, deleted, lockedSkipped, warnings };
+}
+
+/** @deprecated Use reconcilePayablesForPurchaseOrder — mantido como alias. */
+export async function syncPayablesForPurchaseOrder(
+  admin: Admin,
+  tenantId: string,
+  order: PurchaseOrderForPayables,
+  poStatus: string
+): Promise<SyncPayablesResult> {
+  return reconcilePayablesForPurchaseOrder(admin, tenantId, order, poStatus);
 }
 
 export function shouldManagePayablesForStatus(status: string): boolean {
@@ -329,15 +431,66 @@ export async function ensurePayablesForPurchaseOrder(
       tenantId,
       order
     );
-    return { generate };
+    if ((generate.created ?? 0) > 0) {
+      return { generate };
+    }
+    const sync = await reconcilePayablesForPurchaseOrder(
+      admin,
+      tenantId,
+      order,
+      currentStatus
+    );
+    return { generate, sync };
   }
 
   if (shouldManagePayablesForStatus(previousStatus)) {
-    const sync = await syncPayablesForPurchaseOrder(admin, tenantId, order);
+    const sync = await reconcilePayablesForPurchaseOrder(
+      admin,
+      tenantId,
+      order,
+      currentStatus
+    );
     return { sync };
   }
 
   return {};
+}
+
+/** Sincroniza AP quando total, prazos ou data do pedido mudam (qualquer status). */
+export async function ensurePayablesSyncedForPurchaseOrder(
+  admin: Admin,
+  tenantId: string,
+  order: PurchaseOrderForPayables,
+  poStatus: string,
+  changedFields: {
+    total?: boolean;
+    payment_installments?: boolean;
+    payment_days_to_first_due?: boolean;
+    payment_days_between_installments?: boolean;
+    order_date?: boolean;
+    supplier_id?: boolean;
+  }
+): Promise<SyncPayablesResult | undefined> {
+  const shouldSync =
+    changedFields.total ||
+    changedFields.payment_installments ||
+    changedFields.payment_days_to_first_due ||
+    changedFields.payment_days_between_installments ||
+    changedFields.order_date ||
+    changedFields.supplier_id;
+
+  if (!shouldSync) return undefined;
+  if (shouldManagePayablesForStatus(poStatus)) return undefined;
+
+  const { count, error } = await admin
+    .from("accounts_payable")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("purchase_order_id", order.id);
+
+  if (error || (count ?? 0) === 0) return undefined;
+
+  return reconcilePayablesForPurchaseOrder(admin, tenantId, order, poStatus);
 }
 
 export function formatManualAdjustmentNote(
