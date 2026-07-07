@@ -35,7 +35,9 @@ type ReceivableRow = {
   id: string;
   client_name: string | null;
   description?: string | null;
+  original_amount?: number;
   current_amount: number;
+  paid_amount?: number;
   status: string;
   sales_order_id: string | null;
   due_date?: string | null;
@@ -72,6 +74,16 @@ function formatDate(iso: unknown): string {
   if (iso == null || iso === "") return "—";
   const formatted = formatShortDate(String(iso).slice(0, 10));
   return formatted === "--" ? "—" : formatted;
+}
+
+/** Saldo em aberto; para pagos, o valor recebido (não o saldo zero). */
+function receivableDisplayAmount(row: ReceivableRow): number {
+  if (row.status === "paid") {
+    const paid = Number(row.paid_amount ?? 0);
+    if (paid > 0.001) return paid;
+    return Number(row.original_amount ?? row.current_amount ?? 0);
+  }
+  return Number(row.current_amount ?? 0);
 }
 
 export function ReceivablesPanelRefreshButton({
@@ -214,7 +226,7 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
         [
           String(row.client_name ?? ""),
           String(row.due_date ?? ""),
-          Number(row.current_amount ?? 0),
+          Number(receivableDisplayAmount(row)),
           String(row.status ?? ""),
           RECEIVABLE_STATUS_LABELS[String(row.status ?? "")] ?? "",
         ],
@@ -262,11 +274,11 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
         type: "number",
         width: "w-[14%]",
         align: "right",
-        accessor: (row) => Number(row.current_amount ?? 0),
+        accessor: (row) => receivableDisplayAmount(row),
         truncate: false,
         render: (row) => (
           <span className="text-xs tabular-nums font-medium">
-            {fmtBrl(Number(row.current_amount ?? 0))}
+            {fmtBrl(receivableDisplayAmount(row))}
           </span>
         ),
       },
