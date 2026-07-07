@@ -65,6 +65,14 @@ function hitToProduct(hit: ProductSearchHit): PurchaseLineProduct {
   };
 }
 
+function initialLineDescription(hit: ProductSearchHit, p: PurchaseLineProduct): string {
+  const desc = hit.description?.trim();
+  if (desc) return desc;
+  const name = p.name?.trim();
+  if (name) return name;
+  return productLabel(p);
+}
+
 function lineFromProduct(
   hit: ProductSearchHit,
   base?: PurchaseOrderLineDraft
@@ -73,7 +81,7 @@ function lineFromProduct(
   const line: PurchaseOrderLineDraft = {
     ...(base ?? newPurchaseLine(0)),
     productId: p.id,
-    description: p.name.trim() || productLabel(p),
+    description: initialLineDescription(hit, p),
     unit: (p.unit && p.unit.trim()) || "UN",
   };
   return { line, product: p };

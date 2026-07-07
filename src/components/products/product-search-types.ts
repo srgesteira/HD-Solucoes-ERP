@@ -4,6 +4,7 @@ export type ProductSearchHit = {
   technical_code: string | null;
   code: string | null;
   name: string;
+  description?: string | null;
   cost_price: number;
   unit: string | null;
   product_nature?: string | null;

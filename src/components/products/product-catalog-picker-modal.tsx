@@ -26,6 +26,7 @@ type ProductType = "finished" | "raw" | "component";
 type CatalogRow = {
   id: string;
   name: string;
+  description?: string | null;
   type: string;
   unit: string | null;
   technical_code: string | null;
@@ -158,6 +159,7 @@ function rowToHit(row: CatalogRow): ProductSearchHit {
     technical_code: row.technical_code,
     code: row.code,
     name: row.name,
+    description: row.description ?? null,
     cost_price: row.cost_price,
     unit: row.unit,
     product_nature: row.product_nature ?? null,
