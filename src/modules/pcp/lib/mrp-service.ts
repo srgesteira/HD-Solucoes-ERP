@@ -5,9 +5,9 @@ import {
   computePurchaseNeedDate,
 } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
 import {
+  computePurchaseShortage,
   fetchProductAvailabilityMap,
   roundInventoryQty,
-  shortageFromAvailability,
 } from "@/modules/almoxarifado/lib/inventory-availability";
 import { reserveMaterialsForProductionOrderItem } from "@/modules/almoxarifado/lib/inventory-reservations";
 import { ensureOrderItemOperations } from "@/modules/pcp/lib/product-routing-service";
@@ -29,6 +29,10 @@ export type MaterialRequirement = {
   reserved_quantity: number;
   quantity_in_production: number;
   quantity_incoming: number;
+  quantity_incoming_draft: number;
+  reorder_point: number;
+  reorder_quantity: number;
+  saldo_futuro: number;
   available: number;
   shortage: number;
   /** Comparação dry-run: max(0, needed − quantity_on_hand) sem futuro/produção */
@@ -291,8 +295,7 @@ export async function calculateNeededMaterials(
 }
 
 /**
- * Necessidade líquida para compra/MRP com 4 estados:
- * disponível = real + futuro + em_produção − empenho; shortage = max(0, needed − disponível).
+ * Necessidade líquida para compra/MRP com saldo futuro e estoque mínimo.
  */
 export async function getNetRequirements(
   admin: Admin,
@@ -327,16 +330,19 @@ export async function getNetRequirements(
     const reserved_quantity = avail?.reserved_quantity ?? 0;
     const quantity_in_production = avail?.quantity_in_production ?? 0;
     const quantity_incoming = avail?.quantity_incoming ?? 0;
+    const quantity_incoming_draft = avail?.quantity_incoming_draft ?? 0;
+    const reorder_point = avail?.reorder_point ?? 0;
+    const reorder_quantity = avail?.reorder_quantity ?? 0;
+    const saldo_futuro = avail?.saldo_futuro ?? 0;
     const available = avail?.available ?? 0;
-    const shortage = roundInventoryQty(shortageFromAvailability(needed, avail ?? {
-      product_id: pid,
-      quantity_on_hand: 0,
-      reserved_quantity: 0,
-      quantity_in_production: 0,
-      quantity_incoming: 0,
-      available: 0,
-      shortage_legacy_on_hand_only: (n) => round4(Math.max(0, n)),
-    }));
+    const shortage = roundInventoryQty(
+      computePurchaseShortage(
+        needed,
+        saldo_futuro,
+        reorder_point,
+        reorder_quantity
+      )
+    );
     const shortage_legacy = round4(Math.max(0, needed - quantity_on_hand));
     const p = prodById.get(pid);
     out.push({
@@ -348,6 +354,10 @@ export async function getNetRequirements(
       reserved_quantity: round4(reserved_quantity),
       quantity_in_production: round4(quantity_in_production),
       quantity_incoming: round4(quantity_incoming),
+      quantity_incoming_draft: round4(quantity_incoming_draft),
+      reorder_point: round4(reorder_point),
+      reorder_quantity: round4(reorder_quantity),
+      saldo_futuro: round4(saldo_futuro),
       available: round4(available),
       shortage,
       shortage_legacy,
@@ -640,7 +650,7 @@ async function resolvePreferredSupplierId(
 
 /**
  * Requisição de compra (item MRP) — não exige fornecedor; o PC é emitido depois em Compras.
- * Upsert por (`sales_order_item_id`, `product_id`) ou (`production_order_item_id`, `product_id`).
+ * A.3: 1 draft por product_id; dismissed por linha de rastreio (mutirão compras).
  */
 async function upsertPurchaseRequisition(
   admin: Admin,
@@ -683,228 +693,134 @@ async function upsertPurchaseRequisition(
     };
   }
 
-  if (salesOrderItemId && args.productId) {
-    const needDate = computePurchaseNeedDate(
-      args.pcpDeadline ??
-        (await followUpDateForSalesOrderItem(
-          admin,
-          tenantId,
-          salesOrderItemId
-        )),
-      productLead?.purchase_lead_time_days
-    );
-
-    const { data: existingRows } = await admin
-      .from("purchase_order_items")
-      .select(
-        "id, quantity, unit_price, status, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id)"
-      )
-      .eq("tenant_id", tenantId)
-      .eq("sales_order_item_id", salesOrderItemId)
-      .eq("product_id", args.productId)
-      .order("created_at", { ascending: false });
-
-    const draftRequisition = (existingRows ?? []).find(
-      (r) => r.purchase_order_id == null && r.status === "draft"
-    );
-    const linkedPo = (existingRows ?? []).find((r) => r.purchase_order_id != null);
-
-    if (draftRequisition?.id) {
-      const newQty = round4(args.quantity);
-      const unitPrice = round4(
-        Math.max(Number(draftRequisition.unit_price ?? 0), args.unitPrice)
-      );
-
-      await admin
-        .from("purchase_order_items")
-        .update({
-          quantity: newQty,
-          unit_price: unitPrice,
-          total_price: round4(newQty * unitPrice),
-          trace_key: args.traceKey,
-          production_order_id: args.productionOrderId ?? null,
-          production_item_id: args.productionOrderItemId ?? null,
-          production_order_item_id: args.productionOrderItemId ?? null,
-          need_date: needDate,
-        })
-        .eq("id", draftRequisition.id)
-        .eq("tenant_id", tenantId);
-
-      return {
-        id: draftRequisition.id,
-        po_number: args.traceKey,
-        supplier_id: preferredSupplierId,
-        requisition: true,
-      };
-    }
-
-    if (linkedPo?.id) {
-      const po = Array.isArray(linkedPo.purchase_order)
-        ? linkedPo.purchase_order[0]
-        : linkedPo.purchase_order;
-      if (po) {
-        return {
-          id: po.id,
-          po_number: po.po_number,
-          supplier_id: po.supplier_id,
-          requisition: false,
-        };
-      }
-    }
-
-    const unitPrice = round4(Math.max(0, args.unitPrice));
-    const lineTotal = round4(args.quantity * unitPrice);
-
-    const { data: inserted, error: liErr } = await admin
-      .from("purchase_order_items")
-      .insert({
-        tenant_id: tenantId,
-        purchase_order_id: null,
-        status: "draft",
-        product_id: args.productId,
-        description: args.description,
-        quantity: args.quantity,
-        unit: args.unit,
-        unit_price: unitPrice,
-        total_price: lineTotal,
-        production_order_id: args.productionOrderId ?? null,
-        production_item_id: args.productionOrderItemId ?? null,
-        production_order_item_id: args.productionOrderItemId ?? null,
-        sales_order_item_id: salesOrderItemId,
-        trace_key: args.traceKey,
-        follow_up_date: needDate,
-        need_date: needDate,
-      })
-      .select("id")
-      .single();
-    if (liErr) throw new Error(liErr.message);
-
-    return {
-      id: inserted.id,
-      po_number: args.traceKey,
-      supplier_id: preferredSupplierId,
-      requisition: true,
-    };
-  }
-
-  if (productionOrderItemId && args.productId) {
-    const needDate = computePurchaseNeedDate(
-      args.pcpDeadline ??
-        (await followUpDateForProductionOrderItem(
-          admin,
-          tenantId,
-          productionOrderItemId
-        )),
-      productLead?.purchase_lead_time_days
-    );
-
-    const { data: existingRows } = await admin
-      .from("purchase_order_items")
-      .select(
-        "id, quantity, unit_price, status, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id)"
-      )
-      .eq("tenant_id", tenantId)
-      .eq("production_order_item_id", productionOrderItemId)
-      .eq("product_id", args.productId)
-      .is("purchase_order_id", null)
-      .eq("status", "draft")
-      .order("created_at", { ascending: false });
-
-    const draftRequisition = (existingRows ?? [])[0];
-    const { data: linkedRows } = await admin
-      .from("purchase_order_items")
-      .select(
-        "id, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id)"
-      )
-      .eq("tenant_id", tenantId)
-      .eq("production_order_item_id", productionOrderItemId)
-      .eq("product_id", args.productId)
-      .not("purchase_order_id", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    const linkedPo = linkedRows?.[0];
-
-    if (draftRequisition?.id) {
-      const newQty = round4(args.quantity);
-      const unitPrice = round4(
-        Math.max(Number(draftRequisition.unit_price ?? 0), args.unitPrice)
-      );
-
-      await admin
-        .from("purchase_order_items")
-        .update({
-          quantity: newQty,
-          unit_price: unitPrice,
-          total_price: round4(newQty * unitPrice),
-          trace_key: args.traceKey,
-          production_order_id: args.productionOrderId ?? null,
-          production_item_id: productionOrderItemId,
-          production_order_item_id: productionOrderItemId,
-          need_date: needDate,
-        })
-        .eq("id", draftRequisition.id)
-        .eq("tenant_id", tenantId);
-
-      return {
-        id: draftRequisition.id,
-        po_number: args.traceKey,
-        supplier_id: preferredSupplierId,
-        requisition: true,
-      };
-    }
-
-    if (linkedPo?.id) {
-      const po = Array.isArray(linkedPo.purchase_order)
-        ? linkedPo.purchase_order[0]
-        : linkedPo.purchase_order;
-      if (po) {
-        return {
-          id: po.id,
-          po_number: po.po_number,
-          supplier_id: po.supplier_id,
-          requisition: false,
-        };
-      }
-    }
-
-    const unitPrice = round4(Math.max(0, args.unitPrice));
-    const lineTotal = round4(args.quantity * unitPrice);
-
-    const { data: inserted, error: liErr } = await admin
-      .from("purchase_order_items")
-      .insert({
-        tenant_id: tenantId,
-        purchase_order_id: null,
-        status: "draft",
-        product_id: args.productId,
-        description: args.description,
-        quantity: args.quantity,
-        unit: args.unit,
-        unit_price: unitPrice,
-        total_price: lineTotal,
-        production_order_id: args.productionOrderId ?? null,
-        production_item_id: productionOrderItemId,
-        production_order_item_id: productionOrderItemId,
-        sales_order_item_id: null,
-        trace_key: args.traceKey,
-        follow_up_date: needDate,
-        need_date: needDate,
-      })
-      .select("id")
-      .single();
-    if (liErr) throw new Error(liErr.message);
-
-    return {
-      id: inserted.id,
-      po_number: args.traceKey,
-      supplier_id: preferredSupplierId,
-      requisition: true,
-    };
-  }
-
-  throw new Error(
-    "upsertPurchaseRequisition requer salesOrderItemId ou productionOrderItemId"
+  const needDate = computePurchaseNeedDate(
+    args.pcpDeadline ??
+      (salesOrderItemId
+        ? await followUpDateForSalesOrderItem(
+            admin,
+            tenantId,
+            salesOrderItemId
+          )
+        : await followUpDateForProductionOrderItem(
+            admin,
+            tenantId,
+            productionOrderItemId!
+          )),
+    productLead?.purchase_lead_time_days
   );
+
+  let linkedPoQuery = admin
+    .from("purchase_order_items")
+    .select(
+      "id, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id)"
+    )
+    .eq("tenant_id", tenantId)
+    .eq("product_id", args.productId)
+    .not("purchase_order_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (salesOrderItemId) {
+    linkedPoQuery = linkedPoQuery.eq("sales_order_item_id", salesOrderItemId);
+  } else {
+    linkedPoQuery = linkedPoQuery.eq(
+      "production_order_item_id",
+      productionOrderItemId!
+    );
+  }
+
+  const { data: linkedPo } = await linkedPoQuery.maybeSingle();
+  if (linkedPo?.purchase_order_id) {
+    const po = Array.isArray(linkedPo.purchase_order)
+      ? linkedPo.purchase_order[0]
+      : linkedPo.purchase_order;
+    if (po) {
+      return {
+        id: po.id,
+        po_number: po.po_number,
+        supplier_id: po.supplier_id,
+        requisition: false,
+      };
+    }
+  }
+
+  const { data: draftRequisition } = await admin
+    .from("purchase_order_items")
+    .select("id, quantity, unit_price")
+    .eq("tenant_id", tenantId)
+    .eq("product_id", args.productId)
+    .is("purchase_order_id", null)
+    .eq("status", "draft")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (draftRequisition?.id) {
+    const newQty = round4(args.quantity);
+    const unitPrice = round4(
+      Math.max(Number(draftRequisition.unit_price ?? 0), args.unitPrice)
+    );
+
+    await admin
+      .from("purchase_order_items")
+      .update({
+        quantity: newQty,
+        unit_price: unitPrice,
+        total_price: round4(newQty * unitPrice),
+        trace_key: args.traceKey,
+        production_order_id: args.productionOrderId ?? null,
+        production_item_id: productionOrderItemId ?? args.productionOrderItemId ?? null,
+        production_order_item_id:
+          productionOrderItemId ?? args.productionOrderItemId ?? null,
+        sales_order_item_id: salesOrderItemId,
+        need_date: needDate,
+        follow_up_date: needDate,
+      })
+      .eq("id", draftRequisition.id)
+      .eq("tenant_id", tenantId);
+
+    return {
+      id: draftRequisition.id,
+      po_number: args.traceKey,
+      supplier_id: preferredSupplierId,
+      requisition: true,
+    };
+  }
+
+  const unitPrice = round4(Math.max(0, args.unitPrice));
+  const lineTotal = round4(args.quantity * unitPrice);
+
+  const { data: inserted, error: liErr } = await admin
+    .from("purchase_order_items")
+    .insert({
+      tenant_id: tenantId,
+      purchase_order_id: null,
+      status: "draft",
+      product_id: args.productId,
+      description: args.description,
+      quantity: args.quantity,
+      unit: args.unit,
+      unit_price: unitPrice,
+      total_price: lineTotal,
+      production_order_id: args.productionOrderId ?? null,
+      production_item_id: productionOrderItemId ?? args.productionOrderItemId ?? null,
+      production_order_item_id:
+        productionOrderItemId ?? args.productionOrderItemId ?? null,
+      sales_order_item_id: salesOrderItemId,
+      trace_key: args.traceKey,
+      follow_up_date: needDate,
+      need_date: needDate,
+    })
+    .select("id")
+    .single();
+  if (liErr) throw new Error(liErr.message);
+
+  return {
+    id: inserted.id,
+    po_number: args.traceKey,
+    supplier_id: preferredSupplierId,
+    requisition: true,
+  };
 }
 
 export type ProcessMrpForSalesOrderOptions = {
