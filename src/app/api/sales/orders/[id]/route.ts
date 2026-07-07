@@ -323,9 +323,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (b.status !== undefined) {
     const st = String(b.status);
     if (!SO_SET.has(st)) return apiError("Status inválido", 400);
-    if (st === "cancelled" && editGuard.production_started) {
+    if (st === "cancelled" && editGuard.warehouse_supplied) {
       return apiError(
-        "Pedido já teve produção iniciada e não pode ser cancelado.",
+        "Almoxarifado já liberou material para fabricação — o pedido não pode ser cancelado.",
         400
       );
     }

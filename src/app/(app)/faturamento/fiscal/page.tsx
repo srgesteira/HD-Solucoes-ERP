@@ -8,8 +8,10 @@ import {
   ExternalLink,
   FileText,
   Loader2,
+  PackageCheck,
   RefreshCw,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -120,6 +122,36 @@ async function consultNfe(nfeId: string): Promise<void> {
   if (!res.ok) throw new Error(json.error ?? "Erro ao consultar NFS-e");
 }
 
+async function postCloseWithoutInvoice(orderId: string): Promise<void> {
+  const res = await fetch(
+    `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/close-without-invoice`,
+    { method: "POST", credentials: "include" }
+  );
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao fechar sem nota");
+}
+
+async function postFiscalAiAssistant(
+  salesOrderId: string,
+  description: string
+): Promise<{ summary: string; fiscalStatus: string }> {
+  const res = await fetch("/api/ai/fiscal-order-assistant", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sales_order_id: salesOrderId, description }),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: { summary?: string; fiscalStatus?: string };
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro no assistente fiscal");
+  return {
+    summary: json.data?.summary ?? "Fiscal aplicado.",
+    fiscalStatus: json.data?.fiscalStatus ?? "pending",
+  };
+}
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -144,6 +176,12 @@ export default function FiscalInvoicingPage() {
   const limit = 25;
   const [syncingNfeId, setSyncingNfeId] = useState<string | null>(null);
   const [emittingOrderId, setEmittingOrderId] = useState<string | null>(null);
+  const [closingWithoutInvoiceId, setClosingWithoutInvoiceId] = useState<
+    string | null
+  >(null);
+  const [aiTarget, setAiTarget] = useState<FiscalInvoicingListRow | null>(null);
+  const [aiDescription, setAiDescription] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     setPage(1);
@@ -206,6 +244,35 @@ export default function FiscalInvoicingPage() {
       setSyncingNfeId(null);
     }
   }, []);
+
+  const closeWithoutInvoiceMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      setClosingWithoutInvoiceId(orderId);
+      await postCloseWithoutInvoice(orderId);
+    },
+    onSuccess: () => {
+      toast.success("Pedido finalizado — entrega sem nota fiscal.");
+      invalidateList();
+    },
+    onError: (err: Error) => toast.error(err.message),
+    onSettled: () => setClosingWithoutInvoiceId(null),
+  });
+
+  const runFiscalAi = async () => {
+    if (!aiTarget) return;
+    setAiLoading(true);
+    try {
+      const out = await postFiscalAiAssistant(aiTarget.id, aiDescription);
+      toast.success(out.summary);
+      setAiTarget(null);
+      setAiDescription("");
+      invalidateList();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   function onTabChange(next: string) {
     setTab(next as FiscalInvoicingListTab);
@@ -380,11 +447,36 @@ export default function FiscalInvoicingPage() {
         getRowKey={(row) => row.id}
         isLoading={isLoading}
         emptyMessage={emptyMessage}
+        rowClassName={(row) =>
+          tab === "ready" && row.can_emit
+            ? "animate-pulse bg-emerald-50/60 dark:bg-emerald-950/20"
+            : ""
+        }
         actionsColumn={{
           label: "Acções",
-          width: "w-[8rem]",
+          width: "w-[10rem]",
           render: (row) => (
             <div className="flex flex-wrap items-center gap-1">
+              {isAdmin &&
+              (row.fiscal_status === "pending" ||
+                row.fiscal_status === "no_rules" ||
+                row.fiscal_status === "review_required") ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  title="Assistente fiscal (IA)"
+                  onClick={() => {
+                    setAiTarget(row);
+                    setAiDescription(
+                      "Cliente no estado do endereço. Definir se é consumidor final, revenda ou industrialização conforme operação."
+                    );
+                  }}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
               {isAdmin && row.can_emit ? (
                 <Button
                   type="button"
@@ -399,6 +491,27 @@ export default function FiscalInvoicingPage() {
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <Send className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              ) : null}
+              {isAdmin &&
+              row.ready_for_invoice &&
+              !row.nfe_id &&
+              row.fiscal_status !== "pending" &&
+              row.fiscal_status !== "no_rules" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  disabled={closingWithoutInvoiceId === row.id}
+                  title="Entregar sem emitir nota"
+                  onClick={() => closeWithoutInvoiceMutation.mutate(row.id)}
+                >
+                  {closingWithoutInvoiceId === row.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <PackageCheck className="h-3.5 w-3.5" />
                   )}
                 </Button>
               ) : null}
@@ -488,6 +601,59 @@ export default function FiscalInvoicingPage() {
           </TabsContent>
         ))}
       </Tabs>
+
+      {aiTarget ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-950">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Assistente fiscal (IA)
+            </h3>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              Pedido{" "}
+              <strong>{aiTarget.order_number}</strong> — descreva consumidor,
+              revenda, industrialização, UF e condições especiais. A IA usa o
+              NCM dos produtos e aplica as regras fiscais.
+            </p>
+            <textarea
+              className="mt-3 w-full min-h-[120px] rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+              value={aiDescription}
+              onChange={(e) => setAiDescription(e.target.value)}
+              placeholder="Ex.: Cliente em SP, revenda, operação interestadual com substituição…"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={aiLoading}
+                onClick={() => {
+                  setAiTarget(null);
+                  setAiDescription("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={aiLoading}
+                onClick={() => void runFiscalAi()}
+              >
+                {aiLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                Aplicar fiscal
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <p className="text-center text-sm pt-2">
         <Link

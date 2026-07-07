@@ -49,6 +49,8 @@ type SalesOrderListRow = {
   status: string;
   total: number;
   ready_for_invoice?: boolean;
+  billing_closure?: string | null;
+  warehouse_supplied?: boolean;
   production_deadline: string | null;
   production_situation: SalesOrderProductionSituation;
 };
@@ -276,10 +278,10 @@ export default function SalesOrdersListPage() {
             >
               {row.order_number}
             </Link>
-            {row.ready_for_invoice && tab !== "ready" ? (
+            {row.ready_for_invoice && !row.billing_closure && tab !== "ready" ? (
               <span
-                className="ml-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium bg-teal-50 text-teal-900 ring-1 ring-teal-200"
-                title="Liberado para faturamento"
+                className="ml-1 inline-flex animate-pulse rounded px-1.5 py-0.5 text-[10px] font-medium bg-teal-50 text-teal-900 ring-1 ring-teal-200"
+                title="Liberado para faturamento — material pronto"
               >
                 Faturar
               </span>
@@ -437,13 +439,22 @@ export default function SalesOrdersListPage() {
         getRowKey={(row) => row.id}
         isLoading={isLoading}
         emptyMessage={emptyMessage}
+        rowClassName={(row) =>
+          tab === "ready" && row.ready_for_invoice && !row.billing_closure
+            ? "animate-pulse bg-teal-50/50 dark:bg-teal-950/20"
+            : ""
+        }
         actionsColumn={{
           label: "Acções",
           width: "w-[5rem]",
           render: (row) => {
             const st = row.status as SalesOrderStatus;
             const canCancel =
-              isAdmin && st !== "delivered" && st !== "cancelled";
+              canSales &&
+              !row.billing_closure &&
+              !row.warehouse_supplied &&
+              st !== "cancelled" &&
+              st !== "delivered";
             const canReactivate = isAdmin && st === "cancelled";
             return (
               <SalesOrderRowActionsMenu

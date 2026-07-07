@@ -27,6 +27,7 @@ import {
   enrichSalesOrdersListWithProduction,
   type SalesOrderProductionSummary,
 } from "@/modules/vendas/lib/sales/sales-order-production-summary";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -84,8 +85,9 @@ export async function GET(request: NextRequest) {
   const to = from + limit - 1;
 
   const admin = createSupabaseAdminClient();
+  const db = asUntypedAdmin(admin);
 
-  let query = admin
+  let query = db
     .from("sales_orders")
     .select("*", { count: "exact" })
     .eq("tenant_id", tenantId)
@@ -99,17 +101,23 @@ export async function GET(request: NextRequest) {
     case "all":
       break;
     case "open":
-      query = query.in("status", ["pending", "confirmed", "in_production"]);
+      query = query
+        .is("billing_closure", null)
+        .neq("status", "cancelled")
+        .eq("ready_for_invoice", false)
+        .in("status", ["pending", "confirmed", "in_production", "shipped"]);
       break;
     case "finished":
-      query = query.in("status", ["delivered", "shipped"]);
+      query = query.in("billing_closure", ["nfe", "without_invoice"]);
       break;
     case "cancelled":
       query = query.eq("status", "cancelled");
       break;
     case "ready":
       query = query
+        .is("billing_closure", null)
         .eq("ready_for_invoice", true)
+        .neq("status", "cancelled")
         .in("status", ["pending", "confirmed", "in_production", "shipped"]);
       break;
   }
@@ -159,7 +167,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const rows = (data ?? []) as SalesOrderRow[];
+  const rows = (data ?? []) as unknown as SalesOrderRow[];
   const orderIds = rows.map((r) => r.id);
   let productionByOrder = new Map<string, SalesOrderProductionSummary>();
 
@@ -182,6 +190,7 @@ export async function GET(request: NextRequest) {
       production_deadline: prod?.production_deadline ?? null,
       production_situation:
         (prod?.production_situation ?? "none") as SalesOrderProductionSituation,
+      warehouse_supplied: prod?.warehouse_supplied === true,
     };
   });
 

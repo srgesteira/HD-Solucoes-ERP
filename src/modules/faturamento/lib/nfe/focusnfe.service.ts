@@ -6,6 +6,7 @@
 
 import axios, { type AxiosInstance } from "axios";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { maybeCloseSalesOrderOnNfeAuthorized } from "@/modules/faturamento/lib/sales-order-billing-closure";
 import type { Database } from "@/modules/core/types/database";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 
@@ -569,6 +570,10 @@ export async function emitirNFe(
     .eq("id", inserted.id)
     .eq("tenant_id", tenantId);
 
+  if (status === "authorized") {
+    await maybeCloseSalesOrderOnNfeAuthorized(admin, tenantId, inserted.id);
+  }
+
   return { nfe_id: inserted.id, focus_ref, focus: res };
 }
 
@@ -615,6 +620,10 @@ export async function consultarNFe(
     })
     .eq("id", nfeId)
     .eq("tenant_id", tenantId);
+
+  if (status === "authorized") {
+    await maybeCloseSalesOrderOnNfeAuthorized(admin, tenantId, nfeId);
+  }
 
   return res;
 }

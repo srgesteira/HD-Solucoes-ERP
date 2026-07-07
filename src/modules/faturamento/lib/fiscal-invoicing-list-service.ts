@@ -1,11 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import {
   buildSalesOrderUniversalSearchOrFilter,
   resolveSalesOrderIdsFromUniversalSearch,
 } from "@/modules/core/lib/universal-search-query";
 import { escapeIlike } from "@/shared/utils/universal-search";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
+import { isFiscalConfigured } from "@/modules/fiscal/lib/fiscal-rules-types";
 import {
   FISCAL_INVOICING_ORDER_STATUSES,
   FISCAL_READY_STATUSES,
@@ -23,6 +25,7 @@ type SalesOrderBase = {
   status: string;
   ready_for_invoice: boolean;
   fiscal_status: string | null;
+  billing_closure: string | null;
 };
 
 type NfeSummary = {
@@ -101,6 +104,10 @@ async function loadCreditStatusByOrder(
   return out;
 }
 
+function isBillingOpen(row: SalesOrderBase): boolean {
+  return !row.billing_closure;
+}
+
 function matchesTab(
   tab: FiscalInvoicingListTab,
   row: SalesOrderBase,
@@ -113,12 +120,35 @@ function matchesTab(
   switch (tab) {
     case "all":
       return true;
-    case "ready":
-      return canEmit;
-    case "waiting":
-      return !canEmit;
     case "fiscal_pending":
-      return fiscal === "pending" || fiscal === "no_rules";
+      if (!isBillingOpen(row)) return false;
+      if (
+        nfeStatus === "pending" ||
+        nfeStatus === "processing" ||
+        nfeStatus === "authorized" ||
+        nfeStatus === "error"
+      ) {
+        return false;
+      }
+      return (
+        fiscal === "pending" ||
+        fiscal === "no_rules" ||
+        fiscal === "review_required"
+      );
+    case "waiting":
+      if (!isBillingOpen(row)) return false;
+      if (nfeStatus) return false;
+      return isFiscalConfigured(fiscal) && !row.ready_for_invoice;
+    case "ready":
+      if (!isBillingOpen(row)) return false;
+      if (
+        nfeStatus === "pending" ||
+        nfeStatus === "processing" ||
+        nfeStatus === "authorized"
+      ) {
+        return false;
+      }
+      return canEmit;
     case "nfe_active":
       return nfeStatus === "pending" || nfeStatus === "processing";
     case "nfe_authorized":
@@ -144,10 +174,12 @@ export async function listFiscalInvoicingOrders(
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  let query = admin
+  const db = asUntypedAdmin(admin);
+
+  let query = db
     .from("sales_orders")
     .select(
-      "id, order_number, client_name, order_date, total, status, ready_for_invoice, fiscal_status",
+      "id, order_number, client_name, order_date, total, status, ready_for_invoice, fiscal_status, billing_closure",
       { count: "exact" }
     )
     .eq("tenant_id", tenantId)
@@ -175,19 +207,22 @@ export async function listFiscalInvoicingOrders(
   }
 
   switch (tab) {
-    case "ready":
+    case "fiscal_pending":
       query = query
-        .eq("ready_for_invoice", true)
-        .eq("status", "confirmed")
-        .in("fiscal_status", [...FISCAL_READY_STATUSES]);
+        .is("billing_closure", null)
+        .in("fiscal_status", ["pending", "no_rules", "review_required"]);
       break;
     case "waiting":
-      query = query.or(
-        "ready_for_invoice.eq.false,fiscal_status.in.(pending,no_rules,review_required)"
-      );
+      query = query
+        .is("billing_closure", null)
+        .in("fiscal_status", [...FISCAL_READY_STATUSES])
+        .eq("ready_for_invoice", false);
       break;
-    case "fiscal_pending":
-      query = query.in("fiscal_status", ["pending", "no_rules"]);
+    case "ready":
+      query = query
+        .is("billing_closure", null)
+        .eq("ready_for_invoice", true)
+        .in("fiscal_status", [...FISCAL_READY_STATUSES]);
       break;
     case "nfe_active":
     case "nfe_authorized":
@@ -232,7 +267,7 @@ export async function listFiscalInvoicingOrders(
 
   if (error) throw new Error(error.message);
 
-  const baseRows = (data ?? []) as SalesOrderBase[];
+  const baseRows = (data ?? []) as unknown as SalesOrderBase[];
   const orderIds = baseRows.map((r) => r.id);
   const [nfesByOrder, creditByOrder] = await Promise.all([
     loadLatestNfesByOrder(admin, tenantId, orderIds),

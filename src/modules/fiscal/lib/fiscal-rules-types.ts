@@ -79,16 +79,20 @@ export type FiscalRuleMatchResult = {
   fiscalStatus: FiscalStatus;
 };
 
+/** Fiscal conferido (impostos definidos), independente da liberação PCP. */
+export function isFiscalConfigured(fiscalStatus: FiscalStatus | string): boolean {
+  return (
+    fiscalStatus === "rules_applied" ||
+    fiscalStatus === "manual_override" ||
+    fiscalStatus === "approved"
+  );
+}
+
 export function isFiscalReadyForInvoice(
   readyForInvoice: boolean,
   fiscalStatus: FiscalStatus
 ): boolean {
-  return (
-    readyForInvoice &&
-    (fiscalStatus === "rules_applied" ||
-      fiscalStatus === "manual_override" ||
-      fiscalStatus === "approved")
-  );
+  return readyForInvoice && isFiscalConfigured(fiscalStatus);
 }
 
 export const FISCAL_STATUS_LABELS: Record<FiscalStatus, string> = {

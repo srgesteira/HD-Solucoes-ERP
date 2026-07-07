@@ -1,12 +1,13 @@
 import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
 import type { SalesOrderProductionSituation } from "@/modules/vendas/lib/sales/sales-order-production-summary";
+import { formatShortDate } from "@/shared/utils/date";
 
 export const SALES_ORDER_LIST_TABS = [
   "all",
   "open",
+  "ready",
   "finished",
   "cancelled",
-  "ready",
 ] as const;
 
 export type SalesOrderListTab = (typeof SALES_ORDER_LIST_TABS)[number];
@@ -18,9 +19,9 @@ export function isSalesOrderListTab(v: string): v is SalesOrderListTab {
 export const SALES_ORDER_LIST_TAB_LABELS: Record<SalesOrderListTab, string> = {
   all: "Todos",
   open: "Em aberto",
+  ready: "Liberados para faturar",
   finished: "Finalizados",
   cancelled: "Cancelados",
-  ready: "Liberados para faturar",
 };
 
 export function salesOrderStatusPill(status: string): {
@@ -102,8 +103,6 @@ export function productionSituationPill(situation: SalesOrderProductionSituation
       };
   }
 }
-
-import { formatShortDate } from "@/shared/utils/date";
 
 export function formatSalesListDate(iso: string | null | undefined): string {
   if (iso == null || iso === "") return "—";

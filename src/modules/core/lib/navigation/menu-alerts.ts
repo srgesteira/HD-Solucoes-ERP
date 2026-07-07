@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { countPurchaseRequisitions } from "@/modules/compras/lib/purchasing-requisitions";
 import { ENGINEERING_STATUS_PENDING } from "@/modules/engenharia/lib/products/engineering-workflow";
 import { loadDataHealthIssues } from "@/modules/core/lib/data-health/data-health";
@@ -331,11 +332,13 @@ export async function loadMenuAlerts(
 
     tasks.push(
       (async () => {
+        const db = asUntypedAdmin(admin);
         // Pedidos prontos para faturar (produção concluiu + fiscal OK) — atenção.
-        const { count: readyCount, error: readyErr } = await admin
+        const { count: readyCount, error: readyErr } = await db
           .from("sales_orders")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
+          .is("billing_closure", null)
           .eq("ready_for_invoice", true)
           .eq("status", "confirmed")
           .in("fiscal_status", [
@@ -364,10 +367,11 @@ export async function loadMenuAlerts(
         // §7.1: pedidos efetivados com fiscal por conferir desde já,
         // mesmo antes de a produção concluir. Atenção (não urgente),
         // pois há tempo enquanto a produção roda.
-        const { count: pendingFiscalCount, error: pendingErr } = await admin
+        const { count: pendingFiscalCount, error: pendingErr } = await db
           .from("sales_orders")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
+          .is("billing_closure", null)
           .in("status", ["pending", "confirmed", "in_production"])
           .in("fiscal_status", ["pending", "no_rules"]);
         if (!pendingErr) {
@@ -389,10 +393,11 @@ export async function loadMenuAlerts(
           );
         }
         // Pedidos com fiscal pedindo revisão — urgente (algo travou o motor).
-        const { count: reviewCount, error: reviewErr } = await admin
+        const { count: reviewCount, error: reviewErr } = await db
           .from("sales_orders")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
+          .is("billing_closure", null)
           .eq("fiscal_status", "review_required")
           .in("status", ["pending", "confirmed", "in_production"]);
         if (!reviewErr) {

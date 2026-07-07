@@ -16,6 +16,7 @@ export type SalesOrderProductionSummary = {
   production_deadline: string | null;
   production_situation: SalesOrderProductionSituation;
   production_status: ReturnType<typeof computeOrderProductionAggregateStatus>;
+  warehouse_supplied: boolean;
 };
 
 export function computeSalesOrderProductionSituation(
@@ -48,14 +49,18 @@ export async function enrichSalesOrdersListWithProduction(
   }
 
   const itemsByOrder = new Map<string, OrderItemProductionFields[]>();
-  for (const oid of orderIds) itemsByOrder.set(oid, []);
+  const warehouseByOrder = new Map<string, boolean>();
+  for (const oid of orderIds) {
+    itemsByOrder.set(oid, []);
+    warehouseByOrder.set(oid, false);
+  }
 
   const soiIds = [...soiIdToOrderId.keys()];
   if (soiIds.length) {
     const { data: oiRows, error: oiErr } = await admin
       .from("order_items")
       .select(
-        "sales_order_item_id, production_start, production_end, status, completed_at, apontamento_start_at, apontamento_end_at"
+        "sales_order_item_id, production_start, production_end, status, completed_at, apontamento_start_at, apontamento_end_at, warehouse_supplied_at"
       )
       .eq("tenant_id", tenantId)
       .eq("is_suggestion", false)
@@ -67,6 +72,9 @@ export async function enrichSalesOrdersListWithProduction(
       if (!oi.sales_order_item_id) continue;
       const orderId = soiIdToOrderId.get(oi.sales_order_item_id);
       if (!orderId) continue;
+      if (oi.warehouse_supplied_at) {
+        warehouseByOrder.set(orderId, true);
+      }
       const list = itemsByOrder.get(orderId) ?? [];
       list.push({
         production_start: oi.production_start,
@@ -90,6 +98,7 @@ export async function enrichSalesOrdersListWithProduction(
         items.map((i) => ({ production_end: i.production_end })),
         null
       ),
+      warehouse_supplied: warehouseByOrder.get(oid) === true,
     });
   }
 

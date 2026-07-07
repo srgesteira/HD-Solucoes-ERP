@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import {
   isFiscalReadyForInvoice,
   type FiscalStatus,
@@ -34,17 +35,29 @@ export async function validateSalesOrderCanEmitNfe(
   salesOrderId: string
 ): Promise<InvoiceGateResult> {
   const reasons: string[] = [];
+  const db = asUntypedAdmin(admin);
 
-  const { data: so, error: soErr } = await admin
+  const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
-    .select("id, status, ready_for_invoice, fiscal_status")
+    .select("id, status, ready_for_invoice, fiscal_status, billing_closure")
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (soErr) throw new Error(soErr.message);
+  const so = soRaw as {
+    id: string;
+    status: string;
+    ready_for_invoice: boolean;
+    fiscal_status: string | null;
+    billing_closure: string | null;
+  } | null;
   if (!so) {
     return { ok: false, reasons: ["Pedido não encontrado."] };
+  }
+
+  if (so.billing_closure) {
+    reasons.push("Pedido já finalizado no faturamento.");
   }
 
   if (so.status !== "confirmed") {

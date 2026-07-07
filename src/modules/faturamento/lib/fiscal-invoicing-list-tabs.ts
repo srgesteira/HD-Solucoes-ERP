@@ -1,11 +1,11 @@
 export const FISCAL_INVOICING_LIST_TABS = [
   "all",
-  "ready",
-  "waiting",
   "fiscal_pending",
+  "waiting",
+  "ready",
   "nfe_active",
-  "nfe_authorized",
   "nfe_error",
+  "nfe_authorized",
 ] as const;
 
 export type FiscalInvoicingListTab = (typeof FISCAL_INVOICING_LIST_TABS)[number];
@@ -19,15 +19,16 @@ export const FISCAL_INVOICING_LIST_TAB_LABELS: Record<
   string
 > = {
   all: "Todos",
-  ready: "Prontos para emitir",
-  waiting: "Aguardando liberação",
   fiscal_pending: "Fiscal pendente",
-  nfe_active: "NF-e em curso",
-  nfe_authorized: "NF-e autorizadas",
+  waiting: "Aguardando liberação",
+  ready: "Prontos para emitir",
+  nfe_active: "Nota em curso",
   nfe_error: "Com erro",
+  nfe_authorized: "Autorizadas",
 };
 
-export const FISCAL_INVOICING_LIST_TAB_DEFAULT: FiscalInvoicingListTab = "ready";
+export const FISCAL_INVOICING_LIST_TAB_DEFAULT: FiscalInvoicingListTab =
+  "fiscal_pending";
 
 /** Pedidos visíveis no cronograma de faturamento fiscal. */
 export const FISCAL_INVOICING_ORDER_STATUSES = [

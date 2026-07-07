@@ -22,6 +22,8 @@ export type ApplyFiscalLineInput = {
   quantity: number;
   unitPrice: number;
   customerOrSupplierUf?: string | null;
+  /** Sobrescreve products.product_nature na resolução de regras (ex.: consumidor/revenda). */
+  productNatureOverride?: string | null;
   preview?: boolean;
   appliedBy?: string | null;
 };
@@ -90,7 +92,8 @@ async function buildFiscalContext(
     companyTaxRegime: company?.tax_regime ?? null,
     ncm: product?.ncm ?? null,
     productPrefixCode: prefixRow?.code ?? null,
-    productNature: product?.product_nature ?? null,
+    productNature:
+      input.productNatureOverride ?? product?.product_nature ?? null,
   };
 }
 
@@ -164,7 +167,7 @@ function elevateFiscalStatus(a: string, b: string): string {
 }
 
 /** Tenta extrair a UF (2 letras maiúsculas) de uma string de endereço livre. */
-function parseUfFromAddress(addr: string | null | undefined): string | null {
+export function parseUfFromAddress(addr: string | null | undefined): string | null {
   if (!addr) return null;
   const m = addr.match(/\b([A-Z]{2})\b(?!.*\b[A-Z]{2}\b)/);
   if (!m) {
@@ -188,7 +191,11 @@ export async function applyFiscalToSalesOrderItems(
   admin: Admin,
   tenantId: string,
   salesOrderId: string,
-  appliedBy?: string | null
+  appliedBy?: string | null,
+  options?: {
+    destinationUf?: string | null;
+    productNatureOverride?: string | null;
+  }
 ): Promise<{ fiscalStatus: string; itemsProcessed: number }> {
   const db = asUntypedAdmin(admin);
 
@@ -203,7 +210,8 @@ export async function applyFiscalToSalesOrderItems(
     return { fiscalStatus: "pending", itemsProcessed: 0 };
   }
 
-  let destinationUf = parseUfFromAddress(order.client_address);
+  let destinationUf =
+    options?.destinationUf ?? parseUfFromAddress(order.client_address);
 
   if (!destinationUf && order.quote_id) {
     const { data: quote } = await admin
@@ -249,6 +257,7 @@ export async function applyFiscalToSalesOrderItems(
         quantity: Number(it.quantity ?? 0),
         unitPrice: Number(it.unit_price ?? 0),
         customerOrSupplierUf: destinationUf,
+        productNatureOverride: options?.productNatureOverride ?? null,
         appliedBy: appliedBy ?? null,
       });
 

@@ -15,12 +15,42 @@ export type SalesOrderEditGuard = {
   mrp_processed: boolean;
   production_order_id: string | null;
   production_started: boolean;
+  warehouse_supplied: boolean;
   can_edit_items: boolean;
   /** Cliente, prazo, e-mail, etc. */
   can_edit_commercial: boolean;
   /** Observações e condições de pagamento (com produção iniciada). */
   can_edit_admin_only: boolean;
 };
+
+/** Verifica se o almoxarifado já liberou material para fabricação. */
+export async function salesOrderWarehouseSupplied(
+  admin: AdminClient,
+  tenantId: string,
+  salesOrderId: string
+): Promise<boolean> {
+  const { data: soiRows, error: soiErr } = await admin
+    .from("sales_order_items")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("sales_order_id", salesOrderId);
+
+  if (soiErr) throw new Error(soiErr.message);
+
+  const soiIds = (soiRows ?? []).map((r) => r.id);
+  if (!soiIds.length) return false;
+
+  const { count, error: oiErr } = await admin
+    .from("order_items")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", false)
+    .in("sales_order_item_id", soiIds)
+    .not("warehouse_supplied_at", "is", null);
+
+  if (oiErr) throw new Error(oiErr.message);
+  return (count ?? 0) > 0;
+}
 
 /** Verifica se algum item de produção já tem data de início. */
 export async function salesOrderProductionStarted(
@@ -69,10 +99,16 @@ export async function getSalesOrderEditGuard(
     order.id,
     order.production_order_id
   );
+  const warehouse_supplied = await salesOrderWarehouseSupplied(
+    admin,
+    tenantId,
+    order.id
+  );
   return {
     mrp_processed: order.mrp_processed === true,
     production_order_id: order.production_order_id,
     production_started,
+    warehouse_supplied,
     can_edit_items: !order.mrp_processed && !production_started,
     can_edit_commercial: !production_started,
     can_edit_admin_only: production_started,
