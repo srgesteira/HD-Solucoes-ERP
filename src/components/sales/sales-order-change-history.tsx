@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BRAZIL_DATE_DISPLAY_FORMAT } from "@/shared/utils/date";
+import { BRAZIL_DATE_DISPLAY_FORMAT, formatShortDate } from "@/shared/utils/date";
 import { SALES_ORDER_FIELD_LABELS } from "@/modules/vendas/lib/sales/sales-order-change-log";
 
 type LogUser = {
@@ -35,6 +35,13 @@ function fieldLabel(field: string | null): string {
   return SALES_ORDER_FIELD_LABELS[field] ?? field;
 }
 
+const DATE_LOG_FIELDS = new Set([
+  "expected_delivery",
+  "order_date",
+  "pcp_deadline",
+  "actual_delivery",
+]);
+
 function formatDisplayValue(field: string | null, raw: string | null): string {
   if (raw === null || raw === "") return "—";
   if (field === "items") {
@@ -45,6 +52,10 @@ function formatDisplayValue(field: string | null, raw: string | null): string {
     } catch {
       return "Itens alterados";
     }
+  }
+  if (field && DATE_LOG_FIELDS.has(field) && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    const formatted = formatShortDate(raw.slice(0, 10));
+    return formatted === "--" ? raw : formatted;
   }
   return raw;
 }
