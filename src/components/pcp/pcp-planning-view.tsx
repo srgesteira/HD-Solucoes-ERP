@@ -16,6 +16,7 @@ import { PcpPurchaseDependenciesPanel } from "@/components/pcp/pcp-purchase-depe
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 import { AppPage } from "@/shared/ui/app-page";
+import { cn } from "@/shared/utils/cn";
 import "@/components/pcp/pcp-legacy.css";
 
 type ViewMode = "orders" | "lines" | "purchases";
@@ -370,18 +371,32 @@ export function PcpPlanningView() {
             type="button"
             disabled={mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching}
             onClick={() => mrpGenerateMut.mutate()}
-            className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-white pcp-btn-primary disabled:opacity-50"
+            aria-busy={mrpGenerateMut.isPending || q.isFetching}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-white pcp-btn-primary transition-opacity",
+              (mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching) &&
+                "cursor-wait opacity-80 ring-2 ring-brand-300/60 ring-offset-1"
+            )}
           >
-            {mrpGenerateMut.isPending ? (
+            {mrpGenerateMut.isPending || q.isFetching ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : null}
-            Gerar sugestões (MRP)
+            {mrpGenerateMut.isPending
+              ? "A gerar sugestões…"
+              : q.isFetching
+                ? "A actualizar…"
+                : "Gerar sugestões (MRP)"}
           </button>
           <button
             type="button"
             disabled={mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching}
             onClick={() => mrpCommitMut.mutate()}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+            aria-busy={mrpCommitMut.isPending}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-50 transition-opacity",
+              (mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching) &&
+                "cursor-wait opacity-70"
+            )}
             title="Transforma sugestões em registros reais (is_suggestion=false)"
           >
             {mrpCommitMut.isPending ? (
