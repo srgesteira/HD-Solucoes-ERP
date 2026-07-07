@@ -47,7 +47,8 @@ export async function GET(request: NextRequest) {
   let query = admin
     .from("receivables")
     .select("*", { count: "exact" })
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .eq("is_forecast", false);
 
   if (sales_order_id) {
     query = query.eq("sales_order_id", sales_order_id);

@@ -395,17 +395,22 @@ export async function POST(request: NextRequest) {
     return apiError("Erro ao recarregar pedido", 500);
   }
 
-  const recv = await generateReceivablesForSalesOrder(admin, tenantId, {
-    id: fresh.id,
-    order_number: fresh.order_number,
-    order_date: fresh.order_date,
-    total: fresh.total,
-    client_name: fresh.client_name,
-    client_document: fresh.client_document,
-    payment_installments: fresh.payment_installments,
-    payment_days_to_first_due: fresh.payment_days_to_first_due,
-    payment_days_between_installments: fresh.payment_days_between_installments,
-  });
+  const recv = await generateReceivablesForSalesOrder(
+    admin,
+    tenantId,
+    {
+      id: fresh.id,
+      order_number: fresh.order_number,
+      order_date: fresh.order_date,
+      total: fresh.total,
+      client_name: fresh.client_name,
+      client_document: fresh.client_document,
+      payment_installments: fresh.payment_installments,
+      payment_days_to_first_due: fresh.payment_days_to_first_due,
+      payment_days_between_installments: fresh.payment_days_between_installments,
+    },
+    { provisional: true }
+  );
 
   if (recv.error) {
     await rollbackSalesOrderCreation(admin, tenantId, row.id);
