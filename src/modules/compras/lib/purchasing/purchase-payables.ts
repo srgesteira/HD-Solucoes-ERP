@@ -151,7 +151,7 @@ export function buildPurchaseOrderPayableRows(
       purchase_order_id: order.id,
       source_kind: PAYABLE_SOURCE_PO,
       installment_index: i + 1,
-      is_forecast: false,
+      is_forecast: true,
       amount_locked: false,
       description: targets.descriptions[i] ?? `Parcela ${i + 1}/${n} — PC ${order.po_number}`,
       category: "Fornecedor",
@@ -573,4 +573,22 @@ export async function applyPayablesRecalc(
   }
 
   return { updated, errors };
+}
+
+/** Títulos provisórios → definitivos após recebimento do PC (status received). */
+export async function confirmProvisionalPayablesForPurchaseOrder(
+  admin: Admin,
+  tenantId: string,
+  purchaseOrderId: string
+): Promise<{ updated: number }> {
+  const { data, error } = await admin
+    .from("accounts_payable")
+    .update({ is_forecast: false })
+    .eq("tenant_id", tenantId)
+    .eq("purchase_order_id", purchaseOrderId)
+    .eq("status", "pending")
+    .select("id");
+
+  if (error) throw new Error(error.message);
+  return { updated: (data ?? []).length };
 }

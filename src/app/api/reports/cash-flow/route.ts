@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
   const { data: payables, error: apErr } = await admin
     .from("accounts_payable")
-    .select("id, due_date, current_amount, status")
+    .select("id, due_date, current_amount, status, is_forecast")
     .eq("tenant_id", tenantId)
     .in("status", ["pending", "partial"]);
 
@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
       inflow_source:
         "receivables (pending/partial, real + provisório) por due_date",
       outflow_source:
-        "accounts_payable (pending/partial) por due_date; PCs confirmados sem AP por expected_delivery",
+        "accounts_payable (pending/partial, real + provisório) por due_date; PCs confirmados sem AP por expected_delivery",
     },
   });
 }
