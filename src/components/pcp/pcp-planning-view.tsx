@@ -9,7 +9,7 @@ import {
   pcpPlanningQueryKey,
   usePcpPlanningQuery,
 } from "@/hooks/use-pcp-planning";
-import type { MrpSuggestionsSummary } from "@/modules/pcp/lib/mrp-service";
+import type { MrpCommitSummary, MrpSuggestionsSummary } from "@/modules/pcp/lib/mrp-service";
 import { PcpOrdersLegacyPanel } from "@/components/pcp/pcp-orders-legacy-panel";
 import { PcpLinesPlanningView } from "@/components/pcp/pcp-lines-planning-view";
 import { PcpPurchaseDependenciesPanel } from "@/components/pcp/pcp-purchase-dependencies-panel";
@@ -55,15 +55,25 @@ function pcIsReceived(item: PcpPlanningItem): boolean {
   return item.purchase_order_status === "received";
 }
 
-function buildMrpGenerateToast(summary: MrpSuggestionsSummary): string {
-  const salesCount = summary.generated?.orders?.length ?? 0;
-  const stockCount = summary.stock_generated?.stock_orders?.length ?? 0;
+function summarizeMrpPreview(summary: MrpSuggestionsSummary) {
   const flags = summary.suggestion_flags;
-  const purchaseSuggestions =
+  const requisitionCount =
     (flags.purchase_order_items_marked ?? 0) +
-    (flags.stock_purchase_order_items_marked ?? 0) +
-    (flags.purchase_orders_marked ?? 0);
-  return `MRP gerado: ${salesCount} pedido(s), ${stockCount} OP(s) de estoque, ${purchaseSuggestions} sugestão(ões) de compra. Clique em Efetivar para confirmar.`;
+    (flags.stock_purchase_order_items_marked ?? 0);
+  const productionOrderCount = flags.production_orders_marked ?? 0;
+  const salesOrderCount = summary.generated?.orders?.length ?? 0;
+  const stockOrderCount = summary.stock_generated?.stock_orders?.length ?? 0;
+  const warningCount = countMrpGenerateWarnings(summary);
+  const salesOrders =
+    summary.generated?.orders?.map((o) => o.order_number).filter(Boolean) ?? [];
+  return {
+    requisitionCount,
+    productionOrderCount,
+    salesOrderCount,
+    stockOrderCount,
+    warningCount,
+    salesOrders,
+  };
 }
 
 function countMrpGenerateWarnings(summary: MrpSuggestionsSummary): number {
@@ -80,10 +90,9 @@ export function PcpPlanningView() {
   const [pcSearch, setPcSearch] = useState("");
   const [pcResults, setPcResults] = useState<SearchPcRow[]>([]);
   const [pcSearching, setPcSearching] = useState(false);
-  const [mrpSuggestionResult, setMrpSuggestionResult] = useState<{
-    generated?: unknown;
-    committed?: unknown;
-  } | null>(null);
+  const [mrpPreviewOpen, setMrpPreviewOpen] = useState(false);
+  const [mrpPreviewSummary, setMrpPreviewSummary] =
+    useState<MrpSuggestionsSummary | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [pickedProduct, setPickedProduct] = useState<ProductSearchHit | null>(null);
   const [createQty, setCreateQty] = useState("1");
@@ -137,8 +146,20 @@ export function PcpPlanningView() {
     setCreateLineId("");
   }
 
-  const mrpGenerateMut = useMutation({
-    mutationFn: async (): Promise<MrpSuggestionsSummary | undefined> => {
+  const mrpPreview = useMemo(
+    () => (mrpPreviewSummary ? summarizeMrpPreview(mrpPreviewSummary) : null),
+    [mrpPreviewSummary]
+  );
+
+  function invalidateMrpQueries() {
+    void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
+    void qc.invalidateQueries({ queryKey: ["purchasing-requisitions"] });
+    void qc.invalidateQueries({ queryKey: ["purchasing-requisitions-count"] });
+    void qc.invalidateQueries({ queryKey: ["purchasing-orders"] });
+  }
+
+  const mrpRunMut = useMutation({
+    mutationFn: async (): Promise<MrpSuggestionsSummary> => {
       const res = await fetch("/api/pcp/mrp-suggestions", {
         method: "POST",
         credentials: "include",
@@ -149,31 +170,21 @@ export function PcpPlanningView() {
         error?: string;
         generated?: MrpSuggestionsSummary;
       };
-      if (!res.ok) throw new Error(json.error ?? "Erro ao gerar sugestões");
-      if (json.generated) setMrpSuggestionResult({ generated: json.generated });
+      if (!res.ok) throw new Error(json.error ?? "Erro ao calcular MRP");
+      if (!json.generated) throw new Error("Resposta do MRP inválida");
       return json.generated;
     },
     onSuccess: (summary) => {
-      if (summary) {
-        toast.success(buildMrpGenerateToast(summary));
-        const warningCount = countMrpGenerateWarnings(summary);
-        if (warningCount > 0) {
-          toast.warning(`MRP concluído com ${warningCount} aviso(s).`);
-        }
-      } else {
-        toast.success("Sugestões do MRP geradas (não efetivadas).");
-      }
-      void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
-      void qc.invalidateQueries({ queryKey: ["purchasing-requisitions"] });
-      void qc.invalidateQueries({ queryKey: ["purchasing-requisitions-count"] });
-      void qc.invalidateQueries({ queryKey: ["purchasing-orders"] });
+      setMrpPreviewSummary(summary);
+      setMrpPreviewOpen(true);
+      invalidateMrpQueries();
     },
     onError: (e) =>
       toast.error(e instanceof Error ? e.message : "Erro no MRP"),
   });
 
-  const mrpCommitMut = useMutation({
-    mutationFn: async () => {
+  const mrpConfirmMut = useMutation({
+    mutationFn: async (): Promise<MrpCommitSummary> => {
       const res = await fetch("/api/pcp/mrp-suggestions", {
         method: "POST",
         credentials: "include",
@@ -182,32 +193,59 @@ export function PcpPlanningView() {
       });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
-        committed?: unknown;
+        committed?: MrpCommitSummary;
       };
-      if (!res.ok) throw new Error(json.error ?? "Erro ao efetivar sugestões");
-      setMrpSuggestionResult({ committed: json.committed });
+      if (!res.ok) throw new Error(json.error ?? "Erro ao confirmar MRP");
+      if (!json.committed) throw new Error("Resposta do MRP inválida");
+      return json.committed;
     },
-    onSuccess: () => {
-      toast.success("Sugestões efetivadas.");
-      void qc.invalidateQueries({ queryKey: pcpPlanningQueryKey });
-      void qc.invalidateQueries({ queryKey: ["purchasing-requisitions"] });
-      void qc.invalidateQueries({ queryKey: ["purchasing-requisitions-count"] });
-      void qc.invalidateQueries({ queryKey: ["purchasing-orders"] });
+    onSuccess: (committed) => {
+      toast.success(
+        `MRP confirmado: ${committed.purchase_order_items_committed} requisição(ões), ${committed.production_orders_committed} OP(s).`
+      );
+      setMrpPreviewOpen(false);
+      setMrpPreviewSummary(null);
+      invalidateMrpQueries();
     },
     onError: (e) =>
-      toast.error(e instanceof Error ? e.message : "Erro ao efetivar"),
+      toast.error(e instanceof Error ? e.message : "Erro ao confirmar MRP"),
   });
 
-  const mrpSummaryText = useMemo(() => {
-    if (!mrpSuggestionResult) return null;
-    if (mrpSuggestionResult.committed) {
-      return "Sugestões efetivadas. Agora passam a aparecer nas telas normais.";
+  const mrpDiscardMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/pcp/mrp-suggestions", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "discard" }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao cancelar MRP");
+    },
+    onSuccess: () => {
+      toast.message("MRP cancelado — nada foi efetivado.");
+      setMrpPreviewOpen(false);
+      setMrpPreviewSummary(null);
+      invalidateMrpQueries();
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro ao cancelar MRP"),
+  });
+
+  const mrpBusy =
+    mrpRunMut.isPending ||
+    mrpConfirmMut.isPending ||
+    mrpDiscardMut.isPending ||
+    q.isFetching;
+
+  function handleCloseMrpPreview() {
+    if (mrpConfirmMut.isPending || mrpDiscardMut.isPending) return;
+    if (mrpPreviewSummary) {
+      mrpDiscardMut.mutate();
+      return;
     }
-    if (mrpSuggestionResult.generated) {
-      return "Sugestões geradas. Revise e clique em «Efetivar» para torná-las reais.";
-    }
-    return null;
-  }, [mrpSuggestionResult]);
+    setMrpPreviewOpen(false);
+  }
 
   const updateLineMut = useMutation({
     mutationFn: async (args: {
@@ -369,40 +407,23 @@ export function PcpPlanningView() {
           </button>
           <button
             type="button"
-            disabled={mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching}
-            onClick={() => mrpGenerateMut.mutate()}
-            aria-busy={mrpGenerateMut.isPending || q.isFetching}
+            disabled={mrpBusy}
+            onClick={() => mrpRunMut.mutate()}
+            aria-busy={mrpRunMut.isPending || q.isFetching}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-white pcp-btn-primary transition-opacity",
-              (mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching) &&
+              mrpBusy &&
                 "cursor-wait opacity-80 ring-2 ring-brand-300/60 ring-offset-1"
             )}
           >
-            {mrpGenerateMut.isPending || q.isFetching ? (
+            {mrpRunMut.isPending || q.isFetching ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : null}
-            {mrpGenerateMut.isPending
-              ? "A gerar sugestões…"
+            {mrpRunMut.isPending
+              ? "A processar…"
               : q.isFetching
                 ? "A actualizar…"
-                : "Gerar sugestões (MRP)"}
-          </button>
-          <button
-            type="button"
-            disabled={mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching}
-            onClick={() => mrpCommitMut.mutate()}
-            aria-busy={mrpCommitMut.isPending}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-50 transition-opacity",
-              (mrpGenerateMut.isPending || mrpCommitMut.isPending || q.isFetching) &&
-                "cursor-wait opacity-70"
-            )}
-            title="Transforma sugestões em registros reais (is_suggestion=false)"
-          >
-            {mrpCommitMut.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : null}
-            Efetivar sugestões
+                : "Rodar MRP"}
           </button>
           <button
             type="button"
@@ -423,11 +444,6 @@ export function PcpPlanningView() {
       }
     >
       <div className="pcp-legacy-shell space-y-4">
-      {mrpSummaryText ? (
-        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-          {mrpSummaryText}
-        </div>
-      ) : null}
 
       <ProductCatalogPickerModal
         open={createOpen}
@@ -679,6 +695,78 @@ export function PcpPlanningView() {
                 }}
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {mrpPreviewOpen && mrpPreview ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50">
+          <div
+            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl space-y-4"
+            role="dialog"
+            aria-labelledby="mrp-preview-title"
+          >
+            <h3
+              id="mrp-preview-title"
+              className="text-lg font-semibold text-slate-900"
+            >
+              Confirmar MRP
+            </h3>
+            <p className="text-sm text-slate-600">
+              O MRP vai criar{" "}
+              <strong>{mrpPreview.requisitionCount}</strong>{" "}
+              {mrpPreview.requisitionCount === 1
+                ? "requisição de compra"
+                : "requisições de compra"}
+              {" e "}
+              <strong>{mrpPreview.productionOrderCount}</strong>{" "}
+              {mrpPreview.productionOrderCount === 1
+                ? "ordem de produção"
+                : "ordens de produção"}
+              .
+            </p>
+            {(mrpPreview.salesOrderCount > 0 ||
+              mrpPreview.stockOrderCount > 0) && (
+              <ul className="text-sm border border-slate-100 rounded-md p-2 max-h-40 overflow-y-auto space-y-1">
+                {mrpPreview.salesOrders.map((num) => (
+                  <li key={num} className="text-slate-700">
+                    Pedido {num}
+                  </li>
+                ))}
+                {mrpPreview.stockOrderCount > 0 ? (
+                  <li className="text-slate-700">
+                    {mrpPreview.stockOrderCount} OP(s) de estoque
+                  </li>
+                ) : null}
+              </ul>
+            )}
+            {mrpPreview.warningCount > 0 ? (
+              <p className="text-xs text-amber-800">
+                {mrpPreview.warningCount} aviso(s) durante o cálculo — reveja
+                antes de confirmar.
+              </p>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                disabled={mrpConfirmMut.isPending || mrpDiscardMut.isPending}
+                onClick={handleCloseMrpPreview}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-white pcp-btn-primary disabled:opacity-70"
+                disabled={mrpConfirmMut.isPending || mrpDiscardMut.isPending}
+                onClick={() => mrpConfirmMut.mutate()}
+              >
+                {mrpConfirmMut.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Confirmar
               </button>
             </div>
           </div>

@@ -1939,6 +1939,86 @@ export async function commitMrpSuggestionsForTenant(
   };
 }
 
+export type MrpDiscardSummary = {
+  production_orders_discarded: number;
+  purchase_orders_discarded: number;
+  purchase_order_items_discarded: number;
+};
+
+/** Descarta sugestões MRP não efetivadas (cancelar pré-visualização). */
+export async function discardMrpSuggestionsForTenant(
+  admin: Admin,
+  tenantId: string
+): Promise<MrpDiscardSummary> {
+  const { data: ops } = await admin
+    .from("production_orders")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", true);
+  const opIds = (ops ?? []).map((o) => o.id);
+
+  if (opIds.length) {
+    await admin
+      .from("sales_order_items")
+      .update({ production_order_id: null })
+      .eq("tenant_id", tenantId)
+      .in("production_order_id", opIds);
+  }
+
+  const { data: pos } = await admin
+    .from("purchase_orders")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", true);
+  const poIds = (pos ?? []).map((p) => p.id);
+
+  let purchase_order_items_discarded = 0;
+
+  if (poIds.length) {
+    const { data: delPoi } = await admin
+      .from("purchase_order_items")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .in("purchase_order_id", poIds)
+      .select("id");
+    purchase_order_items_discarded += (delPoi ?? []).length;
+
+    await admin
+      .from("purchase_orders")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .in("id", poIds);
+  }
+
+  const { data: delReq } = await admin
+    .from("purchase_order_items")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("is_suggestion", true)
+    .is("purchase_order_id", null)
+    .select("id");
+  purchase_order_items_discarded += (delReq ?? []).length;
+
+  if (opIds.length) {
+    await admin
+      .from("order_items")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .in("order_id", opIds);
+    await admin
+      .from("production_orders")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .in("id", opIds);
+  }
+
+  return {
+    production_orders_discarded: opIds.length,
+    purchase_orders_discarded: poIds.length,
+    purchase_order_items_discarded,
+  };
+}
+
 /** Legado: uma OP para o pedido inteiro (evitar uso; preferir MRP por linha). */
 export async function createProductionOrderIfFeasible(
   admin: Admin,
