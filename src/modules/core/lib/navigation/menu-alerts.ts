@@ -12,7 +12,7 @@ export const MENU_ALERT_PATHS = {
   pcpPlanning: "/logistics/pcp",
   financeContas: "/finance/contas",
   financePayables: "/finance/contas?tab=pagar",
-  financePayablesOverdue: "/finance/contas?tab=pagar&overdue=1",
+  financePayablesOverdue: "/finance/contas?tab=pagar&overdue=1&list=all",
   financeReceivables: "/finance/contas?tab=receber",
   financeReceivablesOverdue: "/finance/contas?tab=receber&overdue=1",
   financeCreditAnalysis: "/finance/credit-analysis",
@@ -185,6 +185,7 @@ export async function loadMenuAlerts(
           .from("accounts_payable")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
+          .eq("is_forecast", false)
           .in("status", ["pending", "overdue"])
           .lt("due_date", today);
         if (!e1) {
@@ -211,6 +212,7 @@ export async function loadMenuAlerts(
           .from("accounts_payable")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
+          .eq("is_forecast", false)
           .in("status", ["pending", "overdue"])
           .eq("due_date", today);
         if (!e2) {
@@ -242,6 +244,7 @@ export async function loadMenuAlerts(
           .from("receivables")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
+          .eq("is_forecast", false)
           .in("status", ["pending", "partial"])
           .eq("due_date", today);
         if (!error) {
@@ -273,6 +276,7 @@ export async function loadMenuAlerts(
           .from("receivables")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
+          .eq("is_forecast", false)
           .in("status", ["pending", "partial"])
           .lt("due_date", today);
         if (!error) {

@@ -30,6 +30,7 @@ import {
   PAYABLES_LIST_TAB_DEFAULT,
   PAYABLES_LIST_TAB_LABELS,
   PAYABLES_LIST_TABS,
+  isPayablesListTab,
   type PayablesListTab,
 } from "@/modules/faturamento/lib/payables-list-tabs";
 import { formatShortFinanceDescription } from "@/modules/finance/lib/finance-line-format";
@@ -74,6 +75,27 @@ function fmtBrl(n: number) {
   }).format(n);
 }
 
+function initialPayablesListTab(
+  searchParams: URLSearchParams,
+  embedded: boolean
+): PayablesListTab {
+  if (!embedded) return PAYABLES_LIST_TAB_DEFAULT;
+  const list = searchParams.get("list");
+  if (list && isPayablesListTab(list)) return list;
+  if (searchParams.get("overdue") === "1") return "all";
+  return PAYABLES_LIST_TAB_DEFAULT;
+}
+
+function buildPayablesContasUrl(opts: {
+  list: PayablesListTab;
+  overdue: boolean;
+}): string {
+  const p = new URLSearchParams({ tab: "pagar" });
+  if (opts.list !== "open") p.set("list", opts.list);
+  if (opts.overdue) p.set("overdue", "1");
+  return `/finance/contas?${p.toString()}`;
+}
+
 const PAYABLE_STATUS_LABELS: Record<string, string> = {
   pending: "Pendente",
   partial: "Parcial",
@@ -107,8 +129,8 @@ export function PayablesPanel({
   const [rows, setRows] = useState<Payable[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<PayablesListTab>(
-    PAYABLES_LIST_TAB_DEFAULT
+  const [activeTab, setActiveTab] = useState<PayablesListTab>(() =>
+    initialPayablesListTab(searchParams, embedded)
   );
   const { input: searchInput, setInput: setSearchInput, debounced: search } =
     useCronogramaSearch();
@@ -180,10 +202,27 @@ export function PayablesPanel({
   }, [embedded, permLoading, can, router]);
 
   useEffect(() => {
-    if (embedded) {
-      setOverdue(searchParams.get("overdue") === "1");
+    if (!embedded) return;
+    const isOverdue = searchParams.get("overdue") === "1";
+    setOverdue(isOverdue);
+    const list = searchParams.get("list");
+    if (list && isPayablesListTab(list)) {
+      setActiveTab(list);
+    } else if (isOverdue) {
+      setActiveTab("all");
     }
   }, [embedded, searchParams]);
+
+  const syncEmbeddedUrl = useCallback(
+    (list: PayablesListTab, onlyOverdue: boolean) => {
+      if (!embedded) return;
+      router.replace(
+        buildPayablesContasUrl({ list, overdue: onlyOverdue }),
+        { scroll: false }
+      );
+    },
+    [embedded, router]
+  );
 
   useEffect(() => {
     if (permLoading || !can("finance")) return;
@@ -505,7 +544,11 @@ export function PayablesPanel({
 
       <Tabs
         value={activeTab}
-        onValueChange={(v) => setActiveTab(v as PayablesListTab)}
+        onValueChange={(v) => {
+          const tab = v as PayablesListTab;
+          setActiveTab(tab);
+          syncEmbeddedUrl(tab, overdue);
+        }}
       >
         <TabsList className="w-full flex flex-wrap h-auto gap-1">
           {PAYABLES_LIST_TABS.map((tabId) => (
@@ -544,7 +587,13 @@ export function PayablesPanel({
                       <input
                         type="checkbox"
                         checked={overdue}
-                        onChange={(e) => setOverdue(e.target.checked)}
+                        onChange={(e) => {
+                          const next = e.target.checked;
+                          setOverdue(next);
+                          const list = next ? "all" : activeTab;
+                          if (next) setActiveTab("all");
+                          syncEmbeddedUrl(list, next);
+                        }}
                       />
                       Só vencidas
                     </label>
@@ -552,6 +601,24 @@ export function PayablesPanel({
                 </>
               }
             >
+              {overdue ? (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <span>
+                    Filtro activo: a mostrar apenas contas{" "}
+                    <strong>vencidas</strong>.
+                  </span>
+                  <button
+                    type="button"
+                    className="font-medium underline hover:no-underline"
+                    onClick={() => {
+                      setOverdue(false);
+                      syncEmbeddedUrl(activeTab, false);
+                    }}
+                  >
+                    Limpar filtro
+                  </button>
+                </div>
+              ) : null}
               <SortableTable
                 columns={tableColumns}
                 data={visibleRows}
