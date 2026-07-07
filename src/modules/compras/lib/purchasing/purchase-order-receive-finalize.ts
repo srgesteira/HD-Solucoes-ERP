@@ -4,6 +4,7 @@ import {
   applyPurchaseOrderReceive,
   type ReceivePurchaseOrderResult,
 } from "@/modules/compras/lib/purchasing/purchase-order-receive";
+import { confirmProvisionalPayablesForPurchaseOrder } from "@/modules/compras/lib/purchasing/purchase-payables";
 
 type Admin = SupabaseClient<Database>;
 
@@ -35,6 +36,15 @@ export async function finalizePurchaseOrderReceive(
     .maybeSingle();
 
   if (error) throw new Error(error.message);
+
+  try {
+    await confirmProvisionalPayablesForPurchaseOrder(admin, tenantId, orderId);
+  } catch (apErr) {
+    console.warn(
+      "[purchase-order] Falha ao confirmar pagáveis no recebimento:",
+      apErr instanceof Error ? apErr.message : apErr
+    );
+  }
 
   return { order: data, receive };
 }
