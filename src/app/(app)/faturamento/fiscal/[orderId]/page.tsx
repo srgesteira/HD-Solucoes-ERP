@@ -14,6 +14,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { FiscalStatusBadge } from "@/components/fiscal/fiscal-status-badge";
+import {
+  FiscalAiAssistantModal,
+  type FiscalAiAssistantResponse,
+} from "@/components/fiscal/fiscal-ai-assistant-modal";
 import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -79,7 +83,7 @@ async function postAlignFiscal(orderId: string): Promise<FiscalOrderReview> {
 async function postFiscalAi(
   salesOrderId: string,
   description: string
-): Promise<{ summary: string }> {
+): Promise<FiscalAiAssistantResponse> {
   const res = await fetch("/api/ai/fiscal-order-assistant", {
     method: "POST",
     credentials: "include",
@@ -87,11 +91,16 @@ async function postFiscalAi(
     body: JSON.stringify({ sales_order_id: salesOrderId, description }),
   });
   const json = (await res.json().catch(() => ({}))) as {
-    data?: { summary?: string };
+    data?: FiscalAiAssistantResponse & { fiscalStatus?: string };
     error?: string;
   };
   if (!res.ok) throw new Error(json.error ?? "Erro no assistente fiscal");
-  return { summary: json.data?.summary ?? "Fiscal aplicado." };
+  return {
+    status: json.data?.status ?? "applied",
+    summary: json.data?.summary ?? "Fiscal aplicado.",
+    questions: json.data?.questions ?? [],
+    fiscalStatus: json.data?.fiscalStatus,
+  };
 }
 
 async function postManualFiscalItem(
@@ -156,9 +165,8 @@ export default function FiscalOrderReviewPage() {
   const canFaturamento = isAdmin || canMenu("faturamento");
 
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiDescription, setAiDescription] = useState(
-    "Cliente no estado do endereço. Cliente é revenda."
-  );
+  const [aiDescription, setAiDescription] = useState("");
+  const [aiQuestions, setAiQuestions] = useState<string[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [editItem, setEditItem] = useState<FiscalOrderReviewItem | null>(null);
 
@@ -220,8 +228,19 @@ export default function FiscalOrderReviewPage() {
     setAiLoading(true);
     try {
       const out = await postFiscalAi(orderId, aiDescription);
-      toast.success(out.summary);
+      if (out.status === "needs_input") {
+        setAiQuestions(out.questions);
+        toast.message(out.summary);
+        return;
+      }
+      if (out.status === "rules_applied") {
+        toast.info(out.summary);
+      } else {
+        toast.success(out.summary);
+      }
       setAiOpen(false);
+      setAiDescription("");
+      setAiQuestions([]);
       await refetch();
       void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
     } catch (e) {
@@ -287,7 +306,11 @@ export default function FiscalOrderReviewPage() {
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => setAiOpen(true)}
+              onClick={() => {
+                setAiQuestions([]);
+                setAiDescription("");
+                setAiOpen(true);
+              }}
               disabled={!isAdmin}
             >
               <Sparkles className="h-4 w-4" />
@@ -576,10 +599,10 @@ export default function FiscalOrderReviewPage() {
           </Card>
 
           <p className="text-xs text-slate-500">
-            Linhas em amarelo = sugestão do motor (ainda não gravada). Sem CFOP =
-            use <strong>Editar</strong> na linha ou «Reaplicar regras». Fluxo: IA
-            ou edição manual → conferir CFOP/alíquotas → «Fiscal alinhado» → emitir
-            ou confirmar sem nota.
+            <strong>Reaplicar regras</strong> quando há regra cadastrada.{" "}
+            <strong>Assistente IA</strong> só quando não há regra — define CFOP e
+            alíquotas (pode fazer perguntas). <strong>Editar</strong> para ajuste
+            manual. Depois «Fiscal alinhado».
           </p>
         </div>
       ) : null}
@@ -592,53 +615,20 @@ export default function FiscalOrderReviewPage() {
         onSave={(itemId, fiscal) => manualSaveMutation.mutate({ itemId, fiscal })}
       />
 
-      {aiOpen ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900">
-              Assistente fiscal (IA)
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Indique se é consumidor final, revenda ou industrialização, UF e
-              condições especiais.
-            </p>
-            <textarea
-              className="mt-3 w-full min-h-[120px] rounded-lg border border-slate-200 p-3 text-sm"
-              value={aiDescription}
-              onChange={(e) => setAiDescription(e.target.value)}
-              placeholder="Ex.: Cliente em SP, revenda…"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={aiLoading}
-                onClick={() => setAiOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={aiLoading}
-                onClick={() => void runAi()}
-              >
-                {aiLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                Aplicar fiscal
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <FiscalAiAssistantModal
+        open={aiOpen}
+        orderLabel={data?.order_number}
+        loading={aiLoading}
+        description={aiDescription}
+        questions={aiQuestions}
+        onDescriptionChange={setAiDescription}
+        onClose={() => {
+          setAiOpen(false);
+          setAiDescription("");
+          setAiQuestions([]);
+        }}
+        onSubmit={() => void runAi()}
+      />
     </AppPage>
   );
 }

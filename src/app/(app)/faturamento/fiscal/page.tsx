@@ -18,6 +18,10 @@ import {
   FiscalStatusBadge,
   ReadyForInvoiceCompositeBadge,
 } from "@/components/fiscal/fiscal-status-badge";
+import {
+  FiscalAiAssistantModal,
+  type FiscalAiAssistantResponse,
+} from "@/components/fiscal/fiscal-ai-assistant-modal";
 import { Button } from "@/shared/ui/button";
 import { AppPage } from "@/shared/ui/app-page";
 import {
@@ -144,7 +148,7 @@ async function postCloseWithoutInvoice(orderId: string): Promise<void> {
 async function postFiscalAiAssistant(
   salesOrderId: string,
   description: string
-): Promise<{ summary: string; fiscalStatus: string }> {
+): Promise<FiscalAiAssistantResponse> {
   const res = await fetch("/api/ai/fiscal-order-assistant", {
     method: "POST",
     credentials: "include",
@@ -152,13 +156,15 @@ async function postFiscalAiAssistant(
     body: JSON.stringify({ sales_order_id: salesOrderId, description }),
   });
   const json = (await res.json().catch(() => ({}))) as {
-    data?: { summary?: string; fiscalStatus?: string };
+    data?: FiscalAiAssistantResponse & { fiscalStatus?: string };
     error?: string;
   };
   if (!res.ok) throw new Error(json.error ?? "Erro no assistente fiscal");
   return {
+    status: json.data?.status ?? "applied",
     summary: json.data?.summary ?? "Fiscal aplicado.",
-    fiscalStatus: json.data?.fiscalStatus ?? "pending",
+    questions: json.data?.questions ?? [],
+    fiscalStatus: json.data?.fiscalStatus,
   };
 }
 
@@ -194,6 +200,7 @@ export default function FiscalInvoicingPage() {
   >(null);
   const [aiTarget, setAiTarget] = useState<FiscalInvoicingListRow | null>(null);
   const [aiDescription, setAiDescription] = useState("");
+  const [aiQuestions, setAiQuestions] = useState<string[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
@@ -293,9 +300,19 @@ export default function FiscalInvoicingPage() {
     setAiLoading(true);
     try {
       const out = await postFiscalAiAssistant(aiTarget.id, aiDescription);
-      toast.success(out.summary);
+      if (out.status === "needs_input") {
+        setAiQuestions(out.questions);
+        toast.message(out.summary);
+        return;
+      }
+      if (out.status === "rules_applied") {
+        toast.info(out.summary);
+      } else {
+        toast.success(out.summary);
+      }
       setAiTarget(null);
       setAiDescription("");
+      setAiQuestions([]);
       invalidateList();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
@@ -535,12 +552,11 @@ export default function FiscalInvoicingPage() {
                   size="sm"
                   variant="outline"
                   className="h-7 px-2 text-[11px]"
-                  title="Assistente fiscal (IA)"
+                  title="Assistente fiscal (IA) — sem regra cadastrada"
                   onClick={() => {
                     setAiTarget(row);
-                    setAiDescription(
-                      "Cliente no estado do endereço. Definir se é consumidor final, revenda ou industrialização conforme operação."
-                    );
+                    setAiQuestions([]);
+                    setAiDescription("");
                   }}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
@@ -677,58 +693,20 @@ export default function FiscalInvoicingPage() {
         ))}
       </Tabs>
 
-      {aiTarget ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-950">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-              Assistente fiscal (IA)
-            </h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Pedido{" "}
-              <strong>{aiTarget.order_number}</strong> — descreva consumidor,
-              revenda, industrialização, UF e condições especiais. A IA usa o
-              NCM dos produtos e aplica as regras fiscais.
-            </p>
-            <textarea
-              className="mt-3 w-full min-h-[120px] rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700 dark:bg-slate-900"
-              value={aiDescription}
-              onChange={(e) => setAiDescription(e.target.value)}
-              placeholder="Ex.: Cliente em SP, revenda, operação interestadual com substituição…"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={aiLoading}
-                onClick={() => {
-                  setAiTarget(null);
-                  setAiDescription("");
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={aiLoading}
-                onClick={() => void runFiscalAi()}
-              >
-                {aiLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                Aplicar fiscal
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <FiscalAiAssistantModal
+        open={aiTarget != null}
+        orderLabel={aiTarget?.order_number}
+        loading={aiLoading}
+        description={aiDescription}
+        questions={aiQuestions}
+        onDescriptionChange={setAiDescription}
+        onClose={() => {
+          setAiTarget(null);
+          setAiDescription("");
+          setAiQuestions([]);
+        }}
+        onSubmit={() => void runFiscalAi()}
+      />
 
       <p className="text-center text-sm pt-2">
         <Link
