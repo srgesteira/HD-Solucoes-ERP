@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Loader2,
   PackageCheck,
+  RefreshCw,
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -23,6 +24,16 @@ import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-bi
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
 import { cn } from "@/shared/utils/cn";
+
+function fmtPct(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${value}%`;
+}
+
+function fmtBool(value: boolean | null | undefined): string {
+  if (value == null) return "—";
+  return value ? "Sim" : "Não";
+}
 
 async function fetchFiscalReview(orderId: string): Promise<FiscalOrderReview> {
   const res = await fetch(
@@ -75,6 +86,25 @@ async function postFiscalAi(
   return { summary: json.data?.summary ?? "Fiscal aplicado." };
 }
 
+async function postReapplyFiscal(orderId: string): Promise<FiscalOrderReview> {
+  const res = await fetch(
+    `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/review`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reapply" }),
+    }
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: FiscalOrderReview;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao reaplicar regras");
+  if (!json.data) throw new Error("Resposta inválida");
+  return json.data;
+}
+
 async function postCloseWithoutInvoice(orderId: string): Promise<void> {
   const res = await fetch(
     `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/close-without-invoice`,
@@ -111,6 +141,16 @@ export default function FiscalOrderReviewPage() {
     mutationFn: () => postAlignFiscal(orderId),
     onSuccess: () => {
       toast.success("Fiscal alinhado — status actualizado para Impostos manuais.");
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-order-review", orderId] });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const reapplyMutation = useMutation({
+    mutationFn: () => postReapplyFiscal(orderId),
+    onSuccess: () => {
+      toast.success("Regras fiscais reaplicadas — CFOP e alíquotas actualizados.");
       void queryClient.invalidateQueries({ queryKey: ["fiscal-order-review", orderId] });
       void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
     },
@@ -180,6 +220,20 @@ export default function FiscalOrderReviewPage() {
       actions={
         data ? (
           <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!isAdmin || reapplyMutation.isPending}
+              onClick={() => reapplyMutation.mutate()}
+            >
+              {reapplyMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Reaplicar regras
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -258,7 +312,7 @@ export default function FiscalOrderReviewPage() {
             </div>
           )}
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader className="py-3">
                 <CardTitle className="text-base">Cliente e destino</CardTitle>
@@ -281,6 +335,32 @@ export default function FiscalOrderReviewPage() {
                 <div>
                   <span className="text-slate-500">Endereço</span>
                   <p className="text-slate-700">{data.client_address ?? "—"}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="text-base">Operação fiscal</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-slate-500">UF origem (empresa)</span>
+                    <p className="font-semibold">{data.origin_uf ?? "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">UF destino</span>
+                    <p className="font-semibold">{data.destination_uf ?? "—"}</p>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-500">Regime tributário</span>
+                  <p>{data.tax_regime ?? "—"}</p>
+                </div>
+                <div>
+                  <span className="text-slate-500">Operação</span>
+                  <p>Venda</p>
                 </div>
               </CardContent>
             </Card>
@@ -317,9 +397,10 @@ export default function FiscalOrderReviewPage() {
                     <p className="font-semibold">{fmtBRL(data.total)}</p>
                   </div>
                   <div>
-                    <span className="text-slate-500">ICMS / IPI</span>
-                    <p>
-                      {fmtBRL(data.total_icms)} / {fmtBRL(data.total_ipi)}
+                    <span className="text-slate-500">Base / ICMS / IPI</span>
+                    <p className="text-xs leading-relaxed">
+                      {fmtBRL(data.total_tax_base)} · {fmtBRL(data.total_icms)} ·{" "}
+                      {fmtBRL(data.total_ipi)}
                     </p>
                   </div>
                 </div>
@@ -329,61 +410,103 @@ export default function FiscalOrderReviewPage() {
 
           <Card>
             <CardHeader className="py-3">
-              <CardTitle className="text-base">Itens e impostos</CardTitle>
+              <CardTitle className="text-base">Conferência fiscal por item</CardTitle>
             </CardHeader>
             <CardContent className="overflow-x-auto p-0">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-600">
+              <table className="w-full min-w-[1200px] text-left text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-600">
                   <tr>
-                    <th className="px-3 py-2 font-medium">#</th>
-                    <th className="px-3 py-2 font-medium">Descrição / produto</th>
-                    <th className="px-3 py-2 font-medium">NCM</th>
-                    <th className="px-3 py-2 font-medium">Natureza</th>
-                    <th className="px-3 py-2 font-medium text-right">Qtd</th>
-                    <th className="px-3 py-2 font-medium text-right">Total</th>
-                    <th className="px-3 py-2 font-medium text-right">ICMS %</th>
-                    <th className="px-3 py-2 font-medium text-right">ICMS R$</th>
-                    <th className="px-3 py-2 font-medium text-right">IPI %</th>
+                    <th className="px-2 py-2 font-medium">#</th>
+                    <th className="px-2 py-2 font-medium min-w-[180px]">Produto</th>
+                    <th className="px-2 py-2 font-medium">NCM</th>
+                    <th className="px-2 py-2 font-medium">Natureza</th>
+                    <th className="px-2 py-2 font-medium">CFOP</th>
+                    <th className="px-2 py-2 font-medium">Regra</th>
+                    <th className="px-2 py-2 font-medium text-right">Qtd</th>
+                    <th className="px-2 py-2 font-medium text-right">Total</th>
+                    <th className="px-2 py-2 font-medium text-right">Base</th>
+                    <th className="px-2 py-2 font-medium text-right">ICMS %</th>
+                    <th className="px-2 py-2 font-medium text-right">ICMS R$</th>
+                    <th className="px-2 py-2 font-medium text-right">ST</th>
+                    <th className="px-2 py-2 font-medium text-right">ST %</th>
+                    <th className="px-2 py-2 font-medium text-right">IPI %</th>
+                    <th className="px-2 py-2 font-medium text-right">IPI R$</th>
+                    <th className="px-2 py-2 font-medium text-right">PIS %</th>
+                    <th className="px-2 py-2 font-medium text-right">PIS R$</th>
+                    <th className="px-2 py-2 font-medium text-right">COFINS %</th>
+                    <th className="px-2 py-2 font-medium text-right">COFINS R$</th>
+                    <th className="px-2 py-2 font-medium text-right">CBS %</th>
+                    <th className="px-2 py-2 font-medium text-right">IBS %</th>
+                    <th className="px-2 py-2 font-medium">Class. IBS/CBS</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.items.map((it) => (
                     <tr
                       key={it.id}
-                      className="border-b border-slate-100 last:border-0"
+                      className={cn(
+                        "border-b border-slate-100 last:border-0 align-top",
+                        it.fiscal_source === "preview" && "bg-amber-50/50",
+                        !it.cfop && "bg-rose-50/30"
+                      )}
                     >
-                      <td className="px-3 py-2 text-slate-500">{it.line_number}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-2 text-slate-500">{it.line_number}</td>
+                      <td className="px-2 py-2">
                         <div className="font-medium text-slate-900">
                           {it.product_name ?? it.description}
                         </div>
                         {it.product_name && it.description !== it.product_name ? (
-                          <div className="text-xs text-slate-500">{it.description}</div>
+                          <div className="text-[10px] text-slate-500">{it.description}</div>
                         ) : null}
+                        <div className="mt-0.5 text-[10px] text-slate-500">
+                          {it.fiscal_source_label}
+                        </div>
                         {!it.product_id ? (
                           <div className="text-[10px] text-amber-700">Sem produto</div>
                         ) : null}
+                        {it.line_warnings.length > 0 ? (
+                          <div className="mt-1 text-[10px] text-amber-800">
+                            {it.line_warnings.join(" · ")}
+                          </div>
+                        ) : null}
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs">
-                        {it.ncm ?? "—"}
+                      <td className="px-2 py-2 font-mono text-xs">{it.ncm ?? "—"}</td>
+                      <td className="px-2 py-2 text-xs">{it.product_nature ?? "—"}</td>
+                      <td className="px-2 py-2 font-mono text-xs font-semibold text-emerald-900">
+                        {it.cfop ?? "—"}
                       </td>
-                      <td className="px-3 py-2 text-xs">
-                        {it.product_nature ?? "—"}
+                      <td className="px-2 py-2 text-[10px] text-slate-600 max-w-[120px]">
+                        {it.fiscal_rule_name ?? "—"}
                       </td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-2 py-2 text-right whitespace-nowrap">
                         {it.quantity} {it.unit}
                       </td>
-                      <td className="px-3 py-2 text-right">
-                        {fmtBRL(it.total_price)}
+                      <td className="px-2 py-2 text-right">{fmtBRL(it.total_price)}</td>
+                      <td className="px-2 py-2 text-right">
+                        {it.tax_base != null ? fmtBRL(it.tax_base) : "—"}
                       </td>
-                      <td className="px-3 py-2 text-right">
-                        {it.icms_rate != null ? `${it.icms_rate}%` : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-2 py-2 text-right">{fmtPct(it.icms_rate)}</td>
+                      <td className="px-2 py-2 text-right">
                         {it.icms_value != null ? fmtBRL(it.icms_value) : "—"}
                       </td>
-                      <td className="px-3 py-2 text-right">
-                        {it.ipi_rate != null ? `${it.ipi_rate}%` : "—"}
+                      <td className="px-2 py-2 text-right">{fmtBool(it.icms_st)}</td>
+                      <td className="px-2 py-2 text-right">{fmtPct(it.icms_st_rate)}</td>
+                      <td className="px-2 py-2 text-right">{fmtPct(it.ipi_rate)}</td>
+                      <td className="px-2 py-2 text-right">
+                        {it.ipi_value != null ? fmtBRL(it.ipi_value) : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-right">{fmtPct(it.pis_rate)}</td>
+                      <td className="px-2 py-2 text-right">
+                        {it.pis_value != null ? fmtBRL(it.pis_value) : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-right">{fmtPct(it.cofins_rate)}</td>
+                      <td className="px-2 py-2 text-right">
+                        {it.cofins_value != null ? fmtBRL(it.cofins_value) : "—"}
+                      </td>
+                      <td className="px-2 py-2 text-right">{fmtPct(it.cbs_rate)}</td>
+                      <td className="px-2 py-2 text-right">{fmtPct(it.ibs_rate)}</td>
+                      <td className="px-2 py-2 text-[10px] text-slate-600">
+                        {it.ibs_cbs_classificacao ?? "—"}
                       </td>
                     </tr>
                   ))}
@@ -393,9 +516,10 @@ export default function FiscalOrderReviewPage() {
           </Card>
 
           <p className="text-xs text-slate-500">
-            Fluxo sugerido: 1) Assistente IA (classificar revenda/consumidor) ou
-            «Fiscal alinhado» → 2) se for sem nota e PCP liberou, «Confirmar sem
-            nota» → Autorizadas.
+            Linhas em amarelo = sugestão do motor (ainda não gravada). Sem CFOP =
+            cadastre regras em Regras fiscais e use «Reaplicar regras». Fluxo: IA
+            ou Reaplicar → conferir CFOP/alíquotas → «Fiscal alinhado» → emitir ou
+            confirmar sem nota.
           </p>
         </div>
       ) : null}

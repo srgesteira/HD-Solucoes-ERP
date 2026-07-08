@@ -9,6 +9,7 @@ import {
 import {
   getFiscalOrderReview,
   markSalesOrderFiscalAligned,
+  reapplyFiscalRulesToSalesOrder,
 } from "@/modules/faturamento/lib/fiscal-order-review-service";
 
 export const dynamic = "force-dynamic";
@@ -68,13 +69,25 @@ export async function POST(
   }
 
   const action = typeof body.action === "string" ? body.action : "align";
-  if (action !== "align") {
-    return apiError("Acção inválida.", 400);
-  }
 
   const admin = createSupabaseAdminClient();
 
   try {
+    if (action === "reapply") {
+      await reapplyFiscalRulesToSalesOrder(
+        admin,
+        tenantId,
+        orderId,
+        user.id
+      );
+      const data = await getFiscalOrderReview(admin, tenantId, orderId);
+      return apiOk({ data });
+    }
+
+    if (action !== "align") {
+      return apiError("Acção inválida.", 400);
+    }
+
     const result = await markSalesOrderFiscalAligned(admin, tenantId, orderId);
     if (!result.ok) {
       return apiError(result.reasons.join(" "), 400);
