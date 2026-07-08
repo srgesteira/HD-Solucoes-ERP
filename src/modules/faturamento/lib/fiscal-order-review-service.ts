@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
-import { taxAmountFromRate } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
+import { taxAmountFromRate, recalcLineTaxAmounts } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import {
   applyFiscalToLine,
   applyFiscalToSalesOrderItems,
@@ -13,10 +13,11 @@ import {
   type FiscalRates,
   type FiscalStatus,
 } from "@/modules/fiscal/lib/fiscal-rules-types";
+import { recalculateSalesOrderHeaderTotals } from "@/modules/vendas/lib/sales/sales-order-totals";
 
 type Admin = SupabaseClient<Database>;
 
-export type FiscalItemSource = "applied" | "preview" | "stored" | "none";
+export type FiscalItemSource = "applied" | "preview" | "stored" | "manual" | "none";
 
 export type FiscalOrderReviewItem = {
   id: string;
@@ -102,6 +103,7 @@ type FiscalApplicationRow = {
   document_line_id: string;
   fiscal_rule_id: string | null;
   applied_at: string;
+  source?: string | null;
   output_snapshot: unknown;
   match_detail: unknown;
   fiscal_rule?: { name?: string; cfop?: string | null } | null;
@@ -124,7 +126,24 @@ const SOURCE_LABELS: Record<FiscalItemSource, string> = {
   applied: "Regra aplicada",
   preview: "Sugestão (motor fiscal)",
   stored: "Gravado no item",
+  manual: "Edição manual",
   none: "Sem dados fiscais",
+};
+
+export type ManualFiscalItemInput = {
+  cfop: string;
+  icms_rate: number;
+  icms_value?: number | null;
+  ipi_rate: number;
+  ipi_value?: number | null;
+  tax_base?: number | null;
+  pis_rate?: number;
+  cofins_rate?: number;
+  icms_st?: boolean;
+  icms_st_rate?: number;
+  cbs_rate?: number;
+  ibs_rate?: number;
+  ibs_cbs_classificacao?: string | null;
 };
 
 function numOrNull(v: unknown): number | null {
@@ -218,6 +237,7 @@ async function loadLatestApplicationsByLine(
       document_line_id,
       fiscal_rule_id,
       applied_at,
+      source,
       output_snapshot,
       match_detail,
       fiscal_rule:fiscal_rules(name, cfop)
@@ -429,7 +449,7 @@ export async function getFiscalOrderReview(
     let fiscalRuleId: string | null = null;
 
     if (app) {
-      source = "applied";
+      source = app.source === "manual" ? "manual" : "applied";
       fiscalRuleId = app.fiscal_rule_id;
       const ruleRow = Array.isArray(app.fiscal_rule)
         ? app.fiscal_rule[0]
@@ -638,3 +658,160 @@ export async function reapplyFiscalRulesToSalesOrder(
   }
   return result;
 }
+
+function parseManualItemInput(raw: unknown): ManualFiscalItemInput | null {
+  if (!raw || typeof raw !== "object") return null;
+  const b = raw as Record<string, unknown>;
+  const cfop = typeof b.cfop === "string" ? b.cfop.trim() : "";
+  if (!cfop || !/^\d{4}$/.test(cfop)) return null;
+
+  const num = (k: string, fallback = 0) => {
+    const v = Number(b[k]);
+    return Number.isFinite(v) ? v : fallback;
+  };
+
+  return {
+    cfop,
+    icms_rate: num("icms_rate"),
+    icms_value: b.icms_value == null ? null : num("icms_value"),
+    ipi_rate: num("ipi_rate"),
+    ipi_value: b.ipi_value == null ? null : num("ipi_value"),
+    tax_base: b.tax_base == null ? null : num("tax_base"),
+    pis_rate: num("pis_rate"),
+    cofins_rate: num("cofins_rate"),
+    icms_st: Boolean(b.icms_st),
+    icms_st_rate: num("icms_st_rate"),
+    cbs_rate: num("cbs_rate"),
+    ibs_rate: num("ibs_rate"),
+    ibs_cbs_classificacao:
+      typeof b.ibs_cbs_classificacao === "string"
+        ? b.ibs_cbs_classificacao.trim() || null
+        : null,
+  };
+}
+
+/** Grava CFOP e alíquotas manualmente num item do pedido. */
+export async function saveManualFiscalItemOverride(
+  admin: Admin,
+  tenantId: string,
+  salesOrderId: string,
+  itemId: string,
+  input: ManualFiscalItemInput,
+  appliedBy?: string | null
+): Promise<{ ok: true } | { ok: false; reasons: string[] }> {
+  const db = asUntypedAdmin(admin);
+
+  const { data: item, error: itemErr } = await admin
+    .from("sales_order_items")
+    .select("id, sales_order_id, quantity, unit_price")
+    .eq("id", itemId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (itemErr) throw new Error(itemErr.message);
+  if (!item || item.sales_order_id !== salesOrderId) {
+    return { ok: false, reasons: ["Item do pedido não encontrado."] };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: order } = await (db.from("sales_orders") as any)
+    .select("id, status, billing_closure")
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (!order) return { ok: false, reasons: ["Pedido não encontrado."] };
+  if (order.billing_closure) {
+    return { ok: false, reasons: ["Pedido já finalizado no faturamento."] };
+  }
+  if (order.status === "cancelled") {
+    return { ok: false, reasons: ["Pedido cancelado."] };
+  }
+
+  const quantity = Number(item.quantity ?? 0);
+  const unitPrice = Number(item.unit_price ?? 0);
+
+  const taxFields = recalcLineTaxAmounts(
+    quantity,
+    unitPrice,
+    {
+      icmsRate: input.icms_rate,
+      icmsValue: input.icms_value ?? 0,
+      ipiRate: input.ipi_rate,
+      ipiValue: input.ipi_value ?? 0,
+      taxBase: input.tax_base ?? 0,
+    },
+    input.icms_value != null || input.ipi_value != null || input.tax_base != null
+      ? "none"
+      : "both"
+  );
+
+  const { error: updErr } = await admin
+    .from("sales_order_items")
+    .update({
+      icms_rate: taxFields.icmsRate,
+      icms_value: taxFields.icmsValue,
+      ipi_rate: taxFields.ipiRate,
+      ipi_value: taxFields.ipiValue,
+      tax_base: taxFields.taxBase,
+    })
+    .eq("id", itemId)
+    .eq("tenant_id", tenantId);
+
+  if (updErr) throw new Error(updErr.message);
+
+  const rates: FiscalRates = {
+    icmsRate: taxFields.icmsRate,
+    ipiRate: taxFields.ipiRate,
+    pisRate: input.pis_rate ?? 0,
+    cofinsRate: input.cofins_rate ?? 0,
+    icmsSt: input.icms_st ?? false,
+    icmsStRate: input.icms_st_rate ?? 0,
+    cbsRate: input.cbs_rate ?? 0,
+    ibsRate: input.ibs_rate ?? 0,
+  };
+
+  const { error: appErr } = await db.from("fiscal_rule_applications").insert({
+    tenant_id: tenantId,
+    document_type: "sales_order_item",
+    document_line_id: itemId,
+    fiscal_rule_id: null,
+    match_score: 100,
+    match_detail: {
+      reason: "manual_override",
+      source: "fiscal_review",
+      rule_name: "Edição manual",
+    },
+    input_snapshot: { sales_order_id: salesOrderId, item_id: itemId },
+    output_snapshot: {
+      cfop: input.cfop,
+      rates,
+      ibs_cbs_classificacao: input.ibs_cbs_classificacao,
+      tax_fields: taxFields,
+      warnings: [],
+    },
+    source: "manual",
+    applied_by: appliedBy ?? null,
+  });
+
+  if (appErr) throw new Error(appErr.message);
+
+  const totals = await recalculateSalesOrderHeaderTotals(
+    admin,
+    tenantId,
+    salesOrderId
+  );
+  if (totals.error) throw new Error(totals.error);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error: stErr } = await (db.from("sales_orders") as any)
+    .update({ fiscal_status: "manual_override" })
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId);
+
+  if (stErr) throw new Error(stErr.message);
+
+  return { ok: true };
+}
+
+export { parseManualItemInput };

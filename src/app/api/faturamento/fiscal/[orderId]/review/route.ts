@@ -9,7 +9,9 @@ import {
 import {
   getFiscalOrderReview,
   markSalesOrderFiscalAligned,
+  parseManualItemInput,
   reapplyFiscalRulesToSalesOrder,
+  saveManualFiscalItemOverride,
 } from "@/modules/faturamento/lib/fiscal-order-review-service";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +57,7 @@ export async function POST(
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
   if (!(await isCurrentUserTenantAdmin())) {
-    return apiError("Apenas administradores podem alinhar o fiscal.", 403);
+    return apiError("Apenas administradores podem alterar o fiscal.", 403);
   }
 
   const tenantId = await getCurrentTenantId();
@@ -69,7 +71,6 @@ export async function POST(
   }
 
   const action = typeof body.action === "string" ? body.action : "align";
-
   const admin = createSupabaseAdminClient();
 
   try {
@@ -84,19 +85,44 @@ export async function POST(
       return apiOk({ data });
     }
 
-    if (action !== "align") {
-      return apiError("Acção inválida.", 400);
+    if (action === "manual_item") {
+      const itemId =
+        typeof body.item_id === "string" ? body.item_id.trim() : "";
+      if (!itemId) return apiError("item_id obrigatório.", 400);
+
+      const parsed = parseManualItemInput(body.fiscal);
+      if (!parsed) {
+        return apiError("CFOP inválido — use 4 dígitos numéricos.", 400);
+      }
+
+      const result = await saveManualFiscalItemOverride(
+        admin,
+        tenantId,
+        orderId,
+        itemId,
+        parsed,
+        user.id
+      );
+      if (!result.ok) {
+        return apiError(result.reasons.join(" "), 400);
+      }
+      const data = await getFiscalOrderReview(admin, tenantId, orderId);
+      return apiOk({ data });
     }
 
-    const result = await markSalesOrderFiscalAligned(admin, tenantId, orderId);
-    if (!result.ok) {
-      return apiError(result.reasons.join(" "), 400);
+    if (action === "align") {
+      const result = await markSalesOrderFiscalAligned(admin, tenantId, orderId);
+      if (!result.ok) {
+        return apiError(result.reasons.join(" "), 400);
+      }
+      const data = await getFiscalOrderReview(admin, tenantId, orderId);
+      return apiOk({ data });
     }
-    const data = await getFiscalOrderReview(admin, tenantId, orderId);
-    return apiOk({ data });
+
+    return apiError("Acção inválida.", 400);
   } catch (e) {
     return apiError(
-      e instanceof Error ? e.message : "Erro ao alinhar fiscal.",
+      e instanceof Error ? e.message : "Erro ao processar revisão fiscal.",
       400
     );
   }

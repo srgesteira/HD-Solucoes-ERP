@@ -19,7 +19,15 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
-import type { FiscalOrderReview } from "@/modules/faturamento/lib/fiscal-order-review-service";
+import type {
+  FiscalOrderReview,
+  FiscalOrderReviewItem,
+  ManualFiscalItemInput,
+} from "@/modules/faturamento/lib/fiscal-order-review-service";
+import {
+  FiscalItemEditButton,
+  FiscalItemEditModal,
+} from "@/components/fiscal/fiscal-item-edit-modal";
 import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-billing-display";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
@@ -86,6 +94,29 @@ async function postFiscalAi(
   return { summary: json.data?.summary ?? "Fiscal aplicado." };
 }
 
+async function postManualFiscalItem(
+  orderId: string,
+  itemId: string,
+  fiscal: ManualFiscalItemInput
+): Promise<FiscalOrderReview> {
+  const res = await fetch(
+    `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/review`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "manual_item", item_id: itemId, fiscal }),
+    }
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: FiscalOrderReview;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao gravar fiscal manual");
+  if (!json.data) throw new Error("Resposta inválida");
+  return json.data;
+}
+
 async function postReapplyFiscal(orderId: string): Promise<FiscalOrderReview> {
   const res = await fetch(
     `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/review`,
@@ -129,6 +160,7 @@ export default function FiscalOrderReviewPage() {
     "Cliente no estado do endereço. Cliente é revenda."
   );
   const [aiLoading, setAiLoading] = useState(false);
+  const [editItem, setEditItem] = useState<FiscalOrderReviewItem | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["fiscal-order-review", orderId],
@@ -151,6 +183,23 @@ export default function FiscalOrderReviewPage() {
     mutationFn: () => postReapplyFiscal(orderId),
     onSuccess: () => {
       toast.success("Regras fiscais reaplicadas — CFOP e alíquotas actualizados.");
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-order-review", orderId] });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const manualSaveMutation = useMutation({
+    mutationFn: ({
+      itemId,
+      fiscal,
+    }: {
+      itemId: string;
+      fiscal: ManualFiscalItemInput;
+    }) => postManualFiscalItem(orderId, itemId, fiscal),
+    onSuccess: () => {
+      toast.success("Fiscal manual gravado para o item.");
+      setEditItem(null);
       void queryClient.invalidateQueries({ queryKey: ["fiscal-order-review", orderId] });
       void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
     },
@@ -438,6 +487,9 @@ export default function FiscalOrderReviewPage() {
                     <th className="px-2 py-2 font-medium text-right">CBS %</th>
                     <th className="px-2 py-2 font-medium text-right">IBS %</th>
                     <th className="px-2 py-2 font-medium">Class. IBS/CBS</th>
+                    {isAdmin ? (
+                      <th className="px-2 py-2 font-medium text-center">Acção</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -447,6 +499,7 @@ export default function FiscalOrderReviewPage() {
                       className={cn(
                         "border-b border-slate-100 last:border-0 align-top",
                         it.fiscal_source === "preview" && "bg-amber-50/50",
+                        it.fiscal_source === "manual" && "bg-sky-50/40",
                         !it.cfop && "bg-rose-50/30"
                       )}
                     >
@@ -508,6 +561,13 @@ export default function FiscalOrderReviewPage() {
                       <td className="px-2 py-2 text-[10px] text-slate-600">
                         {it.ibs_cbs_classificacao ?? "—"}
                       </td>
+                      {isAdmin ? (
+                        <td className="px-2 py-2 text-center">
+                          <FiscalItemEditButton
+                            onClick={() => setEditItem(it)}
+                          />
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -517,12 +577,20 @@ export default function FiscalOrderReviewPage() {
 
           <p className="text-xs text-slate-500">
             Linhas em amarelo = sugestão do motor (ainda não gravada). Sem CFOP =
-            cadastre regras em Regras fiscais e use «Reaplicar regras». Fluxo: IA
-            ou Reaplicar → conferir CFOP/alíquotas → «Fiscal alinhado» → emitir ou
-            confirmar sem nota.
+            use <strong>Editar</strong> na linha ou «Reaplicar regras». Fluxo: IA
+            ou edição manual → conferir CFOP/alíquotas → «Fiscal alinhado» → emitir
+            ou confirmar sem nota.
           </p>
         </div>
       ) : null}
+
+      <FiscalItemEditModal
+        item={editItem}
+        open={editItem != null}
+        saving={manualSaveMutation.isPending}
+        onClose={() => setEditItem(null)}
+        onSave={(itemId, fiscal) => manualSaveMutation.mutate({ itemId, fiscal })}
+      />
 
       {aiOpen ? (
         <div
