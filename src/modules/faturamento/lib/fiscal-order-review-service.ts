@@ -449,7 +449,7 @@ export async function getFiscalOrderReview(
     let fiscalRuleId: string | null = null;
 
     if (app) {
-      source = app.source === "manual" ? "manual" : "applied";
+      source = app.source === "manual_override" ? "manual" : "applied";
       fiscalRuleId = app.fiscal_rule_id;
       const ruleRow = Array.isArray(app.fiscal_rule)
         ? app.fiscal_rule[0]
@@ -790,7 +790,7 @@ export async function saveManualFiscalItemOverride(
       tax_fields: taxFields,
       warnings: [],
     },
-    source: "manual",
+    source: "manual_override",
     applied_by: appliedBy ?? null,
   });
 
