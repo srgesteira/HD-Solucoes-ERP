@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
           typeof r.original_product_id === "string"
             ? r.original_product_id
             : null,
+        excluded: r.excluded === true,
       };
     });
   }

@@ -8,6 +8,8 @@ import {
   PackageCheck,
   RotateCcw,
   Search,
+  Trash2,
+  Undo2,
   X,
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
@@ -30,6 +32,7 @@ type SubstituteHit = {
 
 type EditableLine = ProductionSupplyBomLine & {
   draft_quantity: number;
+  excluded: boolean;
 };
 
 async function fetchBomPreview(
@@ -104,6 +107,7 @@ export function SupplyBomReviewModal({
       previewQ.data.lines.map((l) => ({
         ...l,
         draft_quantity: l.quantity,
+        excluded: false,
       }))
     );
     setSwapLineKey(null);
@@ -140,6 +144,7 @@ export function SupplyBomReviewModal({
               available: hit.available,
               reserved_quantity: 0,
               substituted: hit.id !== l.original_product_id,
+              excluded: false,
             }
           : l
       )
@@ -157,17 +162,42 @@ export function SupplyBomReviewModal({
           ? {
               ...original,
               draft_quantity: original.quantity,
+              excluded: false,
             }
           : l
       )
     );
   };
 
+  const excludeLine = (lineKey: string) => {
+    setLines((prev) =>
+      prev.map((l) =>
+        l.line_key === lineKey
+          ? { ...l, excluded: true, substituted: false }
+          : l
+      )
+    );
+    if (swapLineKey === lineKey) {
+      setSwapLineKey(null);
+      setSwapSearch("");
+    }
+  };
+
+  const reinstateLine = (lineKey: string) => {
+    setLines((prev) =>
+      prev.map((l) => (l.line_key === lineKey ? { ...l, excluded: false } : l))
+    );
+  };
+
+  const activeLines = lines.filter((l) => !l.excluded);
+  const excludedCount = lines.length - activeLines.length;
+
   const handleConfirm = () => {
     const materials: ProductionSupplyMaterialOverride[] = lines.map((l) => ({
-      product_id: l.product_id,
-      quantity: l.draft_quantity,
+      product_id: l.excluded ? l.original_product_id : l.product_id,
+      quantity: l.draft_quantity > 0 ? l.draft_quantity : l.quantity,
       original_product_id: l.original_product_id,
+      excluded: l.excluded,
     }));
     onConfirm(orderItemId, materials);
   };
@@ -223,10 +253,18 @@ export function SupplyBomReviewModal({
           ) : (
             <>
               <p className="mb-3 text-xs text-slate-500">
-                Revise os materiais. Em falta, use <strong>Trocar</strong> para
-                substituir por outro item. Só ao confirmar <strong>Abastecido</strong>{" "}
-                o sistema dá baixa no estoque (o MRP já tinha empenhado o original).
+                Revise os materiais. Em falta: <strong>Trocar</strong> por outro
+                item ou <strong>Excluir</strong> deste abastecimento (ex.: saco de
+                embalagem) para liberar a produção sem baixa. Só ao confirmar{" "}
+                <strong>Abastecido</strong> o sistema dá baixa nos itens
+                restantes.
               </p>
+              {excludedCount > 0 ? (
+                <p className="mb-3 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-900">
+                  {excludedCount} item(ns) excluído(s) deste abastecimento — sem
+                  saída de estoque; o empenho MRP desses itens será libertado.
+                </p>
+              ) : null}
 
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full min-w-[720px] text-left text-sm">
@@ -243,24 +281,35 @@ export function SupplyBomReviewModal({
                   <tbody>
                     {lines.map((l) => {
                       const short =
-                        l.available + 0.0001 < l.draft_quantity;
+                        !l.excluded && l.available + 0.0001 < l.draft_quantity;
                       return (
                         <tr
                           key={l.line_key}
                           className={cn(
                             "border-b border-slate-100 last:border-0",
-                            l.substituted && "bg-sky-50/60",
+                            l.excluded && "bg-slate-100/80 opacity-70",
+                            l.substituted && !l.excluded && "bg-sky-50/60",
                             short && !l.substituted && "bg-amber-50/50"
                           )}
                         >
                           <td className="px-2 py-2">
-                            <div className="font-mono text-xs text-slate-700">
+                            <div
+                              className={cn(
+                                "font-mono text-xs text-slate-700",
+                                l.excluded && "line-through"
+                              )}
+                            >
                               {l.product_code ?? "—"}
                             </div>
-                            <div className="text-xs text-slate-600">
+                            <div
+                              className={cn(
+                                "text-xs text-slate-600",
+                                l.excluded && "line-through"
+                              )}
+                            >
                               {l.product_name ?? "—"}
                             </div>
-                            {l.substituted ? (
+                            {l.substituted && !l.excluded ? (
                               <div className="mt-0.5 text-[10px] text-sky-800">
                                 Original: {l.original_product_id.slice(0, 8)}…
                               </div>
@@ -270,6 +319,7 @@ export function SupplyBomReviewModal({
                             <Input
                               className="ml-auto h-8 w-24 text-right tabular-nums"
                               inputMode="decimal"
+                              disabled={l.excluded}
                               value={String(l.draft_quantity)}
                               onChange={(e) => {
                                 const v = Number(
@@ -305,7 +355,11 @@ export function SupplyBomReviewModal({
                             {fmtQty(l.available)}
                           </td>
                           <td className="px-2 py-2">
-                            {l.substituted ? (
+                            {l.excluded ? (
+                              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                                Excluído
+                              </span>
+                            ) : l.substituted ? (
                               <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-900">
                                 Trocado
                               </span>
@@ -321,31 +375,58 @@ export function SupplyBomReviewModal({
                           </td>
                           <td className="px-2 py-2 text-right">
                             <div className="flex justify-end gap-1">
-                              {l.substituted ? (
+                              {l.excluded ? (
                                 <Button
                                   type="button"
                                   size="sm"
-                                  variant="ghost"
-                                  className="h-7 px-2 text-[11px]"
-                                  title="Restaurar original da BOM"
-                                  onClick={() => restoreOriginal(l.line_key)}
+                                  variant="outline"
+                                  className="h-7 gap-1 px-2 text-[11px]"
+                                  title="Voltar a incluir no abastecimento"
+                                  onClick={() => reinstateLine(l.line_key)}
                                 >
-                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  <Undo2 className="h-3.5 w-3.5" />
+                                  Incluir
                                 </Button>
-                              ) : null}
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-7 gap-1 px-2 text-[11px]"
-                                onClick={() => {
-                                  setSwapLineKey(l.line_key);
-                                  setSwapSearch("");
-                                }}
-                              >
-                                <ArrowRightLeft className="h-3.5 w-3.5" />
-                                Trocar
-                              </Button>
+                              ) : (
+                                <>
+                                  {l.substituted ? (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 px-2 text-[11px]"
+                                      title="Restaurar original da BOM"
+                                      onClick={() => restoreOriginal(l.line_key)}
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5" />
+                                    </Button>
+                                  ) : null}
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 gap-1 px-2 text-[11px]"
+                                    onClick={() => {
+                                      setSwapLineKey(l.line_key);
+                                      setSwapSearch("");
+                                    }}
+                                  >
+                                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                                    Trocar
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 gap-1 px-2 text-[11px] text-red-700 hover:bg-red-50 hover:text-red-800"
+                                    title="Excluir deste abastecimento (sem baixa)"
+                                    onClick={() => excludeLine(l.line_key)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Excluir
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -443,7 +524,7 @@ export function SupplyBomReviewModal({
               previewQ.isLoading ||
               !!previewQ.error ||
               lines.length === 0 ||
-              lines.some((l) => l.draft_quantity <= 0)
+              activeLines.some((l) => l.draft_quantity <= 0)
             }
             onClick={handleConfirm}
           >

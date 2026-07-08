@@ -61,8 +61,13 @@ export type ProductionSupplyBomPreview = {
 export type ProductionSupplyMaterialOverride = {
   product_id: string;
   quantity: number;
-  /** Produto original da BOM (para liberar empenho do item substituído). */
+  /** Produto original da BOM (para liberar empenho do item substituído/excluído). */
   original_product_id?: string | null;
+  /**
+   * Excluído deste abastecimento (ex.: embalagem em falta).
+   * Não gera saída de estoque; libera o empenho do original.
+   */
+  excluded?: boolean;
 };
 
 export type ApplyProductionSupplyResult = {
@@ -433,10 +438,14 @@ export async function searchSupplySubstituteProducts(
 
 function normalizeMaterialOverrides(
   overrides: ProductionSupplyMaterialOverride[] | undefined
-): GrossMaterialNeed[] | null {
-  if (!overrides?.length) return null;
+): { needs: GrossMaterialNeed[]; explicit: boolean } {
+  if (overrides === undefined) {
+    return { needs: [], explicit: false };
+  }
+
   const map = new Map<string, number>();
   for (const row of overrides) {
+    if (row.excluded) continue;
     const productId = typeof row.product_id === "string" ? row.product_id : "";
     const qty = Number(row.quantity);
     if (!productId || !Number.isFinite(qty) || qty <= 0) {
@@ -444,10 +453,13 @@ function normalizeMaterialOverrides(
     }
     map.set(productId, (map.get(productId) ?? 0) + qty);
   }
-  return [...map.entries()].map(([product_id, gross_qty]) => ({
-    product_id,
-    gross_qty,
-  }));
+  return {
+    explicit: true,
+    needs: [...map.entries()].map(([product_id, gross_qty]) => ({
+      product_id,
+      gross_qty,
+    })),
+  };
 }
 
 export type ProductionSupplyOptions = {
@@ -524,11 +536,11 @@ export async function applyProductionSupply(
 
   const orderNumber = po.order_number;
 
-  const overrideNeeds = normalizeMaterialOverrides(options?.materials);
+  const normalized = normalizeMaterialOverrides(options?.materials);
   let needs: GrossMaterialNeed[];
 
-  if (overrideNeeds) {
-    needs = await filterPhysicalSupplyNeeds(admin, tenantId, overrideNeeds);
+  if (normalized.explicit) {
+    needs = await filterPhysicalSupplyNeeds(admin, tenantId, normalized.needs);
   } else {
     const bomNeeds = await calculateNeededMaterialsForProductQty(
       admin,
@@ -539,10 +551,52 @@ export async function applyProductionSupply(
     needs = await filterPhysicalSupplyNeeds(admin, tenantId, bomNeeds);
   }
 
+  // Lista explícita vazia (todos excluídos) ou BOM sem materiais físicos
   if (!needs.length) {
-    if (!options?.skipIfNoMaterials) {
+    const allowEmpty =
+      options?.skipIfNoMaterials ||
+      (normalized.explicit && Array.isArray(options?.materials));
+    if (!allowEmpty) {
       throw new Error("Produto sem materiais na BOM para abastecer.");
     }
+
+    const releaseMaterials = new Map<string, number>();
+    if (options?.materials) {
+      for (const m of options.materials) {
+        const originalId =
+          typeof m.original_product_id === "string"
+            ? m.original_product_id
+            : typeof m.product_id === "string"
+              ? m.product_id
+              : null;
+        const q = Number(m.quantity);
+        if (originalId && Number.isFinite(q) && q > 0) {
+          releaseMaterials.set(
+            originalId,
+            (releaseMaterials.get(originalId) ?? 0) + q
+          );
+        }
+      }
+    }
+
+    const empenhoCleanup = await removeLegacyMrpEmpenhoForProductionOrder(
+      admin,
+      tenantId,
+      po.id
+    );
+    if (empenhoCleanup.error) throw new Error(empenhoCleanup.error);
+
+    if (releaseMaterials.size > 0) {
+      await releaseProductionSupplyReservations(admin, {
+        tenantId,
+        orderItemId,
+        materials: [...releaseMaterials.entries()].map(
+          ([product_id, gross_qty]) => ({ product_id, gross_qty })
+        ),
+        userId,
+      });
+    }
+
     const now = new Date().toISOString();
     const { error: markErr } = await admin
       .from("order_items")
@@ -562,7 +616,7 @@ export async function applyProductionSupply(
     };
   }
 
-  // Para liberar empenho: baixa nos produtos efectivos + originais substituídos
+  // Para liberar empenho: baixa nos produtos efectivos + originais substituídos/excluídos
   const releaseMaterials = new Map<string, number>();
   for (const n of needs) {
     releaseMaterials.set(
@@ -574,14 +628,23 @@ export async function applyProductionSupply(
     for (const m of options.materials) {
       const originalId =
         typeof m.original_product_id === "string" ? m.original_product_id : null;
-      if (originalId && originalId !== m.product_id) {
-        const q = Number(m.quantity);
-        if (Number.isFinite(q) && q > 0) {
+      const q = Number(m.quantity);
+      if (!Number.isFinite(q) || q <= 0) continue;
+      if (m.excluded) {
+        const releaseId = originalId ?? m.product_id;
+        if (releaseId) {
           releaseMaterials.set(
-            originalId,
-            (releaseMaterials.get(originalId) ?? 0) + q
+            releaseId,
+            (releaseMaterials.get(releaseId) ?? 0) + q
           );
         }
+        continue;
+      }
+      if (originalId && originalId !== m.product_id) {
+        releaseMaterials.set(
+          originalId,
+          (releaseMaterials.get(originalId) ?? 0) + q
+        );
       }
     }
   }
