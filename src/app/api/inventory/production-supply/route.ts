@@ -9,7 +9,10 @@ import {
 } from "@/modules/core/lib/tenant";
 import {
   applyProductionSupply,
+  getProductionSupplyBomPreview,
   listProductionSupplyPending,
+  searchSupplySubstituteProducts,
+  type ProductionSupplyMaterialOverride,
 } from "@/modules/almoxarifado/lib/production-supply";
 
 export const dynamic = "force-dynamic";
@@ -28,8 +31,8 @@ async function assertInventoryAccess(): Promise<Response | null> {
   return null;
 }
 
-/** GET — OPs pendentes de abastecimento */
-export async function GET() {
+/** GET — OPs pendentes ou preview BOM / busca de substituto */
+export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -42,8 +45,36 @@ export async function GET() {
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
+  const params = request.nextUrl.searchParams;
+  const previewId = params.get("order_item_id")?.trim() ?? "";
+  const search = params.get("search")?.trim() ?? "";
+  const excludeRaw = params.get("exclude")?.trim() ?? "";
+
   try {
     const admin = createSupabaseAdminClient();
+
+    if (search) {
+      const exclude = excludeRaw
+        ? excludeRaw.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+      const data = await searchSupplySubstituteProducts(
+        admin,
+        tenantId,
+        search,
+        exclude
+      );
+      return apiOk({ data });
+    }
+
+    if (previewId) {
+      const data = await getProductionSupplyBomPreview(
+        admin,
+        tenantId,
+        previewId
+      );
+      return apiOk({ data });
+    }
+
     const data = await listProductionSupplyPending(admin, tenantId);
     return apiOk({ data });
   } catch (e) {
@@ -54,7 +85,7 @@ export async function GET() {
   }
 }
 
-/** POST — confirma abastecimento (baixa estoque BOM) */
+/** POST — confirma abastecimento (baixa estoque BOM, com trocas opcionais) */
 export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -80,13 +111,30 @@ export async function POST(request: NextRequest) {
     typeof b.order_item_id === "string" ? b.order_item_id : null;
   if (!orderItemId) return apiError("order_item_id é obrigatório", 400);
 
+  let materials: ProductionSupplyMaterialOverride[] | undefined;
+  if (Array.isArray(b.materials)) {
+    materials = b.materials.map((row) => {
+      const r =
+        row && typeof row === "object" ? (row as Record<string, unknown>) : {};
+      return {
+        product_id: typeof r.product_id === "string" ? r.product_id : "",
+        quantity: Number(r.quantity ?? 0),
+        original_product_id:
+          typeof r.original_product_id === "string"
+            ? r.original_product_id
+            : null,
+      };
+    });
+  }
+
   try {
     const admin = createSupabaseAdminClient();
     const result = await applyProductionSupply(
       admin,
       tenantId,
       orderItemId,
-      user.id
+      user.id,
+      { materials }
     );
     return apiOk(result);
   } catch (e) {

@@ -11,7 +11,11 @@ import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
-import type { ProductionSupplyPendingRow } from "@/modules/almoxarifado/lib/production-supply";
+import type {
+  ProductionSupplyMaterialOverride,
+  ProductionSupplyPendingRow,
+} from "@/modules/almoxarifado/lib/production-supply";
+import { SupplyBomReviewModal } from "@/components/almoxarifado/supply-bom-review-modal";
 import { formatShortDate } from "@/shared/utils/date";
 
 async function fetchPendingSupply(): Promise<ProductionSupplyPendingRow[]> {
@@ -27,12 +31,15 @@ async function fetchPendingSupply(): Promise<ProductionSupplyPendingRow[]> {
   return json.data ?? [];
 }
 
-async function confirmSupply(orderItemId: string): Promise<void> {
+async function confirmSupply(
+  orderItemId: string,
+  materials: ProductionSupplyMaterialOverride[]
+): Promise<void> {
   const res = await fetch("/api/inventory/production-supply", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ order_item_id: orderItemId }),
+    body: JSON.stringify({ order_item_id: orderItemId, materials }),
   });
   const json = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new Error(json.error ?? "Erro ao abastecer");
@@ -68,7 +75,9 @@ function statusBadge(row: ProductionSupplyPendingRow) {
 
 export function SupplyTab() {
   const qc = useQueryClient();
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [reviewOrderItemId, setReviewOrderItemId] = useState<string | null>(
+    null
+  );
 
   const listQ = useQuery({
     queryKey: ["production-supply-pending"],
@@ -76,17 +85,22 @@ export function SupplyTab() {
   });
 
   const supplyMut = useMutation({
-    mutationFn: confirmSupply,
-    onSuccess: async (_data, orderItemId) => {
-      toast.success("Abastecido — estoque atualizado.");
+    mutationFn: ({
+      orderItemId,
+      materials,
+    }: {
+      orderItemId: string;
+      materials: ProductionSupplyMaterialOverride[];
+    }) => confirmSupply(orderItemId, materials),
+    onSuccess: async () => {
+      toast.success("Abastecido — estoque actualizado.");
+      setReviewOrderItemId(null);
       await qc.invalidateQueries({ queryKey: ["production-supply-pending"] });
       await qc.invalidateQueries({ queryKey: ["inventory-movements"] });
       await qc.invalidateQueries({ queryKey: ["inventory-balances"] });
-      setPendingId((cur) => (cur === orderItemId ? null : cur));
     },
     onError: (e) => {
       toast.error(e instanceof Error ? e.message : "Erro ao abastecer");
-      setPendingId(null);
     },
   });
 
@@ -162,31 +176,19 @@ export function SupplyTab() {
         type: "text",
         sortable: false,
         align: "right",
-        render: (row) => {
-          const loading =
-            pendingId === row.order_item_id && supplyMut.isPending;
-          return (
-            <Button
-              type="button"
-              size="sm"
-              disabled={loading}
-              onClick={() => {
-                setPendingId(row.order_item_id);
-                supplyMut.mutate(row.order_item_id);
-              }}
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <PackageCheck className="h-4 w-4" />
-              )}
-              Abastecido
-            </Button>
-          );
-        },
+        render: (row) => (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setReviewOrderItemId(row.order_item_id)}
+          >
+            <PackageCheck className="h-4 w-4" />
+            Abrir estrutura
+          </Button>
+        ),
       },
     ];
-  }, [pendingId, supplyMut.isPending, supplyMut]);
+  }, []);
 
   const rows = listQ.data ?? [];
   const lateCount = rows.filter((r) => Boolean(r.apontamento_start_at)).length;
@@ -215,8 +217,8 @@ export function SupplyTab() {
         {lateCount > 0 ? (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
             {lateCount} item(ns) já iniciaram produção sem baixa de estoque.
-            Clique em <strong>Abastecido</strong> para regularizar (inclui OPs
-            antigas).
+            Abra a estrutura e confirme <strong>Abastecido</strong> para
+            regularizar.
           </p>
         ) : null}
 
@@ -245,13 +247,24 @@ export function SupplyTab() {
         )}
 
         <p className="text-xs text-slate-500">
-          Ao confirmar abastecimento, o sistema explode a BOM e regista saídas
-          no extrato.{" "}
+          Abra a estrutura da OP, troque componentes se necessário e só então
+          confirme o abastecimento (baixa no extrato).{" "}
           <Link href="/logistics/warehouse?tab=operacoes" className="underline">
             Ver operações de estoque
           </Link>
         </p>
       </CardContent>
+
+      <SupplyBomReviewModal
+        orderItemId={reviewOrderItemId}
+        confirming={supplyMut.isPending}
+        onClose={() => {
+          if (!supplyMut.isPending) setReviewOrderItemId(null);
+        }}
+        onConfirm={(orderItemId, materials) => {
+          supplyMut.mutate({ orderItemId, materials });
+        }}
+      />
     </Card>
   );
 }
