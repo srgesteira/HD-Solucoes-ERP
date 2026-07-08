@@ -4,6 +4,8 @@ export const INVENTORY_ORIGIN = {
   PRODUCTION_SUPPLY: "production_supply",
   PRODUCTION_FINISH: "production_finish",
   MANUAL_ADJUST: "manual_adjust",
+  /** Saída manual (ex.: item excluído no abastecimento e baixado depois). */
+  MANUAL_OUT: "manual_out",
 } as const;
 
 export type InventoryOrigin =

@@ -254,15 +254,15 @@ export function SupplyBomReviewModal({
             <>
               <p className="mb-3 text-xs text-slate-500">
                 Revise os materiais. Em falta: <strong>Trocar</strong> por outro
-                item ou <strong>Excluir</strong> deste abastecimento (ex.: saco de
-                embalagem) para liberar a produção sem baixa. Só ao confirmar{" "}
-                <strong>Abastecido</strong> o sistema dá baixa nos itens
-                restantes.
+                item ou <strong>Excluir</strong> deste abastecimento (só remove o
+                empenho, sem baixa). Se depois usar o item, registe{" "}
+                <strong>Saída manual</strong> em Operações de estoque e indique a
+                OP na origem.
               </p>
               {excludedCount > 0 ? (
                 <p className="mb-3 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-900">
-                  {excludedCount} item(ns) excluído(s) deste abastecimento — sem
-                  saída de estoque; o empenho MRP desses itens será libertado.
+                  {excludedCount} item(ns) excluído(s): sem saída agora; o empenho
+                  MRP será libertado. Baixa posterior = Saída manual com a OP.
                 </p>
               ) : null}
 

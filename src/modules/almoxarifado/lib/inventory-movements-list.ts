@@ -118,12 +118,18 @@ function resolveOrigin(
 ): InventoryMovementOrigin {
   if (
     referenceId &&
-    (originKind === "production_supply" || originKind === "production_finish")
+    (originKind === "production_supply" ||
+      originKind === "production_finish" ||
+      originKind === "manual_out")
   ) {
     const prod = productionMap.get(referenceId);
     if (prod) {
       const prefix =
-        originKind === "production_finish" ? "Entrada OP" : "OP";
+        originKind === "production_finish"
+          ? "Entrada OP"
+          : originKind === "manual_out"
+            ? "Saída manual OP"
+            : "OP";
       return {
         kind: "production_order",
         label: `${prefix} ${prod.order_number}`,
@@ -131,6 +137,13 @@ function resolveOrigin(
         production_order_id: prod.production_order_id,
       };
     }
+  }
+
+  if (originKind === "manual_out") {
+    return {
+      kind: "unknown",
+      label: reason?.trim() || "Saída manual",
+    };
   }
 
   if (originKind === "manual_adjust") {
@@ -259,6 +272,23 @@ async function buildOriginMaps(
         production_order_id: po.id,
       });
     }
+
+    // Também permite reference_id = production_orders.id (saída manual)
+    const unresolved = uniqueProdRefs.filter((id) => !productionMap.has(id));
+    if (unresolved.length) {
+      const { data: poRows, error: poErr } = await admin
+        .from("production_orders")
+        .select("id, order_number")
+        .eq("tenant_id", tenantId)
+        .in("id", unresolved);
+      if (poErr) throw new Error(poErr.message);
+      for (const po of poRows ?? []) {
+        productionMap.set(po.id, {
+          order_number: po.order_number,
+          production_order_id: po.id,
+        });
+      }
+    }
   }
 
   return { poMap, invoiceMap, productionMap };
@@ -325,7 +355,9 @@ export async function listInventoryMovements(
   const productionRefIds = rows
     .filter(
       (r) =>
-        (r.origin === "production_supply" || r.origin === "production_finish") &&
+        (r.origin === "production_supply" ||
+          r.origin === "production_finish" ||
+          r.origin === "manual_out") &&
         r.reference_id
     )
     .map((r) => r.reference_id as string);

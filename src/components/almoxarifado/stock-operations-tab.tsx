@@ -3,7 +3,15 @@
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -19,6 +27,7 @@ import type {
   InventoryMovementListItem,
   ListInventoryMovementsResult,
 } from "@/modules/almoxarifado/lib/inventory-movements-list";
+import { ManualInventoryOutModal } from "@/components/almoxarifado/manual-inventory-out-modal";
 
 type MovementTypeFilter = "all" | "in" | "out" | "adjustment";
 
@@ -192,6 +201,8 @@ export function StockOperationsTab({
   const [editQty, setEditQty] = useState("");
   const [editReason, setEditReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [manualOutOpen, setManualOutOpen] = useState(false);
+  const [manualOutSaving, setManualOutSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
@@ -402,19 +413,31 @@ export function StockOperationsTab({
     <Card>
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle className="text-lg">Operações de estoque</CardTitle>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={isFetching}
-          onClick={() => void refetch()}
-        >
-          <RefreshCw
-            className={cn("h-4 w-4", isFetching && "animate-spin")}
-            aria-hidden
-          />
-          Actualizar
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {canManageMovements ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setManualOutOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              Saída manual
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isFetching}
+            onClick={() => void refetch()}
+          >
+            <RefreshCw
+              className={cn("h-4 w-4", isFetching && "animate-spin")}
+              aria-hidden
+            />
+            Actualizar
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
@@ -596,6 +619,19 @@ export function StockOperationsTab({
           </div>
         ) : null}
       </CardContent>
+
+      <ManualInventoryOutModal
+        open={manualOutOpen}
+        saving={manualOutSaving}
+        setSaving={setManualOutSaving}
+        onClose={() => setManualOutOpen(false)}
+        onSaved={() => {
+          void queryClient.invalidateQueries({ queryKey: ["inventory-movements"] });
+          void queryClient.invalidateQueries({ queryKey: ["inventory-balances"] });
+        }}
+        onError={(message) => toast.error(message)}
+        onSuccess={(message) => toast.success(message)}
+      />
     </Card>
   );
 }
