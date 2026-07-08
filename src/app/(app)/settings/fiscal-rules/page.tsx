@@ -11,6 +11,7 @@ import {
   Scale,
   Sparkles,
   Trash2,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
@@ -107,6 +108,12 @@ async function markRuleReviewed(id: string) {
   if (!res.ok) throw new Error(json.error ?? "Erro ao marcar revisão");
 }
 
+type RemediationAction = {
+  step: string;
+  status: "done" | "skipped" | "blocked";
+  detail: string;
+};
+
 type InconsistenciesResponse = {
   issues: FiscalInconsistency[];
   total: number;
@@ -116,6 +123,15 @@ type InconsistenciesResponse = {
     summary: string;
     priorities: string[];
     disclaimer: string;
+  };
+  remediation?: {
+    summary: string;
+    actions: RemediationAction[];
+    rules_created: number;
+    rules_activated: number;
+    orders_reapplied: number;
+    issues_before: number;
+    issues_after: number;
   };
 };
 
@@ -130,6 +146,19 @@ async function fetchInconsistencies(
     error?: string;
   };
   if (!res.ok) throw new Error(json.error ?? "Erro ao analisar inconsistências");
+  return json;
+}
+
+async function runFiscalRemediation(): Promise<InconsistenciesResponse> {
+  const res = await fetch("/api/fiscal/inconsistencies", {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as InconsistenciesResponse & {
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao executar o assistente");
   return json;
 }
 
@@ -180,18 +209,46 @@ export default function FiscalRulesSettingsPage() {
   const [aiExplanation, setAiExplanation] = useState<
     InconsistenciesResponse["explanation"] | null
   >(null);
+  const [remediationActions, setRemediationActions] = useState<
+    RemediationAction[] | null
+  >(null);
   const [explaining, setExplaining] = useState(false);
+  const [remediating, setRemediating] = useState(false);
 
   async function runAiExplain() {
     setExplaining(true);
     try {
       const data = await fetchInconsistencies(true);
       setAiExplanation(data.explanation ?? null);
+      setRemediationActions(null);
       toast.success("Análise da IA pronta.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro na IA");
     } finally {
       setExplaining(false);
+    }
+  }
+
+  async function runAiFix() {
+    setRemediating(true);
+    try {
+      const data = await runFiscalRemediation();
+      setAiExplanation(data.explanation ?? null);
+      setRemediationActions(data.remediation?.actions ?? null);
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-inconsistencies"] });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-rules"] });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-rules-to-review"] });
+      const created = data.remediation?.rules_created ?? 0;
+      const reapplied = data.remediation?.orders_reapplied ?? 0;
+      toast.success(
+        created > 0 || reapplied > 0
+          ? `Assistente concluiu: ${created} regra(s), ${reapplied} pedido(s) reaplicados.`
+          : "Assistente concluiu a remediação."
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro no assistente");
+    } finally {
+      setRemediating(false);
     }
   }
 
@@ -278,24 +335,44 @@ export default function FiscalRulesSettingsPage() {
               Assistente de inconsistências fiscais
             </CardTitle>
             <p className="text-xs text-slate-500 mt-1">
-              Scan determinístico (regras, NCM, pedidos). A IA só explica — não
-              decide impostos.
+              O assistente cria regras base, activa cadastros quando necessário,
+              preenche CFOP e reaplica pedidos — a contadora só revisa alíquotas
+              fora do padrão.
             </p>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={explaining || inconsistencyQuery.isLoading}
-            onClick={() => void runAiExplain()}
-          >
-            {explaining ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            Explicar com IA
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={
+                remediating || explaining || inconsistencyQuery.isLoading
+              }
+              onClick={() => void runAiFix()}
+            >
+              {remediating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4" />
+              )}
+              Corrigir com assistente
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={
+                remediating || explaining || inconsistencyQuery.isLoading
+              }
+              onClick={() => void runAiExplain()}
+            >
+              {explaining ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              Só explicar
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {inconsistencyQuery.isLoading ? (
@@ -348,9 +425,46 @@ export default function FiscalRulesSettingsPage() {
             </ul>
           )}
 
+          {remediationActions && remediationActions.length > 0 ? (
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-sm space-y-2">
+              <p className="font-medium text-emerald-900">
+                Acções executadas pelo assistente
+              </p>
+              <ul className="space-y-1.5">
+                {remediationActions.map((a) => (
+                  <li
+                    key={`${a.step}-${a.status}`}
+                    className="flex gap-2 text-slate-700"
+                  >
+                    <span
+                      className={
+                        a.status === "done"
+                          ? "text-[10px] font-semibold uppercase text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0 h-fit"
+                          : a.status === "blocked"
+                            ? "text-[10px] font-semibold uppercase text-red-800 bg-red-100 px-1.5 py-0.5 rounded shrink-0 h-fit"
+                            : "text-[10px] font-semibold uppercase text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded shrink-0 h-fit"
+                      }
+                    >
+                      {a.status === "done"
+                        ? "feito"
+                        : a.status === "blocked"
+                          ? "bloqueado"
+                          : "ignorado"}
+                    </span>
+                    <span>
+                      <span className="font-medium">{a.step}.</span> {a.detail}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {aiExplanation ? (
             <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50/40 p-3 text-sm space-y-2">
-              <p className="font-medium text-brand-900">Resumo (IA)</p>
+              <p className="font-medium text-brand-900">
+                {remediationActions ? "Resumo" : "Resumo (IA)"}
+              </p>
               <p className="text-slate-700">{aiExplanation.summary}</p>
               {aiExplanation.priorities.length > 0 ? (
                 <ol className="list-decimal list-inside text-slate-700 space-y-1">
