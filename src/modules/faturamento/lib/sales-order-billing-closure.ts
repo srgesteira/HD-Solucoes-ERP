@@ -2,7 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
-import { isFiscalConfigured } from "@/modules/fiscal/lib/fiscal-rules-types";
 
 type Admin = SupabaseClient<Database>;
 
@@ -14,7 +13,6 @@ type SalesOrderBillingRow = {
   billing_closure: string | null;
   billing_plan: string | null;
   ready_for_invoice: boolean;
-  fiscal_status: string | null;
 };
 
 /** Marca intenção de entrega sem NF-e (aba Fiscal pendente → Aguardando liberação). */
@@ -91,7 +89,7 @@ export async function closeSalesOrderBilling(
   const { data, error } = await db
     .from("sales_orders")
     .select(
-      "id, status, billing_closure, billing_plan, ready_for_invoice, fiscal_status"
+      "id, status, billing_closure, billing_plan, ready_for_invoice"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -116,16 +114,7 @@ export async function closeSalesOrderBilling(
         ],
       };
     }
-    const fiscal = so.fiscal_status ?? "pending";
-    if (
-      !isFiscalConfigured(fiscal) &&
-      so.billing_plan !== "without_invoice"
-    ) {
-      return {
-        ok: false,
-        reasons: ["Conferência fiscal pendente — configure impostos antes de fechar."],
-      };
-    }
+    // Entrega «sem nota»: não exige regras/ICMS — basta o plano e a liberação PCP.
     if (!so.ready_for_invoice) {
       return {
         ok: false,

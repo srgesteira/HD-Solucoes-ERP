@@ -225,6 +225,8 @@ export async function assistFiscalSalesOrder(
     (typeof parsed.product_nature === "string" && parsed.product_nature.trim()) ||
     (customerPurpose ? PURPOSE_TO_NATURE[customerPurpose] : null);
 
+  const hasBusinessContext = Boolean(customerPurpose || productNatureOverride);
+
   const applied = await applyFiscalToSalesOrderItems(
     admin,
     tenantId,
@@ -236,18 +238,24 @@ export async function assistFiscalSalesOrder(
     }
   );
 
-  if (applied.itemsProcessed === 0) {
-    throw new Error(
-      "Nenhum item do pedido tem produto vinculado. Associe produtos com NCM ao pedido antes de aplicar o fiscal."
-    );
-  }
-
   let fiscalStatus = applied.fiscalStatus;
-  const hasBusinessContext = Boolean(customerPurpose || productNatureOverride);
+
+  // Sem produto/NCM: ainda permite marcar o pedido como conferido (ex.: entrega sem nota)
+  // quando o utilizador já classificou a operação (revenda/consumidor/industrialização).
+  if (applied.itemsProcessed === 0) {
+    if (!hasBusinessContext) {
+      throw new Error(
+        "Nenhum item do pedido tem produto vinculado. Associe produtos com NCM ao pedido ou descreva a operação (revenda, consumidor ou industrialização)."
+      );
+    }
+    fiscalStatus = "pending";
+  }
 
   if (
     hasBusinessContext &&
-    (fiscalStatus === "no_rules" || fiscalStatus === "pending")
+    (fiscalStatus === "no_rules" ||
+      fiscalStatus === "pending" ||
+      fiscalStatus === "review_required")
   ) {
     const db = asUntypedAdmin(admin);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

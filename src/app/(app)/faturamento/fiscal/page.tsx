@@ -319,8 +319,9 @@ export default function FiscalInvoicingPage() {
         accessor: (row) => row.order_number,
         render: (row) => (
           <Link
-            href={`/sales/orders/${row.id}`}
+            href={`/faturamento/fiscal/${row.id}`}
             className={cn(CRONOGRAMA_TOKENS.cellLink, "font-medium")}
+            title="Abrir revisão fiscal do pedido"
           >
             {row.order_number}
           </Link>
@@ -612,8 +613,8 @@ export default function FiscalInvoicingPage() {
                 size="sm"
                 variant="ghost"
                 className="h-7 px-2 text-[11px]"
-                title="Abrir pedido"
-                onClick={() => router.push(`/sales/orders/${row.id}`)}
+                title="Revisão fiscal"
+                onClick={() => router.push(`/faturamento/fiscal/${row.id}`)}
               >
                 <ExternalLink className="h-3.5 w-3.5" />
               </Button>
