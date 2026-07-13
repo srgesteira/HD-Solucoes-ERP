@@ -46,6 +46,9 @@ const PRINT_STYLES = `
 .quote-print-table thead th.qp-num { text-align: right; }
 .quote-print-table tbody td { padding: 0.28rem 0.35rem; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
 .quote-print-table tbody td.qp-num { text-align: right; font-variant-numeric: tabular-nums; }
+.qp-product-name { display: block; font-weight: 600; }
+.qp-product-desc { margin: 0.15rem 0 0; font-size: 0.62rem; color: #475569; line-height: 1.35; }
+.qp-product-desc-label { font-weight: 600; color: #64748b; }
 .qp-notes { margin-top: 0.45rem; font-size: 0.72rem; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.4rem 0.55rem; }
 .qp-notes h4 { margin: 0 0 0.2rem; font-size: 0.58rem; text-transform: uppercase; color: #64748b; }
 `;
@@ -60,6 +63,15 @@ function itemCode(item: PurchaseQuoteRequestDetail["items"][number]): string {
 
 function itemLabel(item: PurchaseQuoteRequestDetail["items"][number]): string {
   return item.product?.name?.trim() || item.description;
+}
+
+function productCatalogDescription(
+  item: PurchaseQuoteRequestDetail["items"][number]
+): string | null {
+  const tech = item.product?.technical_description?.trim() || "";
+  const desc = item.product?.description?.trim() || "";
+  if (tech && desc && tech !== desc) return `${tech}\n${desc}`;
+  return tech || desc || null;
 }
 
 type Props = {
@@ -172,15 +184,31 @@ export function PurchaseQuoteRequestPrintDocument({
                   </td>
                 </tr>
               ) : (
-                items.map((item, idx) => (
-                  <tr key={item.id}>
-                    <td>{idx + 1}</td>
-                    <td style={{ fontFamily: "monospace" }}>{itemCode(item)}</td>
-                    <td>{itemLabel(item)}</td>
-                    <td className="qp-num">{item.quantity}</td>
-                    <td>{item.unit}</td>
-                  </tr>
-                ))
+                items.map((item, idx) => {
+                  const showProductDesc = Boolean(item.show_product_description);
+                  const productDesc = showProductDesc
+                    ? productCatalogDescription(item)
+                    : null;
+                  return (
+                    <tr key={item.id}>
+                      <td>{idx + 1}</td>
+                      <td style={{ fontFamily: "monospace" }}>{itemCode(item)}</td>
+                      <td>
+                        <span className="qp-product-name">{itemLabel(item)}</span>
+                        {productDesc ? (
+                          <p className="qp-product-desc whitespace-pre-wrap">
+                            <span className="qp-product-desc-label">
+                              Descrição:{" "}
+                            </span>
+                            {productDesc}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="qp-num">{item.quantity}</td>
+                      <td>{item.unit}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

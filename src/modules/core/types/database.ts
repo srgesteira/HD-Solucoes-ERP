@@ -3211,6 +3211,7 @@ export type Database = {
           quotation_sent_at: string | null
           received_quantity: number
           sales_order_item_id: string | null
+          show_product_description: boolean
           status: string
           suggested_supplier_id: string | null
           tax_base: number
@@ -3244,6 +3245,7 @@ export type Database = {
           quotation_sent_at?: string | null
           received_quantity?: number
           sales_order_item_id?: string | null
+          show_product_description?: boolean
           status?: string
           suggested_supplier_id?: string | null
           tax_base?: number
@@ -3277,6 +3279,7 @@ export type Database = {
           quotation_sent_at?: string | null
           received_quantity?: number
           sales_order_item_id?: string | null
+          show_product_description?: boolean
           status?: string
           suggested_supplier_id?: string | null
           tax_base?: number

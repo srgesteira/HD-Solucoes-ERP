@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
         : null;
     const lineNeedDate =
       typeof row.need_date === "string" ? row.need_date : null;
+    const show_product_description = row.show_product_description === true;
     if (!description && !product_id) continue;
     if (!Number.isFinite(quantity) || quantity <= 0) {
       return apiError("Quantidade inválida em um dos itens.", 400);
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
       quantity,
       unit,
       need_date: lineNeedDate,
+      show_product_description,
     });
   }
 

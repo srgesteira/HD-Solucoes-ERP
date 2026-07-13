@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -21,6 +21,7 @@ export type PurchaseLineProduct = {
   technical_code: string | null;
   name: string;
   unit: string | null;
+  description?: string | null;
 };
 
 export type PurchaseOrderLineDraft = {
@@ -36,6 +37,8 @@ export type PurchaseOrderLineDraft = {
   ipiRate: number;
   ipiValue: number;
   taxBase: number;
+  /** Incluir descrição cadastrada do produto na impressão (RFQ). */
+  showProductDescription?: boolean;
 };
 
 function formatBRL(n: number): string {
@@ -62,6 +65,7 @@ function hitToProduct(hit: ProductSearchHit): PurchaseLineProduct {
     technical_code: hit.technical_code,
     name: hit.name,
     unit: hit.unit,
+    description: hit.description ?? null,
   };
 }
 
@@ -100,6 +104,7 @@ export function newPurchaseLine(index = 0): PurchaseOrderLineDraft {
     ipiRate: 0,
     ipiValue: 0,
     taxBase: 0,
+    showProductDescription: false,
   };
 }
 
@@ -309,10 +314,11 @@ export function PurchaseOrderItemsEditor({
                 line.ipiValue
               );
               const unitLocked = Boolean(line.productId);
+              const colSpan = isQuote ? 5 : 11;
               return (
+                <Fragment key={line.key}>
                 <tr
-                  key={line.key}
-                  className="border-b border-slate-100 last:border-0 dark:border-slate-800"
+                  className="border-b border-slate-100 dark:border-slate-800"
                 >
                   <td className="px-1 py-1.5 align-top">
                     <div className="flex flex-col gap-0.5">
@@ -451,6 +457,39 @@ export function PurchaseOrderItemsEditor({
                     </>
                   ) : null}
                 </tr>
+                {isQuote && prod ? (
+                  <tr className="border-b border-slate-100 last:border-0 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/30">
+                    <td colSpan={colSpan} className="px-3 py-2">
+                      <label
+                        htmlFor={`poi-show-desc-${index}`}
+                        className="flex items-start gap-3 cursor-pointer"
+                      >
+                        <input
+                          id={`poi-show-desc-${index}`}
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
+                          checked={Boolean(line.showProductDescription)}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            updateLineAt(index, {
+                              showProductDescription: e.target.checked,
+                            })
+                          }
+                        />
+                        <span className="space-y-0.5">
+                          <span className="block text-xs font-medium text-slate-900 dark:text-slate-100">
+                            Incluir descrição do produto na impressão
+                          </span>
+                          <span className="block text-[11px] text-slate-500 leading-relaxed">
+                            Mostra a descrição técnica cadastrada no produto no
+                            PDF/impressão desta linha.
+                          </span>
+                        </span>
+                      </label>
+                    </td>
+                  </tr>
+                ) : null}
+                </Fragment>
               );
             })}
           </tbody>
@@ -560,6 +599,59 @@ export function buildPurchaseOrderItemsPayload(
 
   if (built.length === 0) {
     return { error: "Adicione pelo menos um item ao pedido." };
+  }
+
+  return built;
+}
+
+/** Payload de itens para solicitação de orçamento (sem preços). */
+export function buildQuoteRequestItemsPayload(
+  lines: PurchaseOrderLineDraft[]
+): Array<{
+  id?: string;
+  product_id: string | null;
+  description: string;
+  quantity: number;
+  unit: string;
+  show_product_description: boolean;
+}> | { error: string } {
+  const built: Array<{
+    id?: string;
+    product_id: string | null;
+    description: string;
+    quantity: number;
+    unit: string;
+    show_product_description: boolean;
+  }> = [];
+
+  for (const line of lines) {
+    if (!line.productId.trim() && !line.description.trim()) continue;
+    if (!line.description.trim()) {
+      return { error: "Preencha a descrição de todos os itens." };
+    }
+    if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
+      return { error: "Quantidade inválida num item." };
+    }
+    const item: {
+      id?: string;
+      product_id: string | null;
+      description: string;
+      quantity: number;
+      unit: string;
+      show_product_description: boolean;
+    } = {
+      product_id: line.productId.trim() || null,
+      description: line.description.trim(),
+      quantity: line.quantity,
+      unit: line.unit.trim() || "UN",
+      show_product_description: Boolean(line.showProductDescription),
+    };
+    if (line.id) item.id = line.id;
+    built.push(item);
+  }
+
+  if (built.length === 0) {
+    return { error: "Adicione pelo menos um item à solicitação." };
   }
 
   return built;

@@ -24,6 +24,7 @@ import {
 import { formatShortDate } from "@/shared/utils/date";
 import {
   PurchaseOrderItemsEditor,
+  buildQuoteRequestItemsPayload,
   newPurchaseLine,
   reindexPurchaseLines,
   type PurchaseLineProduct,
@@ -91,23 +92,8 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const payloadLines = lines
-        .map((l) => ({
-          product_id: l.productId.trim() || null,
-          description: l.description.trim(),
-          quantity: l.quantity,
-          unit: l.unit.trim() || "UN",
-        }))
-        .filter((l) => l.description);
-
-      if (!payloadLines.length) {
-        throw new Error("Adicione pelo menos um item com descrição.");
-      }
-      for (const l of payloadLines) {
-        if (!Number.isFinite(l.quantity) || l.quantity <= 0) {
-          throw new Error("Quantidade inválida num item.");
-        }
-      }
+      const built = buildQuoteRequestItemsPayload(lines);
+      if ("error" in built) throw new Error(built.error);
       if (!requestDate) {
         throw new Error("Indique a data da solicitação.");
       }
@@ -121,7 +107,7 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
           need_date: needDate || null,
           notes,
           message,
-          lines: payloadLines,
+          lines: built,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {

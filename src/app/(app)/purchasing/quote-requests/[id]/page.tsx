@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,14 +9,19 @@ import {
   FileText,
   Loader2,
   Mail,
+  Pencil,
   Printer,
+  Save,
   ShoppingCart,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Label } from "@/shared/ui/label";
+import { Textarea } from "@/shared/ui/textarea";
+import { BrDateInput } from "@/shared/ui/br-date-input";
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { formatShortDate } from "@/shared/utils/date";
 import { fmtBRL } from "@/shared/utils/format-brl";
@@ -26,6 +31,15 @@ import type { SupplierOption } from "@/components/purchasing/supplier-quick-crea
 import { SUPPLIERS_ACTIVE_QUERY_KEY } from "@/modules/compras/lib/suppliers/query-keys";
 import { quoteRequestsQueryKey } from "@/components/purchasing/request-quote-tab";
 import {
+  PurchaseOrderItemsEditor,
+  buildQuoteRequestItemsPayload,
+  newPurchaseLine,
+  reindexPurchaseLines,
+  type PurchaseLineProduct,
+  type PurchaseOrderLineDraft,
+} from "@/components/purchasing/purchase-order-items-editor";
+import {
+  purchaseQuoteRequestAllowsEdit,
   purchaseQuoteRequestStatusLabel,
   type PurchaseQuoteRequestDetail,
 } from "@/modules/compras/lib/purchasing/request-purchase-quote";
@@ -34,6 +48,54 @@ function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const formatted = formatShortDate(String(iso).slice(0, 10));
   return formatted === "--" ? "—" : formatted;
+}
+
+function hydrateFromRequest(request: PurchaseQuoteRequestDetail): {
+  lines: PurchaseOrderLineDraft[];
+  productCache: Record<string, PurchaseLineProduct>;
+  requestDate: string;
+  needDate: string;
+  notes: string;
+  message: string;
+} {
+  const productCache: Record<string, PurchaseLineProduct> = {};
+  const lines: PurchaseOrderLineDraft[] =
+    request.items.length > 0
+      ? request.items.map((item, index) => {
+          if (item.product) {
+            productCache[item.product.id] = {
+              id: item.product.id,
+              name: item.product.name,
+              code: item.product.code,
+              technical_code: item.product.technical_code,
+              unit: item.unit,
+              description:
+                item.product.technical_description?.trim() ||
+                item.product.description,
+            };
+          }
+          return {
+            ...newPurchaseLine(index),
+            id: item.id,
+            productId: item.product_id ?? "",
+            description: item.description,
+            quantity: item.quantity,
+            unit: item.unit || "UN",
+            showProductDescription: item.show_product_description,
+          };
+        })
+      : [newPurchaseLine(0)];
+
+  return {
+    lines: reindexPurchaseLines(lines),
+    productCache,
+    requestDate: request.request_date,
+    needDate: request.need_date ?? "",
+    notes: request.notes ?? "",
+    message:
+      request.message?.trim() ||
+      "Solicito cotação dos itens abaixo, com prazo de entrega e condições de pagamento.",
+  };
 }
 
 async function fetchRequest(id: string): Promise<PurchaseQuoteRequestDetail> {
@@ -81,6 +143,19 @@ export default function PurchaseQuoteRequestDetailPage() {
   const qc = useQueryClient();
   const id = typeof params.id === "string" ? params.id : "";
 
+  const [editing, setEditing] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [requestDate, setRequestDate] = useState("");
+  const [needDate, setNeedDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [message, setMessage] = useState("");
+  const [lines, setLines] = useState<PurchaseOrderLineDraft[]>([
+    newPurchaseLine(0),
+  ]);
+  const [productCache, setProductCache] = useState<
+    Record<string, PurchaseLineProduct>
+  >({});
+
   const [convertOpen, setConvertOpen] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [prices, setPrices] = useState<Record<string, number>>({});
@@ -99,10 +174,29 @@ export default function PurchaseQuoteRequestDetailPage() {
   });
 
   const request = requestQ.data;
+  const canEdit =
+    Boolean(request) &&
+    purchaseQuoteRequestAllowsEdit(request!.status) &&
+    !request!.converted_to_purchase_order_id;
   const canConvert =
     request &&
     (request.status === "draft" || request.status === "sent") &&
     !request.converted_to_purchase_order_id;
+
+  useEffect(() => {
+    if (!editing || !request) {
+      setHydrated(false);
+      return;
+    }
+    const seed = hydrateFromRequest(request);
+    setRequestDate(seed.requestDate);
+    setNeedDate(seed.needDate);
+    setNotes(seed.notes);
+    setMessage(seed.message);
+    setLines(seed.lines);
+    setProductCache(seed.productCache);
+    setHydrated(true);
+  }, [editing, request]);
 
   const openConvert = () => {
     if (!request) return;
@@ -114,6 +208,42 @@ export default function PurchaseQuoteRequestDetailPage() {
     setSupplierId("");
     setConvertOpen(true);
   };
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const built = buildQuoteRequestItemsPayload(lines);
+      if ("error" in built) throw new Error(built.error);
+      if (!requestDate) throw new Error("Indique a data da solicitação.");
+
+      const res = await fetch(`/api/purchasing/quote-requests/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          request_date: requestDate,
+          need_date: needDate || null,
+          notes,
+          message,
+          lines: built,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: PurchaseQuoteRequestDetail;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao guardar");
+      return json.data!;
+    },
+    onSuccess: () => {
+      toast.success("Solicitação actualizada.");
+      setEditing(false);
+      setHydrated(false);
+      void qc.invalidateQueries({ queryKey: ["purchasing-quote-request", id] });
+      void qc.invalidateQueries({ queryKey: quoteRequestsQueryKey });
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro ao guardar"),
+  });
 
   const convertMut = useMutation({
     mutationFn: async () => {
@@ -162,6 +292,8 @@ export default function PurchaseQuoteRequestDetailPage() {
       void qc.invalidateQueries({ queryKey: quoteRequestsQueryKey });
     },
   });
+
+  const busy = saveMut.isPending || convertMut.isPending || markSentMut.isPending;
 
   const statusBadge = useMemo(() => {
     if (!request) return null;
@@ -218,33 +350,78 @@ export default function PurchaseQuoteRequestDetailPage() {
       density="comfortable"
       actions={
         <>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              window.open(`/purchasing/quote-requests/${id}/print`, "_blank")
-            }
-          >
-            <Printer className="h-4 w-4" />
-            Imprimir / PDF
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              window.open(`/purchasing/quote-requests/${id}/print`, "_blank");
-              if (request.status === "draft") {
-                markSentMut.mutate();
+          {!editing ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                window.open(`/purchasing/quote-requests/${id}/print`, "_blank")
               }
-            }}
-          >
-            <Mail className="h-4 w-4" />
-            Enviar (PDF / e-mail)
-          </Button>
-          {canConvert ? (
-            <Button type="button" size="sm" onClick={openConvert}>
+            >
+              <Printer className="h-4 w-4" />
+              Imprimir / PDF
+            </Button>
+          ) : null}
+          {!editing ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.open(`/purchasing/quote-requests/${id}/print`, "_blank");
+                if (request.status === "draft") {
+                  markSentMut.mutate();
+                }
+              }}
+            >
+              <Mail className="h-4 w-4" />
+              Enviar (PDF / e-mail)
+            </Button>
+          ) : null}
+          {canEdit && !editing ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy}
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="h-4 w-4" />
+              Editar
+            </Button>
+          ) : null}
+          {canEdit && editing ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy || !hydrated}
+                onClick={() => saveMut.mutate()}
+              >
+                {saveMut.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Guardar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setEditing(false);
+                  setHydrated(false);
+                }}
+              >
+                <X className="h-4 w-4" />
+                Cancelar edição
+              </Button>
+            </>
+          ) : null}
+          {canConvert && !editing ? (
+            <Button type="button" size="sm" onClick={openConvert} disabled={busy}>
               <ShoppingCart className="h-4 w-4" />
               Gerar pedido de compra
             </Button>
@@ -265,79 +442,184 @@ export default function PurchaseQuoteRequestDetailPage() {
         </div>
       ) : null}
 
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <FileText className="h-5 w-5 text-slate-600" />
-              Dados da solicitação
-              {statusBadge}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-xs text-slate-500">Número</p>
-              <p className="font-medium">{request.request_number}</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500">Data</p>
-              <p className="font-medium">{formatDate(request.request_date)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500">Necessidade</p>
-              <p className="font-medium">{formatDate(request.need_date)}</p>
-            </div>
-            <div className="sm:col-span-2">
-              <p className="text-xs text-slate-500">Mensagem</p>
-              <p className="whitespace-pre-wrap">
-                {request.message?.trim() || "—"}
-              </p>
-            </div>
-            <div className="sm:col-span-2">
-              <p className="text-xs text-slate-500">Observações</p>
-              <p className="whitespace-pre-wrap">
-                {request.notes?.trim() || "—"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      {editing && canEdit && !hydrated ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-slate-600">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          A preparar edição…
+        </div>
+      ) : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Itens</CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-slate-500">
-                  <th className="py-2 pr-2">Código</th>
-                  <th className="py-2 pr-2">Descrição</th>
-                  <th className="py-2 pr-2 text-right">Qtd</th>
-                  <th className="py-2">Un.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {request.items.map((item) => (
-                  <tr key={item.id} className="border-b border-slate-100">
-                    <td className="py-2 pr-2 font-mono text-xs">
-                      {item.product?.technical_code?.trim() ||
-                        item.product?.code?.trim() ||
-                        "—"}
-                    </td>
-                    <td className="py-2 pr-2">
-                      {item.product?.name?.trim() || item.description}
-                    </td>
-                    <td className="py-2 pr-2 text-right tabular-nums">
-                      {item.quantity}
-                    </td>
-                    <td className="py-2">{item.unit}</td>
+      {editing && canEdit && hydrated ? (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-5 w-5 text-slate-600" />
+                Dados da solicitação
+                {statusBadge}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-slate-500">Número</p>
+                  <p className="font-medium">{request.request_number}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-request-date">Data da solicitação *</Label>
+                  <BrDateInput
+                    id="edit-request-date"
+                    value={requestDate || null}
+                    onChange={(iso) => setRequestDate(iso ?? "")}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2 sm:max-w-sm">
+                  <Label htmlFor="edit-need-date">
+                    Data prevista de necessidade
+                  </Label>
+                  <BrDateInput
+                    id="edit-need-date"
+                    value={needDate || null}
+                    onChange={(iso) => setNeedDate(iso ?? "")}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="edit-message">Mensagem no documento</Label>
+                  <Textarea
+                    id="edit-message"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    rows={3}
+                    className="resize-y"
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="edit-notes">Observações</Label>
+                  <Textarea
+                    id="edit-notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
+                    className="resize-y min-h-[4rem]"
+                    placeholder="Opcional…"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Itens</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PurchaseOrderItemsEditor
+                variant="quote"
+                lines={lines}
+                onLinesChange={setLines}
+                productCache={productCache}
+                onProductCacheMerge={(patch) =>
+                  setProductCache((prev) => ({ ...prev, ...patch }))
+                }
+              />
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {!editing ? (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-5 w-5 text-slate-600" />
+                Dados da solicitação
+                {statusBadge}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-xs text-slate-500">Número</p>
+                <p className="font-medium">{request.request_number}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Data</p>
+                <p className="font-medium">{formatDate(request.request_date)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Necessidade</p>
+                <p className="font-medium">{formatDate(request.need_date)}</p>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-xs text-slate-500">Mensagem</p>
+                <p className="whitespace-pre-wrap">
+                  {request.message?.trim() || "—"}
+                </p>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-xs text-slate-500">Observações</p>
+                <p className="whitespace-pre-wrap">
+                  {request.notes?.trim() || "—"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Itens</CardTitle>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-slate-500">
+                    <th className="py-2 pr-2">Código</th>
+                    <th className="py-2 pr-2">Descrição</th>
+                    <th className="py-2 pr-2 text-right">Qtd</th>
+                    <th className="py-2">Un.</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      </div>
+                </thead>
+                <tbody>
+                  {request.items.map((item) => (
+                    <tr key={item.id} className="border-b border-slate-100">
+                      <td className="py-2 pr-2 font-mono text-xs">
+                        {item.product?.technical_code?.trim() ||
+                          item.product?.code?.trim() ||
+                          "—"}
+                      </td>
+                      <td className="py-2 pr-2">
+                        <p>
+                          {item.product?.name?.trim() || item.description}
+                        </p>
+                        {item.show_product_description &&
+                        (item.product?.technical_description?.trim() ||
+                          item.product?.description?.trim()) ? (
+                          <p className="mt-1 text-xs text-slate-500 whitespace-pre-wrap">
+                            {[
+                              item.product?.technical_description?.trim(),
+                              item.product?.description?.trim(),
+                            ]
+                              .filter(Boolean)
+                              .filter(
+                                (v, i, arr) =>
+                                  arr.indexOf(v) === i
+                              )
+                              .join("\n")}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="py-2 pr-2 text-right tabular-nums">
+                        {item.quantity}
+                      </td>
+                      <td className="py-2">{item.unit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       {convertOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
