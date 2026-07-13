@@ -15,6 +15,7 @@ import { OpenOrdersTab } from "@/components/purchasing/open-orders-tab";
 import { AllOrdersTab } from "@/components/purchasing/all-orders-tab";
 import { FinishedOrdersTab } from "@/components/purchasing/finished-orders-tab";
 import { RequisitionsTab } from "@/components/purchasing/requisitions-tab";
+import { RequestQuoteTab } from "@/components/purchasing/request-quote-tab";
 import {
   CronogramaSearch,
   useCronogramaSearch,
@@ -24,10 +25,17 @@ import {
   requisitionsCountQueryKey,
 } from "@/components/purchasing/purchase-requisitions-panel";
 
-type TabValue = "all" | "open" | "finished" | "requisitions";
+type TabValue = "all" | "open" | "finished" | "requisitions" | "request-quote";
 
 function parseTab(raw: string | null): TabValue {
-  if (raw === "all" || raw === "finished" || raw === "requisitions") return raw;
+  if (
+    raw === "all" ||
+    raw === "finished" ||
+    raw === "requisitions" ||
+    raw === "request-quote"
+  ) {
+    return raw;
+  }
   if (raw === "schedule" || raw === "orders") return "open";
   return "open";
 }
@@ -68,7 +76,7 @@ export function PurchasingOrdersPage() {
   return (
     <AppPage
       title="Compras"
-      description="Cronograma operacional — prazos, pedidos em aberto e requisições MRP."
+      description="Cronograma operacional — prazos, pedidos, requisições e cotações."
       density="comfortable"
       width="wide"
       actions={
@@ -112,6 +120,7 @@ export function PurchasingOrdersPage() {
             Requisições de compras
             {pendingRequisitions > 0 ? ` (${pendingRequisitions})` : ""}
           </TabsTrigger>
+          <TabsTrigger value="request-quote">Solicitar orçamento</TabsTrigger>
         </TabsList>
 
         <div className="mt-4">
@@ -121,7 +130,9 @@ export function PurchasingOrdersPage() {
             placeholder={
               activeTab === "requisitions"
                 ? "Buscar produto, fornecedor, PV, OP, data ou código…"
-                : "Buscar pedido, fornecedor, data, código ou produto…"
+                : activeTab === "request-quote"
+                  ? "Buscar item, fornecedor ou código no histórico…"
+                  : "Buscar pedido, fornecedor, data, código ou produto…"
             }
           />
         </div>
@@ -140,6 +151,10 @@ export function PurchasingOrdersPage() {
 
         <TabsContent value="requisitions" className="mt-4">
           <RequisitionsTab search={search} />
+        </TabsContent>
+
+        <TabsContent value="request-quote" className="mt-4">
+          <RequestQuoteTab search={search} />
         </TabsContent>
       </Tabs>
 

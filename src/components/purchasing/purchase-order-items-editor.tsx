@@ -155,6 +155,11 @@ type Props = {
   productCache: Record<string, PurchaseLineProduct>;
   onProductCacheMerge: (products: Record<string, PurchaseLineProduct>) => void;
   disabled?: boolean;
+  /**
+   * `order` — pedido de compra (preços e impostos).
+   * `quote` — solicitação de orçamento (sem valores).
+   */
+  variant?: "order" | "quote";
 };
 
 export function PurchaseOrderItemsEditor({
@@ -163,7 +168,9 @@ export function PurchaseOrderItemsEditor({
   productCache,
   onProductCacheMerge,
   disabled = false,
+  variant = "order",
 }: Props) {
+  const isQuote = variant === "quote";
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerLineIndex, setPickerLineIndex] = useState<number | null>(null);
 
@@ -266,16 +273,28 @@ export function PurchaseOrderItemsEditor({
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
               <th className="w-[52px] px-1 py-1.5" aria-label="Acções" />
-              <th className="w-[9%] px-1 py-1.5">Código</th>
-              <th className="w-[24%] px-1 py-1.5">Descrição</th>
-              <th className="w-[8%] px-1 py-1.5">Qtd.</th>
-              <th className="w-[5%] px-1 py-1.5">Un.</th>
-              <th className="w-[9%] px-1 py-1.5">Preço un.</th>
-              <th className="w-[7%] px-1 py-1.5">% ICMS</th>
-              <th className="w-[9%] px-1 py-1.5 text-right">ICMS</th>
-              <th className="w-[7%] px-1 py-1.5">% IPI</th>
-              <th className="w-[9%] px-1 py-1.5 text-right">IPI</th>
-              <th className="w-[10%] px-1 py-1.5 text-right">Total</th>
+              <th className={isQuote ? "w-[14%] px-1 py-1.5" : "w-[9%] px-1 py-1.5"}>
+                Código
+              </th>
+              <th className={isQuote ? "w-[48%] px-1 py-1.5" : "w-[24%] px-1 py-1.5"}>
+                Descrição
+              </th>
+              <th className={isQuote ? "w-[12%] px-1 py-1.5" : "w-[8%] px-1 py-1.5"}>
+                Qtd.
+              </th>
+              <th className={isQuote ? "w-[10%] px-1 py-1.5" : "w-[5%] px-1 py-1.5"}>
+                Un.
+              </th>
+              {!isQuote ? (
+                <>
+                  <th className="w-[9%] px-1 py-1.5">Preço un.</th>
+                  <th className="w-[7%] px-1 py-1.5">% ICMS</th>
+                  <th className="w-[9%] px-1 py-1.5 text-right">ICMS</th>
+                  <th className="w-[7%] px-1 py-1.5">% IPI</th>
+                  <th className="w-[9%] px-1 py-1.5 text-right">IPI</th>
+                  <th className="w-[10%] px-1 py-1.5 text-right">Total</th>
+                </>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -348,7 +367,11 @@ export function PurchaseOrderItemsEditor({
                     <NumericInput
                       value={line.quantity}
                       onChange={(quantity) =>
-                        updateLineAt(index, { quantity }, "both")
+                        updateLineAt(
+                          index,
+                          { quantity },
+                          isQuote ? "none" : "both"
+                        )
                       }
                       maxDecimals={4}
                       disabled={disabled}
@@ -375,54 +398,58 @@ export function PurchaseOrderItemsEditor({
                       />
                     )}
                   </td>
-                  <td className="px-1 py-1.5 align-top">
-                    <NumericInput
-                      value={line.unitPrice}
-                      onChange={(unitPrice) =>
-                        updateLineAt(index, { unitPrice }, "both")
-                      }
-                      maxDecimals={2}
-                      disabled={disabled}
-                      className="h-7 text-xs px-2"
-                    />
-                  </td>
-                  <td className="px-1 py-1.5 align-top">
-                    <NumericInput
-                      value={line.icmsRate}
-                      onChange={(icmsRate) =>
-                        updateLineAt(index, { icmsRate }, "icms")
-                      }
-                      maxDecimals={2}
-                      disabled={disabled}
-                      className="h-7 text-xs px-2"
-                      placeholder="0"
-                    />
-                  </td>
-                  <td className="px-1 py-1.5 align-top text-right tabular-nums text-slate-700 bg-slate-50/80 dark:bg-slate-900/30">
-                    <span className="inline-flex h-7 w-full items-center justify-end px-1 text-[11px]">
-                      {formatBRL(line.icmsValue)}
-                    </span>
-                  </td>
-                  <td className="px-1 py-1.5 align-top">
-                    <NumericInput
-                      value={line.ipiRate}
-                      onChange={(ipiRate) =>
-                        updateLineAt(index, { ipiRate }, "ipi")
-                      }
-                      maxDecimals={2}
-                      disabled={disabled}
-                      className="h-7 text-xs px-2"
-                      placeholder="0"
-                    />
-                  </td>
-                  <td className="px-1 py-1.5 align-top text-right tabular-nums text-slate-700 bg-slate-50/80 dark:bg-slate-900/30">
-                    <span className="inline-flex h-7 w-full items-center justify-end px-1 text-[11px]">
-                      {formatBRL(line.ipiValue)}
-                    </span>
-                  </td>
-                  <td className="px-1 py-1.5 align-top text-right tabular-nums font-medium text-slate-900 text-[11px]">
-                    {formatBRL(lineTotal)}
-                  </td>
+                  {!isQuote ? (
+                    <>
+                      <td className="px-1 py-1.5 align-top">
+                        <NumericInput
+                          value={line.unitPrice}
+                          onChange={(unitPrice) =>
+                            updateLineAt(index, { unitPrice }, "both")
+                          }
+                          maxDecimals={2}
+                          disabled={disabled}
+                          className="h-7 text-xs px-2"
+                        />
+                      </td>
+                      <td className="px-1 py-1.5 align-top">
+                        <NumericInput
+                          value={line.icmsRate}
+                          onChange={(icmsRate) =>
+                            updateLineAt(index, { icmsRate }, "icms")
+                          }
+                          maxDecimals={2}
+                          disabled={disabled}
+                          className="h-7 text-xs px-2"
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="px-1 py-1.5 align-top text-right tabular-nums text-slate-700 bg-slate-50/80 dark:bg-slate-900/30">
+                        <span className="inline-flex h-7 w-full items-center justify-end px-1 text-[11px]">
+                          {formatBRL(line.icmsValue)}
+                        </span>
+                      </td>
+                      <td className="px-1 py-1.5 align-top">
+                        <NumericInput
+                          value={line.ipiRate}
+                          onChange={(ipiRate) =>
+                            updateLineAt(index, { ipiRate }, "ipi")
+                          }
+                          maxDecimals={2}
+                          disabled={disabled}
+                          className="h-7 text-xs px-2"
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="px-1 py-1.5 align-top text-right tabular-nums text-slate-700 bg-slate-50/80 dark:bg-slate-900/30">
+                        <span className="inline-flex h-7 w-full items-center justify-end px-1 text-[11px]">
+                          {formatBRL(line.ipiValue)}
+                        </span>
+                      </td>
+                      <td className="px-1 py-1.5 align-top text-right tabular-nums font-medium text-slate-900 text-[11px]">
+                        {formatBRL(lineTotal)}
+                      </td>
+                    </>
+                  ) : null}
                 </tr>
               );
             })}
@@ -432,8 +459,10 @@ export function PurchaseOrderItemsEditor({
 
       <p className="text-[11px] text-slate-500 leading-snug">
         <strong>Código</strong> — SKU do cadastro (só leitura).{" "}
-        <strong>Descrição</strong> — texto do item neste pedido (editável).{" "}
-        Unidade, ICMS (R$) e IPI (R$) são calculados ou vêm do produto.
+        <strong>Descrição</strong> — texto do item nesta solicitação (editável).
+        {isQuote
+          ? " Sem valores — a cotação virá da resposta do fornecedor."
+          : " Unidade, ICMS (R$) e IPI (R$) são calculados ou vêm do produto."}
       </p>
 
       <Button
@@ -450,32 +479,34 @@ export function PurchaseOrderItemsEditor({
         Adicionar produto
       </Button>
 
-      <div className="text-sm text-slate-900 space-y-1">
-        <p>
-          Subtotal (itens):{" "}
-          <span className="font-medium tabular-nums">
-            {formatBRL(totals.subtotal)}
-          </span>
-        </p>
-        <p>
-          Total ICMS:{" "}
-          <span className="font-medium tabular-nums">
-            {formatBRL(totals.totalIcms)}
-          </span>
-        </p>
-        <p>
-          Total IPI:{" "}
-          <span className="font-medium tabular-nums">
-            {formatBRL(totals.totalIpi)}
-          </span>
-        </p>
-        <p>
-          Base de cálculo (soma):{" "}
-          <span className="font-medium tabular-nums">
-            {formatBRL(totals.totalTaxBase)}
-          </span>
-        </p>
-      </div>
+      {!isQuote ? (
+        <div className="text-sm text-slate-900 space-y-1">
+          <p>
+            Subtotal (itens):{" "}
+            <span className="font-medium tabular-nums">
+              {formatBRL(totals.subtotal)}
+            </span>
+          </p>
+          <p>
+            Total ICMS:{" "}
+            <span className="font-medium tabular-nums">
+              {formatBRL(totals.totalIcms)}
+            </span>
+          </p>
+          <p>
+            Total IPI:{" "}
+            <span className="font-medium tabular-nums">
+              {formatBRL(totals.totalIpi)}
+            </span>
+          </p>
+          <p>
+            Base de cálculo (soma):{" "}
+            <span className="font-medium tabular-nums">
+              {formatBRL(totals.totalTaxBase)}
+            </span>
+          </p>
+        </div>
+      ) : null}
 
       <ProductCatalogPickerModal
         open={pickerOpen}
