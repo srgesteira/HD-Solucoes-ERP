@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
-import { sendPurchaseQuotationEmail } from "@/modules/compras/lib/purchasing/send-quotation-email";
+import { nextPurchaseQuoteRequestNumber } from "@/modules/compras/lib/purchasing/purchase-quote-request-number";
 
 type Admin = SupabaseClient<Database>;
 
@@ -12,13 +12,42 @@ export type QuoteRequestLineInput = {
   need_date?: string | null;
 };
 
-export type QuoteRequestResult = {
-  item_ids: string[];
+export type PurchaseQuoteRequestListRow = {
+  id: string;
+  request_number: string;
+  request_date: string;
+  need_date: string | null;
+  status: string;
+  notes: string | null;
   item_count: number;
-  suppliers_sent: Array<{ id: string; name: string; email: string }>;
-  suppliers_skipped: Array<{ id: string; name: string; reason: string }>;
-  email_sent_count: number;
-  warning: string | null;
+  created_at: string;
+};
+
+export type PurchaseQuoteRequestItem = {
+  id: string;
+  product_id: string | null;
+  description: string;
+  quantity: number;
+  unit: string;
+  need_date: string | null;
+  product?: {
+    id: string;
+    name: string;
+    technical_code: string | null;
+    code: string | null;
+  } | null;
+};
+
+export type PurchaseQuoteRequestDetail = {
+  id: string;
+  request_number: string;
+  request_date: string;
+  need_date: string | null;
+  notes: string | null;
+  message: string | null;
+  status: string;
+  created_at: string;
+  items: PurchaseQuoteRequestItem[];
 };
 
 function dateOnly(v: string | null | undefined): string | null {
@@ -27,31 +56,27 @@ function dateOnly(v: string | null | undefined): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
-function supplierDisplayName(s: {
-  name: string | null;
-  legal_name: string | null;
-}): string {
-  return s.legal_name?.trim() || s.name?.trim() || "Fornecedor";
+function unwrapOne<T>(v: T | T[] | null | undefined): T | null {
+  if (!v) return null;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
 /**
- * Cria itens de requisição (sem PC e sem fornecedor fixo) e envia a mesma
- * solicitação de cotação a um ou mais fornecedores.
+ * Grava solicitação de orçamento com número (como PC) — sem envio de e-mail.
+ * O PDF / e-mail ficam para a página de impressão.
  */
-export async function createAndSendPurchaseQuoteRequest(
+export async function createPurchaseQuoteRequest(
   admin: Admin,
   tenantId: string,
+  userId: string | null,
   args: {
-    /** Um ou mais fornecedores — a mesma RFQ pode ir para vários. */
-    supplier_ids: string[];
-    message?: string | null;
-    notes?: string | null;
     request_date?: string | null;
     need_date?: string | null;
+    notes?: string | null;
+    message?: string | null;
     lines: QuoteRequestLineInput[];
-    extra_emails?: string[];
   }
-): Promise<QuoteRequestResult> {
+): Promise<{ id: string; request_number: string }> {
   const lines = args.lines
     .map((l) => ({
       product_id: l.product_id?.trim() || null,
@@ -64,23 +89,6 @@ export async function createAndSendPurchaseQuoteRequest(
 
   if (!lines.length) {
     throw new Error("Indique pelo menos um item com descrição e quantidade.");
-  }
-
-  const supplierIds = [
-    ...new Set(args.supplier_ids.map((id) => id.trim()).filter(Boolean)),
-  ];
-  if (!supplierIds.length) {
-    throw new Error("Seleccione pelo menos um fornecedor para enviar a cotação.");
-  }
-
-  const { data: suppliers, error: supErr } = await admin
-    .from("suppliers")
-    .select("id, name, legal_name, email")
-    .eq("tenant_id", tenantId)
-    .in("id", supplierIds);
-  if (supErr) throw new Error(supErr.message);
-  if ((suppliers ?? []).length !== supplierIds.length) {
-    throw new Error("Um ou mais fornecedores são inválidos.");
   }
 
   const productIds = [
@@ -109,20 +117,56 @@ export async function createAndSendPurchaseQuoteRequest(
     }
   }
 
-  const now = new Date().toISOString();
-  const requestDate = dateOnly(args.request_date) ?? now.slice(0, 10);
-  const headerNeedDate = dateOnly(args.need_date);
-  const notes = args.notes?.trim() || null;
-  const traceKey = `quote-request:${requestDate}:${now.slice(11, 19)}`;
+  const requestDate = dateOnly(args.request_date) ?? new Date().toISOString().slice(0, 10);
+  const needDate = dateOnly(args.need_date);
+  const requestNumber = await nextPurchaseQuoteRequestNumber(
+    admin,
+    tenantId,
+    requestDate
+  );
+
+  let requestedBy: string | null = null;
+  if (userId) {
+    const { data: profile } = await admin
+      .from("user_profiles")
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle();
+    requestedBy = profile?.id ?? null;
+  }
+
+  const { data: header, error: headerErr } = await admin
+    .from("purchase_quote_requests")
+    .insert({
+      tenant_id: tenantId,
+      request_number: requestNumber,
+      request_date: requestDate,
+      need_date: needDate,
+      notes: args.notes?.trim() || null,
+      message:
+        args.message?.trim() ||
+        "Solicito cotação dos itens abaixo, com prazo de entrega e condições de pagamento.",
+      status: "draft",
+      requested_by: requestedBy,
+    })
+    .select("id, request_number")
+    .single();
+
+  if (headerErr?.code === "23505") {
+    throw new Error("Número de solicitação já existe. Tente novamente.");
+  }
+  if (headerErr) throw new Error(headerErr.message);
+  if (!header) throw new Error("Não foi possível criar a solicitação.");
 
   const inserts = lines.map((l) => {
     const product = l.product_id ? productMap.get(l.product_id) : null;
     const description = l.description || product?.name || "Item para cotação";
     const unit = l.unit || product?.unit?.trim() || "UN";
-    const needDate = l.need_date ?? headerNeedDate;
+    const lineNeed = l.need_date ?? needDate;
     return {
       tenant_id: tenantId,
       purchase_order_id: null,
+      purchase_quote_request_id: header.id,
       status: "draft" as const,
       product_id: l.product_id,
       description,
@@ -131,172 +175,160 @@ export async function createAndSendPurchaseQuoteRequest(
       unit_price: 0,
       total_price: 0,
       suggested_supplier_id: null,
-      need_date: needDate,
-      follow_up_date: needDate,
-      quotation_sent_at: now,
-      trace_key: traceKey,
+      need_date: lineNeed,
+      follow_up_date: lineNeed,
+      quotation_sent_at: null,
+      trace_key: `quote-request:${header.request_number}`,
       is_suggestion: false,
     };
   });
 
-  const { data: inserted, error: insErr } = await admin
-    .from("purchase_order_items")
-    .insert(inserts)
-    .select("id, description, quantity, unit, need_date, product_id");
-  if (insErr) throw new Error(insErr.message);
-  if (!inserted?.length) throw new Error("Não foi possível criar a solicitação.");
-
-  const emailLines = inserted.map((row) => {
-    const product = row.product_id ? productMap.get(row.product_id) : null;
-    return {
-      code: product?.technical_code?.trim() || "—",
-      description: product?.name?.trim() || row.description,
-      quantity: Number(row.quantity ?? 0),
-      unit: row.unit ?? "UN",
-      need_date: dateOnly(row.need_date),
-    };
-  });
-
-  const messageParts = [
-    args.message?.trim() ||
-      "Solicito cotação dos itens abaixo, com prazo de entrega e condições de pagamento.",
-  ];
-  if (notes) messageParts.push(`Observações: ${notes}`);
-
-  const message = messageParts.join("\n\n");
-  const extraEmails = (args.extra_emails ?? [])
-    .map((e) => e.trim())
-    .filter(Boolean);
-
-  const suppliersSent: QuoteRequestResult["suppliers_sent"] = [];
-  const suppliersSkipped: QuoteRequestResult["suppliers_skipped"] = [];
-  let emailSentCount = 0;
-  const warnings: string[] = [];
-
-  for (const supplier of suppliers ?? []) {
-    const name = supplierDisplayName(supplier);
-    const email = supplier.email?.trim() || "";
-    const to = email ? [email, ...extraEmails] : [...extraEmails];
-
-    if (!to.length) {
-      suppliersSkipped.push({
-        id: supplier.id,
-        name,
-        reason: "Sem e-mail no cadastro",
-      });
-      continue;
-    }
-
-    try {
-      const emailResult = await sendPurchaseQuotationEmail({
-        to,
-        subject: `Solicitação de cotação — ${name}`,
-        message,
-        lines: emailLines,
-      });
-      if (emailResult.sent) emailSentCount += 1;
-      if (emailResult.warning) warnings.push(emailResult.warning);
-      suppliersSent.push({
-        id: supplier.id,
-        name,
-        email: to[0],
-      });
-    } catch (e) {
-      suppliersSkipped.push({
-        id: supplier.id,
-        name,
-        reason: e instanceof Error ? e.message : "Falha no envio",
-      });
-    }
+  const { error: insErr } = await admin.from("purchase_order_items").insert(inserts);
+  if (insErr) {
+    await admin
+      .from("purchase_quote_requests")
+      .delete()
+      .eq("id", header.id)
+      .eq("tenant_id", tenantId);
+    throw new Error(insErr.message);
   }
 
-  if (!suppliersSent.length) {
-    throw new Error(
-      suppliersSkipped[0]?.reason ||
-        "Nenhum fornecedor com e-mail válido para enviar a cotação."
-    );
-  }
-
-  return {
-    item_ids: inserted.map((r) => r.id),
-    item_count: inserted.length,
-    suppliers_sent: suppliersSent,
-    suppliers_skipped: suppliersSkipped,
-    email_sent_count: emailSentCount,
-    warning: warnings[0] ?? null,
-  };
+  return { id: header.id, request_number: header.request_number };
 }
-
-export type QuoteRequestHistoryRow = {
-  id: string;
-  product_code: string | null;
-  product_name: string | null;
-  description: string;
-  quantity: number;
-  unit: string;
-  need_date: string | null;
-  quotation_sent_at: string | null;
-  trace_key: string | null;
-};
 
 export async function listPurchaseQuoteRequests(
   admin: Admin,
   tenantId: string,
   opts?: { limit?: number; search?: string }
-): Promise<QuoteRequestHistoryRow[]> {
+): Promise<PurchaseQuoteRequestListRow[]> {
   const limit = Math.min(200, Math.max(1, opts?.limit ?? 100));
 
   const { data, error } = await admin
-    .from("purchase_order_items")
+    .from("purchase_quote_requests")
     .select(
       `
       id,
-      description,
-      quantity,
-      unit,
+      request_number,
+      request_date,
       need_date,
-      quotation_sent_at,
-      trace_key,
-      product:products!purchase_order_items_product_id_fkey(technical_code, name)
+      status,
+      notes,
+      created_at,
+      items:purchase_order_items!purchase_order_items_purchase_quote_request_id_fkey(id)
     `
     )
     .eq("tenant_id", tenantId)
-    .eq("status", "draft")
-    .is("purchase_order_id", null)
-    .not("quotation_sent_at", "is", null)
-    .like("trace_key", "quote-request:%")
-    .order("quotation_sent_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(limit);
 
   if (error) throw new Error(error.message);
 
   const search = opts?.search?.trim().toLowerCase();
-  const rows: QuoteRequestHistoryRow[] = (data ?? []).map((row) => {
-    const product = Array.isArray(row.product) ? row.product[0] : row.product;
+  const rows: PurchaseQuoteRequestListRow[] = (data ?? []).map((row) => {
+    const items = Array.isArray(row.items) ? row.items : [];
     return {
       id: row.id,
-      product_code: product?.technical_code ?? null,
-      product_name: product?.name ?? null,
-      description: row.description,
-      quantity: Number(row.quantity ?? 0),
-      unit: row.unit ?? "UN",
+      request_number: row.request_number,
+      request_date: String(row.request_date).slice(0, 10),
       need_date: dateOnly(row.need_date),
-      quotation_sent_at: row.quotation_sent_at,
-      trace_key: row.trace_key,
+      status: row.status,
+      notes: row.notes,
+      item_count: items.length,
+      created_at: row.created_at,
     };
   });
 
   if (!search) return rows;
   return rows.filter((r) => {
-    const hay = [
-      r.product_code,
-      r.product_name,
-      r.description,
-      r.trace_key,
-    ]
+    const hay = [r.request_number, r.notes, r.status]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
     return hay.includes(search);
   });
+}
+
+export async function getPurchaseQuoteRequest(
+  admin: Admin,
+  tenantId: string,
+  id: string
+): Promise<PurchaseQuoteRequestDetail | null> {
+  const { data, error } = await admin
+    .from("purchase_quote_requests")
+    .select(
+      `
+      id,
+      request_number,
+      request_date,
+      need_date,
+      notes,
+      message,
+      status,
+      created_at,
+      items:purchase_order_items!purchase_order_items_purchase_quote_request_id_fkey(
+        id,
+        product_id,
+        description,
+        quantity,
+        unit,
+        need_date,
+        product:products!purchase_order_items_product_id_fkey(
+          id,
+          name,
+          technical_code,
+          code
+        )
+      )
+    `
+    )
+    .eq("tenant_id", tenantId)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  const itemsRaw = Array.isArray(data.items) ? data.items : [];
+  const items: PurchaseQuoteRequestItem[] = itemsRaw.map((row) => {
+    const product = unwrapOne(row.product);
+    return {
+      id: row.id,
+      product_id: row.product_id,
+      description: row.description,
+      quantity: Number(row.quantity ?? 0),
+      unit: row.unit ?? "UN",
+      need_date: dateOnly(row.need_date),
+      product: product
+        ? {
+            id: product.id,
+            name: product.name,
+            technical_code: product.technical_code,
+            code: product.code,
+          }
+        : null,
+    };
+  });
+
+  return {
+    id: data.id,
+    request_number: data.request_number,
+    request_date: String(data.request_date).slice(0, 10),
+    need_date: dateOnly(data.need_date),
+    notes: data.notes,
+    message: data.message,
+    status: data.status,
+    created_at: data.created_at,
+    items,
+  };
+}
+
+export function purchaseQuoteRequestStatusLabel(status: string): string {
+  switch (status) {
+    case "sent":
+      return "Enviada";
+    case "cancelled":
+      return "Cancelada";
+    default:
+      return "Rascunho";
+  }
 }

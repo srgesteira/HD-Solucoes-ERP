@@ -5,7 +5,7 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import {
-  createAndSendPurchaseQuoteRequest,
+  createPurchaseQuoteRequest,
   listPurchaseQuoteRequests,
   type QuoteRequestLineInput,
 } from "@/modules/compras/lib/purchasing/request-purchase-quote";
@@ -62,22 +62,10 @@ export async function POST(request: NextRequest) {
   }
   const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 
-  const supplier_ids = Array.isArray(b.supplier_ids)
-    ? b.supplier_ids.filter((id): id is string => typeof id === "string" && !!id.trim())
-    : typeof b.supplier_id === "string" && b.supplier_id.trim()
-      ? [b.supplier_id.trim()]
-      : [];
-  if (!supplier_ids.length) {
-    return apiError("Seleccione pelo menos um fornecedor para enviar.", 400);
-  }
-
   const message = typeof b.message === "string" ? b.message : null;
   const notes = typeof b.notes === "string" ? b.notes : null;
   const request_date = typeof b.request_date === "string" ? b.request_date : null;
   const need_date = typeof b.need_date === "string" ? b.need_date : null;
-  const extra_emails = Array.isArray(b.extra_emails)
-    ? b.extra_emails.filter((e): e is string => typeof e === "string")
-    : [];
 
   const rawLines = Array.isArray(b.lines) ? b.lines : [];
   const lines: QuoteRequestLineInput[] = [];
@@ -116,19 +104,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const admin = createSupabaseAdminClient();
-    const data = await createAndSendPurchaseQuoteRequest(admin, tenantId, {
-      supplier_ids,
-      message,
-      notes,
+    const data = await createPurchaseQuoteRequest(admin, tenantId, user.id, {
       request_date,
       need_date,
+      notes,
+      message,
       lines,
-      extra_emails,
     });
     return apiOk({ data });
   } catch (e) {
     return apiError(
-      e instanceof Error ? e.message : "Erro ao solicitar orçamento",
+      e instanceof Error ? e.message : "Erro ao gravar solicitação de orçamento",
       400
     );
   }

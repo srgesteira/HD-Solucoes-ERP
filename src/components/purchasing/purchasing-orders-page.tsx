@@ -131,7 +131,7 @@ export function PurchasingOrdersPage() {
               activeTab === "requisitions"
                 ? "Buscar produto, fornecedor, PV, OP, data ou código…"
                 : activeTab === "request-quote"
-                  ? "Buscar item, fornecedor ou código no histórico…"
+                  ? "Buscar n.º, observação ou status…"
                   : "Buscar pedido, fornecedor, data, código ou produto…"
             }
           />
