@@ -3355,6 +3355,7 @@ export type Database = {
       }
       purchase_quote_requests: {
         Row: {
+          converted_to_purchase_order_id: string | null
           created_at: string
           id: string
           message: string | null
@@ -3368,6 +3369,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          converted_to_purchase_order_id?: string | null
           created_at?: string
           id?: string
           message?: string | null
@@ -3381,6 +3383,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          converted_to_purchase_order_id?: string | null
           created_at?: string
           id?: string
           message?: string | null
@@ -3394,6 +3397,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_quote_requests_converted_to_purchase_order_id_fkey"
+            columns: ["converted_to_purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "purchase_quote_requests_requested_by_fkey"
             columns: ["requested_by"]
@@ -3433,6 +3443,7 @@ export type Database = {
           payment_days_between_installments: number
           payment_days_to_first_due: number
           payment_installments: number
+          purchase_quote_request_id: string | null
           po_number: string
           requested_by: string | null
           status: string
@@ -3469,6 +3480,7 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          purchase_quote_request_id?: string | null
           po_number: string
           requested_by?: string | null
           status?: string
@@ -3505,6 +3517,7 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          purchase_quote_request_id?: string | null
           po_number?: string
           requested_by?: string | null
           status?: string
@@ -3532,6 +3545,13 @@ export type Database = {
             columns: ["requested_by"]
             isOneToOne: false
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_purchase_quote_request_id_fkey"
+            columns: ["purchase_quote_request_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_quote_requests"
             referencedColumns: ["id"]
           },
           {

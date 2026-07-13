@@ -77,10 +77,10 @@ export default function PurchaseQuoteRequestPrintPage() {
   return (
     <div className="po-print-page min-h-screen bg-slate-100 print:bg-white">
       <div className="po-print-toolbar print:hidden sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-        <Link href="/purchasing/orders?tab=request-quote">
+        <Link href={id ? `/purchasing/quote-requests/${id}` : "/purchasing/orders?tab=request-quote"}>
           <Button type="button" variant="outline" size="sm">
             <ArrowLeft className="h-4 w-4" />
-            Voltar às solicitações
+            Voltar à solicitação
           </Button>
         </Link>
         <div className="flex flex-wrap items-center gap-2">
@@ -123,6 +123,10 @@ export default function PurchaseQuoteRequestPrintPage() {
                 } else {
                   toast.success(purchaseQuoteRequestEmailDraftHint(result));
                 }
+                void fetch(`/api/purchasing/quote-requests/${id}/mark-sent`, {
+                  method: "POST",
+                  credentials: "include",
+                });
               } catch (e) {
                 toast.error(
                   e instanceof Error ? e.message : "Erro ao preparar e-mail"

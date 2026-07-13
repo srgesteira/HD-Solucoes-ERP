@@ -21,6 +21,8 @@ export type PurchaseQuoteRequestListRow = {
   notes: string | null;
   item_count: number;
   created_at: string;
+  converted_to_purchase_order_id: string | null;
+  converted_po_number: string | null;
 };
 
 export type PurchaseQuoteRequestItem = {
@@ -29,6 +31,7 @@ export type PurchaseQuoteRequestItem = {
   description: string;
   quantity: number;
   unit: string;
+  unit_price: number;
   need_date: string | null;
   product?: {
     id: string;
@@ -47,6 +50,8 @@ export type PurchaseQuoteRequestDetail = {
   message: string | null;
   status: string;
   created_at: string;
+  converted_to_purchase_order_id: string | null;
+  converted_po_number: string | null;
   items: PurchaseQuoteRequestItem[];
 };
 
@@ -214,6 +219,8 @@ export async function listPurchaseQuoteRequests(
       status,
       notes,
       created_at,
+      converted_to_purchase_order_id,
+      converted_po:purchase_orders!purchase_quote_requests_converted_to_purchase_order_id_fkey(po_number),
       items:purchase_order_items!purchase_order_items_purchase_quote_request_id_fkey(id)
     `
     )
@@ -226,6 +233,7 @@ export async function listPurchaseQuoteRequests(
   const search = opts?.search?.trim().toLowerCase();
   const rows: PurchaseQuoteRequestListRow[] = (data ?? []).map((row) => {
     const items = Array.isArray(row.items) ? row.items : [];
+    const convertedPo = unwrapOne(row.converted_po);
     return {
       id: row.id,
       request_number: row.request_number,
@@ -235,12 +243,14 @@ export async function listPurchaseQuoteRequests(
       notes: row.notes,
       item_count: items.length,
       created_at: row.created_at,
+      converted_to_purchase_order_id: row.converted_to_purchase_order_id ?? null,
+      converted_po_number: convertedPo?.po_number ?? null,
     };
   });
 
   if (!search) return rows;
   return rows.filter((r) => {
-    const hay = [r.request_number, r.notes, r.status]
+    const hay = [r.request_number, r.notes, r.status, r.converted_po_number]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
@@ -265,12 +275,15 @@ export async function getPurchaseQuoteRequest(
       message,
       status,
       created_at,
+      converted_to_purchase_order_id,
+      converted_po:purchase_orders!purchase_quote_requests_converted_to_purchase_order_id_fkey(id, po_number),
       items:purchase_order_items!purchase_order_items_purchase_quote_request_id_fkey(
         id,
         product_id,
         description,
         quantity,
         unit,
+        unit_price,
         need_date,
         product:products!purchase_order_items_product_id_fkey(
           id,
@@ -297,6 +310,7 @@ export async function getPurchaseQuoteRequest(
       description: row.description,
       quantity: Number(row.quantity ?? 0),
       unit: row.unit ?? "UN",
+      unit_price: Number(row.unit_price ?? 0),
       need_date: dateOnly(row.need_date),
       product: product
         ? {
@@ -309,6 +323,8 @@ export async function getPurchaseQuoteRequest(
     };
   });
 
+  const convertedPo = unwrapOne(data.converted_po);
+
   return {
     id: data.id,
     request_number: data.request_number,
@@ -318,6 +334,9 @@ export async function getPurchaseQuoteRequest(
     message: data.message,
     status: data.status,
     created_at: data.created_at,
+    converted_to_purchase_order_id:
+      data.converted_to_purchase_order_id ?? convertedPo?.id ?? null,
+    converted_po_number: convertedPo?.po_number ?? null,
     items,
   };
 }
@@ -326,6 +345,8 @@ export function purchaseQuoteRequestStatusLabel(status: string): string {
   switch (status) {
     case "sent":
       return "Enviada";
+    case "converted":
+      return "Convertida em PC";
     case "cancelled":
       return "Cancelada";
     default:

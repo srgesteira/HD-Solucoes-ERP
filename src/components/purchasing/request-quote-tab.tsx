@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Loader2, Printer, Save } from "lucide-react";
+import { FileText, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -138,7 +138,7 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
       setNotes("");
       void qc.invalidateQueries({ queryKey: quoteRequestsQueryKey });
       void qc.invalidateQueries({ queryKey: ["purchasing-requisitions"] });
-      router.push(`/purchasing/quote-requests/${data.id}/print`);
+      router.push(`/purchasing/quote-requests/${data.id}`);
     },
     onError: (e) =>
       toast.error(
@@ -152,12 +152,12 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
         key: "request_number",
         label: "N.º",
         type: "text",
-        width: "w-[12%]",
+        width: "w-[14%]",
         accessor: (row) => row.request_number,
         truncate: false,
         render: (row) => (
           <Link
-            href={`/purchasing/quote-requests/${row.id}/print`}
+            href={`/purchasing/quote-requests/${row.id}`}
             className={CRONOGRAMA_TOKENS.cellLink}
           >
             {row.request_number}
@@ -168,7 +168,7 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
         key: "request_date",
         label: "Data",
         type: "date",
-        width: "w-[12%]",
+        width: "w-[11%]",
         accessor: (row) => row.request_date,
         truncate: false,
         render: (row) => (
@@ -181,7 +181,7 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
         key: "need_date",
         label: "Necessidade",
         type: "date",
-        width: "w-[12%]",
+        width: "w-[11%]",
         accessor: (row) => row.need_date,
         truncate: false,
         render: (row) => (
@@ -194,7 +194,7 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
         key: "items",
         label: "Itens",
         type: "number",
-        width: "w-[10%]",
+        width: "w-[8%]",
         accessor: (row) => row.item_count,
         truncate: false,
         render: (row) => (
@@ -210,17 +210,42 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
         truncate: false,
         render: (row) => (
           <span
-            className={`${CRONOGRAMA_TOKENS.badge} bg-slate-50 text-slate-800 ring-slate-200`}
+            className={`${CRONOGRAMA_TOKENS.badge} ${
+              row.status === "converted"
+                ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                : row.status === "sent"
+                  ? "bg-blue-50 text-blue-800 ring-blue-200"
+                  : "bg-amber-50 text-amber-900 ring-amber-200"
+            }`}
           >
             {purchaseQuoteRequestStatusLabel(row.status)}
           </span>
         ),
       },
       {
+        key: "pc",
+        label: "Pedido",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => row.converted_po_number ?? "",
+        truncate: false,
+        render: (row) =>
+          row.converted_to_purchase_order_id ? (
+            <Link
+              href={`/purchasing/orders/${row.converted_to_purchase_order_id}`}
+              className={CRONOGRAMA_TOKENS.cellLink}
+            >
+              {row.converted_po_number ?? "PC"}
+            </Link>
+          ) : (
+            <span className={CRONOGRAMA_TOKENS.cellMuted}>—</span>
+          ),
+      },
+      {
         key: "notes",
         label: "Observações",
         type: "text",
-        width: "w-[28%]",
+        width: "w-[18%]",
         accessor: (row) => row.notes ?? "",
         truncate: true,
         render: (row) => (
@@ -238,10 +263,9 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
         align: "right",
         truncate: false,
         render: (row) => (
-          <Link href={`/purchasing/quote-requests/${row.id}/print`}>
+          <Link href={`/purchasing/quote-requests/${row.id}`}>
             <Button type="button" variant="outline" size="sm" className="h-8">
-              <Printer className="h-3.5 w-3.5" />
-              PDF / E-mail
+              Abrir
             </Button>
           </Link>
         ),
@@ -266,8 +290,8 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
               Dados da solicitação
             </CardTitle>
             <p className="text-sm text-slate-600 font-normal">
-              Grave com número (como o pedido de compra). Depois gere o PDF e
-              envie para quem quiser.
+              Igual a vendas: grave o orçamento com número, envie o PDF e depois
+              converta em pedido de compra.
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -347,10 +371,10 @@ export function RequestQuoteTab({ search = "" }: RequestQuoteTabProps) {
       <div className="space-y-2">
         <div>
           <h3 className="text-base font-semibold text-slate-900">
-            Solicitações gravadas
+            Orçamentos de compra
           </h3>
           <p className="text-sm text-slate-600">
-            Abra o documento para imprimir / guardar PDF ou enviar por e-mail.
+            Abra o documento para imprimir, enviar e gerar o pedido de compra.
           </p>
         </div>
         <CronogramaPanel>

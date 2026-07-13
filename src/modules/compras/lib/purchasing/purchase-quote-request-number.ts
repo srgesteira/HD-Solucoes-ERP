@@ -3,24 +3,24 @@ import type { Database } from "@/modules/core/types/database";
 
 type Admin = SupabaseClient<Database>;
 
-const QUOTE_NUMBER_RE = /^(\d+)\/(\d{4})$/;
+const SOC_NUMBER_RE = /^SOC-(\d{4})-(\d+)$/i;
 
-/** Formato igual ao PC: `1/2026`, `42/2027` (reinicia a cada ano). */
+/** Formato espelhando orçamentos de venda (ORC-AAAA-NNNN): `SOC-2026-0001`. */
 export function formatPurchaseQuoteRequestNumber(
   seq: number,
   year: number
 ): string {
   const n = Math.max(1, Math.floor(seq));
-  return `${n}/${year}`;
+  return `SOC-${year}-${String(n).padStart(4, "0")}`;
 }
 
 export function parsePurchaseQuoteRequestNumber(
   requestNumber: string
 ): { seq: number; year: number } | null {
-  const m = String(requestNumber ?? "").trim().match(QUOTE_NUMBER_RE);
+  const m = String(requestNumber ?? "").trim().match(SOC_NUMBER_RE);
   if (!m) return null;
-  const seq = Number(m[1]);
-  const year = Number(m[2]);
+  const year = Number(m[1]);
+  const seq = Number(m[2]);
   if (!Number.isFinite(seq) || !Number.isFinite(year) || seq < 1) return null;
   return { seq, year };
 }
@@ -38,14 +38,14 @@ async function maxSequenceForYear(
   tenantId: string,
   year: number
 ): Promise<number> {
-  const suffix = `/${year}`;
+  const prefix = `SOC-${year}-`;
   const { data, error } = await admin
     .from("purchase_quote_requests")
     .select("request_number")
     .eq("tenant_id", tenantId)
-    .like("request_number", `%${suffix}`)
-    .order("created_at", { ascending: false })
-    .limit(500);
+    .like("request_number", `${prefix}%`)
+    .order("request_number", { ascending: false })
+    .limit(50);
 
   if (error) throw new Error(error.message);
 
@@ -60,7 +60,7 @@ async function maxSequenceForYear(
 }
 
 /**
- * Próximo número de solicitação de orçamento no formato `{sequencial}/{ano}`.
+ * Próximo número de solicitação de orçamento de compras (`SOC-AAAA-NNNN`).
  */
 export async function nextPurchaseQuoteRequestNumber(
   admin: Admin,
