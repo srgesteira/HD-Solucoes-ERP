@@ -305,9 +305,19 @@ async function loadUnifiedRows(
   if (cfeErr) throw new Error(cfeErr.message);
 
   const unified: UnifiedRow[] = [];
+  const manualFmSourceIds = new Set<string>();
 
   for (const row of fmRows ?? []) {
     const direction = row.direction === "in" ? "in" : "out";
+    const sourceKind =
+      row.source_kind === "receivable"
+        ? "receivable"
+        : row.source_kind === "manual"
+          ? "manual"
+          : "payable";
+    if (sourceKind === "manual") {
+      manualFmSourceIds.add(row.source_id);
+    }
     unified.push({
       uid: `fm:${row.id}`,
       movement_date: String(row.movement_date).slice(0, 10),
@@ -315,12 +325,7 @@ async function loadUnifiedRows(
       direction,
       amount: Number(row.amount),
       description: row.description,
-      source_kind:
-        row.source_kind === "receivable"
-          ? "receivable"
-          : row.source_kind === "manual"
-            ? "manual"
-            : "payable",
+      source_kind: sourceKind,
       source_id: row.source_id,
       reference_id: row.reference_id,
       category: null,
@@ -328,6 +333,10 @@ async function loadUnifiedRows(
   }
 
   for (const row of cfeRows ?? []) {
+    // Dual-write: manuais novos já estão em financial_movements (source_kind=manual).
+    // Evita duplicar no extrato unificado.
+    if (manualFmSourceIds.has(row.id)) continue;
+
     const direction = row.type === "in" ? "in" : "out";
     unified.push({
       uid: `cfe:${row.id}`,

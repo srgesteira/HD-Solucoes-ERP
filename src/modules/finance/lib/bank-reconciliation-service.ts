@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import {
+  buildPayableMovementDescription,
+  buildReceivableMovementDescription,
+  recordFinancialMovement,
+} from "@/modules/finance/lib/financial-movements";
 
 type Admin = SupabaseClient<Database>;
 
@@ -108,10 +113,17 @@ async function applyReceivableSettlement(
   receivableId: string,
   paymentAmount: number,
   paymentDate: string
-): Promise<number> {
+): Promise<{
+  applied: number;
+  description: string | null;
+  clientName: string | null;
+  salesOrderId: string | null;
+}> {
   const { data: current, error } = await admin
     .from("receivables")
-    .select("id, current_amount, paid_amount, status, due_date")
+    .select(
+      "id, current_amount, paid_amount, status, due_date, description, client_name, sales_order_id"
+    )
     .eq("id", receivableId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -147,21 +159,29 @@ async function applyReceivableSettlement(
     .eq("tenant_id", tenantId);
 
   if (updErr) throw new Error(updErr.message);
-  return recv;
+  return {
+    applied: recv,
+    description: current.description,
+    clientName: current.client_name,
+    salesOrderId: current.sales_order_id,
+  };
 }
 
 async function reverseReceivableSettlement(
   admin: Admin,
   tenantId: string,
   receivableId: string,
-  appliedAmount: number
+  appliedAmount: number,
+  opts?: { movementDate?: string; createdBy?: string | null }
 ): Promise<void> {
   const applied = roundMoney(appliedAmount);
   if (applied <= 0) return;
 
   const { data: current, error } = await admin
     .from("receivables")
-    .select("id, current_amount, paid_amount, status, due_date, payment_date")
+    .select(
+      "id, current_amount, paid_amount, status, due_date, payment_date, description, client_name, sales_order_id"
+    )
     .eq("id", receivableId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -188,6 +208,24 @@ async function reverseReceivableSettlement(
     .eq("tenant_id", tenantId);
 
   if (updErr) throw new Error(updErr.message);
+
+  const movementDate =
+    opts?.movementDate?.slice(0, 10) ||
+    new Date().toISOString().slice(0, 10);
+  await recordFinancialMovement(admin, {
+    tenantId,
+    direction: "out",
+    amount: applied,
+    movementDate,
+    sourceKind: "receivable",
+    sourceId: receivableId,
+    description: `Estorno conciliação: ${buildReceivableMovementDescription(
+      current.description,
+      current.client_name
+    )}`,
+    referenceId: current.sales_order_id,
+    createdBy: opts?.createdBy ?? null,
+  });
 }
 
 async function applyPayableSettlement(
@@ -196,10 +234,10 @@ async function applyPayableSettlement(
   payableId: string,
   paymentAmount: number,
   paymentDate: string
-): Promise<number> {
+): Promise<{ applied: number; description: string; purchaseOrderId: string | null }> {
   const { data: row, error } = await admin
     .from("accounts_payable")
-    .select("id, current_amount, status, due_date")
+    .select("id, current_amount, status, due_date, description, purchase_order_id")
     .eq("id", payableId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -229,21 +267,28 @@ async function applyPayableSettlement(
     .eq("tenant_id", tenantId);
 
   if (updErr) throw new Error(updErr.message);
-  return pay;
+  return {
+    applied: pay,
+    description: row.description,
+    purchaseOrderId: row.purchase_order_id,
+  };
 }
 
 async function reversePayableSettlement(
   admin: Admin,
   tenantId: string,
   payableId: string,
-  appliedAmount: number
+  appliedAmount: number,
+  opts?: { movementDate?: string; createdBy?: string | null }
 ): Promise<void> {
   const applied = roundMoney(appliedAmount);
   if (applied <= 0) return;
 
   const { data: row, error } = await admin
     .from("accounts_payable")
-    .select("id, current_amount, status, due_date, payment_date")
+    .select(
+      "id, current_amount, status, due_date, payment_date, description, purchase_order_id"
+    )
     .eq("id", payableId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -264,6 +309,23 @@ async function reversePayableSettlement(
     .eq("tenant_id", tenantId);
 
   if (updErr) throw new Error(updErr.message);
+
+  const movementDate =
+    opts?.movementDate?.slice(0, 10) ||
+    new Date().toISOString().slice(0, 10);
+  await recordFinancialMovement(admin, {
+    tenantId,
+    direction: "in",
+    amount: applied,
+    movementDate,
+    sourceKind: "payable",
+    sourceId: payableId,
+    description: `Estorno conciliação: ${buildPayableMovementDescription(
+      row.description
+    )}`,
+    referenceId: row.purchase_order_id,
+    createdBy: opts?.createdBy ?? null,
+  });
 }
 
 export type BankMatchCandidate = {
@@ -461,12 +523,14 @@ export async function matchBankStatementLine(
   if (payload.kind === "unmatch") {
     if (line.match_status === "matched") {
       const applied = Number(line.applied_amount ?? 0);
+      const movementDate = String(line.transaction_date).slice(0, 10);
       if (line.matched_receivable_id && applied > 0) {
         await reverseReceivableSettlement(
           admin,
           tenantId,
           line.matched_receivable_id,
-          applied
+          applied,
+          { movementDate }
         );
       }
       if (line.matched_payable_id && applied > 0) {
@@ -474,7 +538,8 @@ export async function matchBankStatementLine(
           admin,
           tenantId,
           line.matched_payable_id,
-          applied
+          applied,
+          { movementDate }
         );
       }
     }
@@ -526,7 +591,7 @@ export async function matchBankStatementLine(
       throw new Error("Linha de crédito só concilia com recebível.");
     }
 
-    const applied = await applyReceivableSettlement(
+    const settled = await applyReceivableSettlement(
       admin,
       tenantId,
       targetId,
@@ -534,25 +599,39 @@ export async function matchBankStatementLine(
       paymentDate
     );
 
+    await recordFinancialMovement(admin, {
+      tenantId,
+      direction: "in",
+      amount: settled.applied,
+      movementDate: paymentDate,
+      sourceKind: "receivable",
+      sourceId: targetId,
+      description: buildReceivableMovementDescription(
+        settled.description,
+        settled.clientName
+      ),
+      referenceId: settled.salesOrderId,
+    });
+
     const { error } = await db
       .from("bank_statement_lines")
       .update({
         match_status: "matched",
         matched_receivable_id: targetId,
         matched_payable_id: null,
-        applied_amount: applied,
+        applied_amount: settled.applied,
       })
       .eq("id", lineId)
       .eq("tenant_id", tenantId);
     if (error) throw new Error(error.message);
-    return { applied_amount: applied };
+    return { applied_amount: settled.applied };
   }
 
   if (lineAmount >= 0) {
     throw new Error("Linha de débito só concilia com conta a pagar.");
   }
 
-  const applied = await applyPayableSettlement(
+  const settled = await applyPayableSettlement(
     admin,
     tenantId,
     targetId,
@@ -560,16 +639,27 @@ export async function matchBankStatementLine(
     paymentDate
   );
 
+  await recordFinancialMovement(admin, {
+    tenantId,
+    direction: "out",
+    amount: settled.applied,
+    movementDate: paymentDate,
+    sourceKind: "payable",
+    sourceId: targetId,
+    description: buildPayableMovementDescription(settled.description),
+    referenceId: settled.purchaseOrderId,
+  });
+
   const { error } = await db
     .from("bank_statement_lines")
     .update({
       match_status: "matched",
       matched_payable_id: targetId,
       matched_receivable_id: null,
-      applied_amount: applied,
+      applied_amount: settled.applied,
     })
     .eq("id", lineId)
     .eq("tenant_id", tenantId);
   if (error) throw new Error(error.message);
-  return { applied_amount: applied };
+  return { applied_amount: settled.applied };
 }

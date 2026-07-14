@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
+import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { cashFlowEntryCreateSchema } from "@/shared/contracts/pacote-a-finance.schema";
+import { recordFinancialMovement } from "@/modules/finance/lib/financial-movements";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +50,11 @@ export async function POST(request: NextRequest) {
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   let raw: unknown;
   try {
     raw = await request.json();
@@ -80,6 +87,31 @@ export async function POST(request: NextRequest) {
     return apiError(
       "Erro ao criar: " + error.message,
       supabaseErrorToHttp(error.code)
+    );
+  }
+
+  try {
+    await recordFinancialMovement(admin, {
+      tenantId,
+      direction: b.type === "in" ? "in" : "out",
+      amount: b.amount,
+      movementDate: b.date,
+      sourceKind: "manual",
+      sourceId: data.id,
+      description: b.description,
+      referenceId: b.reference_id ?? null,
+      createdBy: user?.id ?? null,
+    });
+  } catch (movErr) {
+    await admin
+      .from("cash_flow_entries")
+      .delete()
+      .eq("id", data.id)
+      .eq("tenant_id", tenantId);
+    return apiError(
+      "Erro ao gravar movimento do lançamento manual: " +
+        (movErr instanceof Error ? movErr.message : "erro desconhecido"),
+      500
     );
   }
 
