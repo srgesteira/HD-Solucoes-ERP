@@ -129,6 +129,10 @@ export async function convertQuoteToSalesOrder(
         it.usage_type === "revenda"
           ? it.usage_type
           : null,
+      item_notes:
+        typeof it.item_notes === "string" && it.item_notes.trim()
+          ? it.item_notes.trim()
+          : null,
     });
   }
 

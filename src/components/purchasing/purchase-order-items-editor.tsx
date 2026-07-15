@@ -5,6 +5,7 @@ import { Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
+import { Textarea } from "@/shared/ui/textarea";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 import {
@@ -38,6 +39,7 @@ export type PurchaseOrderLineDraft = {
   id?: string;
   productId: string;
   description: string;
+  itemNotes: string;
   quantity: number;
   unit: string;
   unitPrice: number;
@@ -112,6 +114,7 @@ export function newPurchaseLine(index = 0): PurchaseOrderLineDraft {
     key: `line-${index}`,
     productId: "",
     description: "",
+    itemNotes: "",
     quantity: 1,
     unit: "UN",
     unitPrice: 0,
@@ -379,15 +382,27 @@ export function PurchaseOrderItemsEditor({
                     {code}
                   </td>
                   <td className="px-1 py-1.5 align-top">
-                    <Input
-                      value={line.description}
-                      onChange={(e) =>
-                        updateLineAt(index, { description: e.target.value })
-                      }
-                      disabled={disabled}
-                      className="h-7 text-xs px-2"
-                      placeholder="Nome do item…"
-                    />
+                    <div className="space-y-1">
+                      <Input
+                        value={line.description}
+                        onChange={(e) =>
+                          updateLineAt(index, { description: e.target.value })
+                        }
+                        disabled={disabled}
+                        className="h-7 text-xs px-2"
+                        placeholder="Nome do item…"
+                      />
+                      <Textarea
+                        value={line.itemNotes}
+                        onChange={(e) =>
+                          updateLineAt(index, { itemNotes: e.target.value })
+                        }
+                        disabled={disabled}
+                        rows={2}
+                        placeholder="Obs. do item…"
+                        className="resize-y min-h-[44px] text-[11px] px-2 py-1"
+                      />
+                    </div>
                   </td>
                   <td className="px-1 py-1.5 align-top">
                     <select
@@ -636,6 +651,7 @@ export function buildPurchaseOrderItemsPayload(
     };
     if (line.id) item.id = line.id;
     item.usage_type = isItemUsageType(line.usageType) ? line.usageType : null;
+    item.item_notes = line.itemNotes.trim() || null;
     built.push(item);
   }
 

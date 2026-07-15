@@ -16,6 +16,7 @@ export type SaleLineInput = {
   product_id?: string | null;
   description: string;
   client_notes?: string | null;
+  item_notes?: string | null;
   show_product_description?: boolean;
   usage_type?: "consumo" | "materia_prima" | "revenda" | null;
   quantity: number;
@@ -274,6 +275,7 @@ function saleLineToDbRow(
     ipi_value: ipiVal,
     tax_base: taxBase,
     usage_type: it.usage_type ?? null,
+    item_notes: it.item_notes?.trim() ? it.item_notes.trim() : null,
   };
 }
 
@@ -352,6 +354,7 @@ export async function insertQuoteItemsFromLines(
     product_id: it.product_id,
     description: it.description,
     client_notes: it.client_notes?.trim() ? it.client_notes.trim() : null,
+    item_notes: it.item_notes?.trim() ? it.item_notes.trim() : null,
     show_product_description: Boolean(it.show_product_description),
     usage_type: it.usage_type ?? null,
     quantity: it.quantity,

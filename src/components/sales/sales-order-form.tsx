@@ -76,6 +76,7 @@ export type SalesOrderFormData = {
     ipi_amount?: number;
     tax_base?: number;
     usage_type?: string | null;
+    item_notes?: string | null;
     product?:
       | {
           id: string;
@@ -182,6 +183,7 @@ export function itemsToSalesLines(items: OrderItemRow[]): {
       id: item.id,
       productId: pid,
       description: item.description?.trim() || prod?.name || "",
+      itemNotes: item.item_notes?.trim() ?? "",
       quantity: Number(item.quantity),
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       unitPrice: Number(item.unit_price),

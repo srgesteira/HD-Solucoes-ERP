@@ -5,6 +5,7 @@ import { Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
+import { Textarea } from "@/shared/ui/textarea";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 import {
@@ -37,6 +38,7 @@ export type SalesOrderLineDraft = {
   id?: string;
   productId: string;
   description: string;
+  itemNotes: string;
   quantity: number;
   unit: string;
   unitPrice: number;
@@ -96,6 +98,7 @@ export function newSalesOrderLine(index = 0): SalesOrderLineDraft {
     key: `line-${index}`,
     productId: "",
     description: "",
+    itemNotes: "",
     quantity: 1,
     unit: "UN",
     unitPrice: 0,
@@ -326,15 +329,27 @@ export function SalesOrderItemsEditor({
                     )}
                   </td>
                   <td className="px-2 py-2 align-top">
-                    <Input
-                      value={line.description}
-                      onChange={(e) =>
-                        updateLineAt(index, { description: e.target.value })
-                      }
-                      disabled={disabled}
-                      className="h-8 text-sm"
-                      placeholder="Descrição…"
-                    />
+                    <div className="space-y-1.5">
+                      <Input
+                        value={line.description}
+                        onChange={(e) =>
+                          updateLineAt(index, { description: e.target.value })
+                        }
+                        disabled={disabled}
+                        className="h-8 text-sm"
+                        placeholder="Descrição…"
+                      />
+                      <Textarea
+                        value={line.itemNotes}
+                        onChange={(e) =>
+                          updateLineAt(index, { itemNotes: e.target.value })
+                        }
+                        disabled={disabled}
+                        rows={2}
+                        placeholder="Obs. do item…"
+                        className="resize-y min-h-[48px] text-xs"
+                      />
+                    </div>
                   </td>
                   <td className="px-2 py-2 align-top">
                     <select
@@ -557,6 +572,7 @@ export function buildSalesOrderItemsPayload(
       ipi_value: line.ipiValue,
       tax_base: roundMoney(lineSubtotal(line.quantity, line.unitPrice) + line.ipiValue),
       usage_type: isItemUsageType(line.usageType) ? line.usageType : null,
+      item_notes: line.itemNotes.trim() || null,
     };
     if (line.id) item.id = line.id;
     built.push(item);

@@ -25,6 +25,7 @@ export type QuoteApiItem = {
   unit_price: number;
   markup_percent?: number | null;
   client_notes?: string | null;
+  item_notes?: string | null;
   show_product_description?: boolean | null;
   usage_type?: string | null;
   product?: ApiProduct | ApiProduct[];
@@ -74,6 +75,7 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
       unitPrice,
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       clientNotes: item.client_notes?.trim() ?? "",
+      itemNotes: item.item_notes?.trim() ?? "",
       showProductDescription: Boolean(item.show_product_description),
       usageType: isItemUsageType(item.usage_type) ? item.usage_type : "",
     });

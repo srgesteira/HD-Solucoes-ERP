@@ -47,6 +47,8 @@ export type QuoteLineDraft = {
   unit: string;
   /** Texto livre visível ao cliente na proposta/impressão. */
   clientNotes: string;
+  /** Observação operacional da linha (embaixo da descrição). */
+  itemNotes: string;
   /** Incluir descrição cadastrada do produto na impressão desta linha. */
   showProductDescription: boolean;
   /** Utilização fiscal da linha (consumo / matéria-prima / revenda). */
@@ -125,6 +127,7 @@ export function newQuoteLine(index = 0): QuoteLineDraft {
     unitPrice: 0,
     unit: "UN",
     clientNotes: "",
+    itemNotes: "",
     showProductDescription: false,
     usageType: "",
   };
@@ -337,6 +340,21 @@ export function QuoteItemsEditor({
                       Adicionar produto
                     </Button>
                   )}
+                  <div className="space-y-1.5 pt-1">
+                    <Label htmlFor={`quote-item-notes-${index}`}>
+                      Observação do item
+                    </Label>
+                    <Textarea
+                      id={`quote-item-notes-${index}`}
+                      value={line.itemNotes}
+                      onChange={(e) =>
+                        updateLineAt(index, { itemNotes: e.target.value })
+                      }
+                      rows={2}
+                      placeholder="Obs. desta linha…"
+                      className="resize-y min-h-[56px] text-sm"
+                    />
+                  </div>
                 </div>
 
                 {prod ? (
@@ -623,6 +641,9 @@ export function buildQuoteItemsPayload(
     if (notes) {
       item.client_notes = notes;
     }
+
+    const itemNotes = line.itemNotes.trim();
+    item.item_notes = itemNotes || null;
 
     item.show_product_description = line.showProductDescription;
     item.usage_type = isItemUsageType(line.usageType) ? line.usageType : null;
