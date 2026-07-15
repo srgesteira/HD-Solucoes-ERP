@@ -231,6 +231,7 @@ export async function replaceSalesOrderItemsFromLines(
       ipi_rate: it.ipi_rate ?? 0,
       ipi_value: ipiVal,
       tax_base: taxBase,
+      usage_type: it.usage_type ?? null,
     };
   });
 

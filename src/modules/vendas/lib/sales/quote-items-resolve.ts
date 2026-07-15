@@ -98,6 +98,7 @@ export async function resolveQuoteItemsFromPayload(
     description?: string;
     client_notes?: string | null;
     show_product_description?: boolean;
+    usage_type?: "consumo" | "materia_prima" | "revenda" | null;
     unit_price: number | null;
     markup_percent: number | null;
     use_markup: boolean;
@@ -152,6 +153,14 @@ export async function resolveQuoteItemsFromPayload(
         ? r.client_notes.trim()
         : null;
     const show_product_description = r.show_product_description === true;
+    const usageRaw =
+      typeof r.usage_type === "string" ? r.usage_type.trim() : "";
+    const usage_type =
+      usageRaw === "consumo" ||
+      usageRaw === "materia_prima" ||
+      usageRaw === "revenda"
+        ? usageRaw
+        : null;
 
     productIds.push(product_id);
     drafts.push({
@@ -164,6 +173,7 @@ export async function resolveQuoteItemsFromPayload(
       ...(description ? { description } : {}),
       client_notes,
       show_product_description,
+      usage_type,
     });
   }
 
@@ -210,6 +220,7 @@ export async function resolveQuoteItemsFromPayload(
       description: d.description || productLabel(p),
       client_notes: d.client_notes ?? null,
       show_product_description: d.show_product_description,
+      usage_type: d.usage_type ?? null,
       quantity: d.quantity,
       unit: d.unit ?? (p.unit?.trim() || "UN"),
       unit_price,

@@ -15,6 +15,13 @@ import {
   roundMoney,
 } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 
+import {
+  ITEM_USAGE_TYPE_OPTIONS,
+  isItemUsageType,
+  suggestUsageTypeFromProductNature,
+  type ItemUsageType,
+} from "@/modules/fiscal/lib/item-usage-type";
+
 export type PurchaseLineProduct = {
   id: string;
   code: string | null;
@@ -22,6 +29,8 @@ export type PurchaseLineProduct = {
   name: string;
   unit: string | null;
   description?: string | null;
+  product_nature?: string | null;
+  prefix_code?: string | null;
 };
 
 export type PurchaseOrderLineDraft = {
@@ -39,6 +48,7 @@ export type PurchaseOrderLineDraft = {
   taxBase: number;
   /** Incluir descrição cadastrada do produto na impressão (RFQ). */
   showProductDescription?: boolean;
+  usageType?: ItemUsageType | "";
 };
 
 function formatBRL(n: number): string {
@@ -66,6 +76,8 @@ function hitToProduct(hit: ProductSearchHit): PurchaseLineProduct {
     name: hit.name,
     unit: hit.unit,
     description: hit.description ?? null,
+    product_nature: hit.product_nature ?? null,
+    prefix_code: hit.prefix?.code ?? null,
   };
 }
 
@@ -87,6 +99,10 @@ function lineFromProduct(
     productId: p.id,
     description: initialLineDescription(hit, p),
     unit: (p.unit && p.unit.trim()) || "UN",
+    usageType:
+      base?.usageType ||
+      suggestUsageTypeFromProductNature(p.product_nature, p.prefix_code) ||
+      "",
   };
   return { line, product: p };
 }
@@ -105,6 +121,7 @@ export function newPurchaseLine(index = 0): PurchaseOrderLineDraft {
     ipiValue: 0,
     taxBase: 0,
     showProductDescription: false,
+    usageType: "",
   };
 }
 
@@ -281,8 +298,11 @@ export function PurchaseOrderItemsEditor({
               <th className={isQuote ? "w-[14%] px-1 py-1.5" : "w-[9%] px-1 py-1.5"}>
                 Código
               </th>
-              <th className={isQuote ? "w-[48%] px-1 py-1.5" : "w-[24%] px-1 py-1.5"}>
+              <th className={isQuote ? "w-[40%] px-1 py-1.5" : "w-[20%] px-1 py-1.5"}>
                 Descrição
+              </th>
+              <th className={isQuote ? "w-[14%] px-1 py-1.5" : "w-[10%] px-1 py-1.5"}>
+                Utilização
               </th>
               <th className={isQuote ? "w-[12%] px-1 py-1.5" : "w-[8%] px-1 py-1.5"}>
                 Qtd.
@@ -314,7 +334,7 @@ export function PurchaseOrderItemsEditor({
                 line.ipiValue
               );
               const unitLocked = Boolean(line.productId);
-              const colSpan = isQuote ? 5 : 11;
+              const colSpan = isQuote ? 6 : 12;
               return (
                 <Fragment key={line.key}>
                 <tr
@@ -368,6 +388,27 @@ export function PurchaseOrderItemsEditor({
                       className="h-7 text-xs px-2"
                       placeholder="Nome do item…"
                     />
+                  </td>
+                  <td className="px-1 py-1.5 align-top">
+                    <select
+                      className="h-7 w-full rounded-md border border-slate-300 bg-white px-1 text-[11px] dark:bg-slate-950 dark:border-slate-600"
+                      value={line.usageType ?? ""}
+                      onChange={(e) =>
+                        updateLineAt(index, {
+                          usageType: isItemUsageType(e.target.value)
+                            ? e.target.value
+                            : "",
+                        })
+                      }
+                      disabled={disabled}
+                    >
+                      <option value="">—</option>
+                      {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-1 py-1.5 align-top">
                     <NumericInput
@@ -594,6 +635,7 @@ export function buildPurchaseOrderItemsPayload(
       tax_base: roundMoney(lineSubtotal(line.quantity, line.unitPrice) + line.ipiValue),
     };
     if (line.id) item.id = line.id;
+    item.usage_type = isItemUsageType(line.usageType) ? line.usageType : null;
     built.push(item);
   }
 
@@ -614,6 +656,7 @@ export function buildQuoteRequestItemsPayload(
   quantity: number;
   unit: string;
   show_product_description: boolean;
+  usage_type: "consumo" | "materia_prima" | "revenda" | null;
 }> | { error: string } {
   const built: Array<{
     id?: string;
@@ -622,6 +665,7 @@ export function buildQuoteRequestItemsPayload(
     quantity: number;
     unit: string;
     show_product_description: boolean;
+    usage_type: "consumo" | "materia_prima" | "revenda" | null;
   }> = [];
 
   for (const line of lines) {
@@ -639,12 +683,14 @@ export function buildQuoteRequestItemsPayload(
       quantity: number;
       unit: string;
       show_product_description: boolean;
+      usage_type: "consumo" | "materia_prima" | "revenda" | null;
     } = {
       product_id: line.productId.trim() || null,
       description: line.description.trim(),
       quantity: line.quantity,
       unit: line.unit.trim() || "UN",
       show_product_description: Boolean(line.showProductDescription),
+      usage_type: isItemUsageType(line.usageType) ? line.usageType : null,
     };
     if (line.id) item.id = line.id;
     built.push(item);

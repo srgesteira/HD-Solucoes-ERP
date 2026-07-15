@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Check, Loader2, Percent, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { AppPage } from "@/shared/ui/app-page";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import { usePermissions } from "@/hooks/use-permissions";
 
 type CreditRow = {
   id: string;
@@ -27,10 +29,22 @@ function fmt(n: number) {
 }
 
 export default function CreditAnalysisPage() {
+  const router = useRouter();
+  const { can, isLoading: permLoading } = usePermissions();
+  const canView = !permLoading && can("finance");
+
   const [filter, setFilter] = useState("pending");
   const [rows, setRows] = useState<CreditRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (permLoading) return;
+    if (!canView) {
+      toast.error("Sem acesso ao módulo Financeiro.");
+      router.replace("/dashboard");
+    }
+  }, [permLoading, canView, router]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,8 +68,9 @@ export default function CreditAnalysisPage() {
   }, [filter]);
 
   useEffect(() => {
+    if (!canView) return;
     void load();
-  }, [load]);
+  }, [load, canView]);
 
   async function approve(id: string, partial?: boolean) {
     setActing(id);
@@ -81,7 +96,9 @@ export default function CreditAnalysisPage() {
       });
       const j = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(j.error ?? "Falha ao aprovar");
-      toast.success("Crédito aprovado — PCP liberado");
+      toast.success(
+        partial ? "Crédito parcial aprovado" : "Crédito aprovado — PCP liberado"
+      );
       void load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
@@ -91,8 +108,12 @@ export default function CreditAnalysisPage() {
   }
 
   async function reject(id: string) {
-    const reason = window.prompt("Motivo da rejeição (obrigatório):");
-    if (!reason?.trim()) return;
+    const reason = window.prompt("Motivo da rejeição:");
+    if (reason == null) return;
+    if (!reason.trim()) {
+      toast.error("Indique o motivo da rejeição.");
+      return;
+    }
     setActing(id);
     try {
       const res = await fetch(`/api/finance/credit-analysis/${id}/reject`, {
@@ -112,12 +133,23 @@ export default function CreditAnalysisPage() {
     }
   }
 
+  if (permLoading || !canView) {
+    return (
+      <AppPage title="Análise de crédito" description="A verificar permissões…">
+        <p className="flex items-center gap-2 text-slate-600 py-12 justify-center">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          A carregar…
+        </p>
+      </AppPage>
+    );
+  }
+
   const pendingCount = filter === "pending" ? rows.length : undefined;
 
   return (
     <AppPage
       title="Análise de crédito"
-      description="Gate Faturamento → PCP. PVs confirmados em Vendas entram aqui como pendentes."
+      description="Gate financeiro antes do PCP. PVs confirmados em Vendas entram aqui como pendentes."
       wide
     >
       <div className="flex flex-wrap gap-2">

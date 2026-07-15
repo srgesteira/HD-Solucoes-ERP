@@ -28,6 +28,13 @@ export type QuoteLineProduct = {
   prefix_code?: string | null;
 };
 
+import {
+  ITEM_USAGE_TYPE_OPTIONS,
+  isItemUsageType,
+  suggestUsageTypeFromProductNature,
+  type ItemUsageType,
+} from "@/modules/fiscal/lib/item-usage-type";
+
 export type QuoteLineDraft = {
   key: string;
   productId: string;
@@ -42,6 +49,8 @@ export type QuoteLineDraft = {
   clientNotes: string;
   /** Incluir descrição cadastrada do produto na impressão desta linha. */
   showProductDescription: boolean;
+  /** Utilização fiscal da linha (consumo / matéria-prima / revenda). */
+  usageType: ItemUsageType | "";
 };
 
 export function productDisplayLabel(p: QuoteLineProduct): string {
@@ -79,6 +88,10 @@ function lineFromProduct(
     manualPrice: unitPrice,
     unitPrice,
     unit: (p.unit && p.unit.trim()) || "UN",
+    usageType:
+      base?.usageType ||
+      suggestUsageTypeFromProductNature(p.product_nature, p.prefix_code) ||
+      "",
   };
   return { line, product: p };
 }
@@ -113,6 +126,7 @@ export function newQuoteLine(index = 0): QuoteLineDraft {
     unit: "UN",
     clientNotes: "",
     showProductDescription: false,
+    usageType: "",
   };
 }
 
@@ -460,6 +474,34 @@ export function QuoteItemsEditor({
                   </p>
                 </div>
 
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor={`quote-usage-${index}`}>Utilização</Label>
+                  <select
+                    id={`quote-usage-${index}`}
+                    className={SELECT_CLASS}
+                    value={line.usageType}
+                    onChange={(e) =>
+                      updateLineAt(index, {
+                        usageType: isItemUsageType(e.target.value)
+                          ? e.target.value
+                          : "",
+                      })
+                    }
+                    disabled={!line.productId}
+                  >
+                    <option value="">— Seleccionar —</option>
+                    {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500">
+                    Alimenta a conferência fiscal (CFOP/tributação). Pode ficar
+                    vazio até à revisão fiscal.
+                  </p>
+                </div>
+
                 {prod ? (
                   <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
                     <label
@@ -583,6 +625,7 @@ export function buildQuoteItemsPayload(
     }
 
     item.show_product_description = line.showProductDescription;
+    item.usage_type = isItemUsageType(line.usageType) ? line.usageType : null;
 
     built.push(item);
   }

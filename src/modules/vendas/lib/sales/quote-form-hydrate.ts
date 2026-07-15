@@ -5,6 +5,7 @@ import {
   type QuoteLineProduct,
 } from "@/components/sales/quote-items-editor";
 import { DEFAULT_QUOTE_MARKUP_PERCENT } from "@/modules/vendas/lib/sales/quote-line-pricing";
+import { isItemUsageType } from "@/modules/fiscal/lib/item-usage-type";
 
 type ApiProduct = {
   id: string;
@@ -25,6 +26,7 @@ export type QuoteApiItem = {
   markup_percent?: number | null;
   client_notes?: string | null;
   show_product_description?: boolean | null;
+  usage_type?: string | null;
   product?: ApiProduct | ApiProduct[];
 };
 
@@ -73,6 +75,7 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       clientNotes: item.client_notes?.trim() ?? "",
       showProductDescription: Boolean(item.show_product_description),
+      usageType: isItemUsageType(item.usage_type) ? item.usage_type : "",
     });
   });
 

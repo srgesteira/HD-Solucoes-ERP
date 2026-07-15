@@ -123,6 +123,12 @@ export async function convertQuoteToSalesOrder(
         typeof it.unit_price === "number"
           ? it.unit_price
           : parseFloat(String(it.unit_price ?? 0)),
+      usage_type:
+        it.usage_type === "consumo" ||
+        it.usage_type === "materia_prima" ||
+        it.usage_type === "revenda"
+          ? it.usage_type
+          : null,
     });
   }
 
