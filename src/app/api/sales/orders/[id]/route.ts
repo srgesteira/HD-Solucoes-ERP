@@ -28,6 +28,7 @@ import {
   insertSalesOrderLogsBestEffort,
   type SalesOrderItemSnapshot,
 } from "@/modules/vendas/lib/sales/sales-order-change-log";
+import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
 import { parseSaleLines } from "@/modules/vendas/lib/sales/sales-flow";
 import {
   ensureReceivablesSyncedForSalesOrder,
@@ -390,6 +391,32 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
     const parsedLines = parseSaleLines(b.items);
     if (!parsedLines.ok) return apiError(parsedLines.message, 400);
+
+    const { data: existingTaxRows } = await admin
+      .from("sales_order_items")
+      .select("id, icms_rate, icms_value, ipi_rate, ipi_value, tax_base")
+      .eq("sales_order_id", id)
+      .eq("tenant_id", tenantId);
+    const existingTaxById = new Map(
+      (existingTaxRows ?? []).map((row) => [
+        row.id as string,
+        {
+          id: row.id as string,
+          icms_rate: Number(row.icms_rate ?? 0),
+          icms_value: Number(row.icms_value ?? 0),
+          ipi_rate: Number(row.ipi_rate ?? 0),
+          ipi_value: Number(row.ipi_value ?? 0),
+          tax_base: Number(row.tax_base ?? 0),
+        },
+      ])
+    );
+    const taxGate = assertLineTaxesUnchangedOutsideFaturamento(
+      "sales_order_items",
+      "vendas",
+      parsedLines.lines,
+      existingTaxById
+    );
+    if (!taxGate.ok) return apiError(taxGate.message, taxGate.status);
 
     oldItemsSnapshot = await fetchSalesOrderItemsSnapshot(
       admin,

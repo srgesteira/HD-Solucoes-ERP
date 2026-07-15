@@ -13,6 +13,7 @@ export type AdminClient = SupabaseClient<Database>;
 
 /** Linhas de produto em orçamento / pedido (payload da API). */
 export type SaleLineInput = {
+  id?: string;
   product_id?: string | null;
   description: string;
   client_notes?: string | null;
@@ -175,6 +176,9 @@ export function parseSaleLines(raw: unknown):
         ? null
         : String(r.product_id);
 
+    const id =
+      typeof r.id === "string" && r.id.trim() ? r.id.trim() : undefined;
+
     let markup_percent: number | null = null;
     if (r.markup_percent !== undefined && r.markup_percent !== null) {
       const mp =
@@ -228,6 +232,7 @@ export function parseSaleLines(raw: unknown):
     }
 
     lines.push({
+      ...(id ? { id } : {}),
       description,
       quantity,
       unit_price,

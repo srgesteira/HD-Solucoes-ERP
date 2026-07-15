@@ -23,6 +23,7 @@ import {
   parsePaymentDaysBetween,
 } from "@/shared/contracts/sales-order.schema";
 import { checkPurchaseOrderExpectedDeliveryVsProduction } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
+import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
 import {
   ensurePayablesForPurchaseOrder,
   ensurePayablesSyncedForPurchaseOrder,
@@ -241,6 +242,31 @@ export async function PUT(request: NextRequest, { params }: Params) {
         tax_base,
       };
     });
+    const { data: existingTaxRows } = await admin
+      .from("purchase_order_items")
+      .select("id, icms_rate, icms_value, ipi_rate, ipi_value, tax_base")
+      .eq("purchase_order_id", id)
+      .eq("tenant_id", tenantId);
+    const existingTaxById = new Map(
+      (existingTaxRows ?? []).map((row) => [
+        row.id as string,
+        {
+          id: row.id as string,
+          icms_rate: Number(row.icms_rate ?? 0),
+          icms_value: Number(row.icms_value ?? 0),
+          ipi_rate: Number(row.ipi_rate ?? 0),
+          ipi_value: Number(row.ipi_value ?? 0),
+          tax_base: Number(row.tax_base ?? 0),
+        },
+      ])
+    );
+    const taxGate = assertLineTaxesUnchangedOutsideFaturamento(
+      "purchase_order_items",
+      "compras",
+      linesForSync,
+      existingTaxById
+    );
+    if (!taxGate.ok) return apiError(taxGate.message, taxGate.status);
     const sync = await syncPurchaseOrderItems(
       admin,
       tenantId,

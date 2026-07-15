@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
@@ -15,6 +15,7 @@ import {
   type QuoteLinePriceMode,
 } from "@/modules/vendas/lib/sales/quote-line-pricing";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import { ProductComboboxField } from "@/components/products/product-combobox-field";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 
 export type QuoteLineProduct = {
@@ -305,41 +306,51 @@ export function QuoteItemsEditor({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2 md:col-span-2">
                   <Label>Produto acabado</Label>
-                  {prod ? (
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <div className="text-sm flex-1 min-w-0">
-                        <p className="font-mono text-xs text-slate-600 dark:text-slate-400">
-                          {prod.technical_code?.trim() ||
-                            prod.code?.trim() ||
-                            "—"}
-                        </p>
-                        <p className="text-slate-800 dark:text-slate-100">
-                          {prod.name}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0"
-                        onClick={() => openProductPicker(index)}
-                      >
-                        <Search className="h-4 w-4" />
-                        Alterar
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="w-full sm:w-auto"
-                      onClick={() => openProductPicker(index)}
-                    >
-                      <Search className="h-4 w-4" />
-                      Adicionar produto
-                    </Button>
-                  )}
+                  <ProductComboboxField
+                    value={
+                      prod
+                        ? {
+                            id: prod.id,
+                            code: prod.code,
+                            technical_code: prod.technical_code,
+                            name: prod.name,
+                            cost_price: prod.cost_price,
+                            unit: prod.unit,
+                            product_nature: prod.product_nature ?? null,
+                            prefix: prod.prefix_code
+                              ? { code: prod.prefix_code }
+                              : null,
+                          }
+                        : null
+                    }
+                    onChange={(hit) => {
+                      if (!hit) {
+                        updateLineAt(index, {
+                          productId: "",
+                          usageType: "",
+                          costPrice: 0,
+                          unitPrice: 0,
+                          manualPrice: 0,
+                        });
+                        return;
+                      }
+                      const { line: next, product } = lineFromProduct(
+                        hit,
+                        lines[index]
+                      );
+                      onProductCacheMerge({ [product.id]: product });
+                      updateLineAt(index, next);
+                    }}
+                    productType="finished"
+                    excludeIds={lines
+                      .map((l) => l.productId)
+                      .filter((id) => id && id !== line.productId)}
+                    catalogTitle="Pesquisar produto acabado"
+                    showNewProductButton
+                    commercialQuickCreate
+                    sourceQuoteId={sourceQuoteId}
+                    placeholder="Digite código ou descrição do acabado…"
+                  />
                   <div className="space-y-1.5 pt-1">
                     <Label htmlFor={`quote-item-notes-${index}`}>
                       Observação do item
