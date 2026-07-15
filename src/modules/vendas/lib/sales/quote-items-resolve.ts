@@ -97,6 +97,7 @@ export async function resolveQuoteItemsFromPayload(
     unit?: string;
     description?: string;
     client_notes?: string | null;
+    item_notes?: string | null;
     show_product_description?: boolean;
     usage_type?: "consumo" | "materia_prima" | "revenda" | null;
     unit_price: number | null;
@@ -152,6 +153,10 @@ export async function resolveQuoteItemsFromPayload(
       typeof r.client_notes === "string" && r.client_notes.trim()
         ? r.client_notes.trim()
         : null;
+    const item_notes =
+      typeof r.item_notes === "string" && r.item_notes.trim()
+        ? r.item_notes.trim()
+        : null;
     const show_product_description = r.show_product_description === true;
     const usageRaw =
       typeof r.usage_type === "string" ? r.usage_type.trim() : "";
@@ -172,6 +177,7 @@ export async function resolveQuoteItemsFromPayload(
       use_markup,
       ...(description ? { description } : {}),
       client_notes,
+      item_notes,
       show_product_description,
       usage_type,
     });
@@ -219,6 +225,7 @@ export async function resolveQuoteItemsFromPayload(
       product_id: d.product_id,
       description: d.description || productLabel(p),
       client_notes: d.client_notes ?? null,
+      item_notes: d.item_notes ?? null,
       show_product_description: d.show_product_description,
       usage_type: d.usage_type ?? null,
       quantity: d.quantity,

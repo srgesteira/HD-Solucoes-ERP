@@ -13,6 +13,7 @@ import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
 import { SalesOrderFormFields } from "@/components/sales/sales-order-form-fields";
+import { Textarea } from "@/shared/ui/textarea";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
 import {
   SalesOrderItemsEditor,
@@ -75,6 +76,7 @@ export type SalesOrderFormData = {
     ipi_amount?: number;
     tax_base?: number;
     usage_type?: string | null;
+    item_notes?: string | null;
     product?:
       | {
           id: string;
@@ -181,6 +183,7 @@ export function itemsToSalesLines(items: OrderItemRow[]): {
       id: item.id,
       productId: pid,
       description: item.description?.trim() || prod?.name || "",
+      itemNotes: item.item_notes?.trim() ?? "",
       quantity: Number(item.quantity),
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       unitPrice: Number(item.unit_price),
@@ -627,16 +630,6 @@ export function SalesOrderForm({
             <CardTitle className="text-lg">Dados do pedido</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="so-notes">Observações</Label>
-              <textarea
-                id="so-notes"
-                className="flex min-h-[80px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 dark:bg-slate-950 dark:border-slate-600"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notas internas ou para o cliente…"
-              />
-            </div>
             {canEditCommercial && !adminOnlyMode ? (
               <SalesOrderFormFields
                 customerId={customerId}
@@ -646,35 +639,18 @@ export function SalesOrderForm({
                 onClientEmailChange={setClientEmail}
                 expectedDelivery={expectedDelivery}
                 onExpectedDeliveryChange={setExpectedDelivery}
-                paymentInstallments={paymentInstallments}
-                onPaymentInstallmentsChange={setPaymentInstallments}
-                paymentDaysFirst={paymentDaysFirst}
-                onPaymentDaysFirstChange={setPaymentDaysFirst}
-                paymentDaysBetween={paymentDaysBetween}
-                onPaymentDaysBetweenChange={setPaymentDaysBetween}
                 seedCustomer={seedCustomer}
               />
             ) : adminOnlyMode || (isEdit && !canEditCommercial) ? (
-              <div className="space-y-4 pt-2">
-                <div className="space-y-2 max-w-xs">
-                  <Label htmlFor="so-expected-delivery-adm">
-                    Prazo de entrega ao cliente{" "}
-                    <span className="text-red-600">*</span>
-                  </Label>
-                  <BrDateInput
-                    id="so-expected-delivery-adm"
-                    value={expectedDelivery || null}
-                    onChange={(iso) => setExpectedDelivery(iso ?? "")}
-                  />
-                </div>
-                <PaymentTermsFields
-                  idPrefix="so-adm"
-                  paymentInstallments={paymentInstallments}
-                  onPaymentInstallmentsChange={setPaymentInstallments}
-                  paymentDaysFirst={paymentDaysFirst}
-                  onPaymentDaysFirstChange={setPaymentDaysFirst}
-                  paymentDaysBetween={paymentDaysBetween}
-                  onPaymentDaysBetweenChange={setPaymentDaysBetween}
+              <div className="space-y-2 max-w-xs">
+                <Label htmlFor="so-expected-delivery-adm">
+                  Prazo de entrega ao cliente{" "}
+                  <span className="text-red-600">*</span>
+                </Label>
+                <BrDateInput
+                  id="so-expected-delivery-adm"
+                  value={expectedDelivery || null}
+                  onChange={(iso) => setExpectedDelivery(iso ?? "")}
                 />
               </div>
             ) : !isEdit ? (
@@ -686,6 +662,19 @@ export function SalesOrderForm({
                 onClientEmailChange={setClientEmail}
                 expectedDelivery={expectedDelivery}
                 onExpectedDeliveryChange={setExpectedDelivery}
+              />
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Condições comerciais</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {canEditCommercial || adminOnlyMode || !isEdit ? (
+              <PaymentTermsFields
+                idPrefix={adminOnlyMode ? "so-adm" : "so-form"}
                 paymentInstallments={paymentInstallments}
                 onPaymentInstallmentsChange={setPaymentInstallments}
                 paymentDaysFirst={paymentDaysFirst}
@@ -693,7 +682,11 @@ export function SalesOrderForm({
                 paymentDaysBetween={paymentDaysBetween}
                 onPaymentDaysBetweenChange={setPaymentDaysBetween}
               />
-            ) : null}
+            ) : (
+              <p className="text-sm text-slate-500">
+                Condições de pagamento bloqueadas neste estado.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -824,6 +817,24 @@ export function SalesOrderForm({
               <span className="tabular-nums font-semibold">
                 {fmtBRL(previewTotal)}
               </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Observações gerais</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label htmlFor="so-notes">Observações</Label>
+              <Textarea
+                id="so-notes"
+                className="resize-y min-h-[80px]"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Notas internas ou para o cliente…"
+              />
             </div>
           </CardContent>
         </Card>

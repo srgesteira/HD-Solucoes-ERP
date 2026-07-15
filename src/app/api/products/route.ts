@@ -49,7 +49,11 @@ export async function GET(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
-  const moduleDenied = await requireAnyMenuModule(["engenharia", "vendas"]);
+  const moduleDenied = await requireAnyMenuModule([
+    "engenharia",
+    "vendas",
+    "compras",
+  ]);
   if (moduleDenied) return moduleDenied;
 
   const tenantId = await getCurrentTenantId();

@@ -18,6 +18,7 @@ export const quoteItemBodySchema = z.object({
   unit: z.string().optional(),
   description: z.string().optional(),
   client_notes: z.string().nullable().optional(),
+  item_notes: z.string().nullable().optional(),
   show_product_description: z.boolean().optional(),
   usage_type: z
     .enum(["consumo", "materia_prima", "revenda"])

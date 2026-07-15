@@ -28,6 +28,7 @@ import {
   type SalesOrderProductionSummary,
 } from "@/modules/vendas/lib/sales/sales-order-production-summary";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -227,6 +228,14 @@ export async function POST(request: NextRequest) {
   if (!parsedLines.ok) {
     return apiError(parsedLines.message, 400);
   }
+
+  const taxGate = assertLineTaxesUnchangedOutsideFaturamento(
+    "sales_order_items",
+    "vendas",
+    parsedLines.lines,
+    new Map()
+  );
+  if (!taxGate.ok) return apiError(taxGate.message, taxGate.status);
 
   const client_name =
     typeof b.client_name === "string" ? b.client_name.trim() : "";

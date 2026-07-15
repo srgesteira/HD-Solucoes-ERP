@@ -1,11 +1,13 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
+import { Textarea } from "@/shared/ui/textarea";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import { ProductComboboxField } from "@/components/products/product-combobox-field";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 import {
   aggregatePurchaseLineTaxes,
@@ -16,11 +18,22 @@ import {
 } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 
 import {
+  canEditLineTaxes,
+  isFieldReadonly,
+} from "@/shared/auth/field-permissions";
+import {
   ITEM_USAGE_TYPE_OPTIONS,
   isItemUsageType,
   suggestUsageTypeFromProductNature,
   type ItemUsageType,
 } from "@/modules/fiscal/lib/item-usage-type";
+
+const taxReadonlyOnOrder = isFieldReadonly(
+  "purchase_order_items",
+  "compras",
+  "icms_rate"
+);
+const taxesLocked = !canEditLineTaxes("purchase_order_items", "compras");
 
 export type PurchaseLineProduct = {
   id: string;
@@ -38,6 +51,7 @@ export type PurchaseOrderLineDraft = {
   id?: string;
   productId: string;
   description: string;
+  itemNotes: string;
   quantity: number;
   unit: string;
   unitPrice: number;
@@ -112,6 +126,7 @@ export function newPurchaseLine(index = 0): PurchaseOrderLineDraft {
     key: `line-${index}`,
     productId: "",
     description: "",
+    itemNotes: "",
     quantity: 1,
     unit: "UN",
     unitPrice: 0,
@@ -295,10 +310,10 @@ export function PurchaseOrderItemsEditor({
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
               <th className="w-[52px] px-1 py-1.5" aria-label="Acções" />
-              <th className={isQuote ? "w-[14%] px-1 py-1.5" : "w-[9%] px-1 py-1.5"}>
-                Código
+              <th className={isQuote ? "w-[28%] px-1 py-1.5" : "w-[18%] px-1 py-1.5"}>
+                Produto
               </th>
-              <th className={isQuote ? "w-[40%] px-1 py-1.5" : "w-[20%] px-1 py-1.5"}>
+              <th className={isQuote ? "w-[26%] px-1 py-1.5" : "w-[16%] px-1 py-1.5"}>
                 Descrição
               </th>
               <th className={isQuote ? "w-[14%] px-1 py-1.5" : "w-[10%] px-1 py-1.5"}>
@@ -327,7 +342,6 @@ export function PurchaseOrderItemsEditor({
               const prod = line.productId
                 ? productById.get(line.productId)
                 : undefined;
-              const code = productCode(prod);
               const lineTotal = lineDisplayTotal(
                 line.quantity,
                 line.unitPrice,
@@ -341,53 +355,85 @@ export function PurchaseOrderItemsEditor({
                   className="border-b border-slate-100 dark:border-slate-800"
                 >
                   <td className="px-1 py-1.5 align-top">
-                    <div className="flex flex-col gap-0.5">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        title={prod ? "Alterar produto" : "Escolher produto"}
-                        aria-label={
-                          prod
-                            ? `Alterar produto da linha ${index + 1}`
-                            : `Escolher produto da linha ${index + 1}`
-                        }
-                        onClick={() => openProductPicker(index)}
-                        disabled={disabled}
-                      >
-                        <Search className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40"
-                        title="Excluir linha"
-                        aria-label={`Excluir item ${index + 1}`}
-                        onClick={() => removeLineAt(index)}
-                        disabled={disabled || lines.length <= 1}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40"
+                      title="Excluir linha"
+                      aria-label={`Excluir item ${index + 1}`}
+                      onClick={() => removeLineAt(index)}
+                      disabled={disabled || lines.length <= 1}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </td>
-                  <td
-                    className="px-1 py-1.5 align-top font-mono text-[11px] text-slate-800 truncate"
-                    title={code}
-                  >
-                    {code}
+                  <td className="px-1 py-1.5 align-top min-w-[180px]">
+                    <ProductComboboxField
+                      compact
+                      value={
+                        prod
+                          ? {
+                              id: prod.id,
+                              code: prod.code,
+                              technical_code: prod.technical_code,
+                              name: prod.name,
+                              description: prod.description ?? null,
+                              cost_price: 0,
+                              unit: prod.unit,
+                              product_nature: prod.product_nature ?? null,
+                              prefix: prod.prefix_code
+                                ? { code: prod.prefix_code }
+                                : null,
+                            }
+                          : null
+                      }
+                      onChange={(hit) => {
+                        if (!hit) {
+                          updateLineAt(index, {
+                            productId: "",
+                            description: "",
+                            usageType: "",
+                          });
+                          return;
+                        }
+                        const { line: next, product } = lineFromProduct(
+                          hit,
+                          lines[index]
+                        );
+                        onProductCacheMerge({ [product.id]: product });
+                        updateLineAt(index, next);
+                      }}
+                      productType="all"
+                      excludeIds={lines
+                        .map((l) => l.productId)
+                        .filter((id) => id && id !== line.productId)}
+                      disabled={disabled}
+                      catalogTitle="Pesquisar produto"
+                    />
                   </td>
                   <td className="px-1 py-1.5 align-top">
-                    <Input
-                      value={line.description}
-                      onChange={(e) =>
-                        updateLineAt(index, { description: e.target.value })
-                      }
-                      disabled={disabled}
-                      className="h-7 text-xs px-2"
-                      placeholder="Nome do item…"
-                    />
+                    <div className="space-y-1">
+                      <Input
+                        value={line.description}
+                        onChange={(e) =>
+                          updateLineAt(index, { description: e.target.value })
+                        }
+                        disabled={disabled}
+                        className="h-7 text-xs px-2"
+                        placeholder="Nome do item…"
+                      />
+                      <Textarea
+                        value={line.itemNotes}
+                        onChange={(e) =>
+                          updateLineAt(index, { itemNotes: e.target.value })
+                        }
+                        disabled={disabled}
+                        rows={2}
+                        placeholder="Obs. do item…"
+                        className="resize-y min-h-[44px] text-[11px] px-2 py-1"
+                      />
+                    </div>
                   </td>
                   <td className="px-1 py-1.5 align-top">
                     <select
@@ -465,7 +511,8 @@ export function PurchaseOrderItemsEditor({
                             updateLineAt(index, { icmsRate }, "icms")
                           }
                           maxDecimals={2}
-                          disabled={disabled}
+                          disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                          readOnly={taxReadonlyOnOrder || taxesLocked}
                           className="h-7 text-xs px-2"
                           placeholder="0"
                         />
@@ -482,7 +529,8 @@ export function PurchaseOrderItemsEditor({
                             updateLineAt(index, { ipiRate }, "ipi")
                           }
                           maxDecimals={2}
-                          disabled={disabled}
+                          disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                          readOnly={taxReadonlyOnOrder || taxesLocked}
                           className="h-7 text-xs px-2"
                           placeholder="0"
                         />
@@ -636,6 +684,7 @@ export function buildPurchaseOrderItemsPayload(
     };
     if (line.id) item.id = line.id;
     item.usage_type = isItemUsageType(line.usageType) ? line.usageType : null;
+    item.item_notes = line.itemNotes.trim() || null;
     built.push(item);
   }
 

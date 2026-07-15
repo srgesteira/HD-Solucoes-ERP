@@ -16,6 +16,7 @@ export type PurchaseOrderLineInput = {
   id?: string;
   product_id: string | null;
   description: string;
+  item_notes?: string | null;
   quantity: number;
   unit: string;
   unit_price: number;
@@ -153,10 +154,16 @@ export function parsePurchaseOrderLines(raw: unknown):
         ? usageRaw
         : null;
 
+    const item_notes =
+      typeof r.item_notes === "string" && r.item_notes.trim()
+        ? r.item_notes.trim()
+        : null;
+
     lines.push({
       id,
       product_id,
       description,
+      item_notes,
       quantity,
       unit,
       unit_price,
@@ -247,6 +254,7 @@ export async function syncPurchaseOrderItems(
       ipi_value: line.ipi_value,
       tax_base: line.tax_base,
       usage_type: line.usage_type ?? null,
+      item_notes: line.item_notes ?? null,
     };
 
     if (line.id && existingById.has(line.id)) {

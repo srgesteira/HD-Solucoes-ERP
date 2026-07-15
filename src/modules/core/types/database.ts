@@ -3200,6 +3200,7 @@ export type Database = {
           ipi_rate: number
           ipi_value: number
           is_suggestion: boolean
+          item_notes: string | null
           need_date: string | null
           product_id: string | null
           production_item_id: string | null
@@ -3235,6 +3236,7 @@ export type Database = {
           ipi_rate?: number
           ipi_value?: number
           is_suggestion?: boolean
+          item_notes?: string | null
           need_date?: string | null
           product_id?: string | null
           production_item_id?: string | null
@@ -3270,6 +3272,7 @@ export type Database = {
           ipi_rate?: number
           ipi_value?: number
           is_suggestion?: boolean
+          item_notes?: string | null
           need_date?: string | null
           product_id?: string | null
           production_item_id?: string | null
@@ -3746,6 +3749,7 @@ export type Database = {
           created_at: string
           description: string
           id: string
+          item_notes: string | null
           markup_percent: number | null
           product_id: string | null
           quantity: number
@@ -3763,6 +3767,7 @@ export type Database = {
           created_at?: string
           description: string
           id?: string
+          item_notes?: string | null
           markup_percent?: number | null
           product_id?: string | null
           quantity?: number
@@ -3780,6 +3785,7 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          item_notes?: string | null
           markup_percent?: number | null
           product_id?: string | null
           quantity?: number
@@ -4390,6 +4396,7 @@ export type Database = {
           id: string
           ipi_rate: number | null
           ipi_value: number | null
+          item_notes: string | null
           line_number: number
           pcp_deadline: string | null
           product_id: string | null
@@ -4415,6 +4422,7 @@ export type Database = {
           id?: string
           ipi_rate?: number | null
           ipi_value?: number | null
+          item_notes?: string | null
           line_number?: number
           pcp_deadline?: string | null
           product_id?: string | null
@@ -4440,6 +4448,7 @@ export type Database = {
           id?: string
           ipi_rate?: number | null
           ipi_value?: number | null
+          item_notes?: string | null
           line_number?: number
           pcp_deadline?: string | null
           product_id?: string | null

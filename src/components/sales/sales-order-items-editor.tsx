@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
+import { Textarea } from "@/shared/ui/textarea";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import { ProductComboboxField } from "@/components/products/product-combobox-field";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 import {
   aggregatePurchaseLineTaxes,
@@ -16,11 +18,22 @@ import {
 } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 
 import {
+  canEditLineTaxes,
+  isFieldReadonly,
+} from "@/shared/auth/field-permissions";
+import {
   ITEM_USAGE_TYPE_OPTIONS,
   isItemUsageType,
   suggestUsageTypeFromProductNature,
   type ItemUsageType,
 } from "@/modules/fiscal/lib/item-usage-type";
+
+const taxReadonlyOnOrder = isFieldReadonly(
+  "sales_order_items",
+  "vendas",
+  "icms_rate"
+);
+const taxesLocked = !canEditLineTaxes("sales_order_items", "vendas");
 
 export type SalesOrderLineProduct = {
   id: string;
@@ -37,6 +50,7 @@ export type SalesOrderLineDraft = {
   id?: string;
   productId: string;
   description: string;
+  itemNotes: string;
   quantity: number;
   unit: string;
   unitPrice: number;
@@ -96,6 +110,7 @@ export function newSalesOrderLine(index = 0): SalesOrderLineDraft {
     key: `line-${index}`,
     productId: "",
     description: "",
+    itemNotes: "",
     quantity: 1,
     unit: "UN",
     unitPrice: 0,
@@ -294,47 +309,68 @@ export function SalesOrderItemsEditor({
                   key={line.key}
                   className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                 >
-                  <td className="px-2 py-2 align-top">
-                    {prod ? (
-                      <div className="flex flex-col gap-1">
-                        <span className="text-slate-800 line-clamp-2 text-xs">
-                          {productLabel(prod)}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="w-fit h-7 text-xs"
-                          onClick={() => openProductPicker(index)}
-                          disabled={disabled}
-                        >
-                          <Search className="h-3 w-3" />
-                          Alterar
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openProductPicker(index)}
-                        disabled={disabled}
-                      >
-                        <Search className="h-3.5 w-3.5" />
-                        Produto
-                      </Button>
-                    )}
+                  <td className="px-2 py-2 align-top min-w-[200px]">
+                    <ProductComboboxField
+                      compact
+                      value={
+                        prod
+                          ? {
+                              id: prod.id,
+                              code: prod.code,
+                              technical_code: prod.technical_code,
+                              name: prod.name,
+                              cost_price: 0,
+                              unit: prod.unit,
+                              product_nature: prod.product_nature ?? null,
+                              prefix: prod.prefix_code
+                                ? { code: prod.prefix_code }
+                                : null,
+                            }
+                          : null
+                      }
+                      onChange={(hit) => {
+                        if (!hit) {
+                          updateLineAt(index, {
+                            productId: "",
+                            description: "",
+                            usageType: "",
+                          });
+                          return;
+                        }
+                        const { line, product } = lineFromProduct(hit, lines[index]);
+                        onProductCacheMerge({ [product.id]: product });
+                        updateLineAt(index, line);
+                      }}
+                      productType="all"
+                      excludeIds={lines
+                        .map((l) => l.productId)
+                        .filter((id) => id && id !== line.productId)}
+                      disabled={disabled}
+                      catalogTitle="Pesquisar produto"
+                    />
                   </td>
                   <td className="px-2 py-2 align-top">
-                    <Input
-                      value={line.description}
-                      onChange={(e) =>
-                        updateLineAt(index, { description: e.target.value })
-                      }
-                      disabled={disabled}
-                      className="h-8 text-sm"
-                      placeholder="Descrição…"
-                    />
+                    <div className="space-y-1.5">
+                      <Input
+                        value={line.description}
+                        onChange={(e) =>
+                          updateLineAt(index, { description: e.target.value })
+                        }
+                        disabled={disabled}
+                        className="h-8 text-sm"
+                        placeholder="Descrição…"
+                      />
+                      <Textarea
+                        value={line.itemNotes}
+                        onChange={(e) =>
+                          updateLineAt(index, { itemNotes: e.target.value })
+                        }
+                        disabled={disabled}
+                        rows={2}
+                        placeholder="Obs. do item…"
+                        className="resize-y min-h-[48px] text-xs"
+                      />
+                    </div>
                   </td>
                   <td className="px-2 py-2 align-top">
                     <select
@@ -397,7 +433,8 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { icmsRate }, "icms")
                       }
                       maxDecimals={2}
-                      disabled={disabled}
+                      disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                      readOnly={taxReadonlyOnOrder || taxesLocked}
                       className="h-8 text-sm"
                       placeholder="0"
                     />
@@ -409,7 +446,8 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { icmsValue }, "none")
                       }
                       maxDecimals={2}
-                      disabled={disabled}
+                      disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                      readOnly={taxReadonlyOnOrder || taxesLocked}
                       className="h-8 text-sm"
                     />
                   </td>
@@ -420,7 +458,8 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { ipiRate }, "ipi")
                       }
                       maxDecimals={2}
-                      disabled={disabled}
+                      disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                      readOnly={taxReadonlyOnOrder || taxesLocked}
                       className="h-8 text-sm"
                       placeholder="0"
                     />
@@ -432,7 +471,8 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { ipiValue }, "none")
                       }
                       maxDecimals={2}
-                      disabled={disabled}
+                      disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                      readOnly={taxReadonlyOnOrder || taxesLocked}
                       className="h-8 text-sm"
                     />
                   </td>
@@ -557,6 +597,7 @@ export function buildSalesOrderItemsPayload(
       ipi_value: line.ipiValue,
       tax_base: roundMoney(lineSubtotal(line.quantity, line.unitPrice) + line.ipiValue),
       usage_type: isItemUsageType(line.usageType) ? line.usageType : null,
+      item_notes: line.itemNotes.trim() || null,
     };
     if (line.id) item.id = line.id;
     built.push(item);

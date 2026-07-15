@@ -10,7 +10,12 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { AppPage } from "@/shared/ui/app-page";
 import { useMe } from "@/hooks/use-me";
-import { QuoteFormFields } from "@/components/sales/quote-form-fields";
+import {
+  QuoteCommercialFields,
+  QuoteFormFields,
+} from "@/components/sales/quote-form-fields";
+import { Textarea } from "@/shared/ui/textarea";
+import { Label } from "@/shared/ui/label";
 import {
   QuoteItemsEditor,
   buildQuoteItemsPayload,
@@ -18,6 +23,11 @@ import {
   type QuoteLineDraft,
   type QuoteLineProduct,
 } from "@/components/sales/quote-items-editor";
+import {
+  lineTotalPrice,
+  unitPriceFromCostAndMarkup,
+} from "@/modules/vendas/lib/sales/quote-line-pricing";
+import { fmtBRL } from "@/shared/utils/format-brl";
 
 function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -122,6 +132,20 @@ export default function NewQuotePage() {
     for (const p of Object.values(productCache)) map.set(p.id, p);
     return map;
   }, [productCache]);
+
+  const quoteTotals = useMemo(() => {
+    let subtotal = 0;
+    for (const line of lines) {
+      if (!line.productId.trim()) continue;
+      const unitPrice =
+        line.priceMode === "markup"
+          ? unitPriceFromCostAndMarkup(line.costPrice, line.markupPercent)
+          : line.manualPrice;
+      subtotal += lineTotalPrice(unitPrice, line.quantity);
+    }
+    const freight = shippingType === "CIF" ? Number(freightCost) || 0 : 0;
+    return { subtotal, freight, total: subtotal + freight };
+  }, [lines, freightCost, shippingType]);
 
   const mutation = useMutation({
     mutationFn: createQuote,
@@ -275,6 +299,18 @@ export default function NewQuotePage() {
               onQuoteDateChange={setQuoteDate}
               validityDays={validityDays}
               onValidityDaysChange={setValidityDays}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-slate-900">
+              Condições comerciais
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <QuoteCommercialFields
               paymentInstallments={paymentInstallments}
               onPaymentInstallmentsChange={setPaymentInstallments}
               paymentDaysFirst={paymentDaysFirst}
@@ -287,8 +323,7 @@ export default function NewQuotePage() {
               onShippingTypeChange={setShippingType}
               freightCost={freightCost}
               onFreightCostChange={setFreightCost}
-              notes={notes}
-              onNotesChange={setNotes}
+              quoteDate={quoteDate}
             />
           </CardContent>
         </Card>
@@ -312,6 +347,57 @@ export default function NewQuotePage() {
                 setProductCache((prev) => ({ ...prev, ...patch }))
               }
             />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-semibold text-slate-900">
+              Totais
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm max-w-sm">
+            <div className="flex justify-between gap-4">
+              <span className="text-slate-500">Subtotal (itens)</span>
+              <span className="tabular-nums font-medium">
+                {fmtBRL(quoteTotals.subtotal)}
+              </span>
+            </div>
+            {quoteTotals.freight > 0 ? (
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-500">Frete (CIF)</span>
+                <span className="tabular-nums font-medium">
+                  {fmtBRL(quoteTotals.freight)}
+                </span>
+              </div>
+            ) : null}
+            <div className="flex justify-between gap-4 border-t border-slate-200 pt-2">
+              <span className="font-semibold">Total</span>
+              <span className="tabular-nums font-semibold">
+                {fmtBRL(quoteTotals.total)}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-slate-900">
+              Observações gerais
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label htmlFor="quote-notes">Observações</Label>
+              <Textarea
+                id="quote-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={4}
+                placeholder="Notas internas ou condições que apareçam junto ao orçamento…"
+                className="resize-y min-h-[88px]"
+              />
+            </div>
           </CardContent>
         </Card>
 

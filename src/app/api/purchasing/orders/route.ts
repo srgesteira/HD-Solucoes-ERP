@@ -20,6 +20,7 @@ import {
   coerceSalesOrderInt,
   parsePaymentDaysBetween,
 } from "@/shared/contracts/sales-order.schema";
+import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -280,6 +281,13 @@ export async function POST(request: NextRequest) {
         tax_base,
       };
     });
+    const taxGate = assertLineTaxesUnchangedOutsideFaturamento(
+      "purchase_order_items",
+      "compras",
+      linesForSync,
+      new Map()
+    );
+    if (!taxGate.ok) return apiError(taxGate.message, taxGate.status);
   }
 
   const { data: inserted, error } = await admin

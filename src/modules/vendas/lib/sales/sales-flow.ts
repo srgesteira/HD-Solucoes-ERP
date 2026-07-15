@@ -13,9 +13,11 @@ export type AdminClient = SupabaseClient<Database>;
 
 /** Linhas de produto em orçamento / pedido (payload da API). */
 export type SaleLineInput = {
+  id?: string;
   product_id?: string | null;
   description: string;
   client_notes?: string | null;
+  item_notes?: string | null;
   show_product_description?: boolean;
   usage_type?: "consumo" | "materia_prima" | "revenda" | null;
   quantity: number;
@@ -174,6 +176,9 @@ export function parseSaleLines(raw: unknown):
         ? null
         : String(r.product_id);
 
+    const id =
+      typeof r.id === "string" && r.id.trim() ? r.id.trim() : undefined;
+
     let markup_percent: number | null = null;
     if (r.markup_percent !== undefined && r.markup_percent !== null) {
       const mp =
@@ -227,6 +232,7 @@ export function parseSaleLines(raw: unknown):
     }
 
     lines.push({
+      ...(id ? { id } : {}),
       description,
       quantity,
       unit_price,
@@ -274,6 +280,7 @@ function saleLineToDbRow(
     ipi_value: ipiVal,
     tax_base: taxBase,
     usage_type: it.usage_type ?? null,
+    item_notes: it.item_notes?.trim() ? it.item_notes.trim() : null,
   };
 }
 
@@ -352,6 +359,7 @@ export async function insertQuoteItemsFromLines(
     product_id: it.product_id,
     description: it.description,
     client_notes: it.client_notes?.trim() ? it.client_notes.trim() : null,
+    item_notes: it.item_notes?.trim() ? it.item_notes.trim() : null,
     show_product_description: Boolean(it.show_product_description),
     usage_type: it.usage_type ?? null,
     quantity: it.quantity,

@@ -69,6 +69,7 @@ export type PurchaseOrderFormData = {
     ipi_amount?: number;
     tax_base?: number;
     usage_type?: string | null;
+    item_notes?: string | null;
     product?:
       | {
           id: string;
@@ -149,6 +150,7 @@ export function itemsToPurchaseLines(items: OrderItemRow[]): {
       id: item.id,
       productId: pid,
       description: item.description?.trim() || prod?.name || "",
+      itemNotes: item.item_notes?.trim() ?? "",
       quantity: Number(item.quantity),
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       unitPrice: Number(item.unit_price),
@@ -638,20 +640,25 @@ export function PurchaseOrderForm({
                 </p>
               </div>
             ) : null}
-
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="notes">Observações</Label>
-              <Textarea
-                id="notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={4}
-                className="resize-y min-h-[5rem]"
-                placeholder="Opcional…"
-                disabled={fieldsDisabled}
-              />
-            </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Condições comerciais</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PaymentTermsFields
+            idPrefix="po-form"
+            paymentInstallments={paymentInstallments}
+            onPaymentInstallmentsChange={setPaymentInstallments}
+            paymentDaysFirst={paymentDaysFirst}
+            onPaymentDaysFirstChange={setPaymentDaysFirst}
+            paymentDaysBetween={paymentDaysBetween}
+            onPaymentDaysBetweenChange={setPaymentDaysBetween}
+            disabled={paymentFieldsDisabled}
+          />
         </CardContent>
       </Card>
 
@@ -668,24 +675,6 @@ export function PurchaseOrderForm({
               setProductCache((prev) => ({ ...prev, ...patch }))
             }
             disabled={!canEditItems}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Condições de pagamento</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PaymentTermsFields
-            idPrefix="po-form"
-            paymentInstallments={paymentInstallments}
-            onPaymentInstallmentsChange={setPaymentInstallments}
-            paymentDaysFirst={paymentDaysFirst}
-            onPaymentDaysFirstChange={setPaymentDaysFirst}
-            paymentDaysBetween={paymentDaysBetween}
-            onPaymentDaysBetweenChange={setPaymentDaysBetween}
-            disabled={paymentFieldsDisabled}
           />
         </CardContent>
       </Card>
@@ -798,6 +787,26 @@ export function PurchaseOrderForm({
           {totalsFooter ? (
             <div className="border-t border-slate-200 pt-4">{totalsFooter}</div>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Observações gerais</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label htmlFor="notes">Observações</Label>
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+              className="resize-y min-h-[5rem]"
+              placeholder="Opcional…"
+              disabled={fieldsDisabled}
+            />
+          </div>
         </CardContent>
       </Card>
 

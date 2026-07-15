@@ -492,6 +492,7 @@ export default function FiscalOrderReviewPage() {
                     <th className="px-2 py-2 font-medium min-w-[180px]">Produto</th>
                     <th className="px-2 py-2 font-medium">NCM</th>
                     <th className="px-2 py-2 font-medium">Natureza</th>
+                    <th className="px-2 py-2 font-medium">Utilização</th>
                     <th className="px-2 py-2 font-medium">CFOP</th>
                     <th className="px-2 py-2 font-medium">Regra</th>
                     <th className="px-2 py-2 font-medium text-right">Qtd</th>
@@ -548,6 +549,19 @@ export default function FiscalOrderReviewPage() {
                       </td>
                       <td className="px-2 py-2 font-mono text-xs">{it.ncm ?? "—"}</td>
                       <td className="px-2 py-2 text-xs">{it.product_nature ?? "—"}</td>
+                      <td className="px-2 py-2 text-xs">
+                        {it.usage_type === "consumo"
+                          ? "Consumo"
+                          : it.usage_type === "materia_prima"
+                            ? "Matéria-prima"
+                            : it.usage_type === "revenda"
+                              ? "Revenda"
+                              : (
+                                  <span className="text-amber-700">
+                                    Não informada
+                                  </span>
+                                )}
+                      </td>
                       <td className="px-2 py-2 font-mono text-xs font-semibold text-emerald-900">
                         {it.cfop ?? "—"}
                       </td>
