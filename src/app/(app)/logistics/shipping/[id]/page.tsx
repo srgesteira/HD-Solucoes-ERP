@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,12 +8,16 @@ import {
   CheckCircle2,
   Loader2,
   PackageCheck,
+  Save,
   Send,
   Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Textarea } from "@/shared/ui/textarea";
 import { AppPage } from "@/shared/ui/app-page";
 import {
   DataList,
@@ -22,6 +27,7 @@ import {
   type StatusTone,
 } from "@/shared/ui/page-helpers";
 import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
+import { canEditField } from "@/shared/auth/field-permissions";
 import { formatBrazilianDateTime, formatShortDate } from "@/shared/utils/date";
 
 type Detail = {
@@ -39,6 +45,8 @@ type Detail = {
     destination_address: string | null;
     carrier_name: string | null;
     carrier_document: string | null;
+    volumes_count: number | null;
+    packaging_description: string | null;
     tracking_code: string | null;
     freight_value: number;
     freight_payer: string | null;
@@ -47,6 +55,13 @@ type Detail = {
     delivered_at: string | null;
     notes: string | null;
   };
+};
+
+type LogisticsForm = {
+  carrier_name: string;
+  carrier_document: string;
+  volumes_count: string;
+  packaging_description: string;
 };
 
 async function fetchShipment(id: string): Promise<Detail> {
@@ -68,6 +83,21 @@ async function postAction(id: string, action: "dispatch" | "deliver") {
   });
   const json = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new Error(json.error ?? "Erro");
+}
+
+async function patchLogistics(id: string, body: Record<string, unknown>) {
+  const res = await fetch(`/api/shipments/${id}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    shipment?: Detail["shipment"];
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao guardar");
+  return json;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -115,16 +145,52 @@ function formatDateTime(iso: string | null) {
   return formatBrazilianDateTime(iso);
 }
 
+function toLogisticsForm(s: Detail["shipment"]): LogisticsForm {
+  return {
+    carrier_name: s.carrier_name ?? "",
+    carrier_document: s.carrier_document ?? "",
+    volumes_count:
+      s.volumes_count === null || s.volumes_count === undefined
+        ? ""
+        : String(s.volumes_count),
+    packaging_description: s.packaging_description ?? "",
+  };
+}
+
+const canEditCarrierName = canEditField(
+  "shipments",
+  "expedicao",
+  "carrier_name"
+);
+const canEditCarrierDocument = canEditField(
+  "shipments",
+  "expedicao",
+  "carrier_document"
+);
+const canEditVolumes = canEditField("shipments", "expedicao", "volumes_count");
+const canEditPackaging = canEditField(
+  "shipments",
+  "expedicao",
+  "packaging_description"
+);
+
 export default function ShipmentDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
   const queryClient = useQueryClient();
+  const [form, setForm] = useState<LogisticsForm | null>(null);
 
   const query = useQuery({
     queryKey: ["shipment", id],
     queryFn: () => fetchShipment(id),
     enabled: Boolean(id),
   });
+
+  useEffect(() => {
+    if (query.data?.shipment) {
+      setForm(toLogisticsForm(query.data.shipment));
+    }
+  }, [query.data]);
 
   const dispatchMut = useMutation({
     mutationFn: () => postAction(id, "dispatch"),
@@ -138,6 +204,34 @@ export default function ShipmentDetailPage() {
     mutationFn: () => postAction(id, "deliver"),
     onSuccess: () => {
       toast.success("Entrega registrada.");
+      void queryClient.invalidateQueries({ queryKey: ["shipment", id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const saveMut = useMutation({
+    mutationFn: () => {
+      if (!form) throw new Error("Formulário não pronto");
+      const body: Record<string, unknown> = {};
+      if (canEditCarrierName) {
+        body.carrier_name = form.carrier_name.trim() || null;
+      }
+      if (canEditCarrierDocument) {
+        body.carrier_document = form.carrier_document.trim() || null;
+      }
+      if (canEditVolumes) {
+        body.volumes_count =
+          form.volumes_count.trim() === ""
+            ? null
+            : Number(form.volumes_count);
+      }
+      if (canEditPackaging) {
+        body.packaging_description =
+          form.packaging_description.trim() || null;
+      }
+      return patchLogistics(id, body);
+    },
+    onSuccess: () => {
+      toast.success("Dados de expedição guardados.");
       void queryClient.invalidateQueries({ queryKey: ["shipment", id] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -157,9 +251,11 @@ export default function ShipmentDetailPage() {
       </AppPage>
     );
   }
-  if (!query.data) return null;
+  if (!query.data || !form) return null;
   const s = query.data.shipment;
-  const busy = dispatchMut.isPending || deliverMut.isPending;
+  const busy =
+    dispatchMut.isPending || deliverMut.isPending || saveMut.isPending;
+  const locked = s.status === "cancelled" || s.status === "delivered";
 
   return (
     <AppPage
@@ -195,7 +291,7 @@ export default function ShipmentDetailPage() {
               Despachar
             </Button>
           ) : null}
-          {(s.status === "prepared" || s.status === "in_transit") ? (
+          {s.status === "prepared" || s.status === "in_transit" ? (
             <Button
               type="button"
               variant="outline"
@@ -275,21 +371,107 @@ export default function ShipmentDetailPage() {
               },
             ]}
           />
+          <p className="text-xs text-slate-500 mt-3">
+            Destinatário e demais dados do documento são só leitura nesta
+            alçada.
+          </p>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Transporte</CardTitle>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
+          <CardTitle className="text-base">Expedição (alçada)</CardTitle>
+          {!locked ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy}
+              onClick={() => saveMut.mutate()}
+            >
+              {saveMut.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Guardar
+            </Button>
+          ) : null}
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="carrier_name">Transportadora</Label>
+              <Input
+                id="carrier_name"
+                value={form.carrier_name}
+                readOnly={!canEditCarrierName || locked}
+                disabled={!canEditCarrierName || locked}
+                onChange={(e) =>
+                  setForm((f) =>
+                    f ? { ...f, carrier_name: e.target.value } : f
+                  )
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="carrier_document">CNPJ transportadora</Label>
+              <Input
+                id="carrier_document"
+                value={form.carrier_document}
+                readOnly={!canEditCarrierDocument || locked}
+                disabled={!canEditCarrierDocument || locked}
+                onChange={(e) =>
+                  setForm((f) =>
+                    f ? { ...f, carrier_document: e.target.value } : f
+                  )
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="volumes_count">Quantidade de volumes</Label>
+              <Input
+                id="volumes_count"
+                type="number"
+                min={0}
+                step={1}
+                value={form.volumes_count}
+                readOnly={!canEditVolumes || locked}
+                disabled={!canEditVolumes || locked}
+                onChange={(e) =>
+                  setForm((f) =>
+                    f ? { ...f, volumes_count: e.target.value } : f
+                  )
+                }
+              />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="packaging_description">
+                Descrição da embalagem
+              </Label>
+              <Textarea
+                id="packaging_description"
+                rows={2}
+                value={form.packaging_description}
+                readOnly={!canEditPackaging || locked}
+                disabled={!canEditPackaging || locked}
+                onChange={(e) =>
+                  setForm((f) =>
+                    f
+                      ? { ...f, packaging_description: e.target.value }
+                      : f
+                  )
+                }
+              />
+            </div>
+          </div>
+
           <DataList
             items={[
-              { label: "Transportadora", value: s.carrier_name ?? "—" },
-              { label: "CNPJ", value: s.carrier_document ?? "—" },
               {
                 label: "Tracking",
-                value: <span className="font-mono">{s.tracking_code ?? "—"}</span>,
+                value: (
+                  <span className="font-mono">{s.tracking_code ?? "—"}</span>
+                ),
               },
               {
                 label: "Frete",
@@ -318,10 +500,11 @@ export default function ShipmentDetailPage() {
                 : []),
             ]}
           />
-          <p className="flex items-center gap-2 text-xs text-slate-500 mt-4 pt-3 border-t border-slate-100">
+          <p className="flex items-center gap-2 text-xs text-slate-500 mt-2 pt-3 border-t border-slate-100">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-            Movimento de estoque é gravado pelo documento origem; aqui só
-            registramos transporte.
+            Só transportadora e volume/embalagem são editáveis nesta alçada;
+            tracking, frete e datas ficam readonly. A API rejeita (403) qualquer
+            outro campo.
           </p>
         </CardContent>
       </Card>

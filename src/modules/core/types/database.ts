@@ -4893,6 +4893,7 @@ export type Database = {
           freight_value: number
           id: string
           notes: string | null
+          packaging_description: string | null
           purchase_return_id: string | null
           sales_order_id: string | null
           sales_return_id: string | null
@@ -4905,6 +4906,7 @@ export type Database = {
           tenant_id: string
           tracking_code: string | null
           updated_at: string
+          volumes_count: number | null
         }
         Insert: {
           carrier_document?: string | null
@@ -4921,6 +4923,7 @@ export type Database = {
           freight_value?: number
           id?: string
           notes?: string | null
+          packaging_description?: string | null
           purchase_return_id?: string | null
           sales_order_id?: string | null
           sales_return_id?: string | null
@@ -4933,6 +4936,7 @@ export type Database = {
           tenant_id: string
           tracking_code?: string | null
           updated_at?: string
+          volumes_count?: number | null
         }
         Update: {
           carrier_document?: string | null
@@ -4949,6 +4953,7 @@ export type Database = {
           freight_value?: number
           id?: string
           notes?: string | null
+          packaging_description?: string | null
           purchase_return_id?: string | null
           sales_order_id?: string | null
           sales_return_id?: string | null
@@ -4961,6 +4966,7 @@ export type Database = {
           tenant_id?: string
           tracking_code?: string | null
           updated_at?: string
+          volumes_count?: number | null
         }
         Relationships: [
           {

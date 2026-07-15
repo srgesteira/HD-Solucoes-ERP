@@ -305,3 +305,57 @@ export async function getShipment(
   if (error) throw new Error(error.message);
   return data;
 }
+
+export type UpdateShipmentLogisticsPatch = {
+  carrier_name?: string | null;
+  carrier_document?: string | null;
+  volumes_count?: number | null;
+  packaging_description?: string | null;
+};
+
+/**
+ * Actualiza só campos de alçada da Expedição (transportadora + volume/embalagem).
+ * A validação de allowlist fica na API (field-permissions).
+ */
+export async function updateShipmentLogistics(
+  admin: Admin,
+  args: {
+    tenantId: string;
+    userId: string;
+    userEmail: string | null;
+    shipmentId: string;
+    patch: UpdateShipmentLogisticsPatch;
+  }
+) {
+  const db = asUntypedAdmin(admin);
+  const { data: existing, error: loadErr } = await db
+    .from("shipments")
+    .select("id")
+    .eq("id", args.shipmentId)
+    .eq("tenant_id", args.tenantId)
+    .maybeSingle();
+  if (loadErr) throw new Error(loadErr.message);
+  if (!existing) throw new Error("Despacho não encontrado");
+
+  const { data, error } = await db
+    .from("shipments")
+    .update(args.patch)
+    .eq("id", args.shipmentId)
+    .eq("tenant_id", args.tenantId)
+    .select("*")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Despacho não encontrado");
+
+  await recordAuditEvent(admin, {
+    tenantId: args.tenantId,
+    actorId: args.userId,
+    actorEmail: args.userEmail,
+    table: "shipments",
+    recordId: args.shipmentId,
+    eventKind: "shipment_updated",
+    payload: args.patch,
+  });
+
+  return data;
+}
