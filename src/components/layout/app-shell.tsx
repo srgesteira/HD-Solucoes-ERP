@@ -323,12 +323,6 @@ const MENU_STRUCTURE: NavEntry[] = [
         module: "finance",
       },
       {
-        title: "Análise de crédito",
-        href: "/finance/credit-analysis",
-        icon: ClipboardCheck,
-        module: "finance",
-      },
-      {
         title: "Dashboard",
         href: "/finance/dashboard",
         icon: LayoutDashboard,
@@ -347,6 +341,12 @@ const MENU_STRUCTURE: NavEntry[] = [
         title: "Contas",
         href: "/finance/contas",
         icon: Wallet,
+        module: "finance",
+      },
+      {
+        title: "Análise de crédito",
+        href: "/finance/credit-analysis",
+        icon: ClipboardCheck,
         module: "finance",
       },
       {
