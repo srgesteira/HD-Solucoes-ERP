@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  FileText,
   Loader2,
   PackageCheck,
   Save,
@@ -29,6 +30,8 @@ import {
 import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
 import { canEditField } from "@/shared/auth/field-permissions";
 import { formatBrazilianDateTime, formatShortDate } from "@/shared/utils/date";
+import { useMe } from "@/hooks/use-me";
+import { usePermissions } from "@/hooks/use-permissions";
 
 type Detail = {
   shipment: {
@@ -55,6 +58,11 @@ type Detail = {
     delivered_at: string | null;
     notes: string | null;
   };
+  invoice_gate?: {
+    can_emit: boolean;
+    reasons: string[];
+    order_number: string | null;
+  } | null;
 };
 
 type LogisticsForm = {
@@ -98,6 +106,31 @@ async function patchLogistics(id: string, body: Record<string, unknown>) {
   };
   if (!res.ok) throw new Error(json.error ?? "Erro ao guardar");
   return json;
+}
+
+async function postEmitNfse(salesOrderId: string): Promise<{ nfe_id: string }> {
+  const res = await fetch("/api/nfe/emitir", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sales_order_id: salesOrderId }),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    nfe_id?: string;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao emitir NFS-e");
+  if (!json.nfe_id) throw new Error("Resposta inválida da API");
+  return { nfe_id: json.nfe_id };
+}
+
+async function consultNfe(nfeId: string): Promise<void> {
+  const res = await fetch(
+    `/api/nfe/consultar?nfe_id=${encodeURIComponent(nfeId)}`,
+    { credentials: "include", cache: "no-store" }
+  );
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao consultar NFS-e");
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -178,6 +211,11 @@ export default function ShipmentDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
   const queryClient = useQueryClient();
+  const { data: me } = useMe();
+  const { canMenu } = usePermissions();
+  const isAdmin = me?.role === "admin";
+  const canEmitNota = isAdmin || canMenu("faturamento") || canMenu("expedicao");
+  const canClickEmit = isAdmin;
   const [form, setForm] = useState<LogisticsForm | null>(null);
 
   const query = useQuery({
@@ -204,6 +242,20 @@ export default function ShipmentDetailPage() {
     mutationFn: () => postAction(id, "deliver"),
     onSuccess: () => {
       toast.success("Entrega registrada.");
+      void queryClient.invalidateQueries({ queryKey: ["shipment", id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const emitMut = useMutation({
+    mutationFn: async (salesOrderId: string) => {
+      const { nfe_id } = await postEmitNfse(salesOrderId);
+      for (let i = 0; i < 12; i++) {
+        await consultNfe(nfe_id);
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+    },
+    onSuccess: () => {
+      toast.success("NFS-e enviada — verifique o estado no Faturamento.");
       void queryClient.invalidateQueries({ queryKey: ["shipment", id] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -253,8 +305,12 @@ export default function ShipmentDetailPage() {
   }
   if (!query.data || !form) return null;
   const s = query.data.shipment;
+  const gate = query.data.invoice_gate ?? null;
   const busy =
-    dispatchMut.isPending || deliverMut.isPending || saveMut.isPending;
+    dispatchMut.isPending ||
+    deliverMut.isPending ||
+    saveMut.isPending ||
+    emitMut.isPending;
   const locked = s.status === "cancelled" || s.status === "delivered";
 
   return (
@@ -277,6 +333,33 @@ export default function ShipmentDetailPage() {
           <StatusBadge tone={STATUS_TONE[s.status] ?? "neutral"}>
             {STATUS_LABEL[s.status] ?? s.status}
           </StatusBadge>
+          {canEmitNota && s.sales_order_id ? (
+            <Button
+              type="button"
+              variant={gate?.can_emit && canClickEmit ? "primary" : "outline"}
+              disabled={busy || !gate?.can_emit || !canClickEmit}
+              title={
+                !canClickEmit
+                  ? "Emissão NFS-e restrita a administradores (gate fiscal já calculado)"
+                  : gate?.can_emit
+                    ? "Emitir NFS-e deste pedido (liberado pelo Faturamento)"
+                    : gate?.reasons?.length
+                      ? gate.reasons.join(" ")
+                      : "Aguardando conferência fiscal + liberação PCP"
+              }
+              onClick={() => {
+                if (!s.sales_order_id || !gate?.can_emit || !canClickEmit) return;
+                emitMut.mutate(s.sales_order_id);
+              }}
+            >
+              {emitMut.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+              Emitir nota
+            </Button>
+          ) : null}
           {s.status === "prepared" ? (
             <Button
               type="button"
@@ -317,15 +400,35 @@ export default function ShipmentDetailPage() {
         </CardHeader>
         <CardContent className="text-sm space-y-1">
           {s.sales_order_id ? (
-            <p>
-              Pedido de venda:{" "}
-              <Link
-                className="text-brand-700 hover:underline"
-                href={`/sales/orders/${s.sales_order_id}`}
-              >
-                ver pedido
-              </Link>
-            </p>
+            <div className="space-y-1">
+              <p>
+                Pedido de venda:{" "}
+                <Link
+                  className="text-brand-700 hover:underline"
+                  href={`/sales/orders/${s.sales_order_id}`}
+                >
+                  {gate?.order_number
+                    ? gate.order_number
+                    : "ver pedido"}
+                </Link>
+                {" · "}
+                <Link
+                  className="text-brand-700 hover:underline"
+                  href={`/faturamento/fiscal/${s.sales_order_id}`}
+                >
+                  conferência fiscal
+                </Link>
+              </p>
+              {gate && !gate.can_emit ? (
+                <p className="text-xs text-amber-800">
+                  «Emitir nota» bloqueado: {gate.reasons.join(" ")}
+                </p>
+              ) : gate?.can_emit ? (
+                <p className="text-xs text-emerald-800">
+                  Pedido pronto — «Emitir nota» habilitado neste despacho.
+                </p>
+              ) : null}
+            </div>
           ) : null}
           {s.sales_return_id ? (
             <p>

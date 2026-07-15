@@ -294,6 +294,7 @@ function buildItemFiscalFields(opts: {
   | "product_name"
   | "ncm"
   | "product_nature"
+  | "usage_type"
 > {
   const rates =
     opts.parsed?.rates ??

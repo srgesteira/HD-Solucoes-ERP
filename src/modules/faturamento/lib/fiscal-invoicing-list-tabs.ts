@@ -19,9 +19,9 @@ export const FISCAL_INVOICING_LIST_TAB_LABELS: Record<
   string
 > = {
   all: "Todos",
-  fiscal_pending: "Fiscal pendente",
-  waiting: "Aguardando liberação",
-  ready: "Prontos para emitir",
+  fiscal_pending: "Fiscal a conferir",
+  waiting: "Conferido fiscalmente",
+  ready: "Pronto para emissão de NF",
   nfe_active: "Nota em curso",
   nfe_error: "Com erro",
   nfe_authorized: "Autorizadas",

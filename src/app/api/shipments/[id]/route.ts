@@ -13,6 +13,7 @@ import {
   updateShipmentLogistics,
   type UpdateShipmentLogisticsPatch,
 } from "@/modules/transporte/lib/shipments-service";
+import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,34 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const admin = createSupabaseAdminClient();
     const shipment = await getShipment(admin, { tenantId, shipmentId: id });
     if (!shipment) return apiError("Despacho não encontrado", 404);
-    return apiOk({ shipment });
+
+    let invoice_gate: {
+      can_emit: boolean;
+      reasons: string[];
+      order_number: string | null;
+    } | null = null;
+
+    if (shipment.sales_order_id) {
+      const gate = await validateSalesOrderCanEmitNfe(
+        admin,
+        tenantId,
+        shipment.sales_order_id
+      );
+      const { data: so } = await admin
+        .from("sales_orders")
+        .select("order_number")
+        .eq("id", shipment.sales_order_id)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      invoice_gate = {
+        can_emit: gate.ok,
+        reasons: gate.reasons,
+        order_number:
+          so && typeof so.order_number === "string" ? so.order_number : null,
+      };
+    }
+
+    return apiOk({ shipment, invoice_gate });
   } catch (e) {
     return apiError(
       e instanceof Error ? e.message : "Erro ao buscar despacho",

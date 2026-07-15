@@ -418,6 +418,34 @@ export async function loadMenuAlerts(
             }
           );
         }
+        // Árvore de Natal: PCP liberou (ready_for_invoice) mas fiscal ainda
+        // não conferiu — urgente para o Faturamento.
+        const { count: xmasCount, error: xmasErr } = await db
+          .from("sales_orders")
+          .select("*", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .is("billing_closure", null)
+          .eq("ready_for_invoice", true)
+          .in("fiscal_status", ["pending", "no_rules", "review_required"])
+          .in("status", ["confirmed", "in_production", "shipped", "delivered"]);
+        if (!xmasErr) {
+          const n = xmasCount ?? 0;
+          pushAlert(
+            alerts,
+            details,
+            MENU_ALERT_PATHS.fiscalInvoicing,
+            n,
+            "urgent",
+            {
+              detailId: "fiscal.ready-without-review",
+              detailLabel: countLabel(
+                n,
+                "pedido liberado pelo PCP sem conferência fiscal",
+                "pedidos liberados pelo PCP sem conferência fiscal"
+              ),
+            }
+          );
+        }
         // NF-e em erro — urgente.
         const { count: nfeErrCount, error: nfeErr } = await admin
           .from("nfes")
