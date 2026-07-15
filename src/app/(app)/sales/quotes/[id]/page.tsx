@@ -44,8 +44,13 @@ import { QuoteCostReviewPanel } from "@/components/sales/quote-cost-review-panel
 import { QuoteSendEmailModal } from "@/components/sales/quote-send-email-modal";
 import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
-import { QuoteFormFields } from "@/components/sales/quote-form-fields";
+import {
+  QuoteCommercialFields,
+  QuoteFormFields,
+} from "@/components/sales/quote-form-fields";
 import { PaymentTermsDisplay } from "@/components/shared/payment-terms-display";
+import { Label } from "@/shared/ui/label";
+import { Textarea } from "@/shared/ui/textarea";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
 import {
   QuoteItemsEditor,
@@ -767,6 +772,16 @@ export default function QuoteDetailPage() {
                     onQuoteDateChange={setQuoteDate}
                     validityDays={validityDays}
                     onValidityDaysChange={setValidityDays}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Condições comerciais</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <QuoteCommercialFields
                     paymentInstallments={paymentInstallments}
                     onPaymentInstallmentsChange={setPaymentInstallments}
                     paymentDaysFirst={paymentDaysFirst}
@@ -779,8 +794,7 @@ export default function QuoteDetailPage() {
                     onShippingTypeChange={setShippingType}
                     freightCost={freightCost}
                     onFreightCostChange={setFreightCost}
-                    notes={notes}
-                    onNotesChange={setNotes}
+                    quoteDate={quoteDate}
                   />
                 </CardContent>
               </Card>
@@ -799,6 +813,25 @@ export default function QuoteDetailPage() {
                     }
                     sourceQuoteId={id}
                   />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Observações gerais</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <Label htmlFor="quote-edit-notes">Observações</Label>
+                    <Textarea
+                      id="quote-edit-notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={4}
+                      placeholder="Notas internas ou condições que apareçam junto ao orçamento…"
+                      className="resize-y min-h-[88px]"
+                    />
+                  </div>
                 </CardContent>
               </Card>
 

@@ -10,7 +10,12 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { AppPage } from "@/shared/ui/app-page";
 import { useMe } from "@/hooks/use-me";
-import { QuoteFormFields } from "@/components/sales/quote-form-fields";
+import {
+  QuoteCommercialFields,
+  QuoteFormFields,
+} from "@/components/sales/quote-form-fields";
+import { Textarea } from "@/shared/ui/textarea";
+import { Label } from "@/shared/ui/label";
 import {
   QuoteItemsEditor,
   buildQuoteItemsPayload,
@@ -275,6 +280,18 @@ export default function NewQuotePage() {
               onQuoteDateChange={setQuoteDate}
               validityDays={validityDays}
               onValidityDaysChange={setValidityDays}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-slate-900">
+              Condições comerciais
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <QuoteCommercialFields
               paymentInstallments={paymentInstallments}
               onPaymentInstallmentsChange={setPaymentInstallments}
               paymentDaysFirst={paymentDaysFirst}
@@ -287,8 +304,7 @@ export default function NewQuotePage() {
               onShippingTypeChange={setShippingType}
               freightCost={freightCost}
               onFreightCostChange={setFreightCost}
-              notes={notes}
-              onNotesChange={setNotes}
+              quoteDate={quoteDate}
             />
           </CardContent>
         </Card>
@@ -312,6 +328,27 @@ export default function NewQuotePage() {
                 setProductCache((prev) => ({ ...prev, ...patch }))
               }
             />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-slate-900">
+              Observações gerais
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label htmlFor="quote-notes">Observações</Label>
+              <Textarea
+                id="quote-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={4}
+                placeholder="Notas internas ou condições que apareçam junto ao orçamento…"
+                className="resize-y min-h-[88px]"
+              />
+            </div>
           </CardContent>
         </Card>
 
