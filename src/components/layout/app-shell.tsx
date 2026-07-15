@@ -323,6 +323,12 @@ const MENU_STRUCTURE: NavEntry[] = [
         module: "finance",
       },
       {
+        title: "Fiscal de entrada",
+        href: "/faturamento/entrada",
+        icon: Receipt,
+        module: "finance",
+      },
+      {
         title: "Dashboard",
         href: "/finance/dashboard",
         icon: LayoutDashboard,

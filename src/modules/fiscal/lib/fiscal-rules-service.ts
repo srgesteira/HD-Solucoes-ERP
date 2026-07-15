@@ -291,6 +291,107 @@ export async function applyFiscalToSalesOrderItems(
   return { fiscalStatus: aggregated, itemsProcessed: processed };
 }
 
+/**
+ * Aplica o motor fiscal a todos os itens de um pedido de compra (entrada).
+ */
+export async function applyFiscalToPurchaseOrderItems(
+  admin: Admin,
+  tenantId: string,
+  purchaseOrderId: string,
+  appliedBy?: string | null,
+  options?: {
+    supplierUf?: string | null;
+    productNatureOverride?: string | null;
+  }
+): Promise<{ fiscalStatus: string; itemsProcessed: number }> {
+  const db = asUntypedAdmin(admin);
+
+  const { data: order } = await admin
+    .from("purchase_orders")
+    .select("id, supplier_id")
+    .eq("id", purchaseOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (!order) {
+    return { fiscalStatus: "pending", itemsProcessed: 0 };
+  }
+
+  let supplierUf = options?.supplierUf ?? null;
+  if (!supplierUf && order.supplier_id) {
+    const { data: supplier } = await admin
+      .from("suppliers")
+      .select("address_state")
+      .eq("id", order.supplier_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const state =
+      supplier && typeof supplier.address_state === "string"
+        ? supplier.address_state.trim().toUpperCase()
+        : "";
+    supplierUf = state.length === 2 ? state : null;
+  }
+
+  const { data: items } = await db
+    .from("purchase_order_items")
+    .select("id, product_id, quantity, unit_price")
+    .eq("purchase_order_id", purchaseOrderId)
+    .eq("tenant_id", tenantId);
+
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) {
+    return { fiscalStatus: "pending", itemsProcessed: 0 };
+  }
+
+  let aggregated = "pending";
+  let processed = 0;
+
+  for (const it of list) {
+    const productId = typeof it.product_id === "string" ? it.product_id : "";
+    if (!productId) continue;
+    try {
+      const result = await applyFiscalToLine(admin, tenantId, {
+        operationType: "purchase",
+        documentType: "purchase_order_item",
+        documentLineId: String(it.id),
+        productId,
+        quantity: Number(it.quantity ?? 0),
+        unitPrice: Number(it.unit_price ?? 0),
+        customerOrSupplierUf: supplierUf,
+        productNatureOverride: options?.productNatureOverride ?? null,
+        appliedBy: appliedBy ?? null,
+      });
+
+      if (result.taxFields) {
+        await db
+          .from("purchase_order_items")
+          .update({
+            icms_rate: result.taxFields.icmsRate,
+            icms_value: result.taxFields.icmsValue,
+            ipi_rate: result.taxFields.ipiRate,
+            ipi_value: result.taxFields.ipiValue,
+            tax_base: result.taxFields.taxBase,
+          })
+          .eq("id", it.id)
+          .eq("tenant_id", tenantId);
+      }
+
+      aggregated = elevateFiscalStatus(aggregated, result.fiscalStatus);
+      processed += 1;
+    } catch {
+      aggregated = elevateFiscalStatus(aggregated, "review_required");
+    }
+  }
+
+  await db
+    .from("purchase_orders")
+    .update({ fiscal_status: aggregated })
+    .eq("id", purchaseOrderId)
+    .eq("tenant_id", tenantId);
+
+  return { fiscalStatus: aggregated, itemsProcessed: processed };
+}
+
 export async function listFiscalRules(
   admin: Admin,
   tenantId: string
