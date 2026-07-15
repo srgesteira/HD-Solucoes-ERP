@@ -24,6 +24,7 @@ export type PurchaseOrderLineInput = {
   ipi_rate: number;
   ipi_value: number;
   tax_base: number;
+  usage_type?: "consumo" | "materia_prima" | "revenda" | null;
 };
 
 export const PURCHASE_ORDER_ITEM_EDIT_STATUSES = new Set([
@@ -143,6 +144,15 @@ export function parsePurchaseOrderLines(raw: unknown):
         ? undefined
         : String(r.id).trim() || undefined;
 
+    const usageRaw =
+      typeof r.usage_type === "string" ? r.usage_type.trim() : "";
+    const usage_type =
+      usageRaw === "consumo" ||
+      usageRaw === "materia_prima" ||
+      usageRaw === "revenda"
+        ? usageRaw
+        : null;
+
     lines.push({
       id,
       product_id,
@@ -155,6 +165,7 @@ export function parsePurchaseOrderLines(raw: unknown):
       ipi_rate,
       ipi_value,
       tax_base,
+      usage_type,
     });
   }
 
@@ -235,6 +246,7 @@ export async function syncPurchaseOrderItems(
       ipi_rate: line.ipi_rate,
       ipi_value: line.ipi_value,
       tax_base: line.tax_base,
+      usage_type: line.usage_type ?? null,
     };
 
     if (line.id && existingById.has(line.id)) {

@@ -12,6 +12,7 @@ export type QuoteRequestLineInput = {
   unit: string;
   need_date?: string | null;
   show_product_description?: boolean;
+  usage_type?: "consumo" | "materia_prima" | "revenda" | null;
 };
 
 export type PurchaseQuoteRequestListRow = {
@@ -95,6 +96,12 @@ export async function createPurchaseQuoteRequest(
       unit: (l.unit?.trim() || "UN").toUpperCase(),
       need_date: dateOnly(l.need_date) ?? dateOnly(args.need_date),
       show_product_description: Boolean(l.show_product_description),
+      usage_type:
+        l.usage_type === "consumo" ||
+        l.usage_type === "materia_prima" ||
+        l.usage_type === "revenda"
+          ? l.usage_type
+          : null,
     }))
     .filter((l) => l.description && Number.isFinite(l.quantity) && l.quantity > 0);
 
@@ -186,6 +193,7 @@ export async function createPurchaseQuoteRequest(
       unit_price: 0,
       total_price: 0,
       show_product_description: l.show_product_description,
+      usage_type: l.usage_type,
       suggested_supplier_id: null,
       need_date: lineNeed,
       follow_up_date: lineNeed,
@@ -371,6 +379,12 @@ async function syncPurchaseQuoteRequestItems(
       unit: (l.unit?.trim() || "UN").toUpperCase(),
       need_date: dateOnly(l.need_date) ?? needDate,
       show_product_description: Boolean(l.show_product_description),
+      usage_type:
+        l.usage_type === "consumo" ||
+        l.usage_type === "materia_prima" ||
+        l.usage_type === "revenda"
+          ? l.usage_type
+          : null,
     }))
     .filter((l) => l.description && Number.isFinite(l.quantity) && l.quantity > 0);
 
@@ -429,6 +443,7 @@ async function syncPurchaseQuoteRequestItems(
       unit_price: 0,
       total_price: 0,
       show_product_description: l.show_product_description,
+      usage_type: l.usage_type,
       need_date: lineNeed,
       follow_up_date: lineNeed,
     };

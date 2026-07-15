@@ -68,6 +68,7 @@ export type PurchaseOrderFormData = {
     ipi_value?: number;
     ipi_amount?: number;
     tax_base?: number;
+    usage_type?: string | null;
     product?:
       | {
           id: string;
@@ -156,6 +157,12 @@ export function itemsToPurchaseLines(items: OrderItemRow[]): {
       ipiRate: Number(item.ipi_rate ?? 0),
       ipiValue: Number(item.ipi_value ?? item.ipi_amount ?? 0),
       taxBase: Number(item.tax_base ?? 0),
+      usageType:
+        item.usage_type === "consumo" ||
+        item.usage_type === "materia_prima" ||
+        item.usage_type === "revenda"
+          ? item.usage_type
+          : "",
     });
   });
 

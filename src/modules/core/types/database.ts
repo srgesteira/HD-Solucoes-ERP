@@ -3221,6 +3221,7 @@ export type Database = {
           unit: string
           unit_price: number
           updated_at: string
+          usage_type: string | null
         }
         Insert: {
           actual_delivery_date?: string | null
@@ -3255,6 +3256,7 @@ export type Database = {
           unit?: string
           unit_price?: number
           updated_at?: string
+          usage_type?: string | null
         }
         Update: {
           actual_delivery_date?: string | null
@@ -3289,6 +3291,7 @@ export type Database = {
           unit?: string
           unit_price?: number
           updated_at?: string
+          usage_type?: string | null
         }
         Relationships: [
           {
@@ -3753,6 +3756,7 @@ export type Database = {
           unit: string
           unit_price: number
           updated_at: string
+          usage_type: string | null
         }
         Insert: {
           client_notes?: string | null
@@ -3769,6 +3773,7 @@ export type Database = {
           unit?: string
           unit_price?: number
           updated_at?: string
+          usage_type?: string | null
         }
         Update: {
           client_notes?: string | null
@@ -3785,6 +3790,7 @@ export type Database = {
           unit?: string
           unit_price?: number
           updated_at?: string
+          usage_type?: string | null
         }
         Relationships: [
           {
@@ -4399,6 +4405,7 @@ export type Database = {
           unit_cost: number | null
           unit_price: number
           updated_at: string
+          usage_type: string | null
         }
         Insert: {
           created_at?: string
@@ -4423,6 +4430,7 @@ export type Database = {
           unit_cost?: number | null
           unit_price?: number
           updated_at?: string
+          usage_type?: string | null
         }
         Update: {
           created_at?: string
@@ -4447,6 +4455,7 @@ export type Database = {
           unit_cost?: number | null
           unit_price?: number
           updated_at?: string
+          usage_type?: string | null
         }
         Relationships: [
           {

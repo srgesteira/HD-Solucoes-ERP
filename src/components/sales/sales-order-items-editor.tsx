@@ -15,12 +15,21 @@ import {
   roundMoney,
 } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 
+import {
+  ITEM_USAGE_TYPE_OPTIONS,
+  isItemUsageType,
+  suggestUsageTypeFromProductNature,
+  type ItemUsageType,
+} from "@/modules/fiscal/lib/item-usage-type";
+
 export type SalesOrderLineProduct = {
   id: string;
   code: string | null;
   technical_code: string | null;
   name: string;
   unit: string | null;
+  product_nature?: string | null;
+  prefix_code?: string | null;
 };
 
 export type SalesOrderLineDraft = {
@@ -36,6 +45,7 @@ export type SalesOrderLineDraft = {
   ipiRate: number;
   ipiValue: number;
   taxBase: number;
+  usageType: ItemUsageType | "";
 };
 
 function formatBRL(n: number): string {
@@ -57,6 +67,8 @@ function hitToProduct(hit: ProductSearchHit): SalesOrderLineProduct {
     technical_code: hit.technical_code,
     name: hit.name,
     unit: hit.unit,
+    product_nature: hit.product_nature ?? null,
+    prefix_code: hit.prefix?.code ?? null,
   };
 }
 
@@ -71,6 +83,10 @@ function lineFromProduct(
     productId: p.id,
     description: label,
     unit: (p.unit && p.unit.trim()) || "UN",
+    usageType:
+      base?.usageType ||
+      suggestUsageTypeFromProductNature(p.product_nature, p.prefix_code) ||
+      "",
   };
   return { line, product: p };
 }
@@ -88,6 +104,7 @@ export function newSalesOrderLine(index = 0): SalesOrderLineDraft {
     ipiRate: 0,
     ipiValue: 0,
     taxBase: 0,
+    usageType: "",
   };
 }
 
@@ -248,6 +265,7 @@ export function SalesOrderItemsEditor({
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
               <th className="px-2 py-2 min-w-[140px]">Produto</th>
               <th className="px-2 py-2 min-w-[120px]">Descrição</th>
+              <th className="px-2 py-2 w-32">Utilização</th>
               <th className="px-2 py-2 w-20">Qtd.</th>
               <th className="px-2 py-2 w-16">Un.</th>
               <th className="px-2 py-2 w-24">Preço un.</th>
@@ -317,6 +335,27 @@ export function SalesOrderItemsEditor({
                       className="h-8 text-sm"
                       placeholder="Descrição…"
                     />
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <select
+                      className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs dark:bg-slate-950 dark:border-slate-600"
+                      value={line.usageType}
+                      onChange={(e) =>
+                        updateLineAt(index, {
+                          usageType: isItemUsageType(e.target.value)
+                            ? e.target.value
+                            : "",
+                        })
+                      }
+                      disabled={disabled}
+                    >
+                      <option value="">—</option>
+                      {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-2 py-2 align-top">
                     <NumericInput
@@ -517,6 +556,7 @@ export function buildSalesOrderItemsPayload(
       ipi_rate: line.ipiRate,
       ipi_value: line.ipiValue,
       tax_base: roundMoney(lineSubtotal(line.quantity, line.unitPrice) + line.ipiValue),
+      usage_type: isItemUsageType(line.usageType) ? line.usageType : null,
     };
     if (line.id) item.id = line.id;
     built.push(item);
