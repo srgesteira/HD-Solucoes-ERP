@@ -14,6 +14,11 @@ import {
   type FiscalStatus,
 } from "@/modules/fiscal/lib/fiscal-rules-types";
 import { recalculateSalesOrderHeaderTotals } from "@/modules/vendas/lib/sales/sales-order-totals";
+import { usageTypeConferenceWarning } from "@/modules/fiscal/lib/item-usage-type-warnings";
+import {
+  isItemUsageType,
+  type ItemUsageType,
+} from "@/modules/fiscal/lib/item-usage-type";
 
 type Admin = SupabaseClient<Database>;
 
@@ -50,6 +55,7 @@ export type FiscalOrderReviewItem = {
   cbs_rate: number | null;
   ibs_rate: number | null;
   ibs_cbs_classificacao: string | null;
+  usage_type: ItemUsageType | null;
   line_warnings: string[];
 };
 
@@ -399,6 +405,7 @@ export async function getFiscalOrderReview(
         ipi_rate,
         ipi_value,
         tax_base,
+        usage_type,
         product:products!sales_order_items_product_id_fkey(name, ncm, product_nature)
       )
     `
@@ -509,6 +516,11 @@ export async function getFiscalOrderReview(
       unitPrice,
     });
 
+    const usageRaw =
+      typeof it.usage_type === "string" ? it.usage_type.trim() : "";
+    const usage_type = isItemUsageType(usageRaw) ? usageRaw : null;
+    const usageWarn = usageTypeConferenceWarning(usage_type);
+
     items.push({
       id: lineId,
       line_number: Number(it.line_number ?? 0),
@@ -525,7 +537,12 @@ export async function getFiscalOrderReview(
         product && typeof product.product_nature === "string"
           ? product.product_nature
           : null,
+      usage_type,
       ...fiscalFields,
+      line_warnings: [
+        ...fiscalFields.line_warnings,
+        ...(usageWarn ? [usageWarn] : []),
+      ],
     });
   }
 
@@ -553,6 +570,11 @@ export async function getFiscalOrderReview(
   if (items.some((it) => !it.cfop)) {
     warnings.push(
       "Há itens sem CFOP definido — cadastre regras fiscais ou reaplique o motor fiscal."
+    );
+  }
+  if (items.some((it) => !it.usage_type)) {
+    warnings.push(
+      "Há itens sem utilização informada — defina antes de conferir (não bloqueia)."
     );
   }
   if (items.some((it) => it.fiscal_source === "preview")) {
