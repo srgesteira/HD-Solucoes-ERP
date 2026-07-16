@@ -3,7 +3,7 @@ import type { Database } from "@/modules/core/types/database";
 import type {
   PurchaseNFExtraction,
   PurchaseNFItem,
-} from "@/modules/engenharia/lib/services/ai.service";
+} from "@/modules/compras/lib/purchasing/purchase-nf-types";
 import { onlyDigits } from "@/shared/utils/br-document";
 
 type Admin = SupabaseClient<Database>;
@@ -63,6 +63,8 @@ export type ReconcileUploadResult = {
   productCandidates: ProductCandidate[];
   suggestions: ReconcileSuggestion[];
   unmatchedItems: ReconcileSuggestion[];
+  /** Origem da extração (API upload). */
+  source?: "xml" | "pdf_ai";
 };
 
 function normalizeText(s: string): string {

@@ -26,7 +26,7 @@ import {
 } from "@/components/purchasing/supplier-quick-create-modal";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
-import type { PurchaseNFExtraction } from "@/modules/engenharia/lib/services/ai.service";
+import type { PurchaseNFExtraction } from "@/modules/compras/lib/purchasing/purchase-nf-types";
 import type {
   PendingPoItem,
   ReconcileUploadResult,
@@ -43,7 +43,9 @@ type LineMapping = {
   isNewPurchase: boolean;
 };
 
-async function uploadInvoicePdf(file: File): Promise<ReconcileUploadResult> {
+async function uploadInvoiceFile(
+  file: File
+): Promise<ReconcileUploadResult & { source?: "xml" | "pdf_ai" }> {
   const fd = new FormData();
   fd.set("file", file);
   const res = await fetch("/api/purchasing/invoices/upload", {
@@ -52,7 +54,7 @@ async function uploadInvoicePdf(file: File): Promise<ReconcileUploadResult> {
     body: fd,
   });
   const json = (await res.json().catch(() => ({}))) as {
-    data?: ReconcileUploadResult;
+    data?: ReconcileUploadResult & { source?: "xml" | "pdf_ai" };
     error?: string;
   };
   if (!res.ok) {
@@ -60,6 +62,21 @@ async function uploadInvoicePdf(file: File): Promise<ReconcileUploadResult> {
   }
   if (!json.data) throw new Error("Resposta inválida");
   return json.data;
+}
+
+function isAllowedInvoiceFile(f: File): boolean {
+  const name = f.name.toLowerCase();
+  const type = (f.type || "").toLowerCase();
+  if (name.endsWith(".pdf") || type === "application/pdf") return true;
+  if (
+    name.endsWith(".xml") ||
+    type === "application/xml" ||
+    type === "text/xml" ||
+    type.includes("xml")
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function buildInitialMappings(data: ReconcileUploadResult): LineMapping[] {
@@ -95,7 +112,7 @@ export default function PurchaseInvoiceReconcilePage() {
   const [productPickerLine, setProductPickerLine] = useState<number | null>(null);
 
   const uploadMutation = useMutation({
-    mutationFn: uploadInvoicePdf,
+    mutationFn: uploadInvoiceFile,
     onSuccess: (data) => {
       setReconcile(data);
       setSupplier(
@@ -116,7 +133,9 @@ export default function PurchaseInvoiceReconcilePage() {
           "Fornecedor não encontrado pelo CNPJ. Cadastre-o antes de confirmar."
         );
       } else {
-        toast.success("NF-e interpretada. Revise a conciliação dos itens.");
+        const via =
+          data.source === "xml" ? "XML importado" : "PDF interpretado (IA)";
+        toast.success(`${via}. Revise a conciliação dos itens.`);
       }
     },
     onError: (e: Error) => toast.error(e.message),
@@ -213,10 +232,10 @@ export default function PurchaseInvoiceReconcilePage() {
     e.preventDefault();
     setDragOver(false);
     const f = e.dataTransfer.files?.[0];
-    if (f?.type === "application/pdf") {
+    if (f && isAllowedInvoiceFile(f)) {
       setFile(f);
     } else {
-      toast.error("Envie um ficheiro PDF.");
+      toast.error("Envie um ficheiro PDF ou XML da NF-e.");
     }
   };
 
@@ -235,14 +254,14 @@ export default function PurchaseInvoiceReconcilePage() {
       title={
         <div className="flex items-center gap-2">
           <FileUp className="h-6 w-6 text-brand-700" aria-hidden />
-          <span>Importar NF-e (PDF)</span>
+          <span>Importar NF-e (PDF ou XML)</span>
         </div>
       }
     >
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">1. Upload do PDF</CardTitle>
+          <CardTitle className="text-lg">1. Upload do PDF ou XML</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div
@@ -261,13 +280,22 @@ export default function PurchaseInvoiceReconcilePage() {
           >
             <FileUp className="h-10 w-10 mx-auto text-slate-400 mb-3" />
             <p className="text-sm text-slate-600 mb-3">
-              Arraste o PDF da NF-e ou seleccione o ficheiro
+              Arraste o XML da NF-e ou o PDF (DANFE), ou seleccione o ficheiro
             </p>
             <Input
               type="file"
-              accept="application/pdf"
+              accept=".pdf,.xml,application/pdf,application/xml,text/xml"
               className="max-w-xs mx-auto"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                if (f && !isAllowedInvoiceFile(f)) {
+                  toast.error("Envie um ficheiro PDF ou XML da NF-e.");
+                  e.target.value = "";
+                  setFile(null);
+                  return;
+                }
+                setFile(f);
+              }}
             />
             {file ? (
               <p className="text-xs text-slate-500 mt-2">{file.name}</p>
@@ -283,8 +311,14 @@ export default function PurchaseInvoiceReconcilePage() {
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            Extrair com IA
+            {file?.name.toLowerCase().endsWith(".xml")
+              ? "Importar XML"
+              : "Extrair PDF (IA)"}
           </Button>
+          <p className="text-xs text-slate-500">
+            XML usa parser determinístico (sem IA). PDF continua com extração por
+            IA.
+          </p>
         </CardContent>
       </Card>
 

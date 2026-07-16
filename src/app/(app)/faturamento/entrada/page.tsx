@@ -80,7 +80,7 @@ export default function FiscalInboundPage() {
             href="/purchasing/invoices/reconcile"
             className="text-emerald-700 hover:underline"
           >
-            Importar NF-e (PDF)
+            Importar NF-e (PDF/XML)
           </Link>
         </p>
       </div>

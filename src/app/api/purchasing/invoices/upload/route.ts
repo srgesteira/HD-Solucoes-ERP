@@ -9,6 +9,12 @@ import {
 } from "@/modules/core/lib/tenant";
 import { extractPurchaseNF } from "@/modules/engenharia/lib/services/ai.service";
 import { buildPurchaseInvoiceReconciliation } from "@/modules/compras/lib/purchasing/purchase-invoice-reconcile";
+import {
+  isLikelyNfeXml,
+  isLikelyPdf,
+  parsePurchaseNfeXml,
+} from "@/modules/compras/lib/purchasing/parse-purchase-nfe-xml";
+import type { PurchaseNFExtraction } from "@/modules/compras/lib/purchasing/purchase-nf-types";
 
 export const dynamic = "force-dynamic";
 
@@ -43,13 +49,30 @@ export async function POST(request: NextRequest) {
   }
   if (file.size <= 0) return apiError("Ficheiro vazio.", 400);
   if (file.size > MAX_BYTES) {
-    return apiError("PDF demasiado grande (máx. 12 MB).", 400);
+    return apiError("Ficheiro demasiado grande (máx. 12 MB).", 400);
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
+  const fileName = file.name || "upload";
+  const mime = file.type || "";
 
   try {
-    const invoiceData = await extractPurchaseNF(buf);
+    let invoiceData: PurchaseNFExtraction;
+    let source: "xml" | "pdf_ai";
+
+    if (isLikelyNfeXml(fileName, mime, buf)) {
+      invoiceData = parsePurchaseNfeXml(buf);
+      source = "xml";
+    } else if (isLikelyPdf(fileName, mime, buf)) {
+      invoiceData = await extractPurchaseNF(buf);
+      source = "pdf_ai";
+    } else {
+      return apiError(
+        "Formato não suportado. Envie PDF (DANFE) ou XML da NF-e.",
+        400
+      );
+    }
+
     const admin = createSupabaseAdminClient();
     const reconciliation = await buildPurchaseInvoiceReconciliation(
       admin,
@@ -57,7 +80,7 @@ export async function POST(request: NextRequest) {
       invoiceData
     );
 
-    return apiOk({ data: reconciliation });
+    return apiOk({ data: { ...reconciliation, source } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha na extração.";
     return apiError(msg, 400);
