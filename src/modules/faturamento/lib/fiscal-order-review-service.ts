@@ -80,6 +80,7 @@ export type FiscalOrderReview = {
   ready_for_invoice: boolean;
   billing_plan: string | null;
   billing_closure: string | null;
+  invoice_document_type: string | null;
   notes: string | null;
   items: FiscalOrderReviewItem[];
   warnings: string[];
@@ -101,6 +102,7 @@ type RawOrderRow = {
   ready_for_invoice: boolean | null;
   billing_plan: string | null;
   billing_closure: string | null;
+  invoice_document_type: string | null;
   notes: string | null;
   items?: unknown;
 };
@@ -391,6 +393,7 @@ export async function getFiscalOrderReview(
       ready_for_invoice,
       billing_plan,
       billing_closure,
+      invoice_document_type,
       notes,
       items:sales_order_items(
         id,
@@ -588,6 +591,17 @@ export async function getFiscalOrderReview(
       "Fiscal ainda não está alinhado. Use o assistente (IA) ou marque «Fiscal alinhado» após conferir os dados."
     );
   }
+  const billingPlan =
+    typeof order.billing_plan === "string" ? order.billing_plan : null;
+  const invoiceDocType =
+    typeof order.invoice_document_type === "string"
+      ? order.invoice_document_type
+      : null;
+  if (billingPlan !== "without_invoice" && !invoiceDocType) {
+    warnings.push(
+      "Defina o tipo de nota (NFS-e, NF-e produto ou industrialização) — a Expedição emite sem perguntar."
+    );
+  }
 
   return {
     id: String(order.id),
@@ -614,6 +628,10 @@ export async function getFiscalOrderReview(
       typeof order.billing_plan === "string" ? order.billing_plan : null,
     billing_closure:
       typeof order.billing_closure === "string" ? order.billing_closure : null,
+    invoice_document_type:
+      typeof order.invoice_document_type === "string"
+        ? order.invoice_document_type
+        : null,
     notes: typeof order.notes === "string" ? order.notes : null,
     items,
     warnings,
