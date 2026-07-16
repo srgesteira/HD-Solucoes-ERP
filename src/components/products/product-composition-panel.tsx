@@ -11,7 +11,6 @@ import {
   Package,
   Pencil,
   Plus,
-  Search,
   Trash2,
   Download,
 } from "lucide-react";
@@ -23,6 +22,7 @@ import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import type { Database } from "@/modules/core/types/database";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import { ProductComboboxField } from "@/components/products/product-combobox-field";
 import type { ProductSearchHit } from "@/components/products/product-search-modal";
 import { workCentersQueryKey } from "@/components/settings/work-centers-admin";
 
@@ -187,7 +187,6 @@ export function ProductCompositionPanel({
   );
   const [editQuantity, setEditQuantity] = useState(1);
   const [editUnitCost, setEditUnitCost] = useState(0);
-  const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [componentType, setComponentType] = useState<"material" | "labor">(
     "material"
@@ -388,7 +387,6 @@ export function ProductCompositionPanel({
   function resetDialog() {
     setComponentType("material");
     setLaborSource("internal");
-    setSearchModalOpen(false);
     setMoFromCatalog(false);
     clearMaterialProduct();
     setSelectedWorkCenterId("");
@@ -396,6 +394,17 @@ export function ProductCompositionPanel({
     setLaborHourlyRate(0);
     setExternalUnitCost(0);
   }
+
+  const selectedProductHit: ProductSearchHit | null = selectedProductId
+    ? {
+        id: selectedProductId,
+        name: selectedProductLabel || selectedProductId,
+        technical_code: null,
+        code: null,
+        unit: null,
+        cost_price: 0,
+      }
+    : null;
 
   function openEditDialog(line: ProductComponentLine) {
     setEditingLine(line);
@@ -977,38 +986,23 @@ export function ProductCompositionPanel({
               {componentType === "material" ? (
                 <div className="space-y-3">
                   <Label>Produto componente</Label>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="gap-2"
-                      onClick={() => setSearchModalOpen(true)}
-                    >
-                      <Search className="h-4 w-4 shrink-0" aria-hidden />
-                      Pesquisar produto
-                    </Button>
-                    {selectedProductId ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-slate-600"
-                        onClick={() => clearMaterialProduct()}
-                      >
-                        Limpar
-                      </Button>
-                    ) : null}
-                  </div>
-                  {selectedProductId ? (
-                    <div className="rounded-md border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-800">
-                      <p className="font-medium">{selectedProductLabel}</p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-500">
-                      Materiais sem prefixo MO. Para MO, a pesquisa muda automaticamente para
-                      mão-de-obra.
-                    </p>
-                  )}
+                  <ProductComboboxField
+                    value={selectedProductHit}
+                    onChange={(hit) => {
+                      if (hit) handleProductPickFromSearch(hit);
+                      else clearMaterialProduct();
+                    }}
+                    excludeIds={excludeProductIdsForSearch}
+                    parentProductId={productId}
+                    productType="all"
+                    catalogTitle="Pesquisar produto componente"
+                    placeholder="Digite código ou descrição…"
+                    compact
+                  />
+                  <p className="text-xs text-slate-500">
+                    Materiais sem prefixo MO. Para MO, a pesquisa muda automaticamente para
+                    mão-de-obra.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1061,18 +1055,22 @@ export function ProductCompositionPanel({
                   )}
 
                   {!moFromCatalog ? (
-                    <div className="pt-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => setSearchModalOpen(true)}
-                      >
-                        <Search className="h-4 w-4 shrink-0" aria-hidden />
-                        Pesquisar produto MO
-                      </Button>
-                      <p className="text-xs text-slate-500 mt-1">
+                    <div className="pt-1 space-y-2">
+                      <Label className="text-xs">Produto MO (opcional)</Label>
+                      <ProductComboboxField
+                        value={null}
+                        onChange={(hit) => {
+                          if (hit) handleProductPickFromSearch(hit);
+                        }}
+                        excludeIds={excludeProductIdsForSearch}
+                        parentProductId={productId}
+                        productType="all"
+                        catalogTitle="Pesquisar produto MO"
+                        placeholder="Digite código MO…"
+                        showNewProductButton={false}
+                        compact
+                      />
+                      <p className="text-xs text-slate-500">
                         Para mão-de-obra directa sem produto, preencha interna/externa acima.
                       </p>
                     </div>
@@ -1302,15 +1300,6 @@ export function ProductCompositionPanel({
           </div>
         </div>
       ) : null}
-
-      <ProductCatalogPickerModal
-        open={searchModalOpen}
-        onOpenChange={setSearchModalOpen}
-        excludeIds={excludeProductIdsForSearch}
-        parentProductId={productId}
-        onSelect={handleProductPickFromSearch}
-        title="Pesquisar produto componente"
-      />
 
       <ProductCatalogPickerModal
         open={importModalOpen}

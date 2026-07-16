@@ -40,7 +40,7 @@ export async function validateSalesOrderCanEmitNfe(
   const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
     .select(
-      "id, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan"
+      "id, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan, invoice_document_type"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -54,6 +54,7 @@ export async function validateSalesOrderCanEmitNfe(
     fiscal_status: string | null;
     billing_closure: string | null;
     billing_plan: string | null;
+    invoice_document_type: string | null;
   } | null;
   if (!so) {
     return { ok: false, reasons: ["Pedido não encontrado."] };
@@ -65,6 +66,10 @@ export async function validateSalesOrderCanEmitNfe(
 
   if (so.billing_plan === "without_invoice") {
     reasons.push("Pedido marcado para entrega sem NF-e.");
+  } else if (!so.invoice_document_type) {
+    reasons.push(
+      "Tipo de nota não definido no Fiscal (NFS-e, NF-e produto ou industrialização)."
+    );
   }
 
   const emitOkStatuses = new Set([

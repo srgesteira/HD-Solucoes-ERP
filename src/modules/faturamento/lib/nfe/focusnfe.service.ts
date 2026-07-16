@@ -8,7 +8,16 @@ import axios, { type AxiosInstance } from "axios";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { maybeCloseSalesOrderOnNfeAuthorized } from "@/modules/faturamento/lib/sales-order-billing-closure";
 import type { Database } from "@/modules/core/types/database";
+import {
+  isInvoiceDocumentType,
+  type InvoiceDocumentType,
+} from "@/modules/core/types/sales-order-billing.types";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import {
+  buildNfeProductPayloadFromSalesOrder,
+  type NfeProductLineInput,
+} from "@/modules/faturamento/lib/nfe/build-nfe-product-payload";
 
 export type FocusNFeEnv = "homologacao" | "producao";
 
@@ -54,6 +63,36 @@ export async function emitirNFSeHttp(
 ): Promise<{ ok: boolean; status: number; data: unknown }> {
   const client = createClient(token, env);
   const res = await client.post(`/nfse?ref=${encodeURIComponent(ref)}`, body);
+  const data =
+    typeof res.data === "object" && res.data !== null
+      ? res.data
+      : { raw: res.data };
+  return { ok: res.status >= 200 && res.status < 300, status: res.status, data };
+}
+
+/** NF-e modelo 55 (produto / industrialização). */
+export async function emitirNFeProdutoHttp(
+  token: string,
+  env: FocusNFeEnv,
+  ref: string,
+  body: Record<string, unknown>
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const client = createClient(token, env);
+  const res = await client.post(`/nfe?ref=${encodeURIComponent(ref)}`, body);
+  const data =
+    typeof res.data === "object" && res.data !== null
+      ? res.data
+      : { raw: res.data };
+  return { ok: res.status >= 200 && res.status < 300, status: res.status, data };
+}
+
+export async function consultarNFeProdutoHttp(
+  token: string,
+  env: FocusNFeEnv,
+  ref: string
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const client = createClient(token, env);
+  const res = await client.get(`/nfe/${encodeURIComponent(ref)}`);
   const data =
     typeof res.data === "object" && res.data !== null
       ? res.data
@@ -434,8 +473,30 @@ export function buildNfsePayloadFromSalesOrder(
   };
 }
 
+function mapFocusNfeModelo55Response(data: unknown): NfseMappedFields {
+  const base = mapFocusNfseResponse(data);
+  if (!data || typeof data !== "object") return base;
+  const o = data as Record<string, unknown>;
+  return {
+    ...base,
+    nfe_key:
+      typeof o.chave_nfe === "string"
+        ? o.chave_nfe
+        : typeof o.chave === "string"
+          ? o.chave
+          : base.nfe_key,
+    xml_url:
+      typeof o.caminho_xml_nota_fiscal === "string"
+        ? o.caminho_xml_nota_fiscal
+        : base.xml_url,
+    pdf_url:
+      typeof o.caminho_danfe === "string" ? o.caminho_danfe : base.pdf_url,
+  };
+}
+
 /**
- * Emite NFS-e na Focus para o pedido: cria registo `nfes`, envia POST e actualiza URLs/estado.
+ * Emite nota na Focus conforme `invoice_document_type` gravado no Fiscal.
+ * NFS-e → /v2/nfse; NF-e produto/industrialização → /v2/nfe (homolog por defeito).
  */
 export async function emitirNFe(
   admin: Admin,
@@ -445,7 +506,7 @@ export async function emitirNFe(
   const { data: settings, error: csErr } = await admin
     .from("company_settings")
     .select(
-      "cnpj, municipal_registration, tax_regime, focusnfe_token, focusnfe_environment, address_state, nfse_item_lista_servico, nfse_iss_aliquota, nfse_prestador_codigo_municipio, nfse_codigo_nbs, nfse_codigo_indicador_operacao, nfse_ibs_cbs_classificacao_tributaria, nfse_use_sao_paulo_payload, nfse_codigo_tributario_municipio"
+      "cnpj, municipal_registration, tax_regime, focusnfe_token, focusnfe_environment, address_state, address_city, address_street, address_number, address_neighborhood, address_zip, state_registration, nfse_item_lista_servico, nfse_iss_aliquota, nfse_prestador_codigo_municipio, nfse_codigo_nbs, nfse_codigo_indicador_operacao, nfse_ibs_cbs_classificacao_tributaria, nfse_use_sao_paulo_payload, nfse_codigo_tributario_municipio"
     )
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -455,28 +516,40 @@ export async function emitirNFe(
   const env: FocusNFeEnv =
     settings?.focusnfe_environment === "producao" ? "producao" : "homologacao";
 
-  const { data: so, error: soErr } = await admin
-    .from("sales_orders")
+  const db = asUntypedAdmin(admin);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: soRaw, error: soErr } = await (db.from("sales_orders") as any)
     .select(
-      "id, status, order_date, client_name, client_document, client_address, client_email, client_phone, total, ready_for_invoice, fiscal_status"
+      "id, order_number, status, order_date, client_name, client_document, client_address, client_email, client_phone, total, ready_for_invoice, fiscal_status, invoice_document_type"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (soErr) throw new Error(soErr.message);
-  if (!so) throw new Error("Pedido não encontrado.");
+  if (!soRaw) throw new Error("Pedido não encontrado.");
+  const so = soRaw as {
+    id: string;
+    order_number: string;
+    order_date: string;
+    client_name: string;
+    client_document: string | null;
+    client_address: string | null;
+    client_email: string | null;
+    client_phone: string | null;
+    total: number;
+    invoice_document_type: string | null;
+  };
 
   const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, salesOrderId);
   if (!gate.ok) {
     throw new Error(gate.reasons.join(" "));
   }
 
-  const { data: itemRows, error: itemsErr } = await admin
-    .from("sales_order_items")
-    .select("description, quantity")
-    .eq("sales_order_id", salesOrderId)
-    .eq("tenant_id", tenantId);
-  if (itemsErr) throw new Error(itemsErr.message);
+  const docTypeRaw = so.invoice_document_type;
+  if (!isInvoiceDocumentType(docTypeRaw)) {
+    throw new Error("Tipo de nota inválido ou ausente.");
+  }
+  const docType: InvoiceDocumentType = docTypeRaw;
 
   const { data: inserted, error: insErr } = await admin
     .from("nfes")
@@ -491,65 +564,163 @@ export async function emitirNFe(
 
   const focus_ref = focusRefFromNfeId(inserted.id);
 
-  const lines = itemRows ?? [];
-  const desc = lines
-    .map((row) => {
-      if (!row || typeof row !== "object") return "";
-      const r = row as Record<string, unknown>;
-      const d = typeof r.description === "string" ? r.description : "";
-      const q = Number(r.quantity ?? 0);
-      return d ? `${d} (${q})` : "";
-    })
-    .filter(Boolean)
-    .join("; ");
-  const itemsDescription =
-    desc || `Pedido de venda — total R$ ${Number(so.total ?? 0).toFixed(2)}`;
-
   let payload: Record<string, unknown>;
+  let httpRes: { ok: boolean; status: number; data: unknown };
+
   try {
-    payload = buildNfsePayloadFromSalesOrder({
-      orderDate: String(so.order_date ?? new Date().toISOString().slice(0, 10)),
-      clientName: String(so.client_name ?? "Consumidor"),
-      clientDocument:
-        so.client_document == null ? null : String(so.client_document),
-      clientAddress:
-        so.client_address == null ? null : String(so.client_address),
-      clientEmail: so.client_email == null ? null : String(so.client_email),
-      clientPhone: so.client_phone == null ? null : String(so.client_phone),
-      total: Number(so.total ?? 0),
-      itemsDescription,
-      companyCnpj: settings?.cnpj ?? null,
-      municipalRegistration: settings?.municipal_registration ?? null,
-      taxRegime: settings?.tax_regime ?? null,
-      companyAddressState: settings?.address_state ?? null,
-      nfse_item_lista_servico: settings?.nfse_item_lista_servico ?? null,
-      nfse_iss_aliquota: settings?.nfse_iss_aliquota ?? null,
-      nfse_prestador_codigo_municipio:
-        settings?.nfse_prestador_codigo_municipio ?? null,
-      nfse_codigo_nbs: settings?.nfse_codigo_nbs ?? null,
-      nfse_codigo_indicador_operacao:
-        settings?.nfse_codigo_indicador_operacao ?? null,
-      nfse_ibs_cbs_classificacao_tributaria:
-        settings?.nfse_ibs_cbs_classificacao_tributaria ?? null,
-      nfse_use_sao_paulo_payload: Boolean(settings?.nfse_use_sao_paulo_payload),
-      nfse_codigo_tributario_municipio:
-        settings?.nfse_codigo_tributario_municipio ?? null,
-    });
+    if (docType === "nfse") {
+      const { data: itemRows, error: itemsErr } = await admin
+        .from("sales_order_items")
+        .select("description, quantity")
+        .eq("sales_order_id", salesOrderId)
+        .eq("tenant_id", tenantId);
+      if (itemsErr) throw new Error(itemsErr.message);
+
+      const lines = itemRows ?? [];
+      const desc = lines
+        .map((row) => {
+          if (!row || typeof row !== "object") return "";
+          const r = row as Record<string, unknown>;
+          const d = typeof r.description === "string" ? r.description : "";
+          const q = Number(r.quantity ?? 0);
+          return d ? `${d} (${q})` : "";
+        })
+        .filter(Boolean)
+        .join("; ");
+      const itemsDescription =
+        desc || `Pedido de venda — total R$ ${Number(so.total ?? 0).toFixed(2)}`;
+
+      payload = buildNfsePayloadFromSalesOrder({
+        orderDate: String(so.order_date ?? new Date().toISOString().slice(0, 10)),
+        clientName: String(so.client_name ?? "Consumidor"),
+        clientDocument:
+          so.client_document == null ? null : String(so.client_document),
+        clientAddress:
+          so.client_address == null ? null : String(so.client_address),
+        clientEmail: so.client_email == null ? null : String(so.client_email),
+        clientPhone: so.client_phone == null ? null : String(so.client_phone),
+        total: Number(so.total ?? 0),
+        itemsDescription,
+        companyCnpj: settings?.cnpj ?? null,
+        municipalRegistration: settings?.municipal_registration ?? null,
+        taxRegime: settings?.tax_regime ?? null,
+        companyAddressState: settings?.address_state ?? null,
+        nfse_item_lista_servico: settings?.nfse_item_lista_servico ?? null,
+        nfse_iss_aliquota: settings?.nfse_iss_aliquota ?? null,
+        nfse_prestador_codigo_municipio:
+          settings?.nfse_prestador_codigo_municipio ?? null,
+        nfse_codigo_nbs: settings?.nfse_codigo_nbs ?? null,
+        nfse_codigo_indicador_operacao:
+          settings?.nfse_codigo_indicador_operacao ?? null,
+        nfse_ibs_cbs_classificacao_tributaria:
+          settings?.nfse_ibs_cbs_classificacao_tributaria ?? null,
+        nfse_use_sao_paulo_payload: Boolean(settings?.nfse_use_sao_paulo_payload),
+        nfse_codigo_tributario_municipio:
+          settings?.nfse_codigo_tributario_municipio ?? null,
+      });
+      httpRes = await emitirNFSeHttp(token, env, focus_ref, payload);
+    } else {
+      const { data: itemRows, error: itemsErr } = await db
+        .from("sales_order_items")
+        .select(
+          "id, description, quantity, unit, unit_price, total_price, icms_rate, ipi_rate, product:products(ncm)"
+        )
+        .eq("sales_order_id", salesOrderId)
+        .eq("tenant_id", tenantId);
+      if (itemsErr) throw new Error(itemsErr.message);
+
+      const lineIds = (itemRows ?? []).map((r) => String((r as { id: string }).id));
+      const { data: apps } = await db
+        .from("fiscal_rule_applications")
+        .select("document_line_id, output_snapshot")
+        .eq("tenant_id", tenantId)
+        .eq("document_type", "sales_order_item")
+        .in("document_line_id", lineIds.length ? lineIds : ["__none__"])
+        .order("applied_at", { ascending: false });
+
+      const cfopByLine = new Map<string, string>();
+      for (const app of apps ?? []) {
+        const a = app as {
+          document_line_id?: string;
+          output_snapshot?: { cfop?: string } | null;
+        };
+        const lineId = a.document_line_id;
+        if (!lineId || cfopByLine.has(lineId)) continue;
+        const cfop = a.output_snapshot?.cfop;
+        if (typeof cfop === "string" && cfop.trim()) {
+          cfopByLine.set(lineId, cfop.trim());
+        }
+      }
+
+      const nfeItems: NfeProductLineInput[] = (itemRows ?? []).map((raw) => {
+        const it = raw as {
+          id: string;
+          description: string;
+          quantity: number;
+          unit: string;
+          unit_price: number;
+          total_price: number;
+          icms_rate: number | null;
+          ipi_rate: number | null;
+          product?:
+            | { ncm?: string | null }
+            | { ncm?: string | null }[]
+            | null;
+        };
+        const product = Array.isArray(it.product) ? it.product[0] : it.product;
+        return {
+          description: it.description,
+          quantity: Number(it.quantity ?? 0),
+          unit: it.unit ?? "UN",
+          unit_price: Number(it.unit_price ?? 0),
+          total_price: Number(it.total_price ?? 0),
+          ncm: product?.ncm ?? null,
+          cfop: cfopByLine.get(it.id) ?? null,
+          icms_rate: it.icms_rate == null ? null : Number(it.icms_rate),
+          ipi_rate: it.ipi_rate == null ? null : Number(it.ipi_rate),
+        };
+      });
+
+      payload = buildNfeProductPayloadFromSalesOrder({
+        documentType: docType,
+        orderDate: String(so.order_date ?? new Date().toISOString().slice(0, 10)),
+        orderNumber: String(so.order_number ?? so.id),
+        clientName: String(so.client_name ?? "Consumidor"),
+        clientDocument:
+          so.client_document == null ? null : String(so.client_document),
+        clientAddress:
+          so.client_address == null ? null : String(so.client_address),
+        clientEmail: so.client_email == null ? null : String(so.client_email),
+        clientPhone: so.client_phone == null ? null : String(so.client_phone),
+        companyCnpj: settings?.cnpj ?? null,
+        companyIe: settings?.state_registration ?? null,
+        companyAddressState: settings?.address_state ?? null,
+        companyAddressCity: settings?.address_city ?? null,
+        companyAddressStreet: settings?.address_street ?? null,
+        companyAddressNumber: settings?.address_number ?? null,
+        companyAddressNeighborhood: settings?.address_neighborhood ?? null,
+        companyAddressZip: settings?.address_zip ?? null,
+        items: nfeItems,
+      });
+      httpRes = await emitirNFeProdutoHttp(token, env, focus_ref, payload);
+    }
   } catch (e) {
     await admin
       .from("nfes")
       .update({
         status: "error",
-        error_message: e instanceof Error ? e.message : "Erro ao montar NFS-e.",
+        error_message: e instanceof Error ? e.message : "Erro ao montar nota.",
       })
       .eq("id", inserted.id)
       .eq("tenant_id", tenantId);
     throw e;
   }
 
-  const res = await emitirNFSeHttp(token, env, focus_ref, payload);
-  const mapped = mapFocusNfseResponse(res.data);
-  const status = mapApiStatusToDb(mapped.apiStatus, res.ok);
+  const mapped =
+    docType === "nfse"
+      ? mapFocusNfseResponse(httpRes.data)
+      : mapFocusNfeModelo55Response(httpRes.data);
+  const status = mapApiStatusToDb(mapped.apiStatus, httpRes.ok);
 
   await admin
     .from("nfes")
@@ -562,9 +733,10 @@ export async function emitirNFe(
       error_message:
         status === "error"
           ? mapped.error_message ??
-            (typeof (res.data as Record<string, unknown>)?.mensagem === "string"
-              ? String((res.data as Record<string, unknown>).mensagem)
-              : `HTTP ${res.status}`)
+            (typeof (httpRes.data as Record<string, unknown>)?.mensagem ===
+            "string"
+              ? String((httpRes.data as Record<string, unknown>).mensagem)
+              : `HTTP ${httpRes.status}`)
           : null,
     })
     .eq("id", inserted.id)
@@ -574,7 +746,7 @@ export async function emitirNFe(
     await maybeCloseSalesOrderOnNfeAuthorized(admin, tenantId, inserted.id);
   }
 
-  return { nfe_id: inserted.id, focus_ref, focus: res };
+  return { nfe_id: inserted.id, focus_ref, focus: httpRes };
 }
 
 export async function consultarNFe(

@@ -1,13 +1,19 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import {
   FileUp,
   Loader2,
   Save,
-  Search,
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -24,7 +30,7 @@ import {
   SupplierQuickCreateModal,
   type SupplierOption,
 } from "@/components/purchasing/supplier-quick-create-modal";
-import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import { ProductComboboxField } from "@/components/products/product-combobox-field";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 import type { PurchaseNFExtraction } from "@/modules/compras/lib/purchasing/purchase-nf-types";
 import type {
@@ -96,8 +102,51 @@ function buildInitialMappings(data: ReconcileUploadResult): LineMapping[] {
   });
 }
 
+function applyReconcileResult(
+  data: ReconcileUploadResult & { source?: string },
+  setters: {
+    setReconcile: (d: ReconcileUploadResult) => void;
+    setSupplier: (s: SupplierOption | null) => void;
+    setMappings: (m: LineMapping[]) => void;
+    setProductById: Dispatch<
+      SetStateAction<Record<string, ProductSearchHit>>
+    >;
+  }
+) {
+  setters.setReconcile(data);
+  setters.setSupplier(
+    data.supplier ?
+      {
+        id: data.supplier.id,
+        name: data.supplier.name,
+        document: data.supplier.document,
+        email: null,
+        phone: null,
+        code: data.supplier.code,
+      }
+    : null
+  );
+  setters.setMappings(buildInitialMappings(data));
+  setters.setProductById((prev) => {
+    const next = { ...prev };
+    for (const p of data.productCandidates ?? []) {
+      next[p.id] = {
+        id: p.id,
+        name: p.name,
+        code: p.code,
+        technical_code: p.technical_code,
+        unit: p.unit,
+        cost_price: 0,
+      };
+    }
+    return next;
+  });
+}
+
 export default function PurchaseInvoiceReconcilePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inboxId = searchParams.get("inbox")?.trim() ?? "";
   const { data: me, isLoading: meLoading } = useMe();
   const { can } = usePermissions();
   const isAdmin = me?.role === "admin";
@@ -109,25 +158,56 @@ export default function PurchaseInvoiceReconcilePage() {
   const [supplier, setSupplier] = useState<SupplierOption | null>(null);
   const [mappings, setMappings] = useState<LineMapping[]>([]);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
-  const [productPickerLine, setProductPickerLine] = useState<number | null>(null);
+  const [productById, setProductById] = useState<Record<string, ProductSearchHit>>(
+    {}
+  );
+  const [inboxLoading, setInboxLoading] = useState(false);
+
+  useEffect(() => {
+    if (!canUse || !inboxId || reconcile) return;
+    let cancelled = false;
+    setInboxLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/faturamento/entrada/inbox/${encodeURIComponent(inboxId)}/reconcile-payload`,
+          { credentials: "include", cache: "no-store" }
+        );
+        const json = (await res.json().catch(() => ({}))) as {
+          data?: ReconcileUploadResult;
+          error?: string;
+        };
+        if (!res.ok) throw new Error(json.error ?? "Erro ao carregar NF da inbox");
+        if (!json.data || cancelled) return;
+        applyReconcileResult(json.data, {
+          setReconcile,
+          setSupplier,
+          setMappings,
+          setProductById,
+        });
+        toast.success("NF da inbox MDe carregada. Revise a conciliação.");
+      } catch (e) {
+        if (!cancelled) {
+          toast.error(e instanceof Error ? e.message : "Erro ao carregar inbox");
+        }
+      } finally {
+        if (!cancelled) setInboxLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canUse, inboxId, reconcile]);
 
   const uploadMutation = useMutation({
     mutationFn: uploadInvoiceFile,
     onSuccess: (data) => {
-      setReconcile(data);
-      setSupplier(
-        data.supplier ?
-          {
-            id: data.supplier.id,
-            name: data.supplier.name,
-            document: data.supplier.document,
-            email: null,
-            phone: null,
-            code: data.supplier.code,
-          }
-        : null
-      );
-      setMappings(buildInitialMappings(data));
+      applyReconcileResult(data, {
+        setReconcile,
+        setSupplier,
+        setMappings,
+        setProductById,
+      });
       if (!data.supplier) {
         toast.warning(
           "Fornecedor não encontrado pelo CNPJ. Cadastre-o antes de confirmar."
@@ -222,10 +302,18 @@ export default function PurchaseInvoiceReconcilePage() {
     });
   };
 
-  const handleProductPick = (hit: ProductSearchHit) => {
-    if (productPickerLine === null) return;
-    updateMapping(productPickerLine, { productId: hit.id });
-    setProductPickerLine(null);
+  const productValueForLine = (productId: string): ProductSearchHit | null => {
+    if (!productId) return null;
+    if (productById[productId]) return productById[productId];
+    const label = productLabelById.get(productId);
+    return {
+      id: productId,
+      name: label ?? productId,
+      code: null,
+      technical_code: null,
+      unit: null,
+      cost_price: 0,
+    };
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -239,8 +327,12 @@ export default function PurchaseInvoiceReconcilePage() {
     }
   };
 
-  if (!canUse) {
-    return <LoadingState label="A verificar permissões…" />;
+  if (!canUse || inboxLoading) {
+    return (
+      <LoadingState
+        label={inboxLoading ? "A carregar NF da inbox…" : "A verificar permissões…"}
+      />
+    );
   }
 
   const inv = reconcile?.invoiceData;
@@ -467,22 +559,25 @@ export default function PurchaseInvoiceReconcilePage() {
 
                     <div className="space-y-2">
                       <Label className="text-xs">Produto</Label>
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <span className="text-sm text-slate-700 flex-1 min-w-[12rem]">
-                          {map.productId ?
-                            productLabelById.get(map.productId) ?? map.productId
-                          : "Não seleccionado"}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setProductPickerLine(index)}
-                        >
-                          <Search className="h-3.5 w-3.5" />
-                          Buscar produto
-                        </Button>
-                      </div>
+                      <ProductComboboxField
+                        value={productValueForLine(map.productId)}
+                        onChange={(hit) => {
+                          if (hit) {
+                            setProductById((prev) => ({
+                              ...prev,
+                              [hit.id]: hit,
+                            }));
+                            updateMapping(index, { productId: hit.id });
+                          } else {
+                            updateMapping(index, { productId: "" });
+                          }
+                        }}
+                        productType="all"
+                        showNewProductButton
+                        catalogTitle="Associar produto à linha da NF-e"
+                        placeholder="Digite código ou descrição…"
+                        compact
+                      />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 max-w-md">
@@ -543,17 +638,6 @@ export default function PurchaseInvoiceReconcilePage() {
         }}
       />
 
-      <ProductCatalogPickerModal
-        open={productPickerLine !== null}
-        onOpenChange={(open) => {
-          if (!open) setProductPickerLine(null);
-        }}
-        onSelect={handleProductPick}
-        excludeIds={[]}
-        productType="all"
-        showNewProductButton
-        title="Associar produto à linha da NF-e"
-      />
     </AppPage>
   );
 }

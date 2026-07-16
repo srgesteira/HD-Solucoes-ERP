@@ -33,6 +33,12 @@ import {
   FiscalItemEditModal,
 } from "@/components/fiscal/fiscal-item-edit-modal";
 import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-billing-display";
+import {
+  INVOICE_DOCUMENT_TYPE_LABELS,
+  INVOICE_DOCUMENT_TYPES,
+  isInvoiceDocumentType,
+  type InvoiceDocumentType,
+} from "@/modules/core/types/sales-order-billing.types";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
 import { cn } from "@/shared/utils/cn";
@@ -154,6 +160,28 @@ async function postCloseWithoutInvoice(orderId: string): Promise<void> {
   if (!res.ok) throw new Error(json.error ?? "Erro ao fechar sem nota");
 }
 
+async function postInvoiceDocumentType(
+  orderId: string,
+  invoice_document_type: InvoiceDocumentType
+): Promise<FiscalOrderReview> {
+  const res = await fetch(
+    `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/invoice-document-type`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invoice_document_type }),
+    }
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: FiscalOrderReview;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao gravar tipo de nota");
+  if (!json.data) throw new Error("Resposta inválida");
+  return json.data;
+}
+
 export default function FiscalOrderReviewPage() {
   const params = useParams();
   const router = useRouter();
@@ -220,6 +248,19 @@ export default function FiscalOrderReviewPage() {
       toast.success("Pedido enviado para Autorizadas (entrega sem nota).");
       void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
       router.push("/faturamento/fiscal?tab=nfe_authorized");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const docTypeMutation = useMutation({
+    mutationFn: (t: InvoiceDocumentType) =>
+      postInvoiceDocumentType(orderId, t),
+    onSuccess: () => {
+      toast.success("Tipo de nota gravado.");
+      void queryClient.invalidateQueries({
+        queryKey: ["fiscal-order-review", orderId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -435,6 +476,39 @@ export default function FiscalOrderReviewPage() {
                   <span className="text-slate-500">Operação</span>
                   <p>Venda</p>
                 </div>
+                {data.billing_plan !== "without_invoice" ? (
+                  <div className="space-y-1 pt-1 border-t border-slate-100">
+                    <label
+                      htmlFor="invoice-document-type"
+                      className="text-slate-500"
+                    >
+                      Tipo de nota (obrigatório para emitir)
+                    </label>
+                    <select
+                      id="invoice-document-type"
+                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm disabled:opacity-60"
+                      disabled={!isAdmin || docTypeMutation.isPending}
+                      value={data.invoice_document_type ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!isInvoiceDocumentType(v)) return;
+                        docTypeMutation.mutate(v);
+                      }}
+                    >
+                      <option value="">— Seleccionar —</option>
+                      {INVOICE_DOCUMENT_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {INVOICE_DOCUMENT_TYPE_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
+                    {!data.invoice_document_type ? (
+                      <p className="text-[11px] text-amber-800">
+                        A Expedição só emite depois deste tipo estar gravado.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
 

@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Search, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import { ProductComboboxField } from "@/components/products/product-combobox-field";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 
 type OpHit = {
@@ -14,12 +14,6 @@ type OpHit = {
   order_number: string;
   status: string;
   product_hint: string | null;
-};
-
-type SelectedProduct = {
-  id: string;
-  name: string;
-  technical_code: string | null;
 };
 
 async function searchOps(search: string): Promise<OpHit[]> {
@@ -74,8 +68,7 @@ export function ManualInventoryOutModal({
   onError,
   onSuccess,
 }: Props) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [product, setProduct] = useState<SelectedProduct | null>(null);
+  const [product, setProduct] = useState<ProductSearchHit | null>(null);
   const [qty, setQty] = useState("1");
   const [reason, setReason] = useState("");
   const [opSearch, setOpSearch] = useState("");
@@ -158,33 +151,14 @@ export function ManualInventoryOutModal({
           <div className="mt-4 space-y-3">
             <div className="space-y-1.5">
               <Label>Produto</Label>
-              {product ? (
-                <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 px-3 py-2">
-                  <div className="min-w-0 text-sm">
-                    <div className="font-mono text-xs text-slate-700">
-                      {product.technical_code ?? "—"}
-                    </div>
-                    <div className="truncate text-slate-800">{product.name}</div>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setPickerOpen(true)}
-                  >
-                    Trocar
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setPickerOpen(true)}
-                >
-                  <Search className="h-4 w-4" />
-                  Seleccionar produto
-                </Button>
-              )}
+              <ProductComboboxField
+                value={product}
+                onChange={setProduct}
+                productType="all"
+                showNewProductButton={false}
+                catalogTitle="Seleccionar produto para saída"
+                placeholder="Digite código ou descrição…"
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -302,22 +276,6 @@ export function ManualInventoryOutModal({
         </div>
       </div>
 
-      <ProductCatalogPickerModal
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        excludeIds={[]}
-        onSelect={(hit: ProductSearchHit) => {
-          setProduct({
-            id: hit.id,
-            name: hit.name,
-            technical_code: hit.technical_code,
-          });
-          setPickerOpen(false);
-        }}
-        productType="all"
-        showNewProductButton={false}
-        title="Seleccionar produto para saída"
-      />
     </>
   );
 }

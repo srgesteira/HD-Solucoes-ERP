@@ -3440,6 +3440,7 @@ export type Database = {
           finance_blocked: boolean
           finance_blocked_at: string | null
           finance_blocked_reason: string | null
+          fiscal_finalized_at: string | null
           fiscal_status: string
           freight_cost: number
           id: string
@@ -3477,6 +3478,7 @@ export type Database = {
           finance_blocked?: boolean
           finance_blocked_at?: string | null
           finance_blocked_reason?: string | null
+          fiscal_finalized_at?: string | null
           fiscal_status?: string
           freight_cost?: number
           id?: string
@@ -3514,6 +3516,7 @@ export type Database = {
           finance_blocked?: boolean
           finance_blocked_at?: string | null
           finance_blocked_reason?: string | null
+          fiscal_finalized_at?: string | null
           fiscal_status?: string
           freight_cost?: number
           id?: string
