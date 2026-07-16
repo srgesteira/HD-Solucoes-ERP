@@ -84,6 +84,8 @@ type Props = {
   commercialQuickCreate?: boolean;
   sourceQuoteId?: string | null;
   compact?: boolean;
+  parentProductId?: string;
+  hasCompositionOnly?: boolean;
 };
 
 /**
@@ -105,6 +107,8 @@ export function ProductComboboxField({
   commercialQuickCreate = false,
   sourceQuoteId = null,
   compact = false,
+  parentProductId,
+  hasCompositionOnly = false,
 }: Props) {
   const listboxId = useId();
   const autoId = useId();
@@ -289,6 +293,8 @@ export function ProductComboboxField({
         showNewProductButton={showNewProductButton}
         commercialQuickCreate={commercialQuickCreate}
         sourceQuoteId={sourceQuoteId}
+        parentProductId={parentProductId}
+        hasCompositionOnly={hasCompositionOnly}
         onSelect={(hit) => {
           pick(hit);
           setCatalogOpen(false);

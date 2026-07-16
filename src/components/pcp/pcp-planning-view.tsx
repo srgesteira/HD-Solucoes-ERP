@@ -13,7 +13,7 @@ import type { MrpCommitSummary, MrpSuggestionsSummary } from "@/modules/pcp/lib/
 import { PcpOrdersLegacyPanel } from "@/components/pcp/pcp-orders-legacy-panel";
 import { PcpLinesPlanningView } from "@/components/pcp/pcp-lines-planning-view";
 import { PcpPurchaseDependenciesPanel } from "@/components/pcp/pcp-purchase-dependencies-panel";
-import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
+import { ProductComboboxField } from "@/components/products/product-combobox-field";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
@@ -445,17 +445,34 @@ export function PcpPlanningView() {
     >
       <div className="pcp-legacy-shell space-y-4">
 
-      <ProductCatalogPickerModal
-        open={createOpen}
-        onOpenChange={(open) => {
-          if (!open && createMut.isPending) return;
-          setCreateOpen(open);
-        }}
-        excludeIds={[]}
-        title="Criar ordem de produção (estoque)"
-        productType="finished"
-        onSelect={(p) => setPickedProduct(p)}
-      />
+      {createOpen && !pickedProduct ? (
+        <div className="rounded-md border border-slate-200 bg-white p-3 text-sm space-y-3">
+          <p className="text-xs font-medium text-slate-600">
+            Criar ordem de produção (estoque) — seleccionar produto
+          </p>
+          <ProductComboboxField
+            value={null}
+            onChange={(p) => {
+              if (p) {
+                setPickedProduct(p);
+                setCreateOpen(false);
+              }
+            }}
+            productType="finished"
+            catalogTitle="Criar ordem de produção (estoque)"
+            placeholder="Digite código ou descrição…"
+            showNewProductButton={false}
+          />
+          <button
+            type="button"
+            disabled={createMut.isPending}
+            onClick={() => setCreateOpen(false)}
+            className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      ) : null}
 
       {pickedProduct ? (
         <div className="rounded-md border border-slate-200 bg-white p-3 text-sm">
@@ -463,16 +480,17 @@ export function PcpPlanningView() {
             Confirmar ordem de produção (estoque)
           </p>
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[220px]">
-              <div className="text-xs text-slate-600">Produto</div>
-              <div className="font-medium text-slate-900">
-                {pickedProduct.technical_code ||
-                  pickedProduct.code ||
-                  "—"}{" "}
-                <span className="font-normal text-slate-700">
-                  — {pickedProduct.name}
-                </span>
-              </div>
+            <div className="min-w-[220px] max-w-md flex-1">
+              <div className="text-xs text-slate-600 mb-1">Produto</div>
+              <ProductComboboxField
+                value={pickedProduct}
+                onChange={(p) => setPickedProduct(p)}
+                productType="finished"
+                catalogTitle="Criar ordem de produção (estoque)"
+                placeholder="Digite código ou descrição…"
+                showNewProductButton={false}
+                compact
+              />
             </div>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-600">Quantidade</span>
@@ -501,7 +519,7 @@ export function PcpPlanningView() {
             <button
               type="button"
               onClick={() => createMut.mutate()}
-              disabled={createMut.isPending}
+              disabled={createMut.isPending || !pickedProduct}
               className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-white pcp-btn-primary disabled:opacity-50"
             >
               {createMut.isPending ? (
@@ -514,16 +532,8 @@ export function PcpPlanningView() {
               disabled={createMut.isPending}
               onClick={() => {
                 clearStockOpDraft();
-                setCreateOpen(true);
+                setCreateOpen(false);
               }}
-              className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Trocar produto
-            </button>
-            <button
-              type="button"
-              disabled={createMut.isPending}
-              onClick={() => clearStockOpDraft()}
               className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               Cancelar
