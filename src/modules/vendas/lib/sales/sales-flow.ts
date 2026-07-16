@@ -231,6 +231,20 @@ export function parseSaleLines(raw: unknown):
       return { ok: false, message: `Item ${i + 1}: base de cálculo inválida.` };
     }
 
+    const usageRaw =
+      typeof r.usage_type === "string" ? r.usage_type.trim() : "";
+    const usage_type =
+      usageRaw === "consumo" ||
+      usageRaw === "materia_prima" ||
+      usageRaw === "revenda"
+        ? usageRaw
+        : null;
+
+    const item_notes =
+      typeof r.item_notes === "string" && r.item_notes.trim()
+        ? r.item_notes.trim()
+        : null;
+
     lines.push({
       ...(id ? { id } : {}),
       description,
@@ -244,6 +258,8 @@ export function parseSaleLines(raw: unknown):
       ipi_rate,
       ipi_value,
       tax_base,
+      usage_type,
+      item_notes,
     });
   }
 

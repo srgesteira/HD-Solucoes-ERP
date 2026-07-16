@@ -4,7 +4,10 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { isFiscalInvoicingListTab } from "@/modules/faturamento/lib/fiscal-invoicing-list-tabs";
+import {
+  FISCAL_INVOICING_LIST_TAB_DEFAULT,
+  isFiscalInvoicingListTab,
+} from "@/modules/faturamento/lib/fiscal-invoicing-list-tabs";
 import { listFiscalInvoicingOrders } from "@/modules/faturamento/lib/fiscal-invoicing-list-service";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +26,8 @@ export async function GET(request: NextRequest) {
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   const searchParams = request.nextUrl.searchParams;
-  const tabParam = searchParams.get("tab")?.trim() ?? "ready";
+  const tabParam =
+    searchParams.get("tab")?.trim() ?? FISCAL_INVOICING_LIST_TAB_DEFAULT;
   if (!isFiscalInvoicingListTab(tabParam)) {
     return apiError("Aba inválida", 400);
   }

@@ -3,7 +3,11 @@ import type { Database } from "@/modules/core/types/database";
 import type { PurchaseInvoiceConfirmInput } from "@/shared/contracts/purchase-invoice.schema";
 import { applyInventoryInbound } from "@/modules/almoxarifado/lib/inventory-inbound";
 import { INVENTORY_ORIGIN } from "@/modules/almoxarifado/lib/inventory-origins";
-import { applyPurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive";
+import { finalizePurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive-finalize";
+import {
+  ensurePayablesForPurchaseOrder,
+  purchaseOrderRowToPayablesInput,
+} from "@/modules/compras/lib/purchasing/purchase-payables";
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
 
 type Admin = SupabaseClient<Database>;
@@ -38,16 +42,25 @@ async function refreshPurchaseOrderStatus(
   const anyReceived = rows.some((r) => Number(r.received_quantity) > 0);
 
   if (allReceived) {
-    await applyPurchaseOrderReceive(admin, tenantId, purchaseOrderId);
-    await admin
+    // Mesmo caminho do kanban de entrada / POST receive (estoque + AP).
+    const { data: existing, error: poErr } = await admin
       .from("purchase_orders")
-      .update({
-        status: "received",
-        actual_delivery: new Date().toISOString().slice(0, 10),
-      })
+      .select(
+        "id, status, po_number, order_date, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      )
       .eq("id", purchaseOrderId)
       .eq("tenant_id", tenantId)
-      .eq("is_suggestion", false);
+      .eq("is_suggestion", false)
+      .maybeSingle();
+    if (poErr) throw new Error(poErr.message);
+    if (existing && existing.status !== "received") {
+      const payablesOrder = purchaseOrderRowToPayablesInput(existing);
+      await ensurePayablesForPurchaseOrder(admin, tenantId, payablesOrder, {
+        previousStatus: existing.status,
+        currentStatus: "received",
+      });
+      await finalizePurchaseOrderReceive(admin, tenantId, purchaseOrderId);
+    }
     return;
   }
 

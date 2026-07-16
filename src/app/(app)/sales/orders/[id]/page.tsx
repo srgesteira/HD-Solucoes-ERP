@@ -489,9 +489,8 @@ export default function SalesOrderDetailPage() {
       ),
     [nfeList]
   );
-  const canEmitNfe =
-    isAdmin &&
-    st === "confirmed" &&
+  /** Emissão real é na Expedição — aqui só apontamos quando o gate está pronto. */
+  const showExpedicaoEmitCta =
     q?.ready_for_invoice === true &&
     isFiscalReadyForInvoice(
       q?.ready_for_invoice === true,
@@ -698,14 +697,16 @@ export default function SalesOrderDetailPage() {
               Editar pedido
             </Button>
           ) : null}
-          {canEmitNfe ? (
+          {showExpedicaoEmitCta ? (
             <Button
               type="button"
               size="sm"
-              onClick={() => setNfeOpen(true)}
+              variant="outline"
+              onClick={() => router.push("/logistics/shipping")}
+              title="A emissão de nota é feita na Expedição"
             >
               <Receipt className="h-4 w-4" />
-              Emitir NFS-e
+              Emitir na Expedição
             </Button>
           ) : null}
           {canCancelAdmin ? (

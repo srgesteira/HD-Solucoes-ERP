@@ -29,13 +29,13 @@ const COLUMNS: Array<{
   },
   {
     key: "waiting",
-    label: "Conferido fiscalmente",
+    label: "Conferido",
     color: "#0ea5e9",
     hint: "Aguarda liberação do PCP",
   },
   {
     key: "ready",
-    label: "Pronto para emissão de NF",
+    label: "Pronto para emissão",
     color: "#10b981",
     hint: "Habilita «Emitir nota» na Expedição",
   },

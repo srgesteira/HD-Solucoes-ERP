@@ -103,12 +103,29 @@ function mapDetToItem(det: Record<string, unknown>, index: number): PurchaseNFIt
   };
 }
 
+/** Decodifica buffer NF-e (UTF-8 ou ISO-8859-1 / Windows-1252). */
+function decodeNfeXmlBuffer(xmlBuffer: Buffer): string {
+  const headLatin = xmlBuffer.subarray(0, 240).toString("latin1");
+  const encMatch = headLatin.match(/encoding\s*=\s*["']([^"']+)["']/i);
+  const enc = (encMatch?.[1] ?? "utf-8").toLowerCase().replace(/_/g, "-");
+  if (
+    enc.includes("8859-1") ||
+    enc.includes("latin1") ||
+    enc.includes("latin-1") ||
+    enc.includes("windows-1252") ||
+    enc.includes("cp1252")
+  ) {
+    return xmlBuffer.toString("latin1").replace(/^\uFEFF/, "").trim();
+  }
+  return xmlBuffer.toString("utf8").replace(/^\uFEFF/, "").trim();
+}
+
 /**
  * Parser determinístico de XML NF-e (modelo 55) → PurchaseNFExtraction.
  * Aceita nfeProc ou NFe solta; remove prefixos de namespace.
  */
 export function parsePurchaseNfeXml(xmlBuffer: Buffer): PurchaseNFExtraction {
-  const xml = xmlBuffer.toString("utf8").replace(/^\uFEFF/, "").trim();
+  const xml = decodeNfeXmlBuffer(xmlBuffer);
   if (!xml) throw new Error("XML vazio.");
   if (!xml.includes("<") || !/nfe|NFe|infNFe/i.test(xml)) {
     throw new Error("Ficheiro não parece XML de NF-e.");

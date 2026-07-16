@@ -215,7 +215,7 @@ export default function ShipmentDetailPage() {
   const { canMenu } = usePermissions();
   const isAdmin = me?.role === "admin";
   const canEmitNota = isAdmin || canMenu("faturamento") || canMenu("expedicao");
-  const canClickEmit = isAdmin;
+  const canClickEmit = canEmitNota;
   const [form, setForm] = useState<LogisticsForm | null>(null);
 
   const query = useQuery({
@@ -339,13 +339,11 @@ export default function ShipmentDetailPage() {
               variant={gate?.can_emit && canClickEmit ? "primary" : "outline"}
               disabled={busy || !gate?.can_emit || !canClickEmit}
               title={
-                !canClickEmit
-                  ? "Emissão NFS-e restrita a administradores (gate fiscal já calculado)"
-                  : gate?.can_emit
-                    ? "Emitir NFS-e deste pedido (liberado pelo Faturamento)"
-                    : gate?.reasons?.length
-                      ? gate.reasons.join(" ")
-                      : "Aguardando conferência fiscal + liberação PCP"
+                gate?.can_emit
+                  ? "Emitir NFS-e (PCP liberou + fiscal conferido)"
+                  : gate?.reasons?.length
+                    ? gate.reasons.join(" ")
+                    : "Aguardando conferência fiscal + liberação PCP"
               }
               onClick={() => {
                 if (!s.sales_order_id || !gate?.can_emit || !canClickEmit) return;

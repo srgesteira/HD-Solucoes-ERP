@@ -103,22 +103,6 @@ async function fetchFiscalInvoicing(filters: {
   return json;
 }
 
-async function postEmitNfse(salesOrderId: string): Promise<{ nfe_id: string }> {
-  const res = await fetch("/api/nfe/emitir", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sales_order_id: salesOrderId }),
-  });
-  const json = (await res.json().catch(() => ({}))) as {
-    nfe_id?: string;
-    error?: string;
-  };
-  if (!res.ok) throw new Error(json.error ?? "Erro ao emitir NFS-e");
-  if (!json.nfe_id) throw new Error("Resposta inválida da API");
-  return { nfe_id: json.nfe_id };
-}
-
 async function consultNfe(nfeId: string): Promise<void> {
   const res = await fetch(
     `/api/nfe/consultar?nfe_id=${encodeURIComponent(nfeId)}`,
@@ -193,7 +177,6 @@ export default function FiscalInvoicingPage() {
   const [page, setPage] = useState(1);
   const limit = 25;
   const [syncingNfeId, setSyncingNfeId] = useState<string | null>(null);
-  const [emittingOrderId, setEmittingOrderId] = useState<string | null>(null);
   const [closingWithoutInvoiceId, setClosingWithoutInvoiceId] = useState<
     string | null
   >(null);
@@ -236,23 +219,6 @@ export default function FiscalInvoicingPage() {
   const invalidateList = () => {
     void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
   };
-
-  const emitMutation = useMutation({
-    mutationFn: async (orderId: string) => {
-      setEmittingOrderId(orderId);
-      const { nfe_id } = await postEmitNfse(orderId);
-      for (let i = 0; i < 12; i++) {
-        await consultNfe(nfe_id);
-        await new Promise((r) => setTimeout(r, 1200));
-      }
-    },
-    onSuccess: () => {
-      toast.success("NFS-e enviada — verifique o estado na listagem.");
-      invalidateList();
-    },
-    onError: (err: Error) => toast.error(err.message),
-    onSettled: () => setEmittingOrderId(null),
-  });
 
   const syncNfe = useCallback(async (nfeId: string) => {
     setSyncingNfeId(nfeId);
@@ -572,21 +538,16 @@ export default function FiscalInvoicingPage() {
                   <Sparkles className="h-3.5 w-3.5" />
                 </Button>
               ) : null}
-              {isAdmin && row.can_emit && row.billing_plan !== "without_invoice" ? (
+              {row.can_emit && row.billing_plan !== "without_invoice" ? (
                 <Button
                   type="button"
                   size="sm"
-                  variant="primary"
+                  variant="outline"
                   className="h-7 px-2 text-[11px]"
-                  disabled={emittingOrderId === row.id}
-                  title="Emitir NFS-e"
-                  onClick={() => emitMutation.mutate(row.id)}
+                  title="Emissão na Expedição"
+                  onClick={() => router.push("/logistics/shipping")}
                 >
-                  {emittingOrderId === row.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Send className="h-3.5 w-3.5" />
-                  )}
+                  <Send className="h-3.5 w-3.5" />
                 </Button>
               ) : null}
               {isAdmin &&
@@ -655,7 +616,7 @@ export default function FiscalInvoicingPage() {
     return (
       <AppPage
         title="Faturamento fiscal"
-        description="Emissão de NFS-e e acompanhamento fiscal dos pedidos de venda."
+        description="Conferência fiscal dos pedidos de venda."
         width="wide"
       >
         <p className="text-slate-600 py-12 text-center">

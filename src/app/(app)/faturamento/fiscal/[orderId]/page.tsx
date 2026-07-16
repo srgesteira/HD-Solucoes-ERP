@@ -380,7 +380,8 @@ export default function FiscalOrderReviewPage() {
             </div>
           ) : (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              Fiscal alinhado — pode emitir NF-e ou confirmar entrega sem nota.
+              Fiscal alinhado. Quando o PCP liberar, a emissão fica na
+              Expedição; ou confirme entrega sem nota no Faturamento.
             </div>
           )}
 

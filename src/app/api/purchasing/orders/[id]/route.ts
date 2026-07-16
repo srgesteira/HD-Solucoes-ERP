@@ -240,6 +240,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         ipi_rate: row.ipi_rate,
         ipi_value: row.ipi_value,
         tax_base,
+        usage_type: row.usage_type ?? null,
+        item_notes: row.item_notes ?? null,
       };
     });
     const { data: existingTaxRows } = await admin

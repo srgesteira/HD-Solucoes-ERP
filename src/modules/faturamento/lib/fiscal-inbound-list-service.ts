@@ -39,8 +39,13 @@ function matchesTab(tab: FiscalInboundListTab, row: FiscalInboundListRow): boole
         !configured
       );
     case "ready_to_receive":
+      // Inclui `sent` com fiscal OK para o card não desaparecer do kanban;
+      // concretizar na UI/API continua a exigir confirmed|partial.
       return (
-        (row.status === "confirmed" || row.status === "partial") && configured
+        (row.status === "sent" ||
+          row.status === "confirmed" ||
+          row.status === "partial") &&
+        configured
       );
     case "received":
       return row.status === "received";

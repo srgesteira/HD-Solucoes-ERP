@@ -3,7 +3,7 @@
 import type { FiscalStatus } from "@/modules/fiscal/lib/fiscal-rules-types";
 import {
   FISCAL_STATUS_LABELS,
-  isFiscalReadyForInvoice,
+  isFiscalConfigured,
 } from "@/modules/fiscal/lib/fiscal-rules-types";
 import { cn } from "@/shared/utils/cn";
 
@@ -51,15 +51,16 @@ export function ReadyForInvoiceCompositeBadge({
     fiscalStatus in FISCAL_STATUS_LABELS ? fiscalStatus : "pending"
   ) as FiscalStatus;
   const productionOk = readyForInvoice;
-  const fiscalOk = isFiscalReadyForInvoice(readyForInvoice, fiscalKey);
+  const fiscalOk = isFiscalConfigured(fiscalKey);
+  const bothOk = productionOk && fiscalOk;
 
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
-        fiscalOk
+        bothOk
           ? "bg-teal-100 text-teal-900"
-          : productionOk
+          : productionOk && !fiscalOk
             ? "bg-amber-50 text-amber-900 border border-amber-200"
             : "bg-slate-100 text-slate-700",
         className
@@ -68,11 +69,7 @@ export function ReadyForInvoiceCompositeBadge({
     >
       <span>{productionOk ? "Produção ✓" : "Produção …"}</span>
       <span className="opacity-60">·</span>
-      <span>
-        {isFiscalReadyForInvoice(readyForInvoice, fiscalKey)
-          ? "Fiscal ✓"
-          : "Fiscal …"}
-      </span>
+      <span>{fiscalOk ? "Fiscal ✓" : "Fiscal …"}</span>
     </span>
   );
 }

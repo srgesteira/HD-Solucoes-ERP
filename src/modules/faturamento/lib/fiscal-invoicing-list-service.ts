@@ -111,11 +111,11 @@ function isBillingOpen(row: SalesOrderBase): boolean {
 }
 
 function hasActiveNfe(nfeStatus: string | null): boolean {
+  // NF em erro não bloqueia re-conferência fiscal (vai na aba «Com erro»).
   return (
     nfeStatus === "pending" ||
     nfeStatus === "processing" ||
-    nfeStatus === "authorized" ||
-    nfeStatus === "error"
+    nfeStatus === "authorized"
   );
 }
 
@@ -157,7 +157,8 @@ function matchesTab(
         return false;
       }
       if (!row.ready_for_invoice) return false;
-      return semNota || canEmit;
+      // Membership da coluna ≠ can_emit (crédito/status não escondem o card).
+      return semNota || isFiscalConfigured(fiscal);
     case "nfe_active":
       return nfeStatus === "pending" || nfeStatus === "processing";
     case "nfe_authorized":

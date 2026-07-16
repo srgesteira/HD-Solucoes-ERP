@@ -333,14 +333,22 @@ export async function loadMenuAlerts(
     tasks.push(
       (async () => {
         const db = asUntypedAdmin(admin);
-        // Pedidos prontos para faturar (produção concluiu + fiscal OK) — atenção.
+        const fiscalBoardStatuses = [
+          "confirmed",
+          "in_production",
+          "shipped",
+          "delivered",
+        ] as const;
+
+        // Pronto para emissão (PCP + fiscal OK) — atenção no Faturamento;
+        // a emissão em si é na Expedição.
         const { count: readyCount, error: readyErr } = await db
           .from("sales_orders")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
           .is("billing_closure", null)
           .eq("ready_for_invoice", true)
-          .eq("status", "confirmed")
+          .in("status", [...fiscalBoardStatuses])
           .in("fiscal_status", [
             "rules_applied",
             "manual_override",
@@ -358,21 +366,48 @@ export async function loadMenuAlerts(
               detailId: "fiscal.ready-for-invoice",
               detailLabel: countLabel(
                 n,
-                "pedido pronto para faturar",
-                "pedidos prontos para faturar"
+                "pedido pronto para emissão (Expedição)",
+                "pedidos prontos para emissão (Expedição)"
               ),
             }
           );
         }
-        // §7.1: pedidos efetivados com fiscal por conferir desde já,
-        // mesmo antes de a produção concluir. Atenção (não urgente),
-        // pois há tempo enquanto a produção roda.
+        // Árvore de Natal: PCP liberou sem fiscal — urgente (subconjunto).
+        const { count: xmasCount, error: xmasErr } = await db
+          .from("sales_orders")
+          .select("*", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .is("billing_closure", null)
+          .eq("ready_for_invoice", true)
+          .in("fiscal_status", ["pending", "no_rules", "review_required"])
+          .in("status", [...fiscalBoardStatuses]);
+        if (!xmasErr) {
+          const n = xmasCount ?? 0;
+          pushAlert(
+            alerts,
+            details,
+            MENU_ALERT_PATHS.fiscalInvoicing,
+            n,
+            "urgent",
+            {
+              detailId: "fiscal.ready-without-review",
+              detailLabel: countLabel(
+                n,
+                "pedido liberado pelo PCP sem conferência fiscal",
+                "pedidos liberados pelo PCP sem conferência fiscal"
+              ),
+            }
+          );
+        }
+        // Fiscal por conferir sem urgência PCP — exclui ready_for_invoice
+        // (já contados na árvore de Natal) para não duplicar o badge.
         const { count: pendingFiscalCount, error: pendingErr } = await db
           .from("sales_orders")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
           .is("billing_closure", null)
-          .in("status", ["pending", "confirmed", "in_production"])
+          .eq("ready_for_invoice", false)
+          .in("status", [...fiscalBoardStatuses])
           .in("fiscal_status", ["pending", "no_rules"]);
         if (!pendingErr) {
           const n = pendingFiscalCount ?? 0;
@@ -392,14 +427,15 @@ export async function loadMenuAlerts(
             }
           );
         }
-        // Pedidos com fiscal pedindo revisão — urgente (algo travou o motor).
+        // Revisão do motor — só se PCP ainda não liberou (senão já está no xmas).
         const { count: reviewCount, error: reviewErr } = await db
           .from("sales_orders")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
           .is("billing_closure", null)
+          .eq("ready_for_invoice", false)
           .eq("fiscal_status", "review_required")
-          .in("status", ["pending", "confirmed", "in_production"]);
+          .in("status", [...fiscalBoardStatuses]);
         if (!reviewErr) {
           const n = reviewCount ?? 0;
           pushAlert(
@@ -414,34 +450,6 @@ export async function loadMenuAlerts(
                 n,
                 "pedido com fiscal a rever",
                 "pedidos com fiscal a rever"
-              ),
-            }
-          );
-        }
-        // Árvore de Natal: PCP liberou (ready_for_invoice) mas fiscal ainda
-        // não conferiu — urgente para o Faturamento.
-        const { count: xmasCount, error: xmasErr } = await db
-          .from("sales_orders")
-          .select("*", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .is("billing_closure", null)
-          .eq("ready_for_invoice", true)
-          .in("fiscal_status", ["pending", "no_rules", "review_required"])
-          .in("status", ["confirmed", "in_production", "shipped", "delivered"]);
-        if (!xmasErr) {
-          const n = xmasCount ?? 0;
-          pushAlert(
-            alerts,
-            details,
-            MENU_ALERT_PATHS.fiscalInvoicing,
-            n,
-            "urgent",
-            {
-              detailId: "fiscal.ready-without-review",
-              detailLabel: countLabel(
-                n,
-                "pedido liberado pelo PCP sem conferência fiscal",
-                "pedidos liberados pelo PCP sem conferência fiscal"
               ),
             }
           );

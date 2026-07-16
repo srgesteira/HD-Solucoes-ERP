@@ -46,6 +46,11 @@ const purchaseOrderItemLineSchema = z
     ipi_value: moneyField.optional(),
     ipi_amount: moneyField.optional(),
     tax_base: moneyField.optional(),
+    item_notes: z.string().nullable().optional(),
+    usage_type: z
+      .enum(["consumo", "materia_prima", "revenda"])
+      .nullable()
+      .optional(),
   })
   .transform((row) => ({
     id: row.id,
@@ -59,6 +64,11 @@ const purchaseOrderItemLineSchema = z
     ipi_rate: row.ipi_rate ?? 0,
     ipi_value: row.ipi_value ?? row.ipi_amount ?? 0,
     tax_base: row.tax_base,
+    item_notes:
+      typeof row.item_notes === "string" && row.item_notes.trim()
+        ? row.item_notes.trim()
+        : null,
+    usage_type: row.usage_type ?? null,
   }));
 
 export const purchaseOrderItemsPayloadSchema = z

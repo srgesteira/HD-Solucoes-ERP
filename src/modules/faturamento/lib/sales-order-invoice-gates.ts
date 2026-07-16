@@ -67,8 +67,16 @@ export async function validateSalesOrderCanEmitNfe(
     reasons.push("Pedido marcado para entrega sem NF-e.");
   }
 
-  if (so.status !== "confirmed") {
-    reasons.push('Pedido deve estar "Confirmado".');
+  const emitOkStatuses = new Set([
+    "confirmed",
+    "in_production",
+    "shipped",
+    "delivered",
+  ]);
+  if (!emitOkStatuses.has(so.status)) {
+    reasons.push(
+      'Pedido deve estar confirmado, em produção, expedido ou entregue.'
+    );
   }
 
   const fiscal = fiscalStatusOf(so.fiscal_status);
