@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { Loader2, PackageCheck, Sparkles } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 import { FiscalStatusBadge } from "@/components/fiscal/fiscal-status-badge";
@@ -13,7 +13,6 @@ import {
   type FiscalInboundListTab,
 } from "@/modules/faturamento/lib/fiscal-inbound-list-tabs";
 import { formatFiscalListDate } from "@/modules/faturamento/lib/fiscal-invoicing-list-display";
-import { isFiscalConfigured } from "@/modules/fiscal/lib/fiscal-rules-types";
 import { cn } from "@/shared/utils/cn";
 import { fmtBRL } from "@/shared/utils/format-brl";
 
@@ -23,19 +22,19 @@ const COLUMNS: Array<{
   hint: string;
 }> = [
   {
-    key: "to_review",
+    key: "open",
     color: "#f59e0b",
-    hint: "Compras: qtd/valor/frete no PC · Fiscal: aplicar regras",
-  },
-  {
-    key: "ready_to_receive",
-    color: "#10b981",
-    hint: "Concretizar → estoque + contas a pagar",
+    hint: "Pré-conferir: aplicar regras antes ou depois do receive",
   },
   {
     key: "received",
+    color: "#10b981",
+    hint: "Recebido em Compras — finalizar conferência fiscal",
+  },
+  {
+    key: "finalized",
     color: "#64748b",
-    hint: "Recebimento concluído",
+    hint: "Conferência fiscal concluída",
   },
 ];
 
@@ -70,27 +69,24 @@ async function fetchColumn(
 function InboundCard({
   row,
   onApplied,
-  onConcretized,
 }: {
   row: FiscalInboundListRow;
   onApplied: () => void;
-  onConcretized: () => void;
 }) {
-  const [busy, setBusy] = useState<"fiscal" | "receive" | null>(null);
+  const [busy, setBusy] = useState(false);
   const showApply =
-    row.status === "sent" ||
-    row.status === "confirmed" ||
-    row.status === "partial";
-  const fiscalOk = isFiscalConfigured(row.fiscal_status ?? "pending");
-  const showConcretize =
-    fiscalOk && (row.status === "confirmed" || row.status === "partial");
+    !row.fiscal_finalized_at &&
+    (row.status === "sent" ||
+      row.status === "confirmed" ||
+      row.status === "partial" ||
+      row.status === "received");
 
   return (
     <div className="rounded-md border border-slate-200 bg-white shadow-sm">
       <div className="p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <Link
-            href={`/purchasing/orders/${row.id}`}
+            href={`/faturamento/entrada/${row.id}`}
             className="text-sm font-semibold text-slate-900 hover:text-emerald-800 hover:underline"
           >
             {row.order_number}
@@ -113,10 +109,10 @@ function InboundCard({
               size="sm"
               variant="outline"
               className="h-7 px-2 text-[11px]"
-              disabled={busy != null}
+              disabled={busy}
               title="Aplicar motor fiscal (NCM/CFOP/alíquotas)"
               onClick={async () => {
-                setBusy("fiscal");
+                setBusy(true);
                 try {
                   const res = await fetch(
                     `/api/faturamento/entrada/${row.id}/apply-fiscal`,
@@ -136,11 +132,11 @@ function InboundCard({
                 } catch (e) {
                   toast.error(e instanceof Error ? e.message : "Erro");
                 } finally {
-                  setBusy(null);
+                  setBusy(false);
                 }
               }}
             >
-              {busy === "fiscal" ? (
+              {busy ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Sparkles className="h-3.5 w-3.5" />
@@ -148,51 +144,12 @@ function InboundCard({
               Aplicar fiscal
             </Button>
           ) : null}
-          {showConcretize ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="primary"
-              className="h-7 px-2 text-[11px]"
-              disabled={busy != null}
-              title="Concretizar: entrada de estoque + contas a pagar"
-              onClick={async () => {
-                if (
-                  !confirm(
-                    `Concretizar ${row.order_number}? Isto dá entrada no estoque e confirma contas a pagar.`
-                  )
-                ) {
-                  return;
-                }
-                setBusy("receive");
-                try {
-                  const res = await fetch(
-                    `/api/faturamento/entrada/${row.id}/concretize`,
-                    { method: "POST", credentials: "include" }
-                  );
-                  const json = (await res.json().catch(() => ({}))) as {
-                    error?: string;
-                  };
-                  if (!res.ok) {
-                    throw new Error(json.error ?? "Erro ao concretizar");
-                  }
-                  toast.success("Pedido concretizado.");
-                  onConcretized();
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Erro");
-                } finally {
-                  setBusy(null);
-                }
-              }}
-            >
-              {busy === "receive" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <PackageCheck className="h-3.5 w-3.5" />
-              )}
-              Concretizar
-            </Button>
-          ) : null}
+          <Link
+            href={`/faturamento/entrada/${row.id}`}
+            className="inline-flex h-7 items-center rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 hover:bg-slate-50"
+          >
+            Conferir
+          </Link>
         </div>
       </div>
     </div>
@@ -225,10 +182,9 @@ export function FiscalInboundKanban({ search, enabled = true }: Props) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
-        Kanban de <strong>entrada</strong> — sem drag. Compras ajusta
-        quantidade/valor/frete no PC; Faturamento aplica regras e concreta
-        (reusa o receive existente). Separação fina Compras→Fiscal (flag) fica
-        para refinement se o dono pedir.
+        Kanban de <strong>entrada</strong> — sem drag. Compras finaliza o
+        recebimento (estoque + AP); Faturamento pré-aplica regras e conclui a
+        conferência fiscal na página do pedido.
       </p>
 
       {loading ? (
@@ -285,7 +241,6 @@ export function FiscalInboundKanban({ search, enabled = true }: Props) {
                         key={row.id}
                         row={row}
                         onApplied={invalidate}
-                        onConcretized={invalidate}
                       />
                     ))
                   )}

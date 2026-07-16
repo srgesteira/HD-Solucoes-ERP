@@ -1,7 +1,7 @@
 export const FISCAL_INBOUND_LIST_TABS = [
-  "to_review",
-  "ready_to_receive",
+  "open",
   "received",
+  "finalized",
 ] as const;
 
 export type FiscalInboundListTab = (typeof FISCAL_INBOUND_LIST_TABS)[number];
@@ -14,9 +14,9 @@ export const FISCAL_INBOUND_LIST_TAB_LABELS: Record<
   FiscalInboundListTab,
   string
 > = {
-  to_review: "Compras / Fiscal a conferir",
-  ready_to_receive: "Pronto para concretizar",
-  received: "Concretizados",
+  open: "Em aberto",
+  received: "Recebido",
+  finalized: "Finalizado",
 };
 
 /** PCs visíveis no kanban de entrada (exclui draft/cancelled). */
@@ -25,4 +25,11 @@ export const FISCAL_INBOUND_ORDER_STATUSES = [
   "confirmed",
   "partial",
   "received",
+] as const;
+
+/** Status de PC ainda em pré-conferência (antes do receive em Compras). */
+export const FISCAL_INBOUND_OPEN_STATUSES = [
+  "sent",
+  "confirmed",
+  "partial",
 ] as const;

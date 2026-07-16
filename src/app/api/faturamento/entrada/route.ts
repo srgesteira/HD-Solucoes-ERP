@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   const searchParams = request.nextUrl.searchParams;
-  const tabParam = searchParams.get("tab")?.trim() ?? "to_review";
+  const tabParam = searchParams.get("tab")?.trim() ?? "open";
   if (!isFiscalInboundListTab(tabParam)) {
     return apiError("Aba inválida", 400);
   }

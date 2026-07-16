@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
-import { isFiscalConfigured } from "@/modules/fiscal/lib/fiscal-rules-types";
 import {
+  FISCAL_INBOUND_OPEN_STATUSES,
   FISCAL_INBOUND_ORDER_STATUSES,
   type FiscalInboundListTab,
 } from "@/modules/faturamento/lib/fiscal-inbound-list-tabs";
@@ -18,6 +18,7 @@ export type FiscalInboundListRow = {
   total: number;
   fiscal_status: string | null;
   freight_cost: number | null;
+  fiscal_finalized_at: string | null;
 };
 
 export type FiscalInboundListResult = {
@@ -27,28 +28,18 @@ export type FiscalInboundListResult = {
 };
 
 function matchesTab(tab: FiscalInboundListTab, row: FiscalInboundListRow): boolean {
-  const fiscal = row.fiscal_status ?? "pending";
-  const configured = isFiscalConfigured(fiscal);
+  const finalized = row.fiscal_finalized_at != null;
+  const isOpen = (FISCAL_INBOUND_OPEN_STATUSES as readonly string[]).includes(
+    row.status
+  );
 
   switch (tab) {
-    case "to_review":
-      return (
-        (row.status === "sent" ||
-          row.status === "confirmed" ||
-          row.status === "partial") &&
-        !configured
-      );
-    case "ready_to_receive":
-      // Inclui `sent` com fiscal OK para o card não desaparecer do kanban;
-      // concretizar na UI/API continua a exigir confirmed|partial.
-      return (
-        (row.status === "sent" ||
-          row.status === "confirmed" ||
-          row.status === "partial") &&
-        configured
-      );
+    case "open":
+      return isOpen;
     case "received":
-      return row.status === "received";
+      return row.status === "received" && !finalized;
+    case "finalized":
+      return finalized;
     default:
       return true;
   }
@@ -70,7 +61,7 @@ export async function listFiscalInboundOrders(
   let query = db
     .from("purchase_orders")
     .select(
-      "id, po_number, order_date, status, total, fiscal_status, freight_cost, supplier:suppliers(name)",
+      "id, po_number, order_date, status, total, fiscal_status, freight_cost, fiscal_finalized_at, supplier:suppliers(name)",
       { count: "exact" }
     )
     .eq("tenant_id", tenantId)
@@ -96,6 +87,7 @@ export async function listFiscalInboundOrders(
       total: number | null;
       fiscal_status: string | null;
       freight_cost: number | null;
+      fiscal_finalized_at: string | null;
       supplier?: { name?: string | null } | { name?: string | null }[] | null;
     };
     const supplier = Array.isArray(r.supplier) ? r.supplier[0] : r.supplier;
@@ -107,8 +99,8 @@ export async function listFiscalInboundOrders(
       status: r.status,
       total: Number(r.total ?? 0),
       fiscal_status: r.fiscal_status,
-      freight_cost:
-        r.freight_cost == null ? null : Number(r.freight_cost),
+      freight_cost: r.freight_cost == null ? null : Number(r.freight_cost),
+      fiscal_finalized_at: r.fiscal_finalized_at ?? null,
     };
   });
 

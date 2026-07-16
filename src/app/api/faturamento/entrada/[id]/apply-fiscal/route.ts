@@ -29,25 +29,29 @@ export async function POST(_request: NextRequest, { params }: Params) {
     const admin = createSupabaseAdminClient();
     const { data: po, error } = await admin
       .from("purchase_orders")
-      .select("id, status")
+      .select("id, status, fiscal_finalized_at")
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!po) return apiError("Pedido de compra não encontrado", 404);
-    if (po.status === "received") {
-      return apiError("Pedido já recebido — fiscal não pode ser reaplicado.", 400);
-    }
     if (po.status === "cancelled") {
       return apiError("Pedido cancelado.", 400);
+    }
+    if (po.fiscal_finalized_at) {
+      return apiError(
+        "Conferência fiscal já finalizada — não pode reaplicar.",
+        400
+      );
     }
     if (
       po.status !== "sent" &&
       po.status !== "confirmed" &&
-      po.status !== "partial"
+      po.status !== "partial" &&
+      po.status !== "received"
     ) {
       return apiError(
-        'Pedido deve estar "Enviado", "Confirmado" ou "Parcial".',
+        'Pedido deve estar "Enviado", "Confirmado", "Parcial" ou "Recebido".',
         400
       );
     }

@@ -276,7 +276,7 @@ export default function PurchaseOrderDetailPage() {
     orderSummary.status !== "received";
 
   const canReceive = Boolean(
-    isAdmin &&
+    canPurchasing &&
       orderSummary &&
       orderSummary.status !== "received" &&
       orderSummary.status !== "cancelled"
@@ -537,8 +537,15 @@ export default function PurchaseOrderDetailPage() {
               ) : (
                 <PackageCheck className="h-4 w-4" />
               )}
-              Recalcular custos e finalizar recebimento
+              Conferido / finalizar recebimento
             </Button>
+          ) : orderSummary?.status === "received" ? (
+            <Link
+              href={`/faturamento/entrada/${orderId}`}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Conferir fiscal de entrada
+            </Link>
           ) : undefined
         }
       />
