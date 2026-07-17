@@ -80,11 +80,39 @@ input[type="number"] {
 
   .quote-print-table {
     page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  /* Linhas altas (descrição longa) DEVEM poder partir — avoid deixa a 1.ª página vazia. */
+  .quote-print-table thead {
+    display: table-header-group;
+  }
+
+  .quote-print-table tbody {
+    display: table-row-group;
   }
 
   .quote-print-table tr {
-    page-break-inside: avoid;
+    page-break-inside: auto;
+    break-inside: auto;
     page-break-after: auto;
+  }
+
+  .quote-print-table td,
+  .quote-print-table th {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  .qp-table-wrap {
+    overflow: visible !important;
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  .qp-product-desc {
+    orphans: 2;
+    widows: 2;
   }
 
   .quote-print-fixed-footer {

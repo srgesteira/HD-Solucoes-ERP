@@ -76,9 +76,28 @@ const PRINT_STYLES = `
   .quote-print-table thead {
     background: #1e293b !important;
     color: #fff !important;
+    display: table-header-group;
   }
   .quote-print-table thead th {
     color: #fff !important;
+  }
+  .quote-print-table tbody {
+    display: table-row-group;
+  }
+  .quote-print-table tr,
+  .quote-print-table td,
+  .quote-print-table th {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+  .qp-table-wrap {
+    overflow: visible !important;
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+  .qp-product-desc {
+    orphans: 2;
+    widows: 2;
   }
   .quote-print-fixed-footer {
     position: fixed;
@@ -286,7 +305,7 @@ const PRINT_STYLES = `
 
 .qp-table-wrap {
   margin: 0.4rem 0;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 5px;
   border: 1px solid #e2e8f0;
 }

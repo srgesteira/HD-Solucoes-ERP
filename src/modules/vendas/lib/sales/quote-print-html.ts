@@ -122,21 +122,24 @@ table.qp-items {
   margin: 8px 0 4px;
   border: 1px solid #e2e8f0;
   border-radius: 5px;
-  overflow: hidden;
   font-size: 9pt;
+  page-break-inside: auto;
+  break-inside: auto;
 }
-table.qp-items thead { background: #1e293b; color: #fff; }
+table.qp-items thead { background: #1e293b; color: #fff; display: table-header-group; }
+table.qp-items tbody { display: table-row-group; }
 table.qp-items thead th { padding: 5px 6px; text-align: left; font-size: 8.5pt; font-weight: 600; }
 table.qp-items thead th.num { text-align: right; }
 table.qp-items thead th.qty-col { text-align: center; width: 56px; }
 table.qp-items thead th.code-col { width: 110px; }
-table.qp-items tbody td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+table.qp-items tbody td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; page-break-inside: auto; break-inside: auto; }
+table.qp-items tbody tr { page-break-inside: auto; break-inside: auto; page-break-after: auto; }
 table.qp-items tbody tr:last-child td { border-bottom: none; }
 table.qp-items tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.qp-items tbody td.qty { text-align: center; }
 .qp-code { font-family: ui-monospace, monospace; font-size: 8.5pt; }
 .qp-product-name { font-weight: 600; }
-.qp-product-desc { margin: 3px 0 0; font-size: 8.5pt; color: #475569; }
+.qp-product-desc { margin: 3px 0 0; font-size: 8.5pt; color: #475569; orphans: 2; widows: 2; }
 .qp-totals {
   display: flex;
   justify-content: flex-end;
