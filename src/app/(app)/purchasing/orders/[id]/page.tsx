@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
+  FileUp,
   Loader2,
   Mail,
   PackageCheck,
@@ -376,6 +377,14 @@ export default function PurchaseOrderDetailPage() {
             <Printer className="h-4 w-4" />
             Imprimir / PDF
           </Button>
+          {canReceive ? (
+            <Link href={`/purchasing/invoices/reconcile?po=${orderId}`}>
+              <Button type="button" variant="outline" size="sm">
+                <FileUp className="h-4 w-4" />
+                Importar / conciliar NF-e
+              </Button>
+            </Link>
+          ) : null}
           <Button
             type="button"
             variant="outline"

@@ -85,19 +85,52 @@ function isAllowedInvoiceFile(f: File): boolean {
   return false;
 }
 
-function buildInitialMappings(data: ReconcileUploadResult): LineMapping[] {
-  return data.invoiceData.items.map((item, index) => {
+function buildInitialMappings(
+  data: ReconcileUploadResult,
+  preferredPoId?: string
+): LineMapping[] {
+  const usedPoItemIds = new Set<string>();
+
+  return data.invoiceData.items.map((_item, index) => {
     const sug = data.suggestions.find((s) => s.invoiceLineIndex === index);
-    const poItem = data.pendingItems.find(
-      (p) => p.id === sug?.suggestedPurchaseOrderItemId
+
+    const candidates = (data.pendingItems ?? []).filter(
+      (p) => !usedPoItemIds.has(p.id)
     );
+
+    const preferredCandidates = preferredPoId
+      ? candidates.filter((p) => p.purchaseOrderId === preferredPoId)
+      : candidates;
+
+    let poItem =
+      (sug?.suggestedPurchaseOrderItemId
+        ? preferredCandidates.find((p) => p.id === sug.suggestedPurchaseOrderItemId) ??
+          candidates.find((p) => p.id === sug.suggestedPurchaseOrderItemId)
+        : undefined) ??
+      preferredCandidates.find((p) => {
+        if (sug?.suggestedProductId && p.productId === sug.suggestedProductId) {
+          return true;
+        }
+        return false;
+      }) ??
+      (preferredPoId && preferredCandidates.length === 1
+        ? preferredCandidates[0]
+        : undefined);
+
+    if (!poItem && sug?.suggestedPurchaseOrderItemId) {
+      poItem = candidates.find((p) => p.id === sug.suggestedPurchaseOrderItemId);
+    }
+
+    if (poItem) usedPoItemIds.add(poItem.id);
+
     return {
-      purchaseOrderItemId: sug?.suggestedPurchaseOrderItemId ?? "",
-      purchaseOrderId: sug?.suggestedPurchaseOrderId ?? poItem?.purchaseOrderId ?? "",
-      productId: sug?.suggestedProductId ?? poItem?.productId ?? "",
+      purchaseOrderItemId: poItem?.id ?? "",
+      purchaseOrderId: poItem?.purchaseOrderId ?? "",
+      productId:
+        sug?.suggestedProductId ?? poItem?.productId ?? "",
       quantity: item.quantity,
       unitPrice: item.unitPrice ?? 0,
-      isNewPurchase: !sug?.suggestedPurchaseOrderItemId,
+      isNewPurchase: !poItem,
     };
   });
 }
@@ -111,7 +144,8 @@ function applyReconcileResult(
     setProductById: Dispatch<
       SetStateAction<Record<string, ProductSearchHit>>
     >;
-  }
+  },
+  preferredPoId?: string
 ) {
   setters.setReconcile(data);
   setters.setSupplier(
@@ -126,7 +160,7 @@ function applyReconcileResult(
       }
     : null
   );
-  setters.setMappings(buildInitialMappings(data));
+  setters.setMappings(buildInitialMappings(data, preferredPoId));
   setters.setProductById((prev) => {
     const next = { ...prev };
     for (const p of data.productCandidates ?? []) {
@@ -147,6 +181,7 @@ export default function PurchaseInvoiceReconcilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inboxId = searchParams.get("inbox")?.trim() ?? "";
+  const preferredPoId = searchParams.get("po")?.trim() ?? "";
   const { data: me, isLoading: meLoading } = useMe();
   const { can } = usePermissions();
   const isAdmin = me?.role === "admin";
@@ -162,6 +197,24 @@ export default function PurchaseInvoiceReconcilePage() {
     {}
   );
   const [inboxLoading, setInboxLoading] = useState(false);
+
+  const preferredPoNumber = useMemo(() => {
+    if (!preferredPoId || !reconcile) return null;
+    return (
+      reconcile.pendingItems.find((p) => p.purchaseOrderId === preferredPoId)
+        ?.poNumber ?? null
+    );
+  }, [preferredPoId, reconcile]);
+
+  const usedPoItemIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of mappings) {
+      if (!m.isNewPurchase && m.purchaseOrderItemId.trim()) {
+        s.add(m.purchaseOrderItemId.trim());
+      }
+    }
+    return s;
+  }, [mappings]);
 
   useEffect(() => {
     if (!canUse || !inboxId || reconcile) return;
@@ -179,12 +232,16 @@ export default function PurchaseInvoiceReconcilePage() {
         };
         if (!res.ok) throw new Error(json.error ?? "Erro ao carregar NF da inbox");
         if (!json.data || cancelled) return;
-        applyReconcileResult(json.data, {
-          setReconcile,
-          setSupplier,
-          setMappings,
-          setProductById,
-        });
+        applyReconcileResult(
+          json.data,
+          {
+            setReconcile,
+            setSupplier,
+            setMappings,
+            setProductById,
+          },
+          preferredPoId || undefined
+        );
         toast.success("NF da inbox MDe carregada. Revise a conciliação.");
       } catch (e) {
         if (!cancelled) {
@@ -197,17 +254,21 @@ export default function PurchaseInvoiceReconcilePage() {
     return () => {
       cancelled = true;
     };
-  }, [canUse, inboxId, reconcile]);
+  }, [canUse, inboxId, reconcile, preferredPoId]);
 
   const uploadMutation = useMutation({
     mutationFn: uploadInvoiceFile,
     onSuccess: (data) => {
-      applyReconcileResult(data, {
-        setReconcile,
-        setSupplier,
-        setMappings,
-        setProductById,
-      });
+      applyReconcileResult(
+        data,
+        {
+          setReconcile,
+          setSupplier,
+          setMappings,
+          setProductById,
+        },
+        preferredPoId || undefined
+      );
       if (!data.supplier) {
         toast.warning(
           "Fornecedor não encontrado pelo CNPJ. Cadastre-o antes de confirmar."
@@ -228,6 +289,7 @@ export default function PurchaseInvoiceReconcilePage() {
         throw new Error("Selecione ou cadastre o fornecedor.");
       }
 
+      const linkedPoItems = new Set<string>();
       const payloadMappings = mappings.map((m, index) => {
         if (!m.productId.trim()) {
           throw new Error(`Item ${index + 1}: seleccione um produto.`);
@@ -236,6 +298,15 @@ export default function PurchaseInvoiceReconcilePage() {
           throw new Error(
             `Item ${index + 1}: seleccione um item de pedido ou marque como nova compra.`
           );
+        }
+        if (!m.isNewPurchase && m.purchaseOrderItemId.trim()) {
+          const poItemId = m.purchaseOrderItemId.trim();
+          if (linkedPoItems.has(poItemId)) {
+            throw new Error(
+              `Item ${index + 1}: o item do pedido já está ligado a outra linha da nota.`
+            );
+          }
+          linkedPoItems.add(poItemId);
         }
         return {
           invoiceLineIndex: index,
@@ -268,7 +339,7 @@ export default function PurchaseInvoiceReconcilePage() {
     },
     onSuccess: (data) => {
       toast.success("Nota fiscal recebida e estoque actualizado.");
-      const poId = data?.primaryPurchaseOrderId;
+      const poId = preferredPoId || data?.primaryPurchaseOrderId;
       if (poId) router.push(`/purchasing/orders/${poId}`);
       else router.push("/purchasing/orders");
     },
@@ -293,6 +364,24 @@ export default function PurchaseInvoiceReconcilePage() {
   );
 
   const onPoItemSelect = (index: number, poItemId: string) => {
+    if (!poItemId) {
+      updateMapping(index, {
+        purchaseOrderItemId: "",
+        purchaseOrderId: "",
+        isNewPurchase: false,
+      });
+      return;
+    }
+    const alreadyUsed = mappings.some(
+      (m, i) =>
+        i !== index &&
+        !m.isNewPurchase &&
+        m.purchaseOrderItemId === poItemId
+    );
+    if (alreadyUsed) {
+      toast.error("Este item do pedido já está ligado a outra linha da nota.");
+      return;
+    }
     const po = reconcile?.pendingItems.find((p) => p.id === poItemId);
     updateMapping(index, {
       purchaseOrderItemId: poItemId,
@@ -301,6 +390,27 @@ export default function PurchaseInvoiceReconcilePage() {
       isNewPurchase: false,
     });
   };
+
+  const pendingItemsForLine = useCallback(
+    (currentPoItemId: string) => {
+      const items = [...(reconcile?.pendingItems ?? [])].filter(
+        (po) =>
+          po.id === currentPoItemId || !usedPoItemIds.has(po.id)
+      );
+      items.sort((a, b) => {
+        if (preferredPoId) {
+          const aPref = a.purchaseOrderId === preferredPoId ? 0 : 1;
+          const bPref = b.purchaseOrderId === preferredPoId ? 0 : 1;
+          if (aPref !== bPref) return aPref - bPref;
+        }
+        const byPo = a.poNumber.localeCompare(b.poNumber, "pt");
+        if (byPo !== 0) return byPo;
+        return a.description.localeCompare(b.description, "pt");
+      });
+      return items;
+    },
+    [reconcile?.pendingItems, usedPoItemIds, preferredPoId]
+  );
 
   const productValueForLine = (productId: string): ProductSearchHit | null => {
     if (!productId) return null;
@@ -339,18 +449,39 @@ export default function PurchaseInvoiceReconcilePage() {
 
   return (
     <AppPage
-      backHref="/purchasing/orders"
-      backLabel="Pedidos de compra"
+      backHref={
+        preferredPoId
+          ? `/purchasing/orders/${preferredPoId}`
+          : "/purchasing/orders"
+      }
+      backLabel={
+        preferredPoId
+          ? preferredPoNumber
+            ? `Voltar ao pedido ${preferredPoNumber}`
+            : "Voltar ao pedido"
+          : "Pedidos de compra"
+      }
       width="default"
       density="comfortable"
       title={
         <div className="flex items-center gap-2">
           <FileUp className="h-6 w-6 text-brand-700" aria-hidden />
-          <span>Importar NF-e (PDF ou XML)</span>
+          <span>
+            {preferredPoNumber
+              ? `Conciliar NF-e · Pedido ${preferredPoNumber}`
+              : "Importar NF-e (PDF ou XML)"}
+          </span>
         </div>
       }
     >
-
+      {preferredPoId ? (
+        <p className="text-sm text-slate-600 -mt-2 mb-2">
+          Importa a nota neste pedido. Cada linha da NF liga a no máximo um
+          item de pedido (e cada item de pedido só pode ser usado numa linha).
+          Linhas de outros PCs podem ser ligadas a outros pedidos na mesma
+          nota.
+        </p>
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">1. Upload do PDF ou XML</CardTitle>
@@ -481,8 +612,10 @@ export default function PurchaseInvoiceReconcilePage() {
             <CardHeader>
               <CardTitle className="text-lg">3. Conciliação de itens</CardTitle>
               <p className="text-sm text-slate-500 font-normal">
-                Associe cada linha da nota a um item de pedido pendente ou marque
-                como nova compra (entrada directa no estoque).
+                Associe cada linha da nota a um item de pedido pendente. Um item
+                de pedido só pode ser ligado a uma linha da nota. Se a nota
+                cobrir vários pedidos, escolha o PC correcto em cada linha — ou
+                marque como nova compra (entrada directa no estoque).
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -547,13 +680,32 @@ export default function PurchaseInvoiceReconcilePage() {
                           onChange={(e) => onPoItemSelect(index, e.target.value)}
                         >
                           <option value="">— Seleccionar —</option>
-                          {(reconcile?.pendingItems ?? []).map((po) => (
-                            <option key={po.id} value={po.id}>
-                              PC {po.poNumber} — {po.description.slice(0, 50)} (
-                              pend. {po.pendingQuantity})
-                            </option>
-                          ))}
+                          {pendingItemsForLine(map.purchaseOrderItemId).map(
+                            (po) => {
+                              const isPreferred =
+                                preferredPoId &&
+                                po.purchaseOrderId === preferredPoId;
+                              return (
+                                <option key={po.id} value={po.id}>
+                                  {isPreferred ? "★ " : ""}
+                                  PC {po.poNumber} — {po.description.slice(0, 50)}{" "}
+                                  (pend. {po.pendingQuantity})
+                                </option>
+                              );
+                            }
+                          )}
                         </select>
+                        {preferredPoId ? (
+                          <p className="text-[11px] text-slate-500">
+                            Itens com ★ são deste pedido. Os já ligados noutra
+                            linha da nota deixam de aparecer.
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-slate-500">
+                            Itens já ligados noutra linha da nota deixam de
+                            aparecer.
+                          </p>
+                        )}
                       </div>
                     ) : null}
 
