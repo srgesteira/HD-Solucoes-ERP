@@ -91,7 +91,7 @@ function buildInitialMappings(
 ): LineMapping[] {
   const usedPoItemIds = new Set<string>();
 
-  return data.invoiceData.items.map((_item, index) => {
+  return data.invoiceData.items.map((item, index) => {
     const sug = data.suggestions.find((s) => s.invoiceLineIndex === index);
 
     const candidates = (data.pendingItems ?? []).filter(
