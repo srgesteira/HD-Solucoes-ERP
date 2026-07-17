@@ -7,6 +7,7 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { cn } from "@/shared/utils/cn";
+import { matchesTokenSearch } from "@/shared/utils/universal-search";
 import { SUPPLIERS_ACTIVE_QUERY_KEY } from "@/modules/compras/lib/suppliers/query-keys";
 import {
   SupplierQuickCreateModal,
@@ -20,13 +21,7 @@ function supplierLabel(s: SupplierOption): string {
 }
 
 function matchesSupplierQuery(s: SupplierOption, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return (
-    s.code.toLowerCase().includes(q) ||
-    s.name.toLowerCase().includes(q) ||
-    (s.document?.toLowerCase().includes(q) ?? false)
-  );
+  return matchesTokenSearch(query, [s.code, s.name, s.document, s.email, s.phone]);
 }
 
 type Props = {

@@ -21,7 +21,6 @@ import {
   resolveQuoteIdsFromUniversalSearch,
 } from "@/modules/core/lib/universal-search-query";
 import { enrichQuotesWithMarkupAlerts } from "@/modules/vendas/lib/sales/quote-markup-enrich";
-import { escapeIlike } from "@/shared/utils/universal-search";
 
 export const dynamic = "force-dynamic";
 
@@ -101,11 +100,6 @@ export async function GET(request: NextRequest) {
     );
     if (orFilter) {
       query = query.or(orFilter);
-    } else {
-      const safe = `%${escapeIlike(rawSearch)}%`;
-      query = query.or(
-        `quote_number.ilike.${safe},client_name.ilike.${safe},client_email.ilike.${safe}`
-      );
     }
   }
 

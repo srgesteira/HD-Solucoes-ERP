@@ -1,9 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import {
-  escapeIlike,
+  buildTokenAndFieldIlikeOrFilter,
   extractIsoDateFromSearch,
   normalizeUniversalSearch,
+  tokenizeSearch,
+  escapeIlike,
+  applyTokenFieldIlikeOrFilters,
 } from "@/shared/utils/universal-search";
 
 type Admin = SupabaseClient<Database>;
@@ -11,16 +14,23 @@ type Admin = SupabaseClient<Database>;
 async function findProductIdsBySearch(
   admin: Admin,
   tenantId: string,
-  safe: string
+  rawSearch: string
 ): Promise<string[]> {
-  const { data, error } = await admin
+  const tokens = tokenizeSearch(rawSearch);
+  if (!tokens.length) return [];
+
+  let q = admin
     .from("products")
     .select("id")
-    .eq("tenant_id", tenantId)
-    .or(
-      `code.ilike.${safe},technical_code.ilike.${safe},name.ilike.${safe},description.ilike.${safe}`
-    );
+    .eq("tenant_id", tenantId);
 
+  q = applyTokenFieldIlikeOrFilters(
+    q,
+    ["code", "technical_code", "name", "description"],
+    rawSearch
+  );
+
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => row.id);
 }
@@ -93,8 +103,7 @@ export async function resolveQuoteIdsFromUniversalSearch(
 ): Promise<string[]> {
   const text = normalizeUniversalSearch(rawSearch);
   if (!text) return [];
-  const safe = `%${escapeIlike(text)}%`;
-  const productIds = await findProductIdsBySearch(admin, tenantId, safe);
+  const productIds = await findProductIdsBySearch(admin, tenantId, text);
   return findQuoteIdsByProductSearch(admin, tenantId, productIds);
 }
 
@@ -106,8 +115,7 @@ export async function resolveSalesOrderIdsFromUniversalSearch(
 ): Promise<string[]> {
   const text = normalizeUniversalSearch(rawSearch);
   if (!text) return [];
-  const safe = `%${escapeIlike(text)}%`;
-  const productIds = await findProductIdsBySearch(admin, tenantId, safe);
+  const productIds = await findProductIdsBySearch(admin, tenantId, text);
   return findSalesOrderIdsByProductSearch(admin, tenantId, productIds);
 }
 
@@ -119,8 +127,7 @@ export async function resolvePurchaseOrderIdsFromUniversalSearch(
 ): Promise<string[]> {
   const text = normalizeUniversalSearch(rawSearch);
   if (!text) return [];
-  const safe = `%${escapeIlike(text)}%`;
-  const productIds = await findProductIdsBySearch(admin, tenantId, safe);
+  const productIds = await findProductIdsBySearch(admin, tenantId, text);
   return findPurchaseOrderIdsByProductSearch(admin, tenantId, productIds);
 }
 
@@ -132,12 +139,12 @@ export function buildQuoteUniversalSearchOrFilter(
   const text = normalizeUniversalSearch(rawSearch);
   if (!text) return null;
 
-  const safe = `%${escapeIlike(text)}%`;
-  const parts: string[] = [
-    `quote_number.ilike.${safe}`,
-    `client_name.ilike.${safe}`,
-    `client_email.ilike.${safe}`,
-  ];
+  const parts: string[] = [];
+  const header = buildTokenAndFieldIlikeOrFilter(
+    ["quote_number", "client_name", "client_email"],
+    text
+  );
+  if (header) parts.push(header);
 
   const isoDate = extractIsoDateFromSearch(text);
   if (isoDate) {
@@ -160,11 +167,12 @@ export function buildSalesOrderUniversalSearchOrFilter(
   const text = normalizeUniversalSearch(rawSearch);
   if (!text) return null;
 
-  const safe = `%${escapeIlike(text)}%`;
-  const parts: string[] = [
-    `order_number.ilike.${safe}`,
-    `client_name.ilike.${safe}`,
-  ];
+  const parts: string[] = [];
+  const header = buildTokenAndFieldIlikeOrFilter(
+    ["order_number", "client_name", "client_document", "client_email"],
+    text
+  );
+  if (header) parts.push(header);
 
   const isoDate = extractIsoDateFromSearch(text);
   if (isoDate) {
@@ -183,13 +191,14 @@ export function buildSalesOrderUniversalSearchOrFilter(
 export function buildPurchaseOrderUniversalSearchOrFilter(
   rawSearch: string,
   orderIdsFromProducts: string[],
-  supplierNames: string[] = []
+  _supplierNames: string[] = []
 ): string | null {
   const text = normalizeUniversalSearch(rawSearch);
   if (!text) return null;
 
-  const safe = `%${escapeIlike(text)}%`;
-  const parts: string[] = [`po_number.ilike.${safe}`];
+  const parts: string[] = [];
+  const header = buildTokenAndFieldIlikeOrFilter(["po_number"], text);
+  if (header) parts.push(header);
 
   const isoDate = extractIsoDateFromSearch(text);
   if (isoDate) {
@@ -201,14 +210,14 @@ export function buildPurchaseOrderUniversalSearchOrFilter(
     parts.push(`id.in.(${orderIdsFromProducts.join(",")})`);
   }
 
-  for (const name of supplierNames) {
-    if (name.toLowerCase().includes(text.toLowerCase())) {
-      // handled client-side for supplier join; keep po_number/date/product match server-side
-      break;
-    }
-  }
-
   return buildOrFilter(parts);
 }
 
-export { extractIsoDateFromSearch, normalizeUniversalSearch };
+export {
+  extractIsoDateFromSearch,
+  normalizeUniversalSearch,
+  escapeIlike,
+  applyTokenFieldIlikeOrFilters,
+  buildTokenAndFieldIlikeOrFilter,
+  tokenizeSearch,
+};

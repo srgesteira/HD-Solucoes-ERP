@@ -7,6 +7,7 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/utils/cn";
+import { matchesTokenSearch } from "@/shared/utils/universal-search";
 import {
   CustomerQuickCreateModal,
   type CustomerOption,
@@ -99,12 +100,9 @@ export function CustomerSearchField({
   }, [customerId, pinnedCustomers, seedCustomer, customersQuery.data]);
 
   const searchResults = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    if (!q) return [];
-    const matchesQuery = (c: CustomerOption) => {
-      const hay = `${c.name} ${c.document ?? ""} ${c.email ?? ""}`.toLowerCase();
-      return hay.includes(q);
-    };
+    if (!debouncedSearch.trim()) return [];
+    const matchesQuery = (c: CustomerOption) =>
+      matchesTokenSearch(debouncedSearch, [c.name, c.document, c.email]);
     const map = new Map<string, CustomerOption>();
     for (const c of customersQuery.data ?? []) {
       if (c.id) map.set(c.id, c);

@@ -5,16 +5,12 @@ import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import type { Database } from "@/modules/core/types/database";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 export const dynamic = "force-dynamic";
 
 type ProductionOrderRow =
   Database["public"]["Tables"]["production_orders"]["Row"];
-
-/** Escapa `%` e `_` para filtros `.ilike` dentro de `.or()` */
-function escapeIlike(pattern: string): string {
-  return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 const ORDER_STATUSES = new Set([
   "imported",
@@ -64,9 +60,11 @@ export async function GET(request: NextRequest) {
   }
 
   if (search) {
-    const condensed = search.replace(/,/g, " ").trim();
-    const safe = `%${escapeIlike(condensed)}%`;
-    query = query.or(`order_number.ilike.${safe},client_name.ilike.${safe}`);
+    query = applyTokenFieldIlikeOrFilters(
+      query,
+      ["order_number", "client_name"],
+      search
+    );
   }
 
   const { data, error, count } = await query

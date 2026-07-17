@@ -5,6 +5,7 @@ import type {
   PurchaseNFItem,
 } from "@/modules/compras/lib/purchasing/purchase-nf-types";
 import { onlyDigits } from "@/shared/utils/br-document";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 type Admin = SupabaseClient<Database>;
 
@@ -288,16 +289,15 @@ export async function searchProductCandidates(
   const map = new Map<string, ProductCandidate>();
   for (const term of terms) {
     if (term.length < 3) continue;
-    const safe = term.replace(/%/g, "").replace(/_/g, "");
-    const { data } = await admin
-      .from("products")
-      .select("id, name, code, technical_code, unit")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .or(
-        `name.ilike.%${safe}%,code.ilike.%${safe}%,technical_code.ilike.%${safe}%`
-      )
-      .limit(15);
+    const { data } = await applyTokenFieldIlikeOrFilters(
+      admin
+        .from("products")
+        .select("id, name, code, technical_code, unit")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true),
+      ["name", "code", "technical_code"],
+      term
+    ).limit(15);
 
     for (const p of data ?? []) {
       map.set(p.id, {

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import type { PcpPurchaseScheduleRow } from "@/modules/pcp/lib/pcp-purchase-schedule";
 import { formatPcpDate } from "@/modules/pcp/lib/pcp-order-display";
 import { BrDateInput } from "@/shared/ui/br-date-input";
+import { matchesTokenSearch } from "@/shared/utils/universal-search";
 
 async function fetchSchedule(): Promise<PcpPurchaseScheduleRow[]> {
   const res = await fetch("/api/pcp/purchase-schedule", {
@@ -65,17 +66,15 @@ export function PcpPurchaseSchedulePanel() {
       toast.error(e instanceof Error ? e.message : "Erro"),
   });
 
-  const filtered = (q.data ?? []).filter((row) => {
-    const t = search.trim().toLowerCase();
-    if (!t) return true;
-    return (
-      row.po_number.toLowerCase().includes(t) ||
-      (row.sales_order_number ?? "").toLowerCase().includes(t) ||
-      row.description.toLowerCase().includes(t) ||
-      (row.product_code ?? "").toLowerCase().includes(t) ||
-      (row.supplier_name ?? "").toLowerCase().includes(t)
-    );
-  });
+  const filtered = (q.data ?? []).filter((row) =>
+    matchesTokenSearch(search, [
+      row.po_number,
+      row.sales_order_number,
+      row.description,
+      row.product_code,
+      row.supplier_name,
+    ])
+  );
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">

@@ -5,16 +5,12 @@ import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import type { Database } from "@/modules/core/types/database";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 export const dynamic = "force-dynamic";
 
 type SupplierRow = Database["public"]["Tables"]["suppliers"]["Row"];
 type SupplierInsert = Database["public"]["Tables"]["suppliers"]["Insert"];
-
-/** Escapa `%` e `_` para filtros `.ilike` dentro de `.or()`. */
-function escapeIlike(pattern: string): string {
-  return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -49,10 +45,10 @@ export async function GET(request: NextRequest) {
     .eq("tenant_id", tenantId);
 
   if (search) {
-    const condensed = search.replace(/,/g, " ").trim();
-    const safe = `%${escapeIlike(condensed)}%`;
-    query = query.or(
-      `code.ilike.${safe},name.ilike.${safe},document.ilike.${safe},email.ilike.${safe},phone.ilike.${safe}`
+    query = applyTokenFieldIlikeOrFilters(
+      query,
+      ["code", "name", "document", "email", "phone"],
+      search
     );
   }
 

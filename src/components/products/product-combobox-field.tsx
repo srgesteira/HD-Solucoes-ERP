@@ -6,6 +6,7 @@ import { Loader2, Search } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { cn } from "@/shared/utils/cn";
+import { matchesTokenSearch } from "@/shared/utils/universal-search";
 import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 
@@ -15,13 +16,12 @@ function productLabel(p: ProductSearchHit): string {
 }
 
 function matchesLocal(p: ProductSearchHit, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return (
-    (p.technical_code?.toLowerCase().includes(q) ?? false) ||
-    (p.code?.toLowerCase().includes(q) ?? false) ||
-    p.name.toLowerCase().includes(q)
-  );
+  return matchesTokenSearch(query, [
+    p.technical_code,
+    p.code,
+    p.name,
+    p.description,
+  ]);
 }
 
 async function searchProducts(args: {

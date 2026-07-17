@@ -18,6 +18,7 @@ import {
   SUPPLIERS_QUERY_KEY,
 } from "@/modules/compras/lib/suppliers/query-keys";
 import { formatShortDate } from "@/shared/utils/date";
+import { matchesTokenSearch } from "@/shared/utils/universal-search";
 
 export const requisitionsQueryKey = ["purchasing-requisitions"] as const;
 export const requisitionsCountQueryKey = ["purchasing-requisitions-count"] as const;
@@ -233,17 +234,15 @@ export function PurchaseRequisitionsPanel() {
       toast.error(e instanceof Error ? e.message : "Erro ao enviar orçamento"),
   });
 
-  const filtered = (q.data?.rows ?? []).filter((row) => {
-    const t = search.trim().toLowerCase();
-    if (!t) return true;
-    return (
-      row.description.toLowerCase().includes(t) ||
-      (row.product_code ?? "").toLowerCase().includes(t) ||
-      (row.preferred_supplier_name ?? "").toLowerCase().includes(t) ||
-      (row.trace_key ?? "").toLowerCase().includes(t) ||
-      (row.production_order_number ?? "").toLowerCase().includes(t)
-    );
-  });
+  const filtered = (q.data?.rows ?? []).filter((row) =>
+    matchesTokenSearch(search, [
+      row.description,
+      row.product_code,
+      row.preferred_supplier_name,
+      row.trace_key,
+      row.production_order_number,
+    ])
+  );
 
   const selectedRows = useMemo(
     () => filtered.filter((r) => selected.has(r.id)),

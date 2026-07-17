@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { nextPurchaseQuoteRequestNumber } from "@/modules/compras/lib/purchasing/purchase-quote-request-number";
+import { matchesTokenSearch } from "@/shared/utils/universal-search";
 
 type Admin = SupabaseClient<Database>;
 
@@ -264,13 +265,14 @@ export async function listPurchaseQuoteRequests(
   });
 
   if (!search) return rows;
-  return rows.filter((r) => {
-    const hay = [r.request_number, r.notes, r.status, r.converted_po_number]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-    return hay.includes(search);
-  });
+  return rows.filter((r) =>
+    matchesTokenSearch(search, [
+      r.request_number,
+      r.notes,
+      r.status,
+      r.converted_po_number,
+    ])
+  );
 }
 
 export async function getPurchaseQuoteRequest(

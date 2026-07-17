@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { applyInventoryOutbound } from "@/modules/almoxarifado/lib/inventory-outbound";
 import { INVENTORY_ORIGIN } from "@/modules/almoxarifado/lib/inventory-origins";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 type Admin = SupabaseClient<Database>;
 
@@ -118,18 +119,16 @@ export async function searchProductionOrdersForManualOut(
   const q = search.trim();
   if (q.length < 2) return [];
 
-  const escaped = q
-    .replace(/\\/g, "\\\\")
-    .replace(/%/g, "\\%")
-    .replace(/_/g, "\\_");
-
-  const { data, error } = await admin
-    .from("production_orders")
-    .select("id, order_number, status")
-    .eq("tenant_id", tenantId)
-    .eq("is_suggestion", false)
-    .neq("status", "cancelled")
-    .ilike("order_number", `%${escaped}%`)
+  const { data, error } = await applyTokenFieldIlikeOrFilters(
+    admin
+      .from("production_orders")
+      .select("id, order_number, status")
+      .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false)
+      .neq("status", "cancelled"),
+    ["order_number"],
+    q
+  )
     .order("created_at", { ascending: false })
     .limit(20);
 

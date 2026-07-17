@@ -5,14 +5,11 @@ import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { RECEIVABLE_STATUSES } from "@/modules/core/types/finance.types";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 export const dynamic = "force-dynamic";
 
 const RECEIVABLE_SET = new Set<string>(RECEIVABLE_STATUSES);
-
-function escapeIlike(pattern: string): string {
-  return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -69,9 +66,10 @@ export async function GET(request: NextRequest) {
   }
 
   if (client) {
-    const safe = `%${escapeIlike(client)}%`;
-    query = query.or(
-      `client_name.ilike.${safe},client_document.ilike.${safe}`
+    query = applyTokenFieldIlikeOrFilters(
+      query,
+      ["client_name", "client_document"],
+      client
     );
   }
 

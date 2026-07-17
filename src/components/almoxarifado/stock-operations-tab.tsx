@@ -23,6 +23,7 @@ import {
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
 import { cn } from "@/shared/utils/cn";
+import { matchesTokenSearch } from "@/shared/utils/universal-search";
 import type {
   InventoryMovementListItem,
   ListInventoryMovementsResult,
@@ -287,10 +288,9 @@ export function StockOperationsTab({
 
   const filteredRows = useMemo(() => {
     const rows = data?.data ?? [];
-    const q = filters.productSearch.trim().toLowerCase();
-    if (!q) return rows;
+    if (!filters.productSearch.trim()) return rows;
     return rows.filter((row) =>
-      productLabel(row).toLowerCase().includes(q)
+      matchesTokenSearch(filters.productSearch, [productLabel(row)])
     );
   }, [data?.data, filters.productSearch]);
 

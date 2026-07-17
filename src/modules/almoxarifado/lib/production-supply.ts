@@ -12,6 +12,7 @@ import {
   calculateNeededMaterialsForProductQty,
   type GrossMaterialNeed,
 } from "@/modules/pcp/lib/mrp-service";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 type Admin = SupabaseClient<Database>;
 
@@ -398,15 +399,15 @@ export async function searchSupplySubstituteProducts(
   const q = search.trim();
   if (q.length < 2) return [];
 
-  const escaped = q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-  let query = admin
-    .from("products")
-    .select("id, technical_code, name, unit")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .or(
-      `name.ilike.%${escaped}%,technical_code.ilike.%${escaped}%`
-    )
+  const query = applyTokenFieldIlikeOrFilters(
+    admin
+      .from("products")
+      .select("id, technical_code, name, unit")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true),
+    ["name", "technical_code"],
+    q
+  )
     .order("technical_code", { ascending: true })
     .limit(40);
 

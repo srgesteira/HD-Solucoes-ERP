@@ -21,6 +21,7 @@ import {
   parsePaymentDaysBetween,
 } from "@/shared/contracts/sales-order.schema";
 import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 export const dynamic = "force-dynamic";
 
@@ -50,11 +51,6 @@ const PO_STATUSES = new Set([
   "received",
   "cancelled",
 ]);
-
-/** Escapa `%` e `_` para `.ilike`. */
-function escapeIlike(pattern: string): string {
-  return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 function parseMoney(v: unknown): number | null {
   const n = typeof v === "number" ? v : parseFloat(String(v));
@@ -108,8 +104,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (search) {
-    const safe = `%${escapeIlike(search)}%`;
-    query = query.ilike("po_number", safe);
+    query = applyTokenFieldIlikeOrFilters(query, ["po_number"], search);
   }
 
   const { data, error, count } = await query

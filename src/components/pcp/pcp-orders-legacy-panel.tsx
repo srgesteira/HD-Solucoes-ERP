@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CheckCircle2, CircleAlert } from "lucide-react";
 import { ReadyForInvoiceCompositeBadge } from "@/components/fiscal/fiscal-status-badge";
 import type { PcpPlanningItem, PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
+import { matchesTokenSearch } from "@/shared/utils/universal-search";
 import {
   effectiveOrderProductionDeadline,
   formatPcpDate,
@@ -113,17 +114,13 @@ export function PcpOrdersLegacyPanel({
 
   const filtered = useMemo(() => {
     const byTab = filterPcpOrdersByTab(orders, ordersTab);
-    const q = search.trim().toLowerCase();
-    if (!q) return byTab;
-    return byTab.filter(
-      (o) =>
-        o.order_number.toLowerCase().includes(q) ||
-        o.client_name.toLowerCase().includes(q) ||
-        o.items.some(
-          (it) =>
-            (it.product_code ?? "").toLowerCase().includes(q) ||
-            it.product_name.toLowerCase().includes(q)
-        )
+    if (!search.trim()) return byTab;
+    return byTab.filter((o) =>
+      matchesTokenSearch(search, [
+        o.order_number,
+        o.client_name,
+        ...o.items.flatMap((it) => [it.product_code, it.product_name]),
+      ])
     );
   }, [orders, search, ordersTab]);
 

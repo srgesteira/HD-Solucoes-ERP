@@ -4,14 +4,11 @@ import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import type { Database } from "@/modules/core/types/database";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 export const dynamic = "force-dynamic";
 
 type CustomerInsert = Database["public"]["Tables"]["customers"]["Insert"];
-
-function escapeIlike(pattern: string): string {
-  return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 export async function GET(request: NextRequest) {
   const access = await assertMenuModuleAccess("vendas");
@@ -42,8 +39,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (search) {
-    const safe = `%${escapeIlike(search)}%`;
-    q = q.or(`name.ilike.${safe},document.ilike.${safe},email.ilike.${safe}`);
+    q = applyTokenFieldIlikeOrFilters(q, ["name", "document", "email"], search);
   }
 
   const { data, error, count } = await q

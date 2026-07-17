@@ -36,12 +36,9 @@ import { resolveMoProductCostPrice } from "@/modules/engenharia/lib/products/mo-
 import { productNatureFromPrefixCode } from "@/modules/engenharia/lib/products/mrp-product-nature";
 import { ENGINEERING_STATUS_PENDING } from "@/modules/engenharia/lib/products/engineering-workflow";
 
-export const dynamic = "force-dynamic";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
-/** Escapa % e _ para usar em filtros `.ilike` dentro de `.or()`. */
-function escapeIlike(pattern: string): string {
-  return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -170,9 +167,11 @@ export async function GET(request: NextRequest) {
     q = q.eq("is_active", isActive === "true");
   }
   if (search) {
-    const condensed = search.replace(/,/g, " ").trim();
-    const safe = `%${escapeIlike(condensed)}%`;
-    q = q.or(`name.ilike.${safe},technical_code.ilike.${safe},code.ilike.${safe}`);
+    q = applyTokenFieldIlikeOrFilters(
+      q,
+      ["name", "technical_code", "code", "description"],
+      search
+    );
   }
 
   q = q.order("technical_code", { ascending: true }).range(start, end);

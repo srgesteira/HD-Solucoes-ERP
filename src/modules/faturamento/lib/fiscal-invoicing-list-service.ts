@@ -5,7 +5,6 @@ import {
   buildSalesOrderUniversalSearchOrFilter,
   resolveSalesOrderIdsFromUniversalSearch,
 } from "@/modules/core/lib/universal-search-query";
-import { escapeIlike } from "@/shared/utils/universal-search";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 import { isWithoutInvoicePlanned } from "@/modules/faturamento/lib/sales-order-billing-display";
 import { isFiscalConfigured } from "@/modules/fiscal/lib/fiscal-rules-types";
@@ -241,11 +240,6 @@ export async function listFiscalInvoicingOrders(
     );
     if (orFilter) {
       query = query.or(orFilter);
-    } else {
-      const safe = `%${escapeIlike(search.trim())}%`;
-      query = query.or(
-        `client_name.ilike.${safe},client_document.ilike.${safe},client_email.ilike.${safe},order_number.ilike.${safe}`
-      );
     }
   }
 

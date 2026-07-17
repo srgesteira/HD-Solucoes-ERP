@@ -22,7 +22,6 @@ import {
   buildSalesOrderUniversalSearchOrFilter,
   resolveSalesOrderIdsFromUniversalSearch,
 } from "@/modules/core/lib/universal-search-query";
-import { escapeIlike } from "@/shared/utils/universal-search";
 import {
   enrichSalesOrdersListWithProduction,
   type SalesOrderProductionSummary,
@@ -142,11 +141,6 @@ export async function GET(request: NextRequest) {
     );
     if (orFilter) {
       query = query.or(orFilter);
-    } else {
-      const safe = `%${escapeIlike(rawSearch)}%`;
-      query = query.or(
-        `client_name.ilike.${safe},client_document.ilike.${safe},client_email.ilike.${safe},order_number.ilike.${safe}`
-      );
     }
   }
 

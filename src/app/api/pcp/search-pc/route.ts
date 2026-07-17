@@ -6,12 +6,9 @@ import {
   currentUserCanMenuModule,
   getCurrentTenantId,
 } from "@/modules/core/lib/tenant";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 export const dynamic = "force-dynamic";
-
-function escapeIlike(pattern: string): string {
-  return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 /**
  * GET /api/pcp/search-pc?po_number=PC-001
@@ -40,14 +37,16 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = createSupabaseAdminClient();
-  const safe = `%${escapeIlike(poNumber)}%`;
 
-  const { data: pos, error: poErr } = await admin
-    .from("purchase_orders")
-    .select("id, po_number, order_date, expected_delivery, status")
-    .eq("tenant_id", tenantId)
-    .eq("is_suggestion", false)
-    .ilike("po_number", safe)
+  const { data: pos, error: poErr } = await applyTokenFieldIlikeOrFilters(
+    admin
+      .from("purchase_orders")
+      .select("id, po_number, order_date, expected_delivery, status")
+      .eq("tenant_id", tenantId)
+      .eq("is_suggestion", false),
+    ["po_number"],
+    poNumber
+  )
     .order("order_date", { ascending: false })
     .limit(20);
 

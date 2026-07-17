@@ -6,6 +6,7 @@ import {
   FISCAL_INBOUND_ORDER_STATUSES,
   type FiscalInboundListTab,
 } from "@/modules/faturamento/lib/fiscal-inbound-list-tabs";
+import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 
 type Admin = SupabaseClient<Database>;
 
@@ -70,8 +71,7 @@ export async function listFiscalInboundOrders(
     .order("order_date", { ascending: false });
 
   if (search.trim()) {
-    const q = `%${search.trim()}%`;
-    query = query.or(`po_number.ilike.${q}`);
+    query = applyTokenFieldIlikeOrFilters(query, ["po_number"], search);
   }
 
   const fetchLimit = Math.min(500, Math.max(limit * 10, 100));
