@@ -22,7 +22,6 @@ import {
   FiscalAiAssistantModal,
   type FiscalAiAssistantResponse,
 } from "@/components/fiscal/fiscal-ai-assistant-modal";
-import { FiscalOutboundKanban } from "@/components/faturamento/fiscal-outbound-kanban";
 import { Button } from "@/shared/ui/button";
 import { AppPage } from "@/shared/ui/app-page";
 import {
@@ -171,7 +170,6 @@ export default function FiscalInvoicingPage() {
   const [tab, setTab] = useState<FiscalInvoicingListTab>(
     FISCAL_INVOICING_LIST_TAB_DEFAULT
   );
-  const [viewMode, setViewMode] = useState<"kanban" | "lista">("kanban");
   const { input: searchInput, setInput: setSearchInput, debounced: search } =
     useCronogramaSearch();
   const [page, setPage] = useState(1);
@@ -629,31 +627,19 @@ export default function FiscalInvoicingPage() {
   return (
     <AppPage
       title="Faturamento fiscal"
-      description="Kanban de saída — conferência fiscal, liberação PCP e emissão (via Expedição)."
+      description="Lista por fase — conferência fiscal, liberação PCP e emissão (via Expedição)."
       width="wide"
       density="comfortable"
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-md border border-slate-200 bg-white p-0.5">
-            <Button
-              type="button"
-              size="sm"
-              variant={viewMode === "kanban" ? "primary" : "ghost"}
-              className="h-8 px-3 text-xs"
-              onClick={() => setViewMode("kanban")}
-            >
-              Kanban
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={viewMode === "lista" ? "primary" : "ghost"}
-              className="h-8 px-3 text-xs"
-              onClick={() => setViewMode("lista")}
-            >
-              Lista
-            </Button>
-          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => router.push("/faturamento/entrada")}
+          >
+            Fiscal de entrada
+          </Button>
           <Button
             type="button"
             size="sm"
@@ -666,47 +652,21 @@ export default function FiscalInvoicingPage() {
         </div>
       }
     >
-      {viewMode === "kanban" ? (
-        <div className="space-y-4">
-          <CronogramaSearch
-            value={searchInput}
-            onChange={setSearchInput}
-            placeholder="Buscar nº pedido, cliente ou produto…"
-          />
-          <FiscalOutboundKanban search={search} enabled={canFaturamento} />
-          <p className="text-xs text-slate-500">
-            Notas em curso / erros / autorizadas: use a vista{" "}
-            <button
-              type="button"
-              className="text-emerald-700 hover:underline"
-              onClick={() => setViewMode("lista")}
-            >
-              Lista
-            </button>
-            .
-          </p>
-        </div>
-      ) : (
-        <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
-          <TabsList className="flex h-auto flex-wrap gap-1 bg-transparent p-0">
-            {FISCAL_INVOICING_LIST_TABS.map((key) => (
-              <TabsTrigger
-                key={key}
-                value={key}
-                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs data-[state=active]:border-emerald-600 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-900"
-              >
-                {FISCAL_INVOICING_LIST_TAB_LABELS[key]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
+      <Tabs value={tab} onValueChange={onTabChange} className="space-y-4">
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
           {FISCAL_INVOICING_LIST_TABS.map((key) => (
-            <TabsContent key={key} value={key} className="mt-0">
-              {tab === key ? listPanel : null}
-            </TabsContent>
+            <TabsTrigger key={key} value={key}>
+              {FISCAL_INVOICING_LIST_TAB_LABELS[key]}
+            </TabsTrigger>
           ))}
-        </Tabs>
-      )}
+        </TabsList>
+
+        {FISCAL_INVOICING_LIST_TABS.map((key) => (
+          <TabsContent key={key} value={key} className="mt-0">
+            {tab === key ? listPanel : null}
+          </TabsContent>
+        ))}
+      </Tabs>
 
       <FiscalAiAssistantModal
         open={aiTarget != null}

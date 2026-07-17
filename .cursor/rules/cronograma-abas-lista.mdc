@@ -1,0 +1,30 @@
+---
+description: Cronogramas e listagens operacionais usam abas + tabela (padrão Compras), nunca colunas kanban.
+alwaysApply: true
+---
+
+# Padrão de listagem por fases (Compras)
+
+Referência canónica: `src/components/purchasing/purchasing-orders-page.tsx`.
+
+## Obrigatório em telas novas ou ao redesenhar listagens
+
+1. **Abas + lista**, não colunas kanban / cards em colunas.
+2. Cada aba = uma **fase do fluxo** (ex.: Em aberto → Recebido/Faturado → Finalizado).
+3. Tabela com `SortableTable` (ou equivalente do design system), busca com `CronogramaSearch` / tokens inteligentes, paginação quando a API suportar.
+4. O utilizador **abre o registo**, corrige o que precisa; ao mudar o status/fase, o item **desaparece da aba actual e aparece na seguinte** (como Pedidos em aberto → Pedidos faturados em Compras).
+5. URL com `?tab=` para partilhar/restaurar a aba activa.
+6. Acções rápidas na linha são opcionais; o detalhe do pedido/documento é o sítio principal de trabalho.
+
+## Exemplos já alinhados
+
+- Compras: `/purchasing/orders`
+- Pedidos de venda: `/sales/orders`
+- Fiscal de entrada: `/faturamento/entrada`
+- Fiscal de saída: `/faturamento/fiscal`
+
+## Proibido
+
+- Boards com colunas tipo Trello para o mesmo tipo de fluxo operacional.
+- Toggle Kanban/Lista nestas telas — só lista por abas.
+- Inventar um layout diferente “só porque é fiscal/produção/etc.”

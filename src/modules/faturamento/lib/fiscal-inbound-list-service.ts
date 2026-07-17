@@ -35,6 +35,8 @@ function matchesTab(tab: FiscalInboundListTab, row: FiscalInboundListRow): boole
   );
 
   switch (tab) {
+    case "all":
+      return true;
     case "open":
       return isOpen;
     case "received":

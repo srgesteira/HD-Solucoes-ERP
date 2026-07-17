@@ -1,29 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FileText } from "lucide-react";
 import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
-import { CronogramaSearch, useCronogramaSearch } from "@/shared/ui/cronograma-layout";
-import { FiscalInboundKanban } from "@/components/faturamento/fiscal-inbound-kanban";
+import { FiscalInboundListPanel } from "@/components/faturamento/fiscal-inbound-list-panel";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
+import type { FiscalInboundListTab } from "@/modules/faturamento/lib/fiscal-inbound-list-tabs";
 
 export default function FiscalInboundPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: me } = useMe();
   const { canMenu } = usePermissions();
   const isAdmin = me?.role === "admin";
   const canFaturamento = isAdmin || canMenu("faturamento");
-  const { input: searchInput, setInput: setSearchInput, debounced: search } =
-    useCronogramaSearch();
 
   if (!canFaturamento) {
     return (
       <AppPage
         title="Fiscal de entrada"
-        description="Kanban de conferência fiscal de compras."
+        description="Conferência fiscal de pedidos de compra."
         width="wide"
       >
         <p className="text-slate-600 py-12 text-center">
@@ -36,7 +35,7 @@ export default function FiscalInboundPage() {
   return (
     <AppPage
       title="Fiscal de entrada"
-      description="Em aberto → Recebido (Compras) → Finalizado (conferência fiscal)."
+      description="Lista por fase — Em aberto → Recebido (Compras) → Finalizado (conferência fiscal)."
       width="wide"
       density="comfortable"
       actions={
@@ -47,7 +46,7 @@ export default function FiscalInboundPage() {
             variant="outline"
             onClick={() => router.push("/faturamento/fiscal")}
           >
-            Kanban de saída
+            Faturamento de saída
           </Button>
           <Button
             type="button"
@@ -72,12 +71,15 @@ export default function FiscalInboundPage() {
           </Link>
           .
         </div>
-        <CronogramaSearch
-          value={searchInput}
-          onChange={setSearchInput}
-          placeholder="Buscar nº do pedido de compra…"
+
+        <FiscalInboundListPanel
+          enabled={canFaturamento}
+          initialTab={searchParams.get("tab")}
+          onTabChange={(tab: FiscalInboundListTab) => {
+            router.replace(`/faturamento/entrada?tab=${tab}`, { scroll: false });
+          }}
         />
-        <FiscalInboundKanban search={search} enabled={canFaturamento} />
+
         <p className="text-center text-sm text-slate-500">
           <Link
             href="/purchasing/orders"

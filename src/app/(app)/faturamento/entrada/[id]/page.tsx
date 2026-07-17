@@ -98,7 +98,7 @@ export default function FiscalInboundReviewPage() {
       void queryClient.invalidateQueries({
         queryKey: ["fiscal-inbound-review", orderId],
       });
-      void queryClient.invalidateQueries({ queryKey: ["fiscal-inbound-kanban"] });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-inbound-list"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -110,8 +110,8 @@ export default function FiscalInboundReviewPage() {
       void queryClient.invalidateQueries({
         queryKey: ["fiscal-inbound-review", orderId],
       });
-      void queryClient.invalidateQueries({ queryKey: ["fiscal-inbound-kanban"] });
-      router.push("/faturamento/entrada");
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-inbound-list"] });
+      router.push("/faturamento/entrada?tab=finalized");
     },
     onError: (err: Error) => toast.error(err.message),
   });
