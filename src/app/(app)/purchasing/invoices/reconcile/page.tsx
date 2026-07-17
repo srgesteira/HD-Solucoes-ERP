@@ -539,8 +539,9 @@ export default function PurchaseInvoiceReconcilePage() {
               : "Extrair PDF (IA)"}
           </Button>
           <p className="text-xs text-slate-500">
-            XML usa parser determinístico (sem IA). PDF continua com extração por
-            IA.
+            Preferível o <strong>XML</strong> da NF-e (no Omie: Baixar XML) —
+            leitura exacta, sem IA. PDF (DANFE) usa extração por IA e pode falhar
+            se o ficheiro for só imagem.
           </p>
         </CardContent>
       </Card>

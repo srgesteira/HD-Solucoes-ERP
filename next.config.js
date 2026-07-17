@@ -3,7 +3,7 @@ const path = require("path");
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  serverExternalPackages: ["puppeteer-core"],
+  serverExternalPackages: ["puppeteer-core", "unpdf", "pdf-parse", "@napi-rs/canvas"],
   /**
    * Não usar `output: "standalone"` aqui: na Vercel o passo de cópia para
    * `.next/standalone` falha com rotas em grupos `(app)` (ENOENT no manifest).

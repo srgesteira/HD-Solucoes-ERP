@@ -270,19 +270,19 @@ export async function suggestProductStructure(
 
 async function extractPdfText(pdfBuffer: Buffer): Promise<string> {
   try {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({
-      data: new Uint8Array(pdfBuffer),
+    // unpdf: compatível com Vercel/serverless (pdf-parse falhava sem canvas/worker).
+    const { extractText } = await import("unpdf");
+    const result = await extractText(new Uint8Array(pdfBuffer), {
+      mergePages: true,
     });
-    try {
-      const textResult = await parser.getText();
-      return (textResult?.text ?? "").trim();
-    } finally {
-      await parser.destroy().catch(() => undefined);
-    }
+    const raw = result.text;
+    const text = Array.isArray(raw) ? raw.join("\n") : String(raw ?? "");
+    return text.trim();
   } catch (e) {
-    console.error("pdf-parse:", e);
-    throw new Error("Não foi possível ler o ficheiro PDF.");
+    console.error("extractPdfText:", e);
+    throw new Error(
+      "Não foi possível ler o ficheiro PDF. Baixe o XML da NF-e no Omie (mais fiável) e importe o XML."
+    );
   }
 }
 
