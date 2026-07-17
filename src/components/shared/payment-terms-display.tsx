@@ -1,5 +1,6 @@
 import {
   PAYMENT_TERM_LABELS,
+  formatDaysToFirstDueDisplay,
   type PaymentTermsValues,
 } from "@/shared/utils/payment-terms-format";
 
@@ -34,7 +35,7 @@ export function PaymentTermsDisplay({
       <div>
         <p className="text-slate-500">{PAYMENT_TERM_LABELS.daysToFirst}</p>
         <p className="font-medium tabular-nums">
-          {fmt(payment_days_to_first_due)}
+          {formatDaysToFirstDueDisplay(payment_days_to_first_due)}
         </p>
       </div>
       <div>

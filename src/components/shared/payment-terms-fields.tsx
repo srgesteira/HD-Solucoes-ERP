@@ -54,6 +54,12 @@ export function PaymentTermsFields({
           disabled={disabled}
           onBlur={onBlur}
         />
+        {paymentDaysFirst.trim() === "0" ||
+        parseInt(paymentDaysFirst, 10) === 0 ? (
+          <p className="text-[11px] text-slate-500">
+            0 dias = 1.ª parcela à vista.
+          </p>
+        ) : null}
       </div>
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}-days-between`}>
