@@ -658,6 +658,8 @@ export function PurchaseOrderForm({
             paymentDaysBetween={paymentDaysBetween}
             onPaymentDaysBetweenChange={setPaymentDaysBetween}
             disabled={paymentFieldsDisabled}
+            baseDateIso={orderDate}
+            baseDateLabel="data do pedido"
           />
         </CardContent>
       </Card>

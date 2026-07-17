@@ -195,6 +195,8 @@ export function QuoteCommercialFields({
           onPaymentDaysFirstChange={onPaymentDaysFirstChange}
           paymentDaysBetween={paymentDaysBetween}
           onPaymentDaysBetweenChange={onPaymentDaysBetweenChange}
+          baseDateIso={quoteDate}
+          baseDateLabel="data do orçamento"
         />
       </div>
 

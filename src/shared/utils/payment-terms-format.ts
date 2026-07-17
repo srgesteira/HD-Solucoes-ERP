@@ -1,3 +1,5 @@
+import { addLocalCalendarDays } from "@/shared/utils/date";
+
 export const PAYMENT_TERM_LABELS = {
   installments: "N.º de parcelas",
   daysToFirst: "Vencimento 1.ª parcela (dias)",
@@ -15,6 +17,36 @@ export function isFirstInstallmentAtSight(
   daysToFirst: number | null | undefined
 ): boolean {
   return daysToFirst === 0;
+}
+
+/**
+ * Datas de vencimento (ISO yyyy-MM-dd) a partir da data-base (ex. data do pedido).
+ * Alinhado com contas a pagar/receber do financeiro.
+ */
+export function buildInstallmentDueDates(args: {
+  baseDateIso: string;
+  installments: number;
+  daysToFirst: number;
+  daysBetween: number;
+}): string[] {
+  const base = args.baseDateIso.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return [];
+
+  const n = Math.max(1, Math.min(999, Math.floor(args.installments) || 1));
+  const d1 = Number.isFinite(args.daysToFirst)
+    ? Math.max(0, args.daysToFirst)
+    : 30;
+  const between = Number.isFinite(args.daysBetween)
+    ? Math.max(0, args.daysBetween)
+    : 0;
+
+  const dates: string[] = [];
+  let due = addLocalCalendarDays(base, d1);
+  for (let i = 0; i < n; i++) {
+    if (i > 0) due = addLocalCalendarDays(due, between);
+    dates.push(due);
+  }
+  return dates;
 }
 
 export function formatPaymentTermsSummary(order: PaymentTermsValues): string {
