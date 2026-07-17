@@ -98,3 +98,12 @@ export async function assertSalesOrPurchasingAccess(): Promise<
   if (sales.ok) return sales;
   return assertMenuModuleAccess("compras");
 }
+
+/** Compras ou faturamento (NF-e recebidas / MDe / conciliação). */
+export async function assertComprasOrFaturamentoAccess(): Promise<
+  { ok: true } | { ok: false; response: NextResponse }
+> {
+  const compras = await assertMenuModuleAccess("compras");
+  if (compras.ok) return compras;
+  return assertMenuModuleAccess("faturamento");
+}

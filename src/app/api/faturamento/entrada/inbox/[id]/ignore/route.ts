@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
-import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
+import { assertComprasOrFaturamentoAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { ignoreInboundNfeInboxItem } from "@/modules/faturamento/lib/inbound-nfe-inbox-service";
 
@@ -18,7 +18,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
   } = await supabase.auth.getUser();
   if (!user) return apiError("Não autenticado", 401);
 
-  const access = await assertMenuModuleAccess("faturamento");
+  const access = await assertComprasOrFaturamentoAccess();
   if (!access.ok) return access.response;
 
   const tenantId = await getCurrentTenantId();

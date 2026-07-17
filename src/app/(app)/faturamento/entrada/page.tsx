@@ -7,7 +7,6 @@ import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
 import { CronogramaSearch, useCronogramaSearch } from "@/shared/ui/cronograma-layout";
 import { FiscalInboundKanban } from "@/components/faturamento/fiscal-inbound-kanban";
-import { InboundNfeInboxPanel } from "@/components/faturamento/inbound-nfe-inbox-panel";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -63,12 +62,21 @@ export default function FiscalInboundPage() {
       }
     >
       <div className="space-y-4">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Notas emitidas contra o CNPJ (MDe) ficam em{" "}
+          <Link
+            href="/purchasing/orders?tab=nfe-recebidas"
+            className="font-semibold underline underline-offset-2"
+          >
+            Compras → NF recebidas
+          </Link>
+          .
+        </div>
         <CronogramaSearch
           value={searchInput}
           onChange={setSearchInput}
           placeholder="Buscar nº do pedido de compra…"
         />
-        <InboundNfeInboxPanel enabled={canFaturamento} canSync={isAdmin} />
         <FiscalInboundKanban search={search} enabled={canFaturamento} />
         <p className="text-center text-sm text-slate-500">
           <Link

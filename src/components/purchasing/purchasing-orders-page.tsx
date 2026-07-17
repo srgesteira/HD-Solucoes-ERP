@@ -16,6 +16,7 @@ import { AllOrdersTab } from "@/components/purchasing/all-orders-tab";
 import { FinishedOrdersTab } from "@/components/purchasing/finished-orders-tab";
 import { RequisitionsTab } from "@/components/purchasing/requisitions-tab";
 import { RequestQuoteTab } from "@/components/purchasing/request-quote-tab";
+import { InboundNfeInboxPanel } from "@/components/faturamento/inbound-nfe-inbox-panel";
 import {
   CronogramaSearch,
   useCronogramaSearch,
@@ -24,15 +25,23 @@ import {
   fetchRequisitionsCount,
   requisitionsCountQueryKey,
 } from "@/components/purchasing/purchase-requisitions-panel";
+import type { InboundNfeInboxRow } from "@/modules/faturamento/lib/inbound-nfe-inbox-service";
 
-type TabValue = "all" | "open" | "finished" | "requisitions" | "request-quote";
+type TabValue =
+  | "all"
+  | "open"
+  | "finished"
+  | "requisitions"
+  | "request-quote"
+  | "nfe-recebidas";
 
 function parseTab(raw: string | null): TabValue {
   if (
     raw === "all" ||
     raw === "finished" ||
     raw === "requisitions" ||
-    raw === "request-quote"
+    raw === "request-quote" ||
+    raw === "nfe-recebidas"
   ) {
     return raw;
   }
@@ -66,6 +75,28 @@ export function PurchasingOrdersPage() {
   });
   const pendingRequisitions =
     typeof pendingReqQ.data === "number" ? pendingReqQ.data : 0;
+
+  const inboxCountQ = useQuery({
+    queryKey: ["inbound-nfe-inbox"],
+    queryFn: async () => {
+      const rows = await fetch("/api/faturamento/entrada/inbox?status=new", {
+        credentials: "include",
+        cache: "no-store",
+      }).then(async (res) => {
+        const json = (await res.json().catch(() => ({}))) as {
+          data?: InboundNfeInboxRow[];
+        };
+        if (!res.ok) throw new Error("Erro inbox");
+        return json.data ?? [];
+      });
+      return rows;
+    },
+    enabled: canPurchasing,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: 1,
+  });
+  const pendingInbox = inboxCountQ.data?.length ?? 0;
 
   const onTabChange = (value: string) => {
     const tab = parseTab(value);
@@ -111,6 +142,16 @@ export function PurchasingOrdersPage() {
           <TabsTrigger value="open">Pedidos em aberto</TabsTrigger>
           <TabsTrigger value="finished">Pedidos faturados</TabsTrigger>
           <TabsTrigger
+            value="nfe-recebidas"
+            className={cn(
+              pendingInbox > 0 &&
+                "animate-pulse text-amber-700 font-semibold data-[state=active]:text-amber-800"
+            )}
+          >
+            NF recebidas
+            {pendingInbox > 0 ? ` (${pendingInbox})` : ""}
+          </TabsTrigger>
+          <TabsTrigger
             value="requisitions"
             className={cn(
               pendingRequisitions > 0 &&
@@ -123,19 +164,21 @@ export function PurchasingOrdersPage() {
           <TabsTrigger value="request-quote">Solicitar orçamento</TabsTrigger>
         </TabsList>
 
-        <div className="mt-4">
-          <CronogramaSearch
-            value={searchInput}
-            onChange={setSearchInput}
-            placeholder={
-              activeTab === "requisitions"
-                ? "Buscar produto, fornecedor, PV, OP, data ou código…"
-                : activeTab === "request-quote"
-                  ? "Buscar n.º, observação ou status…"
-                  : "Buscar pedido, fornecedor, data, código ou produto…"
-            }
-          />
-        </div>
+        {activeTab !== "nfe-recebidas" ? (
+          <div className="mt-4">
+            <CronogramaSearch
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder={
+                activeTab === "requisitions"
+                  ? "Buscar produto, fornecedor, PV, OP, data ou código…"
+                  : activeTab === "request-quote"
+                    ? "Buscar n.º, observação ou status…"
+                    : "Buscar pedido, fornecedor, data, código ou produto…"
+              }
+            />
+          </div>
+        ) : null}
 
         <TabsContent value="all" className="mt-4">
           <AllOrdersTab search={search} canPurchasing={canPurchasing} />
@@ -147,6 +190,20 @@ export function PurchasingOrdersPage() {
 
         <TabsContent value="finished" className="mt-4">
           <FinishedOrdersTab search={search} canPurchasing={canPurchasing} />
+        </TabsContent>
+
+        <TabsContent value="nfe-recebidas" className="mt-4">
+          <InboundNfeInboxPanel enabled={canPurchasing} canSync={isAdmin} />
+          <p className="mt-3 text-xs text-slate-500">
+            Também pode importar XML/PDF manualmente em{" "}
+            <Link
+              href="/purchasing/invoices/reconcile"
+              className="text-emerald-700 hover:underline"
+            >
+              Importar NF-e
+            </Link>
+            .
+          </p>
         </TabsContent>
 
         <TabsContent value="requisitions" className="mt-4">
