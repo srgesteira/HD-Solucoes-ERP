@@ -180,12 +180,14 @@ export async function getFiscalPurchaseOrderReview(
   const fiscalStatus = o.fiscal_status ?? "pending";
   const fiscalConfigured = isFiscalConfigured(fiscalStatus);
   if (!fiscalConfigured) {
-    warnings.push("Fiscal ainda não conferido — aplique as regras.");
+    warnings.push(
+      "Sem regra fiscal aplicada (NCM/alíquotas). Pode finalizar a conferência mesmo assim após o recebimento — ou cadastre regras e clique em «Aplicar regras»."
+    );
   }
 
   const fiscalFinalizedAt = o.fiscal_finalized_at ?? null;
-  const canFinalize =
-    o.status === "received" && fiscalFinalizedAt == null && fiscalConfigured;
+  // Entrada: após receive, a conferência pode fechar mesmo sem regra cadastrada.
+  const canFinalize = o.status === "received" && fiscalFinalizedAt == null;
 
   return {
     id: o.id,
@@ -276,9 +278,6 @@ export async function finalizePurchaseOrderFiscal(
   }
   if (po.fiscal_finalized_at) {
     throw new Error("Conferência fiscal já finalizada.");
-  }
-  if (!isFiscalConfigured(po.fiscal_status ?? "pending")) {
-    throw new Error("Aplique as regras fiscais antes de finalizar.");
   }
 
   const now = new Date().toISOString();

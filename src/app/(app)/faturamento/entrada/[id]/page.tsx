@@ -93,11 +93,15 @@ export default function FiscalInboundReviewPage() {
 
   const reapplyMutation = useMutation({
     mutationFn: () => postReapply(orderId),
-    onSuccess: () => {
-      toast.success("Regras fiscais aplicadas.");
-      void queryClient.invalidateQueries({
-        queryKey: ["fiscal-inbound-review", orderId],
-      });
+    onSuccess: (review) => {
+      queryClient.setQueryData(["fiscal-inbound-review", orderId], review);
+      if (review.fiscal_configured) {
+        toast.success(`Regras aplicadas (${review.fiscal_status_label}).`);
+      } else {
+        toast.warning(
+          `Motor fiscal: ${review.fiscal_status_label}. Sem regra que case — pode finalizar a conferência na mesma.`
+        );
+      }
       void queryClient.invalidateQueries({ queryKey: ["fiscal-inbound-list"] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -105,11 +109,9 @@ export default function FiscalInboundReviewPage() {
 
   const finalizeMutation = useMutation({
     mutationFn: () => postFinalize(orderId),
-    onSuccess: () => {
+    onSuccess: (review) => {
+      queryClient.setQueryData(["fiscal-inbound-review", orderId], review);
       toast.success("Conferência fiscal de entrada finalizada.");
-      void queryClient.invalidateQueries({
-        queryKey: ["fiscal-inbound-review", orderId],
-      });
       void queryClient.invalidateQueries({ queryKey: ["fiscal-inbound-list"] });
       router.push("/faturamento/entrada?tab=finalized");
     },
@@ -138,7 +140,7 @@ export default function FiscalInboundReviewPage() {
       }
       description="Espelho da saída: fornecedor e impostos. Comercial (qtd/preço) no PC; aqui só a parte fiscal."
       backHref="/faturamento/entrada"
-      backLabel="Voltar ao kanban de entrada"
+      backLabel="Voltar ao Fiscal de entrada"
       width="wide"
       actions={
         data ? (
