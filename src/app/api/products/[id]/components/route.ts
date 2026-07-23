@@ -225,7 +225,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       return apiError("Apenas produtos com prefixo MO podem ser linhas mão-de-obra com produto associado.", 400);
     }
 
-    const lineExternal = validated.is_external_labor === true;
+    // Cadastro do produto é a fonte da verdade para MO externa.
+    const catalogExternal = Boolean(compRow.default_is_external_labor);
+    const lineExternal =
+      catalogExternal || validated.is_external_labor === true;
     isLaborIns = true;
     lineExternalLaborIns = lineExternal;
     componentProductIdIns = validated.component_product_id!;
@@ -233,10 +236,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     const catalogCost = Number(compRow.cost_price ?? 0);
 
     if (lineExternal) {
-      unitCost =
+      const fromBody =
         validated.unit_cost !== undefined && validated.unit_cost !== null
           ? Number(validated.unit_cost)
-          : catalogCost;
+          : NaN;
+      unitCost =
+        Number.isFinite(fromBody) && fromBody > 0 ? fromBody : catalogCost;
+      if (!Number.isFinite(unitCost) || unitCost < 0) {
+        return apiError(
+          "Informe o custo unitário (R$) ou cadastre o custo no produto MO externo.",
+          400
+        );
+      }
       workCenterIdIns = null;
     } else {
       const wcUse =

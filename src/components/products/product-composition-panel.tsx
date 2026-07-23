@@ -264,8 +264,14 @@ export function ProductCompositionPanel({
       const ext = Boolean(hit.default_is_external_labor);
       setLaborSource(ext ? "external" : "internal");
       if (ext) {
-        setExternalUnitCost(Number(hit.cost_price ?? 0));
+        const catalogCost = Number(
+          hit.default_labor_cost ?? hit.cost_price ?? 0
+        );
+        setExternalUnitCost(
+          Number.isFinite(catalogCost) && catalogCost >= 0 ? catalogCost : 0
+        );
         setSelectedWorkCenterId("");
+        setLaborHourlyRate(0);
       } else {
         setSelectedWorkCenterId(hit.default_work_center_id ?? "");
       }
@@ -1008,8 +1014,17 @@ export function ProductCompositionPanel({
                 <div className="space-y-4">
                   {moFromCatalog ? (
                     <div className="rounded-md border border-violet-200 bg-violet-50/70 px-3 py-2 space-y-2">
-                      <p className="text-sm font-medium text-slate-900">Produto MO (catálogo)</p>
-                      <p className="text-sm text-slate-800">{selectedProductLabel}</p>
+                      <p className="text-sm font-medium text-slate-900">
+                        Produto MO (catálogo)
+                      </p>
+                      <p className="text-sm text-slate-800">
+                        {selectedProductLabel}
+                      </p>
+                      <p className="text-xs text-violet-900">
+                        {laborSource === "external"
+                          ? "Cadastro: MO externa — usa o custo do produto, sem centro de trabalho."
+                          : "Cadastro: MO interna — indique o centro de trabalho (ou o padrão do produto)."}
+                      </p>
                       <Button
                         type="button"
                         variant="outline"
@@ -1020,9 +1035,13 @@ export function ProductCompositionPanel({
                         Limpar produto
                       </Button>
                     </div>
-                  ) : (
+                  ) : null}
+
+                  {!moFromCatalog ? (
                     <div className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">Origem da mão-de-obra</span>
+                      <span className="text-sm font-medium text-slate-700">
+                        Origem da mão-de-obra
+                      </span>
                       <div className="flex flex-col gap-2">
                         <label className="flex items-start gap-2 cursor-pointer text-sm">
                           <input
@@ -1033,8 +1052,8 @@ export function ProductCompositionPanel({
                             onChange={() => setLaborSource("internal")}
                           />
                           <span>
-                            <strong>Interna</strong> — centro de trabalho da empresa; custo/hora sugerido
-                            pelo centro (editável).
+                            <strong>Interna</strong> — centro de trabalho da
+                            empresa; custo/hora sugerido pelo centro (editável).
                           </span>
                         </label>
                         <label className="flex items-start gap-2 cursor-pointer text-sm">
@@ -1046,13 +1065,13 @@ export function ProductCompositionPanel({
                             onChange={() => setLaborSource("external")}
                           />
                           <span>
-                            <strong>Externa</strong> — terceiros; custo unitário fixo (R$), sem centro de
-                            trabalho.
+                            <strong>Externa</strong> — terceiros; custo unitário
+                            fixo (R$), sem centro de trabalho.
                           </span>
                         </label>
                       </div>
                     </div>
-                  )}
+                  ) : null}
 
                   {!moFromCatalog ? (
                     <div className="pt-1 space-y-2">

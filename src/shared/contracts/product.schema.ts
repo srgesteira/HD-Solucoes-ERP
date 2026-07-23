@@ -78,31 +78,16 @@ export const productComponentSchema = z
     unit_cost: z.number().min(0).optional(),
   })
   .superRefine((data, ctx) => {
+    // MO com produto do catálogo: centro/custo dependem de
+    // default_is_external_labor no cadastro — validado na API.
     if (data.is_labor && data.component_product_id) {
-      const external = data.is_external_labor === true;
-      if (external) {
-        if (data.work_center_id) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "MO externa (catálogo) não deve ter centro de trabalho",
-            path: ["work_center_id"],
-          });
-        }
-        if (
-          data.unit_cost === undefined ||
-          data.unit_cost === null ||
-          Number.isNaN(data.unit_cost)
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Custo unitário (R$) é obrigatório para MO externa",
-            path: ["unit_cost"],
-          });
-        }
-      } else if (!data.work_center_id) {
+      if (
+        data.is_external_labor === true &&
+        data.work_center_id
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Centro de trabalho é obrigatório para MO interna (catálogo)",
+          message: "MO externa (catálogo) não deve ter centro de trabalho",
           path: ["work_center_id"],
         });
       }

@@ -50,6 +50,9 @@ async function searchProducts(args: {
       cost_price: number;
       unit: string | null;
       product_nature?: string | null;
+      default_is_external_labor?: boolean | null;
+      default_labor_cost?: number | null;
+      default_work_center_id?: string | null;
       prefix?: { code?: string | null } | null;
     }>;
     error?: string;
@@ -64,6 +67,10 @@ async function searchProducts(args: {
     cost_price: Number(row.cost_price ?? 0),
     unit: row.unit,
     product_nature: row.product_nature ?? null,
+    default_is_external_labor: Boolean(row.default_is_external_labor),
+    default_labor_cost:
+      row.default_labor_cost != null ? Number(row.default_labor_cost) : null,
+    default_work_center_id: row.default_work_center_id ?? null,
     prefix: row.prefix,
   }));
 }
