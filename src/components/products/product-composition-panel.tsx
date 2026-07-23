@@ -164,6 +164,65 @@ function productKindLabel(product: ProductEmbed): string {
   return product.type ?? "—";
 }
 
+function prefixCodeFromHit(hit: ProductSearchHit): string {
+  const raw = hit.prefix as
+    | { code?: string | null }
+    | { code?: string | null }[]
+    | null
+    | undefined;
+  if (Array.isArray(raw)) {
+    return String(raw[0]?.code ?? "")
+      .trim()
+      .toUpperCase();
+  }
+  return String(raw?.code ?? "")
+    .trim()
+    .toUpperCase();
+}
+
+function isMoProductHit(hit: ProductSearchHit): boolean {
+  if (prefixCodeFromHit(hit) === "MO") return true;
+  const code = String(hit.technical_code ?? hit.code ?? "")
+    .trim()
+    .toUpperCase();
+  return code === "MO" || code.startsWith("MO-");
+}
+
+/** Lê o cadastro do produto MO (fonte da verdade para externa/custo). */
+async function fetchMoCatalogDefaults(productId: string): Promise<{
+  isExternal: boolean;
+  cost: number;
+  defaultWorkCenterId: string | null;
+  label: string;
+}> {
+  const res = await fetch(`/api/products/${productId}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: {
+      technical_code?: string | null;
+      name?: string | null;
+      cost_price?: number | null;
+      default_is_external_labor?: boolean | null;
+      default_work_center_id?: string | null;
+    };
+    error?: string;
+  };
+  if (!res.ok || !json.data) {
+    throw new Error(json.error ?? "Erro ao carregar produto MO");
+  }
+  const row = json.data;
+  const code = row.technical_code?.trim() || "—";
+  const name = row.name?.trim() || "—";
+  return {
+    isExternal: Boolean(row.default_is_external_labor),
+    cost: Number(row.cost_price ?? 0) || 0,
+    defaultWorkCenterId: row.default_work_center_id ?? null,
+    label: `${code} — ${name}`,
+  };
+}
+
 type ProductCompositionPanelProps = {
   productId: string;
   /** Quando true, omite cabeçalho de página e ajusta espaçamento (uso em abas). */
@@ -197,6 +256,7 @@ export function ProductCompositionPanel({
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedProductLabel, setSelectedProductLabel] = useState("");
   const [moFromCatalog, setMoFromCatalog] = useState(false);
+  const [moResolving, setMoResolving] = useState(false);
   const [selectedWorkCenterId, setSelectedWorkCenterId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [laborHourlyRate, setLaborHourlyRate] = useState(0);
@@ -253,27 +313,44 @@ export function ProductCompositionPanel({
     importCompositionMutation.mutate(hit.id);
   }
 
-  function handleProductPickFromSearch(hit: ProductSearchHit) {
-    const isMo = hit.prefix?.code === "MO";
-    if (isMo) {
+  async function handleProductPickFromSearch(hit: ProductSearchHit) {
+    if (isMoProductHit(hit)) {
       setMoFromCatalog(true);
       setComponentType("labor");
       setSelectedProductId(hit.id);
       const code = hit.technical_code?.trim() || "—";
       setSelectedProductLabel(`${code} — ${hit.name}`);
-      const ext = Boolean(hit.default_is_external_labor);
-      setLaborSource(ext ? "external" : "internal");
-      if (ext) {
-        const catalogCost = Number(
-          hit.default_labor_cost ?? hit.cost_price ?? 0
-        );
-        setExternalUnitCost(
-          Number.isFinite(catalogCost) && catalogCost >= 0 ? catalogCost : 0
-        );
+      // Optimista a partir do hit; em seguida confirma no cadastro.
+      const hitExt = Boolean(hit.default_is_external_labor);
+      setLaborSource(hitExt ? "external" : "internal");
+      if (hitExt) {
+        setExternalUnitCost(Number(hit.cost_price ?? 0) || 0);
         setSelectedWorkCenterId("");
         setLaborHourlyRate(0);
       } else {
         setSelectedWorkCenterId(hit.default_work_center_id ?? "");
+      }
+
+      setMoResolving(true);
+      try {
+        const resolved = await fetchMoCatalogDefaults(hit.id);
+        setSelectedProductLabel(resolved.label);
+        setLaborSource(resolved.isExternal ? "external" : "internal");
+        if (resolved.isExternal) {
+          setExternalUnitCost(resolved.cost);
+          setSelectedWorkCenterId("");
+          setLaborHourlyRate(0);
+        } else {
+          setSelectedWorkCenterId(resolved.defaultWorkCenterId ?? "");
+        }
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível confirmar se a MO é externa ou interna."
+        );
+      } finally {
+        setMoResolving(false);
       }
       return;
     }
@@ -284,6 +361,7 @@ export function ProductCompositionPanel({
       return;
     }
     setMoFromCatalog(false);
+    setMoResolving(false);
     setComponentType("material");
     setSelectedProductId(hit.id);
     const code = hit.technical_code?.trim() || "—";
@@ -297,6 +375,7 @@ export function ProductCompositionPanel({
 
   function clearMoCatalog() {
     setMoFromCatalog(false);
+    setMoResolving(false);
     setSelectedProductId("");
     setSelectedProductLabel("");
   }
@@ -394,6 +473,7 @@ export function ProductCompositionPanel({
     setComponentType("material");
     setLaborSource("internal");
     setMoFromCatalog(false);
+    setMoResolving(false);
     clearMaterialProduct();
     setSelectedWorkCenterId("");
     setQuantity(1);
@@ -470,22 +550,68 @@ export function ProductCompositionPanel({
   }
 
   async function handleAddComponent() {
+    if (moResolving) {
+      toast.error("Aguarde a confirmação do produto MO.");
+      return;
+    }
     if (moFromCatalog) {
       if (!selectedProductId) {
         toast.error("Seleccione um produto MO na pesquisa.");
         return;
       }
-      if (laborSource === "internal") {
-        if (!selectedWorkCenterId) {
+      // Reconfirma no cadastro antes de gravar (evita hit de pesquisa desactualizado).
+      let source: "internal" | "external" = laborSource;
+      let unitCost = laborSource === "external" ? externalUnitCost : laborHourlyRate;
+      let workCenterId = selectedWorkCenterId;
+      try {
+        const resolved = await fetchMoCatalogDefaults(selectedProductId);
+        source = resolved.isExternal ? "external" : laborSource;
+        if (resolved.isExternal) {
+          source = "external";
+          unitCost =
+            Number.isFinite(externalUnitCost) && externalUnitCost > 0
+              ? externalUnitCost
+              : resolved.cost;
+          workCenterId = "";
+          setLaborSource("external");
+          setExternalUnitCost(unitCost);
+          setSelectedWorkCenterId("");
+        } else if (!workCenterId && resolved.defaultWorkCenterId) {
+          workCenterId = resolved.defaultWorkCenterId;
+          setSelectedWorkCenterId(workCenterId);
+        }
+      } catch {
+        /* usa estado actual do formulário */
+      }
+
+      if (source === "internal") {
+        if (!workCenterId) {
           toast.error("Seleccione um centro de trabalho.");
           return;
         }
-      } else {
-        if (!Number.isFinite(externalUnitCost) || externalUnitCost < 0) {
-          toast.error("Informe o custo unitário (R$).");
-          return;
-        }
+      } else if (!Number.isFinite(unitCost) || unitCost < 0) {
+        toast.error("Informe o custo unitário (R$).");
+        return;
       }
+
+      if (quantity <= 0 || !Number.isFinite(quantity)) {
+        toast.error("Quantidade deve ser maior que zero.");
+        return;
+      }
+
+      try {
+        await addMutation.mutateAsync({
+          is_labor: true,
+          component_product_id: selectedProductId,
+          is_external_labor: source === "external",
+          work_center_id: source === "internal" ? workCenterId : null,
+          unit_cost: unitCost,
+          quantity,
+        });
+      } catch {
+        /* toast no onError */
+      }
+      return;
     } else if (componentType === "material" && !selectedProductId) {
       toast.error("Seleccione um produto.");
       return;
@@ -508,16 +634,7 @@ export function ProductCompositionPanel({
     }
 
     try {
-      if (moFromCatalog) {
-        await addMutation.mutateAsync({
-          is_labor: true,
-          component_product_id: selectedProductId,
-          is_external_labor: laborSource === "external",
-          work_center_id: laborSource === "internal" ? selectedWorkCenterId : null,
-          unit_cost: laborSource === "internal" ? laborHourlyRate : externalUnitCost,
-          quantity,
-        });
-      } else if (componentType === "material") {
+      if (componentType === "material") {
         await addMutation.mutateAsync({
           component_product_id: selectedProductId,
           is_labor: false,
@@ -995,7 +1112,7 @@ export function ProductCompositionPanel({
                   <ProductComboboxField
                     value={selectedProductHit}
                     onChange={(hit) => {
-                      if (hit) handleProductPickFromSearch(hit);
+                      if (hit) void handleProductPickFromSearch(hit);
                       else clearMaterialProduct();
                     }}
                     excludeIds={excludeProductIdsForSearch}
@@ -1021,9 +1138,11 @@ export function ProductCompositionPanel({
                         {selectedProductLabel}
                       </p>
                       <p className="text-xs text-violet-900">
-                        {laborSource === "external"
-                          ? "Cadastro: MO externa — usa o custo do produto, sem centro de trabalho."
-                          : "Cadastro: MO interna — indique o centro de trabalho (ou o padrão do produto)."}
+                        {moResolving
+                          ? "A confirmar no cadastro se a MO é interna ou externa…"
+                          : laborSource === "external"
+                            ? "Cadastro: MO externa — custo do produto, sem centro de trabalho."
+                            : "Cadastro: MO interna — indique o centro de trabalho (ou o padrão do produto)."}
                       </p>
                       <Button
                         type="button"
@@ -1037,41 +1156,53 @@ export function ProductCompositionPanel({
                     </div>
                   ) : null}
 
-                  {!moFromCatalog ? (
-                    <div className="space-y-2">
-                      <span className="text-sm font-medium text-slate-700">
-                        Origem da mão-de-obra
-                      </span>
-                      <div className="flex flex-col gap-2">
-                        <label className="flex items-start gap-2 cursor-pointer text-sm">
-                          <input
-                            type="radio"
-                            name="labor-source"
-                            className="mt-1"
-                            checked={laborSource === "internal"}
-                            onChange={() => setLaborSource("internal")}
-                          />
-                          <span>
-                            <strong>Interna</strong> — centro de trabalho da
-                            empresa; custo/hora sugerido pelo centro (editável).
-                          </span>
-                        </label>
-                        <label className="flex items-start gap-2 cursor-pointer text-sm">
-                          <input
-                            type="radio"
-                            name="labor-source"
-                            className="mt-1"
-                            checked={laborSource === "external"}
-                            onChange={() => setLaborSource("external")}
-                          />
-                          <span>
-                            <strong>Externa</strong> — terceiros; custo unitário
-                            fixo (R$), sem centro de trabalho.
-                          </span>
-                        </label>
-                      </div>
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium text-slate-700">
+                      Origem da mão-de-obra
+                    </span>
+                    <div className="flex flex-col gap-2">
+                      <label className="flex items-start gap-2 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name="labor-source"
+                          className="mt-1"
+                          checked={laborSource === "internal"}
+                          disabled={moResolving}
+                          onChange={() => setLaborSource("internal")}
+                        />
+                        <span>
+                          <strong>Interna</strong> — centro de trabalho da
+                          empresa; custo/hora sugerido pelo centro (editável).
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name="labor-source"
+                          className="mt-1"
+                          checked={laborSource === "external"}
+                          disabled={moResolving}
+                          onChange={() => {
+                            setLaborSource("external");
+                            setSelectedWorkCenterId("");
+                            if (
+                              moFromCatalog &&
+                              selectedProductId &&
+                              !(externalUnitCost > 0)
+                            ) {
+                              void fetchMoCatalogDefaults(selectedProductId)
+                                .then((r) => setExternalUnitCost(r.cost))
+                                .catch(() => undefined);
+                            }
+                          }}
+                        />
+                        <span>
+                          <strong>Externa</strong> — terceiros; custo unitário
+                          fixo (R$), sem centro de trabalho.
+                        </span>
+                      </label>
                     </div>
-                  ) : null}
+                  </div>
 
                   {!moFromCatalog ? (
                     <div className="pt-1 space-y-2">
@@ -1079,7 +1210,7 @@ export function ProductCompositionPanel({
                       <ProductComboboxField
                         value={null}
                         onChange={(hit) => {
-                          if (hit) handleProductPickFromSearch(hit);
+                          if (hit) void handleProductPickFromSearch(hit);
                         }}
                         excludeIds={excludeProductIdsForSearch}
                         parentProductId={productId}
@@ -1204,7 +1335,7 @@ export function ProductCompositionPanel({
               </Button>
               <Button
                 type="button"
-                disabled={addMutation.isPending}
+                disabled={addMutation.isPending || moResolving}
                 onClick={() => void handleAddComponent()}
               >
                 {addMutation.isPending ? (
