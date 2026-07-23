@@ -376,7 +376,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return apiError("Dados inválidos", 400, parsed.error.flatten());
   }
 
-  const { component_id: componentId, quantity, unit_cost } = parsed.data;
+  const { component_id: componentId, quantity } = parsed.data;
+  // unit_cost no body é ignorado (legado de UI antiga) — custo só no cadastro.
 
   const admin = createSupabaseAdminClient();
 
@@ -416,15 +417,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
   if (!existing) return apiError("Componente não encontrado", 404);
 
-  if (unit_cost !== undefined) {
-    return apiError(
-      "O custo unitário não pode ser alterado na composição. Altere no cadastro do produto ou do centro de trabalho.",
-      400
-    );
+  if (quantity === undefined) {
+    return apiError("Informe a quantidade para actualizar a linha.", 400);
   }
 
-  const patch: { quantity?: number } = {};
-  if (quantity !== undefined) patch.quantity = quantity;
+  const patch: { quantity: number } = { quantity };
 
   const { data, error } = await admin
     .from("product_components")

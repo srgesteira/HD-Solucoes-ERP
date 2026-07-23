@@ -1228,28 +1228,39 @@ export function ProductCompositionPanel({
                         ))}
                       </select>
                       <div className="space-y-2 pt-2">
-                        <Label>Custo por hora (R$)</Label>
-                        <p className="text-sm font-semibold tabular-nums text-slate-900">
-                          {formatCurrency(laborHourlyRate)}
-                        </p>
+                        <Label htmlFor="bom-labor-rate">Custo por hora (R$)</Label>
+                        <Input
+                          id="bom-labor-rate"
+                          type="text"
+                          readOnly
+                          disabled
+                          tabIndex={-1}
+                          value={formatCurrency(laborHourlyRate)}
+                          className="bg-slate-100 text-slate-700 cursor-not-allowed"
+                        />
                         <p className="text-xs text-slate-500">
                           {moFromCatalog
-                            ? "Valor do cadastro / centro — não editável na composição."
-                            : "Valor do centro de trabalho — não editável na composição. Altere no cadastro do centro se precisar."}
+                            ? "Bloqueado — valor do cadastro / centro."
+                            : "Bloqueado — valor do centro de trabalho."}
                         </p>
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <Label>Custo unitário (R$)</Label>
+                      <Label htmlFor="bom-ext-cost">Custo unitário (R$)</Label>
                       {moFromCatalog ? (
                         <>
-                          <p className="text-sm font-semibold tabular-nums text-slate-900">
-                            {formatCurrency(externalUnitCost)}
-                          </p>
+                          <Input
+                            id="bom-ext-cost"
+                            type="text"
+                            readOnly
+                            disabled
+                            tabIndex={-1}
+                            value={formatCurrency(externalUnitCost)}
+                            className="bg-slate-100 text-slate-700 cursor-not-allowed"
+                          />
                           <p className="text-xs text-slate-500">
-                            Valor do cadastro do produto MO — não editável na
-                            composição. Altere no produto se precisar.
+                            Bloqueado — valor do cadastro do produto MO.
                           </p>
                         </>
                       ) : (
@@ -1395,18 +1406,24 @@ export function ProductCompositionPanel({
                 </p>
               </div>
               <div className="space-y-2">
-                <Label>
+                <Label htmlFor="bom-edit-unit-cost">
                   Custo unitário (R$)
                   {editingLine.is_labor && !editingLine.is_external_labor
                     ? " / hora"
                     : ""}
                 </Label>
-                <p className="text-sm font-semibold tabular-nums text-slate-900">
-                  {formatCurrency(editUnitCost)}
-                </p>
+                <Input
+                  id="bom-edit-unit-cost"
+                  type="text"
+                  readOnly
+                  disabled
+                  tabIndex={-1}
+                  value={formatCurrency(editUnitCost)}
+                  className="bg-slate-100 text-slate-700 cursor-not-allowed"
+                />
                 <p className="text-xs text-slate-500">
-                  Custo do cadastro/composição — não editável aqui. Só a
-                  quantidade pode ser alterada.
+                  Bloqueado — vem do cadastro do produto. Só a quantidade pode
+                  ser alterada. Para mudar o valor, edite o produto.
                 </p>
               </div>
             </div>
