@@ -131,16 +131,12 @@ export const productComponentSchema = z
   });
 
 /** Actualização parcial de linha BOM existente (PATCH). */
-export const productComponentUpdateSchema = z
-  .object({
-    component_id: z.string().uuid(),
-    quantity: z.number().min(0.000001, "Quantidade deve ser maior que zero").optional(),
-    unit_cost: z.number().min(0).optional(),
-  })
-  .refine(
-    (data) => data.quantity !== undefined || data.unit_cost !== undefined,
-    { message: "Informe quantidade ou custo unitário para actualizar" }
-  );
+export const productComponentUpdateSchema = z.object({
+  component_id: z.string().uuid(),
+  quantity: z.number().min(0.000001, "Quantidade deve ser maior que zero"),
+  /** Legado: custo não é editável na BOM (só cadastro do produto/centro). */
+  unit_cost: z.number().min(0).optional(),
+});
 
 export const workCenterSchema = z.object({
   code: z.string().min(1, "Código é obrigatório"),

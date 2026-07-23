@@ -135,7 +135,7 @@ function componentLineToPostBody(
 
 async function updateComponent(
   productId: string,
-  payload: { component_id: string; quantity?: number; unit_cost?: number }
+  payload: { component_id: string; quantity: number }
 ) {
   const res = await fetch(`/api/products/${productId}/components`, {
     method: "PATCH",
@@ -456,11 +456,8 @@ export function ProductCompositionPanel({
   });
 
   const updateMutation = useMutation({
-    mutationFn: (payload: {
-      component_id: string;
-      quantity?: number;
-      unit_cost?: number;
-    }) => updateComponent(productId, payload),
+    mutationFn: (payload: { component_id: string; quantity: number }) =>
+      updateComponent(productId, payload),
     onSuccess: async () => {
       toast.success("Linha actualizada.");
       await invalidateProductQueries();
@@ -527,23 +524,12 @@ export function ProductCompositionPanel({
       toast.error("Quantidade deve ser maior que zero.");
       return;
     }
-    const payload: {
-      component_id: string;
-      quantity?: number;
-      unit_cost?: number;
-    } = {
-      component_id: editingLine.id,
-      quantity: editQuantity,
-    };
-    if (editingLine.is_labor) {
-      if (!Number.isFinite(editUnitCost) || editUnitCost < 0) {
-        toast.error("Custo unitário inválido.");
-        return;
-      }
-      payload.unit_cost = editUnitCost;
-    }
+    // Custo unitário vem do cadastro/centro — só quantidade é editável.
     try {
-      await updateMutation.mutateAsync(payload);
+      await updateMutation.mutateAsync({
+        component_id: editingLine.id,
+        quantity: editQuantity,
+      });
     } catch {
       /* toast no onError */
     }
@@ -559,38 +545,31 @@ export function ProductCompositionPanel({
         toast.error("Seleccione um produto MO na pesquisa.");
         return;
       }
-      // Reconfirma no cadastro antes de gravar (evita hit de pesquisa desactualizado).
+      // Custo sempre do cadastro — não aceita override manual na BOM.
       let source: "internal" | "external" = laborSource;
-      let unitCost = laborSource === "external" ? externalUnitCost : laborHourlyRate;
       let workCenterId = selectedWorkCenterId;
       try {
         const resolved = await fetchMoCatalogDefaults(selectedProductId);
-        source = resolved.isExternal ? "external" : laborSource;
         if (resolved.isExternal) {
           source = "external";
-          unitCost =
-            Number.isFinite(externalUnitCost) && externalUnitCost > 0
-              ? externalUnitCost
-              : resolved.cost;
           workCenterId = "";
           setLaborSource("external");
-          setExternalUnitCost(unitCost);
+          setExternalUnitCost(resolved.cost);
           setSelectedWorkCenterId("");
-        } else if (!workCenterId && resolved.defaultWorkCenterId) {
-          workCenterId = resolved.defaultWorkCenterId;
-          setSelectedWorkCenterId(workCenterId);
+        } else {
+          source = "internal";
+          setLaborSource("internal");
+          if (!workCenterId && resolved.defaultWorkCenterId) {
+            workCenterId = resolved.defaultWorkCenterId;
+            setSelectedWorkCenterId(workCenterId);
+          }
         }
       } catch {
         /* usa estado actual do formulário */
       }
 
-      if (source === "internal") {
-        if (!workCenterId) {
-          toast.error("Seleccione um centro de trabalho.");
-          return;
-        }
-      } else if (!Number.isFinite(unitCost) || unitCost < 0) {
-        toast.error("Informe o custo unitário (R$).");
+      if (source === "internal" && !workCenterId) {
+        toast.error("Seleccione um centro de trabalho.");
         return;
       }
 
@@ -605,7 +584,6 @@ export function ProductCompositionPanel({
           component_product_id: selectedProductId,
           is_external_labor: source === "external",
           work_center_id: source === "internal" ? workCenterId : null,
-          unit_cost: unitCost,
           quantity,
         });
       } catch {
@@ -646,7 +624,6 @@ export function ProductCompositionPanel({
           is_external_labor: false,
           work_center_id: selectedWorkCenterId,
           quantity,
-          unit_cost: laborHourlyRate,
         });
       } else {
         await addMutation.mutateAsync({
@@ -1251,40 +1228,50 @@ export function ProductCompositionPanel({
                         ))}
                       </select>
                       <div className="space-y-2 pt-2">
-                        <Label htmlFor="bom-labor-rate">Custo por hora (R$)</Label>
-                        <Input
-                          id="bom-labor-rate"
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          value={laborHourlyRate}
-                          onChange={(e) =>
-                            setLaborHourlyRate(parseFloat(e.target.value) || 0)
-                          }
-                        />
+                        <Label>Custo por hora (R$)</Label>
+                        <p className="text-sm font-semibold tabular-nums text-slate-900">
+                          {formatCurrency(laborHourlyRate)}
+                        </p>
                         <p className="text-xs text-slate-500">
-                          Preenchido com o último custo/hora calculado para a linha ou com o custo/h do
-                          centro. Pode alterar antes de gravar.
+                          {moFromCatalog
+                            ? "Valor do cadastro / centro — não editável na composição."
+                            : "Valor do centro de trabalho — não editável na composição. Altere no cadastro do centro se precisar."}
                         </p>
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <Label htmlFor="bom-ext-cost">Custo unitário (R$)</Label>
-                      <Input
-                        id="bom-ext-cost"
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        value={externalUnitCost}
-                        onChange={(e) =>
-                          setExternalUnitCost(parseFloat(e.target.value) || 0)
-                        }
-                      />
-                      <p className="text-xs text-slate-500">
-                        Valor por unidade de medida usada na quantidade (ex.: R$/hora ou R$/serviço),
-                        conforme interpretar a quantidade abaixo.
-                      </p>
+                      <Label>Custo unitário (R$)</Label>
+                      {moFromCatalog ? (
+                        <>
+                          <p className="text-sm font-semibold tabular-nums text-slate-900">
+                            {formatCurrency(externalUnitCost)}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Valor do cadastro do produto MO — não editável na
+                            composição. Altere no produto se precisar.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <Input
+                            id="bom-ext-cost"
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            value={externalUnitCost}
+                            onChange={(e) =>
+                              setExternalUnitCost(
+                                parseFloat(e.target.value) || 0
+                              )
+                            }
+                          />
+                          <p className="text-xs text-slate-500">
+                            MO externa directa (sem produto): informe o custo
+                            unitário do serviço.
+                          </p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1407,26 +1394,21 @@ export function ProductCompositionPanel({
                       : `Unidade: ${editingLine.component_product?.unit?.trim() || "—"} por unidade do produto pai.`}
                 </p>
               </div>
-              {editingLine.is_labor ? (
-                <div className="space-y-2">
-                  <Label htmlFor="bom-edit-unit-cost">
-                    Custo unitário (R$)
-                    {editingLine.is_labor && !editingLine.is_external_labor
-                      ? " / hora"
-                      : ""}
-                  </Label>
-                  <Input
-                    id="bom-edit-unit-cost"
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    value={editUnitCost}
-                    onChange={(e) =>
-                      setEditUnitCost(parseFloat(e.target.value) || 0)
-                    }
-                  />
-                </div>
-              ) : null}
+              <div className="space-y-2">
+                <Label>
+                  Custo unitário (R$)
+                  {editingLine.is_labor && !editingLine.is_external_labor
+                    ? " / hora"
+                    : ""}
+                </Label>
+                <p className="text-sm font-semibold tabular-nums text-slate-900">
+                  {formatCurrency(editUnitCost)}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Custo do cadastro/composição — não editável aqui. Só a
+                  quantidade pode ser alterada.
+                </p>
+              </div>
             </div>
             <div className="mt-6 flex flex-wrap gap-2 justify-end">
               <Button type="button" variant="outline" onClick={closeEditDialog}>

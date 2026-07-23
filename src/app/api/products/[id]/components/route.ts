@@ -236,15 +236,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     const catalogCost = Number(compRow.cost_price ?? 0);
 
     if (lineExternal) {
-      const fromBody =
-        validated.unit_cost !== undefined && validated.unit_cost !== null
-          ? Number(validated.unit_cost)
-          : NaN;
-      unitCost =
-        Number.isFinite(fromBody) && fromBody > 0 ? fromBody : catalogCost;
+      // Custo sempre do cadastro do produto (não aceita override na BOM).
+      unitCost = catalogCost;
       if (!Number.isFinite(unitCost) || unitCost < 0) {
         return apiError(
-          "Informe o custo unitário (R$) ou cadastre o custo no produto MO externo.",
+          "Cadastre o custo unitário no produto MO externo antes de o usar na composição.",
           400
         );
       }
@@ -265,9 +261,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         .eq("tenant_id", tenantId);
       if (!wcOk2) return apiError("Centro de trabalho inválido", 400);
       workCenterIdIns = wcUse;
-      if (validated.unit_cost !== undefined && validated.unit_cost !== null) {
-        unitCost = Number(validated.unit_cost);
-      } else if (catalogCost > 0) {
+      if (catalogCost > 0) {
         unitCost = catalogCost;
       } else {
         unitCost = await resolveLaborHourlyRateForBom(admin, tenantId, {
@@ -302,20 +296,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     lineExternalLaborIns = false;
     componentProductIdIns = null;
     workCenterIdIns = validated.work_center_id;
-    if (validated.unit_cost !== undefined && validated.unit_cost !== null) {
-      unitCost = validated.unit_cost;
-    } else {
-      const { data: parentProd } = await admin
-        .from("products")
-        .select("default_production_line_id")
-        .eq("id", parentId)
-        .eq("tenant_id", tenantId)
-        .maybeSingle();
-      unitCost = await resolveLaborHourlyRateForBom(admin, tenantId, {
-        work_center_id: validated.work_center_id,
-        production_line_id: parentProd?.default_production_line_id,
-      });
-    }
+    const { data: parentProd } = await admin
+      .from("products")
+      .select("default_production_line_id")
+      .eq("id", parentId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    // Custo/hora do centro — sem override manual na BOM.
+    unitCost = await resolveLaborHourlyRateForBom(admin, tenantId, {
+      work_center_id: validated.work_center_id,
+      production_line_id: parentProd?.default_production_line_id,
+    });
   }
 
   const { data, error } = await admin
@@ -425,16 +416,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
   if (!existing) return apiError("Componente não encontrado", 404);
 
-  if (unit_cost !== undefined && !existing.is_labor) {
+  if (unit_cost !== undefined) {
     return apiError(
-      "Custo unitário só pode ser editado em linhas de mão-de-obra.",
+      "O custo unitário não pode ser alterado na composição. Altere no cadastro do produto ou do centro de trabalho.",
       400
     );
   }
 
-  const patch: { quantity?: number; unit_cost?: number } = {};
+  const patch: { quantity?: number } = {};
   if (quantity !== undefined) patch.quantity = quantity;
-  if (unit_cost !== undefined) patch.unit_cost = unit_cost;
 
   const { data, error } = await admin
     .from("product_components")
