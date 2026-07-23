@@ -1132,13 +1132,17 @@ export default function QuoteDetailPage() {
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
-                      <span className="text-slate-500">Subtotal</span>
+                      <span className="text-slate-500">
+                        Subtotal (após desc. itens)
+                      </span>
                       <span className="tabular-nums font-medium">
                         {fmtBRL(q.subtotal)}
                       </span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-slate-500">Desconto</span>
+                      <span className="text-slate-500">
+                        Desconto do orçamento
+                      </span>
                       <span
                         className={`tabular-nums font-medium ${
                           q.discount > 0
