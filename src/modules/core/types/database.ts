@@ -4394,6 +4394,7 @@ export type Database = {
         Row: {
           created_at: string
           description: string
+          discount: number
           icms_rate: number | null
           icms_value: number | null
           id: string
@@ -4420,6 +4421,7 @@ export type Database = {
         Insert: {
           created_at?: string
           description: string
+          discount?: number
           icms_rate?: number | null
           icms_value?: number | null
           id?: string
@@ -4446,6 +4448,7 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string
+          discount?: number
           icms_rate?: number | null
           icms_value?: number | null
           id?: string
@@ -4571,6 +4574,7 @@ export type Database = {
           comercial_pcp_observation_by: string | null
           created_at: string
           created_by: string | null
+          customer_po_number: string | null
           discount: number
           expected_delivery: string | null
           finance_blocked: boolean
@@ -4614,6 +4618,7 @@ export type Database = {
           comercial_pcp_observation_by?: string | null
           created_at?: string
           created_by?: string | null
+          customer_po_number?: string | null
           discount?: number
           expected_delivery?: string | null
           finance_blocked?: boolean
@@ -4657,6 +4662,7 @@ export type Database = {
           comercial_pcp_observation_by?: string | null
           created_at?: string
           created_by?: string | null
+          customer_po_number?: string | null
           discount?: number
           expected_delivery?: string | null
           finance_blocked?: boolean

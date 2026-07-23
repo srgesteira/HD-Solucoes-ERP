@@ -5,10 +5,7 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
-import {
-  markSalesOrderReadyForInvoice,
-  syncSalesOrderReadyForInvoice,
-} from "@/modules/vendas/lib/sales/sales-order-ready-for-invoice";
+import { markSalesOrderReadyForInvoice } from "@/modules/vendas/lib/sales/sales-order-ready-for-invoice";
 import { enrichSalesOrdersListWithProduction } from "@/modules/vendas/lib/sales/sales-order-production-summary";
 import { computeOrderProductionAggregateStatus } from "@/modules/pcp/lib/order-item-production-status";
 
@@ -40,7 +37,6 @@ export async function POST(request: NextRequest) {
     typeof b.sales_order_id === "string" ? b.sales_order_id : null;
   if (!salesOrderId) return apiError("sales_order_id é obrigatório", 400);
 
-  const manual = b.manual === true;
   const admin = createSupabaseAdminClient();
 
   const { data: order } = await admin
@@ -56,26 +52,22 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    if (manual) {
-      const prodMap = await enrichSalesOrdersListWithProduction(
-        admin,
-        tenantId,
-        [salesOrderId]
+    const prodMap = await enrichSalesOrdersListWithProduction(
+      admin,
+      tenantId,
+      [salesOrderId]
+    );
+    const items = prodMap.get(salesOrderId);
+    const aggregate = items
+      ? items.production_status
+      : computeOrderProductionAggregateStatus([]);
+    if (aggregate !== "finished") {
+      return apiError(
+        "Produção ainda não concluída. Conclua todos os itens antes de finalizar no PCP.",
+        409
       );
-      const items = prodMap.get(salesOrderId);
-      const aggregate = items
-        ? items.production_status
-        : computeOrderProductionAggregateStatus([]);
-      if (aggregate !== "finished") {
-        return apiError(
-          "Produção ainda não concluída. Conclua todos os itens antes de liberar para faturamento.",
-          409
-        );
-      }
-      await markSalesOrderReadyForInvoice(admin, tenantId, salesOrderId);
-    } else {
-      await syncSalesOrderReadyForInvoice(admin, tenantId, salesOrderId);
     }
+    await markSalesOrderReadyForInvoice(admin, tenantId, salesOrderId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro ao actualizar pedido";
     return apiError(msg, 500);

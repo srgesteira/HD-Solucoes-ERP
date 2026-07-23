@@ -40,7 +40,7 @@ export async function validateSalesOrderCanEmitNfe(
   const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
     .select(
-      "id, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan, invoice_document_type"
+      "id, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan, invoice_document_type, customer_po_number"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -55,6 +55,7 @@ export async function validateSalesOrderCanEmitNfe(
     billing_closure: string | null;
     billing_plan: string | null;
     invoice_document_type: string | null;
+    customer_po_number: string | null;
   } | null;
   if (!so) {
     return { ok: false, reasons: ["Pedido não encontrado."] };
@@ -69,6 +70,12 @@ export async function validateSalesOrderCanEmitNfe(
   } else if (!so.invoice_document_type) {
     reasons.push(
       "Tipo de nota não definido no Fiscal (NFS-e, NF-e produto ou industrialização)."
+    );
+  }
+
+  if (!(so.customer_po_number ?? "").trim()) {
+    reasons.push(
+      "Informe o n.º do pedido de compra do cliente no pedido de venda (obrigatório na NF)."
     );
   }
 

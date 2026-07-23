@@ -4,20 +4,33 @@ export function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Subtotal da linha (quantidade × preço unitário). */
+/** Subtotal bruto da linha (quantidade × preço unitário). */
 export function lineSubtotal(quantity: number, unitPrice: number): number {
   const q = Number.isFinite(quantity) ? quantity : 0;
   const p = Number.isFinite(unitPrice) ? unitPrice : 0;
   return roundMoney(q * p);
 }
 
-/** Total da linha para exibição: subtotal + IPI (ICMS informativo, já no subtotal da NF). */
+/** Subtotal líquido da linha (bruto − desconto, mínimo 0). */
+export function lineNetSubtotal(
+  quantity: number,
+  unitPrice: number,
+  discount = 0
+): number {
+  const d = Number.isFinite(discount) ? Math.max(0, discount) : 0;
+  return roundMoney(Math.max(0, lineSubtotal(quantity, unitPrice) - d));
+}
+
+/** Total da linha para exibição: líquido + IPI (ICMS informativo). */
 export function lineDisplayTotal(
   quantity: number,
   unitPrice: number,
-  ipiValue: number
+  ipiValue: number,
+  discount = 0
 ): number {
-  return roundMoney(lineSubtotal(quantity, unitPrice) + Number(ipiValue ?? 0));
+  return roundMoney(
+    lineNetSubtotal(quantity, unitPrice, discount) + Number(ipiValue ?? 0)
+  );
 }
 
 /** @deprecated Use lineSubtotal */
@@ -43,16 +56,17 @@ export type PurchaseLineTaxFields = {
 export type RecalcTaxMode = "icms" | "ipi" | "both" | "none";
 
 /**
- * Regra: IPI sobre subtotal; base ICMS = subtotal + IPI; ICMS sobre a base.
+ * Regra: IPI sobre líquido (após desconto); base ICMS = líquido + IPI; ICMS sobre a base.
  * Ao editar valor manualmente (mode "none"), mantém o valor informado.
  */
 export function recalcLineTaxAmounts(
   quantity: number,
   unitPrice: number,
   fields: PurchaseLineTaxFields,
-  mode: RecalcTaxMode = "both"
+  mode: RecalcTaxMode = "both",
+  discount = 0
 ): PurchaseLineTaxFields {
-  const subtotal = lineSubtotal(quantity, unitPrice);
+  const subtotal = lineNetSubtotal(quantity, unitPrice, discount);
 
   let ipiValue = fields.ipiValue;
   if (mode === "ipi" || mode === "both") {
@@ -88,8 +102,13 @@ export function lineTaxFieldsFromDraft(line: {
   ipiRate: number;
   ipiValue: number;
   taxBase?: number;
+  discount?: number;
 }): PurchaseLineTaxFields {
-  const subtotal = lineSubtotal(line.quantity, line.unitPrice);
+  const subtotal = lineNetSubtotal(
+    line.quantity,
+    line.unitPrice,
+    line.discount ?? 0
+  );
   const ipiValue = roundMoney(line.ipiValue);
   const taxBase =
     line.taxBase !== undefined && Number.isFinite(line.taxBase)
@@ -108,6 +127,7 @@ export function aggregatePurchaseLineTaxes(
   lines: Array<{
     quantity: number;
     unitPrice: number;
+    discount?: number;
     icmsValue?: number;
     ipiValue?: number;
     taxBase?: number;
@@ -117,14 +137,19 @@ export function aggregatePurchaseLineTaxes(
   totalIcms: number;
   totalIpi: number;
   totalTaxBase: number;
+  totalDiscount: number;
 } {
   let subtotal = 0;
   let totalIcms = 0;
   let totalIpi = 0;
   let totalTaxBase = 0;
+  let totalDiscount = 0;
 
   for (const line of lines) {
-    const lineSub = lineSubtotal(line.quantity, line.unitPrice);
+    const discount = Number.isFinite(line.discount)
+      ? Math.max(0, Number(line.discount))
+      : 0;
+    const lineSub = lineNetSubtotal(line.quantity, line.unitPrice, discount);
     const ipiVal = roundMoney(Number(line.ipiValue ?? 0));
     const base =
       line.taxBase !== undefined && Number.isFinite(line.taxBase)
@@ -132,6 +157,7 @@ export function aggregatePurchaseLineTaxes(
         : roundMoney(lineSub + ipiVal);
 
     subtotal += lineSub;
+    totalDiscount += discount;
     totalIcms += roundMoney(Number(line.icmsValue ?? 0));
     totalIpi += ipiVal;
     totalTaxBase += base;
@@ -142,6 +168,7 @@ export function aggregatePurchaseLineTaxes(
     totalIcms: roundMoney(totalIcms),
     totalIpi: roundMoney(totalIpi),
     totalTaxBase: roundMoney(totalTaxBase),
+    totalDiscount: roundMoney(totalDiscount),
   };
 }
 

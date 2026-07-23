@@ -15,6 +15,7 @@ export type NfeProductLineInput = {
   unit: string;
   unit_price: number;
   total_price: number;
+  discount?: number | null;
   ncm: string | null;
   cfop: string | null;
   icms_rate: number | null;
@@ -38,6 +39,10 @@ export type NfeProductPayloadInput = {
   companyAddressNumber: string | null;
   companyAddressNeighborhood: string | null;
   companyAddressZip: string | null;
+  /** Pedido de compra do cliente (xPed / info complementar). */
+  customerPoNumber: string | null;
+  /** Desconto extra do cabeçalho do pedido (R$). */
+  orderDiscount?: number | null;
   items: NfeProductLineInput[];
 };
 
@@ -119,6 +124,12 @@ export function buildNfeProductPayloadFromSalesOrder(
       defaultCfop(args.documentType, sameState);
     const ncm = onlyDigits(it.ncm ?? "");
     const icms = Number(it.icms_rate ?? 0);
+    const customerPo = args.customerPoNumber?.trim() || null;
+    const gross = Number(
+      (it.quantity * it.unit_price).toFixed(2)
+    );
+    const itemDiscount = Math.max(0, Number(it.discount ?? 0));
+    const net = Math.max(0, Number((gross - itemDiscount).toFixed(2)));
     return {
       numero_item: String(idx + 1),
       codigo_produto: String(idx + 1).padStart(4, "0"),
@@ -127,18 +138,25 @@ export function buildNfeProductPayloadFromSalesOrder(
       unidade_comercial: (it.unit || "UN").slice(0, 6),
       quantidade_comercial: it.quantity,
       valor_unitario_comercial: it.unit_price,
-      valor_bruto: it.total_price > 0 ? it.total_price : it.quantity * it.unit_price,
+      valor_bruto: gross,
+      ...(itemDiscount > 0 ? { valor_desconto: itemDiscount } : {}),
       unidade_tributavel: (it.unit || "UN").slice(0, 6),
       quantidade_tributavel: it.quantity,
       valor_unitario_tributavel: it.unit_price,
       codigo_ncm: ncm,
+      ...(customerPo
+        ? {
+            numero_pedido_compra: customerPo.slice(0, 15),
+            numero_item_pedido_compra: String(idx + 1),
+          }
+        : {}),
       icms_origem: "0",
       icms_situacao_tributaria: icms > 0 ? "00" : "41",
       ...(icms > 0
         ? {
-            icms_base_calculo: it.total_price,
+            icms_base_calculo: net,
             icms_aliquota: icms,
-            icms_valor: (it.total_price * icms) / 100,
+            icms_valor: (net * icms) / 100,
           }
         : {}),
       ...(Number(it.ipi_rate ?? 0) > 0
@@ -146,16 +164,29 @@ export function buildNfeProductPayloadFromSalesOrder(
             ipi_situacao_tributaria: "99",
             ipi_codigo_enquadramento_legal: "999",
             ipi_aliquota: Number(it.ipi_rate),
-            ipi_valor: (it.total_price * Number(it.ipi_rate)) / 100,
+            ipi_valor: (net * Number(it.ipi_rate)) / 100,
           }
         : { ipi_situacao_tributaria: "99", ipi_codigo_enquadramento_legal: "999" }),
     };
   });
 
-  const total = items.reduce(
+  const valorProdutos = items.reduce(
     (s, it) => s + Number(it.valor_bruto ?? 0),
     0
   );
+  const itemDiscounts = items.reduce(
+    (s, it) => s + Number((it as { valor_desconto?: number }).valor_desconto ?? 0),
+    0
+  );
+  const headerDiscount = Math.max(0, Number(args.orderDiscount ?? 0));
+  const valorDesconto = Number((itemDiscounts + headerDiscount).toFixed(2));
+  const valorTotal = Math.max(0, Number((valorProdutos - valorDesconto).toFixed(2)));
+
+  const customerPo = args.customerPoNumber?.trim();
+  const infoParts = [
+    `Pedido HD ${args.orderNumber}`,
+    customerPo ? `Pedido compra cliente ${customerPo}` : null,
+  ].filter(Boolean);
 
   return {
     natureza_operacao: naturezaOperacao(args.documentType),
@@ -191,11 +222,11 @@ export function buildNfeProductPayloadFromSalesOrder(
     cep_destinatario: cep,
     valor_frete: 0,
     valor_seguro: 0,
-    valor_desconto: 0,
-    valor_produtos: total,
-    valor_total: total,
+    valor_desconto: valorDesconto,
+    valor_produtos: valorProdutos,
+    valor_total: valorTotal,
     modalidade_frete: "9",
     items,
-    informacoes_adicionais_contribuinte: `Pedido ${args.orderNumber}`,
+    informacoes_adicionais_contribuinte: infoParts.join(" · "),
   };
 }

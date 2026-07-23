@@ -82,7 +82,7 @@ function PrincipalBadge({ order }: { order: PcpPlanningOrder }) {
     aguardando_programacao: "Aguard. programação",
     programado: "Programado",
     produzindo: "Produzindo",
-    pronta: "Pronta",
+    pronta: "Pronto p/ PCP",
     finalizado: "Finalizado",
   };
   return (
@@ -283,11 +283,11 @@ export function PcpOrdersLegacyPanel({
                         className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
                         disabled={markingReadyOrderId === order.id}
                         onClick={() => onMarkReadyForInvoice(order.id)}
-                        title="Marcar pedido como liberado para faturamento"
+                        title="Produção concluída — finalizar no PCP e liberar para faturamento"
                       >
                         {markingReadyOrderId === order.id
                           ? "…"
-                          : "Liberar faturamento"}
+                          : "Finalizar PCP"}
                       </button>
                     ) : null}
                     {onFinishStockOrder &&

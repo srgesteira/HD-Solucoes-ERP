@@ -4,7 +4,11 @@ import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-prod
 
 type AdminClient = SupabaseClient<Database>;
 
-/** Verifica itens do pedido e actualiza `ready_for_invoice` se todos concluídos. */
+/**
+ * Sincroniza `ready_for_invoice` com a produção.
+ * Nunca marca automaticamente como liberado — o PCP fecha o pedido à mão.
+ * Se a produção ficar incompleta, limpa o flag (safety).
+ */
 export async function syncSalesOrderReadyForInvoice(
   admin: AdminClient,
   tenantId: string,
@@ -61,26 +65,30 @@ export async function syncSalesOrderReadyForInvoice(
     return isOrderItemProductionFinished(row);
   });
 
-  if (!allComplete) {
-    const { error: updErr } = await admin
+  if (allComplete) {
+    // Produção concluída ≠ fecho PCP. Mantém o flag actual (só o PCP marca true).
+    const { data: so } = await admin
       .from("sales_orders")
-      .update({ ready_for_invoice: false })
+      .select("ready_for_invoice")
       .eq("id", salesOrderId)
-      .eq("tenant_id", tenantId);
-    if (updErr) throw new Error(updErr.message);
-    return false;
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    return so?.ready_for_invoice === true;
   }
 
-  const { error: markErr } = await admin
+  const { error: updErr } = await admin
     .from("sales_orders")
-    .update({ ready_for_invoice: true })
+    .update({ ready_for_invoice: false })
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId);
-  if (markErr) throw new Error(markErr.message);
-
-  return true;
+  if (updErr) throw new Error(updErr.message);
+  return false;
 }
 
+/**
+ * Após apontamento: só reverte `ready_for_invoice` se a produção deixar de estar
+ * completa. Nunca libera o pedido para faturamento automaticamente.
+ */
 export async function maybeMarkSalesOrderReadyForInvoice(
   admin: AdminClient,
   tenantId: string,
@@ -108,7 +116,7 @@ export async function maybeMarkSalesOrderReadyForInvoice(
   await syncSalesOrderReadyForInvoice(admin, tenantId, soi.sales_order_id);
 }
 
-/** Marca manualmente o pedido como liberado para faturamento (PCP). */
+/** Marca manualmente o pedido como liberado para faturamento (fecho PCP). */
 export async function markSalesOrderReadyForInvoice(
   admin: AdminClient,
   tenantId: string,

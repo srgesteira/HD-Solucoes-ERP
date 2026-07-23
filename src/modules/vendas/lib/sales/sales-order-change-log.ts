@@ -19,6 +19,8 @@ export const SALES_ORDER_ADMIN_FIELDS_WHEN_PRODUCTION = new Set([
   "payment_installments",
   "payment_days_to_first_due",
   "payment_days_between_installments",
+  "customer_po_number",
+  "discount",
 ]);
 
 /** Rótulos em português para exibição no histórico. */
@@ -30,6 +32,7 @@ export const SALES_ORDER_FIELD_LABELS: Record<string, string> = {
   client_address: "Cliente (endereço)",
   expected_delivery: "Prazo de entrega",
   notes: "Observações",
+  customer_po_number: "Pedido de compra do cliente",
   payment_installments: PAYMENT_TERM_LABELS.installments,
   payment_days_to_first_due: PAYMENT_TERM_LABELS.daysToFirst,
   payment_days_between_installments: PAYMENT_TERM_LABELS.daysBetween,
@@ -53,6 +56,7 @@ const LOGGED_SCALAR_FIELDS = [
   "client_address",
   "expected_delivery",
   "notes",
+  "customer_po_number",
   "payment_installments",
   "payment_days_to_first_due",
   "payment_days_between_installments",

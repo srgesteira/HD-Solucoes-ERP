@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import {
+  lineNetSubtotal,
   lineSubtotal,
   parseTaxAmount,
   parseTaxRate,
@@ -23,6 +24,7 @@ export type SaleLineInput = {
   quantity: number;
   unit?: string;
   unit_price: number;
+  discount?: number;
   markup_percent?: number | null;
   icms_rate?: number;
   icms_value?: number;
@@ -166,6 +168,27 @@ export function parseSaleLines(raw: unknown):
       };
     }
 
+    const discountRaw = r.discount;
+    const discount =
+      discountRaw === undefined || discountRaw === null
+        ? 0
+        : typeof discountRaw === "number"
+          ? discountRaw
+          : parseFloat(String(discountRaw).replace(",", "."));
+    if (!Number.isFinite(discount) || discount < 0) {
+      return {
+        ok: false,
+        message: `Item ${i + 1}: desconto inválido`,
+      };
+    }
+    const gross = lineSubtotal(quantity, unit_price);
+    if (discount > gross + 1e-9) {
+      return {
+        ok: false,
+        message: `Item ${i + 1}: desconto maior que o valor da linha`,
+      };
+    }
+
     const unit =
       r.unit !== undefined && r.unit !== null && String(r.unit).trim()
         ? String(r.unit).trim()
@@ -222,7 +245,7 @@ export function parseSaleLines(raw: unknown):
       return { ok: false, message: `Item ${i + 1}: valor IPI inválido.` };
     }
 
-    const sub = lineSubtotal(quantity, unit_price);
+    const sub = lineNetSubtotal(quantity, unit_price, discount);
     const tax_base =
       r.tax_base === undefined || r.tax_base === null
         ? roundMoney(sub + ipi_value)
@@ -250,6 +273,7 @@ export function parseSaleLines(raw: unknown):
       description,
       quantity,
       unit_price,
+      discount: roundMoney(discount),
       unit,
       product_id,
       markup_percent,
@@ -274,10 +298,11 @@ function saleLineToDbRow(
   salesOrderId: string,
   unitCost: number | null
 ) {
-  const sub = lineSubtotal(it.quantity, it.unit_price);
+  const discount = roundMoney(Math.max(0, Number(it.discount ?? 0)));
+  const sub = lineNetSubtotal(it.quantity, it.unit_price, discount);
   const ipiVal = roundMoney(it.ipi_value ?? 0);
   const taxBase = roundMoney(it.tax_base ?? sub + ipiVal);
-  const totalPrice = roundMoney(sub + ipiVal);
+  const totalPrice = sub;
 
   return {
     tenant_id: tenantId,
@@ -288,6 +313,7 @@ function saleLineToDbRow(
     quantity: it.quantity,
     unit: it.unit ?? "UN",
     unit_price: it.unit_price,
+    discount,
     unit_cost: unitCost,
     total_price: totalPrice,
     icms_rate: it.icms_rate ?? 0,

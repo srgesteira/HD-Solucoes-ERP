@@ -40,6 +40,7 @@ import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { QuoteStatus } from "@/modules/core/types/sales.types";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
+import { CustomerPoConvertModal } from "@/components/sales/customer-po-convert-modal";
 import { QuoteCostReviewPanel } from "@/components/sales/quote-cost-review-panel";
 import { QuoteSendEmailModal } from "@/components/sales/quote-send-email-modal";
 import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
@@ -200,12 +201,15 @@ async function putQuoteUpdate(
   return json.data;
 }
 
-async function postApproveQuote(id: string): Promise<string> {
+async function postApproveQuote(
+  id: string,
+  customerPoNumber: string
+): Promise<string> {
   const res = await fetch(`/api/sales/quotes/${id}/approve`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ customer_po_number: customerPoNumber }),
   });
   const json = (await res.json().catch(() => ({}))) as {
     data?: { sales_order_id?: string };
@@ -295,6 +299,7 @@ export default function QuoteDetailPage() {
   const q = quoteQuery.data?.data;
 
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [approvePoOpen, setApprovePoOpen] = useState(false);
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -462,8 +467,10 @@ export default function QuoteDetailPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => postApproveQuote(id),
+    mutationFn: (customerPoNumber: string) =>
+      postApproveQuote(id, customerPoNumber),
     onSuccess: (orderId) => {
+      setApprovePoOpen(false);
       toast.success("Orçamento aprovado e pedido de venda criado.");
       invalidateQuote();
       router.push(`/sales/orders/${orderId}`);
@@ -622,7 +629,7 @@ export default function QuoteDetailPage() {
                 size="sm"
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 disabled={busy}
-                onClick={() => approveMutation.mutate()}
+                onClick={() => setApprovePoOpen(true)}
               >
                 <Check className="h-4 w-4" />
                 Aprovar
@@ -1144,6 +1151,22 @@ export default function QuoteDetailPage() {
         onClose={() => !rejectMutation.isPending && setRejectOpen(false)}
         onSubmit={(reasonIds, notes) =>
           rejectMutation.mutate({ reasonIds, notes })
+        }
+      />
+
+      <CustomerPoConvertModal
+        open={approvePoOpen}
+        quoteLabel={
+          q
+            ? formatQuoteNumberWithRevision(q.quote_number, q.revision_number)
+            : null
+        }
+        busy={approveMutation.isPending}
+        onOpenChange={(open) => {
+          if (!approveMutation.isPending) setApprovePoOpen(open);
+        }}
+        onConfirm={(customerPoNumber) =>
+          approveMutation.mutate(customerPoNumber)
         }
       />
 

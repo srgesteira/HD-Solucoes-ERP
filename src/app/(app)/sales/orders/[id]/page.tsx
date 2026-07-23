@@ -57,6 +57,7 @@ type SaleItemLine = {
   quantity: number;
   unit?: string | null;
   unit_price: number;
+  discount?: number | null;
   total_price?: number | null;
   product?: unknown;
 };
@@ -89,6 +90,7 @@ type SalesOrderDetail = {
   total_tax_base?: number;
   total: number;
   notes: string | null;
+  customer_po_number: string | null;
   quote_id: string | null;
   quote?: unknown;
   ready_for_invoice?: boolean | null;
@@ -891,6 +893,26 @@ export default function SalesOrderDetailPage() {
                   {q.client_address?.trim() ? q.client_address : "—"}
                 </p>
               </div>
+              <div className="sm:col-span-2">
+                <p className="text-slate-500">
+                  Pedido de compra do cliente
+                </p>
+                <p className="font-medium">
+                  {q.customer_po_number?.trim() ? q.customer_po_number : "—"}
+                </p>
+                {!q.customer_po_number?.trim() && canNavigateToEdit ? (
+                  <p className="mt-1 text-xs text-amber-700">
+                    Em falta — necessário para a nota fiscal.{" "}
+                    <button
+                      type="button"
+                      className="font-medium underline"
+                      onClick={() => router.push(`/sales/orders/${id}/edit`)}
+                    >
+                      Preencher na edição
+                    </button>
+                  </p>
+                ) : null}
+              </div>
             </CardContent>
           </Card>
 
@@ -1040,6 +1062,9 @@ export default function SalesOrderDetailPage() {
                     <th className="px-3 py-2 text-right font-medium">
                       Unitário
                     </th>
+                    <th className="px-3 py-2 text-right font-medium">
+                      Desc.
+                    </th>
                     <th className="px-3 py-2 text-right font-medium">Total</th>
                   </tr>
                 </thead>
@@ -1062,11 +1087,20 @@ export default function SalesOrderDetailPage() {
                         <td className="px-3 py-2 text-right tabular-nums">
                           {fmtBRL(Number(line.unit_price))}
                         </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {Number(line.discount ?? 0) > 0
+                            ? fmtBRL(Number(line.discount))
+                            : "—"}
+                        </td>
                         <td className="px-3 py-2 text-right tabular-nums font-medium">
                           {fmtBRL(
                             Number(
                               line.total_price ??
-                                line.quantity * line.unit_price
+                                Math.max(
+                                  0,
+                                  line.quantity * line.unit_price -
+                                    Number(line.discount ?? 0)
+                                )
                             )
                           )}
                         </td>
@@ -1075,7 +1109,7 @@ export default function SalesOrderDetailPage() {
                   ) : (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-3 py-6 text-center text-slate-500"
                       >
                         Sem itens neste pedido.

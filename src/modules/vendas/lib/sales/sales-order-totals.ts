@@ -30,7 +30,7 @@ export async function recalculateSalesOrderHeaderTotals(
 ): Promise<{ error?: string }> {
   const { data: items, error: iErr } = await admin
     .from("sales_order_items")
-    .select("quantity, unit_price, icms_value, ipi_value, tax_base")
+    .select("quantity, unit_price, discount, icms_value, ipi_value, tax_base")
     .eq("sales_order_id", salesOrderId)
     .eq("tenant_id", tenantId);
 
@@ -50,6 +50,7 @@ export async function recalculateSalesOrderHeaderTotals(
     (items ?? []).map((row) => ({
       quantity: Number(row.quantity),
       unitPrice: Number(row.unit_price),
+      discount: Number((row as { discount?: number | null }).discount ?? 0),
       icmsValue: Number(row.icms_value ?? 0),
       ipiValue: Number(row.ipi_value ?? 0),
       taxBase: Number(row.tax_base ?? 0),

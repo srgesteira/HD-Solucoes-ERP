@@ -13,6 +13,8 @@ export type ConvertQuoteOptions = {
   payment_installments?: number;
   payment_days_to_first_due?: number;
   payment_days_between_installments?: number;
+  /** N.º do pedido de compra do cliente (obrigatório na conversão). */
+  customer_po_number?: string;
 };
 
 export type ConvertQuoteResult =
@@ -73,6 +75,22 @@ export async function convertQuoteToSalesOrder(
     (typeof quoteRow.payment_days_between_installments === "number"
       ? quoteRow.payment_days_between_installments
       : 30);
+
+  const customerPo = (opts.customer_po_number ?? "").trim();
+  if (!customerPo) {
+    return {
+      ok: false,
+      message: "Informe o n.º do pedido de compra do cliente.",
+      status: 400,
+    };
+  }
+  if (customerPo.length > 60) {
+    return {
+      ok: false,
+      message: "Pedido de compra do cliente: máximo 60 caracteres.",
+      status: 400,
+    };
+  }
 
   const order_date = new Date().toISOString().slice(0, 10);
 
@@ -173,6 +191,7 @@ export async function convertQuoteToSalesOrder(
       payment_installments: installments,
       payment_days_to_first_due: daysFirst,
       payment_days_between_installments: daysBetween,
+      customer_po_number: customerPo,
       mrp_processed: false,
     } as never)
     .select()

@@ -333,6 +333,17 @@ export async function POST(request: NextRequest) {
       ? null
       : String(b.notes).trim() || null;
 
+  const customerPoRaw =
+    typeof b.customer_po_number === "string"
+      ? b.customer_po_number.trim()
+      : "";
+  if (!customerPoRaw) {
+    return apiError("Informe o n.º do pedido de compra do cliente.", 400);
+  }
+  if (customerPoRaw.length > 60) {
+    return apiError("Pedido de compra do cliente: máximo 60 caracteres.", 400);
+  }
+
   const st = b.status !== undefined ? String(b.status) : "pending";
   if (!SO_SET.has(st)) return apiError("Status inválido", 400);
 
@@ -365,6 +376,7 @@ export async function POST(request: NextRequest) {
       discount,
       tax,
       notes,
+      customer_po_number: customerPoRaw,
       status: st,
       created_by: profile?.id ?? null,
       payment_installments: pi,

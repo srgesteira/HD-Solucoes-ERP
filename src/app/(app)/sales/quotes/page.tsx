@@ -10,6 +10,7 @@ import {
   type QuoteRowActionsQuote,
 } from "@/components/sales/quote-row-actions-menu";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
+import { CustomerPoConvertModal } from "@/components/sales/customer-po-convert-modal";
 import {
   formatQuoteNumberWithRevision,
   quoteStatusBadge,
@@ -138,12 +139,15 @@ async function patchQuote(
   if (!res.ok) throw new Error(json.error ?? "Erro ao atualizar orçamento");
 }
 
-async function approveQuote(id: string): Promise<{ sales_order_id: string }> {
+async function approveQuote(
+  id: string,
+  customerPoNumber: string
+): Promise<{ sales_order_id: string }> {
   const res = await fetch(`/api/sales/quotes/${id}/approve`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ customer_po_number: customerPoNumber }),
   });
   const json = (await res.json().catch(() => ({}))) as {
     data?: { sales_order_id: string };
@@ -214,6 +218,9 @@ export default function QuotesListPage() {
 
   const [rejectTarget, setRejectTarget] = useState<QuoteRow | null>(null);
   const [rejectBusy, setRejectBusy] = useState(false);
+  const [approveTarget, setApproveTarget] = useState<QuoteRowActionsQuote | null>(
+    null
+  );
   const [approveBusyId, setApproveBusyId] = useState<string | null>(null);
   const totalPages = data?.pagination
     ? Math.max(1, Math.ceil(data.pagination.total / limit))
@@ -271,11 +278,18 @@ export default function QuotesListPage() {
     }
   };
 
-  const handleApprove = async (row: QuoteRowActionsQuote) => {
+  const handleApprove = (row: QuoteRowActionsQuote) => {
     if (!isAdmin) return;
+    setApproveTarget(row);
+  };
+
+  const handleConfirmApprove = async (customerPoNumber: string) => {
+    if (!approveTarget || !isAdmin) return;
+    const row = approveTarget;
     setApproveBusyId(row.id);
     try {
-      const { sales_order_id } = await approveQuote(row.id);
+      const { sales_order_id } = await approveQuote(row.id, customerPoNumber);
+      setApproveTarget(null);
       toast.success("Orçamento aprovado e pedido de venda criado.");
       await invalidateQuotes();
       router.push(`/sales/orders/${sales_order_id}`);
@@ -532,6 +546,23 @@ export default function QuotesListPage() {
         busy={rejectBusy}
         onClose={() => !rejectBusy && setRejectTarget(null)}
         onSubmit={handleSubmitReject}
+      />
+
+      <CustomerPoConvertModal
+        open={Boolean(approveTarget)}
+        quoteLabel={
+          approveTarget
+            ? formatQuoteNumberWithRevision(
+                approveTarget.quote_number,
+                approveTarget.revision_number
+              )
+            : null
+        }
+        busy={Boolean(approveBusyId)}
+        onOpenChange={(open) => {
+          if (!approveBusyId && !open) setApproveTarget(null);
+        }}
+        onConfirm={handleConfirmApprove}
       />
 
       {!isLoading && error == null ? (

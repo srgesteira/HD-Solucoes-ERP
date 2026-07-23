@@ -30,6 +30,7 @@ import {
 } from "@/modules/vendas/lib/sales/sales-order-change-log";
 import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
 import { parseSaleLines } from "@/modules/vendas/lib/sales/sales-flow";
+import { recalculateSalesOrderHeaderTotals } from "@/modules/vendas/lib/sales/sales-order-totals";
 import {
   ensureReceivablesSyncedForSalesOrder,
   confirmProvisionalReceivablesForSalesOrder,
@@ -264,6 +265,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (b.notes !== undefined) {
     updateData.notes =
       b.notes === null ? null : String(b.notes).trim() || null;
+  }
+  if (b.customer_po_number !== undefined) {
+    const raw =
+      b.customer_po_number === null
+        ? ""
+        : String(b.customer_po_number).trim();
+    if (!raw) {
+      return apiError("Informe o n.º do pedido de compra do cliente.", 400);
+    }
+    if (raw.length > 60) {
+      return apiError("Pedido de compra do cliente: máximo 60 caracteres.", 400);
+    }
+    updateData.customer_po_number = raw;
   }
   if (b.quote_id !== undefined) {
     if (b.quote_id === null) updateData.quote_id = null;
@@ -504,6 +518,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
       );
     }
     if (!data) return apiError("Pedido não encontrado", 404);
+  }
+
+  if (updateData.discount !== undefined || itemsReplaced) {
+    const totals = await recalculateSalesOrderHeaderTotals(admin, tenantId, id);
+    if (totals.error) return apiError(totals.error, 500);
   }
 
   if (logEntries.length) {

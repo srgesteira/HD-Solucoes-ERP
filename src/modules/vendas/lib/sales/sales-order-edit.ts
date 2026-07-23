@@ -1,7 +1,7 @@
 import type { AdminClient, SaleLineInput } from "@/modules/vendas/lib/sales/sales-flow";
 import { recalculateSalesOrderHeaderTotals } from "@/modules/vendas/lib/sales/sales-order-totals";
 import {
-  lineSubtotal,
+  lineNetSubtotal,
   roundMoney,
 } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
@@ -57,10 +57,8 @@ export async function salesOrderProductionStarted(
   admin: AdminClient,
   tenantId: string,
   salesOrderId: string,
-  productionOrderId: string | null
+  _productionOrderId?: string | null
 ): Promise<boolean> {
-  if (!productionOrderId) return false;
-
   const { data: soiRows, error: soiErr } = await admin
     .from("sales_order_items")
     .select("id")
@@ -78,7 +76,9 @@ export async function salesOrderProductionStarted(
     .eq("tenant_id", tenantId)
     .eq("is_suggestion", false)
     .in("sales_order_item_id", soiIds)
-    .not("production_start", "is", null);
+    .or(
+      "production_start.not.is.null,apontamento_start_at.not.is.null,apontamento_end_at.not.is.null,completed_at.not.is.null,status.eq.completed"
+    );
 
   if (oiErr) throw new Error(oiErr.message);
   return (count ?? 0) > 0;
@@ -182,6 +182,47 @@ export async function replaceSalesOrderItemsFromLines(
     return { error: "O pedido deve ter pelo menos um item." };
   }
 
+  const { data: oldSois, error: oldErr } = await admin
+    .from("sales_order_items")
+    .select("id, line_number, product_id")
+    .eq("sales_order_id", salesOrderId)
+    .eq("tenant_id", tenantId)
+    .order("line_number", { ascending: true });
+  if (oldErr) return { error: oldErr.message };
+
+  const oldSoiIds = (oldSois ?? []).map((r) => r.id);
+  type LinkedChild = { id: string; sales_order_item_id: string | null };
+  let orphanOrderItems: LinkedChild[] = [];
+  let orphanPurchaseItems: LinkedChild[] = [];
+
+  if (oldSoiIds.length) {
+    const [{ data: oiRows }, { data: poiRows }] = await Promise.all([
+      admin
+        .from("order_items")
+        .select("id, sales_order_item_id")
+        .eq("tenant_id", tenantId)
+        .in("sales_order_item_id", oldSoiIds),
+      admin
+        .from("purchase_order_items")
+        .select("id, sales_order_item_id")
+        .eq("tenant_id", tenantId)
+        .in("sales_order_item_id", oldSoiIds),
+    ]);
+    orphanOrderItems = (oiRows ?? []) as LinkedChild[];
+    orphanPurchaseItems = (poiRows ?? []) as LinkedChild[];
+  }
+
+  const oldByLine = new Map<number, string>();
+  const oldByProduct = new Map<string, string[]>();
+  for (const row of oldSois ?? []) {
+    oldByLine.set(Number(row.line_number), row.id);
+    if (row.product_id) {
+      const list = oldByProduct.get(row.product_id) ?? [];
+      list.push(row.id);
+      oldByProduct.set(row.product_id, list);
+    }
+  }
+
   const { error: delErr } = await admin
     .from("sales_order_items")
     .delete()
@@ -210,10 +251,11 @@ export async function replaceSalesOrderItemsFromLines(
   const rows = lines.map((it, idx) => {
     const pid = it.product_id;
     const uc = pid != null ? (costs.get(pid) ?? null) : null;
-    const sub = lineSubtotal(it.quantity, it.unit_price);
+    const discount = roundMoney(Math.max(0, Number(it.discount ?? 0)));
+    const sub = lineNetSubtotal(it.quantity, it.unit_price, discount);
     const ipiVal = roundMoney(it.ipi_value ?? 0);
     const taxBase = roundMoney(it.tax_base ?? sub + ipiVal);
-    const totalPrice = roundMoney(sub + ipiVal);
+    const totalPrice = sub;
 
     return {
       tenant_id: tenantId,
@@ -224,6 +266,7 @@ export async function replaceSalesOrderItemsFromLines(
       quantity: it.quantity,
       unit: it.unit ?? "UN",
       unit_price: it.unit_price,
+      discount,
       unit_cost: uc,
       total_price: totalPrice,
       icms_rate: it.icms_rate ?? 0,
@@ -236,8 +279,59 @@ export async function replaceSalesOrderItemsFromLines(
     };
   });
 
-  const { error } = await admin.from("sales_order_items").insert(rows);
+  const { data: inserted, error } = await admin
+    .from("sales_order_items")
+    .insert(rows)
+    .select("id, line_number, product_id");
   if (error) return { error: error.message };
+
+  /** Mapa old SOI id → new SOI id (por linha, senão por produto). */
+  const oldToNew = new Map<string, string>();
+  const usedOld = new Set<string>();
+  for (const neu of inserted ?? []) {
+    const line = Number(neu.line_number);
+    const byLine = oldByLine.get(line);
+    if (byLine && !usedOld.has(byLine)) {
+      oldToNew.set(byLine, neu.id);
+      usedOld.add(byLine);
+      continue;
+    }
+    const pid = neu.product_id;
+    if (!pid) continue;
+    const candidates = oldByProduct.get(pid) ?? [];
+    const free = candidates.find((id) => !usedOld.has(id));
+    if (free) {
+      oldToNew.set(free, neu.id);
+      usedOld.add(free);
+    }
+  }
+
+  if (oldToNew.size) {
+    for (const child of orphanOrderItems) {
+      const oldId = child.sales_order_item_id;
+      if (!oldId) continue;
+      const neu = oldToNew.get(oldId);
+      if (!neu) continue;
+      const { error: linkErr } = await admin
+        .from("order_items")
+        .update({ sales_order_item_id: neu })
+        .eq("id", child.id)
+        .eq("tenant_id", tenantId);
+      if (linkErr) return { error: linkErr.message };
+    }
+    for (const child of orphanPurchaseItems) {
+      const oldId = child.sales_order_item_id;
+      if (!oldId) continue;
+      const neu = oldToNew.get(oldId);
+      if (!neu) continue;
+      const { error: linkErr } = await admin
+        .from("purchase_order_items")
+        .update({ sales_order_item_id: neu })
+        .eq("id", child.id)
+        .eq("tenant_id", tenantId);
+      if (linkErr) return { error: linkErr.message };
+    }
+  }
 
   const totals = await recalculateSalesOrderHeaderTotals(
     admin,

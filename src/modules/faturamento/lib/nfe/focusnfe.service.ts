@@ -520,7 +520,7 @@ export async function emitirNFe(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: soRaw, error: soErr } = await (db.from("sales_orders") as any)
     .select(
-      "id, order_number, status, order_date, client_name, client_document, client_address, client_email, client_phone, total, ready_for_invoice, fiscal_status, invoice_document_type"
+      "id, order_number, status, order_date, client_name, client_document, client_address, client_email, client_phone, total, discount, ready_for_invoice, fiscal_status, invoice_document_type, customer_po_number"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -537,7 +537,9 @@ export async function emitirNFe(
     client_email: string | null;
     client_phone: string | null;
     total: number;
+    discount: number | null;
     invoice_document_type: string | null;
+    customer_po_number: string | null;
   };
 
   const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, salesOrderId);
@@ -623,7 +625,7 @@ export async function emitirNFe(
       const { data: itemRows, error: itemsErr } = await db
         .from("sales_order_items")
         .select(
-          "id, description, quantity, unit, unit_price, total_price, icms_rate, ipi_rate, product:products(ncm)"
+          "id, description, quantity, unit, unit_price, total_price, discount, icms_rate, ipi_rate, product:products(ncm)"
         )
         .eq("sales_order_id", salesOrderId)
         .eq("tenant_id", tenantId);
@@ -660,6 +662,7 @@ export async function emitirNFe(
           unit: string;
           unit_price: number;
           total_price: number;
+          discount: number | null;
           icms_rate: number | null;
           ipi_rate: number | null;
           product?:
@@ -674,6 +677,7 @@ export async function emitirNFe(
           unit: it.unit ?? "UN",
           unit_price: Number(it.unit_price ?? 0),
           total_price: Number(it.total_price ?? 0),
+          discount: Number(it.discount ?? 0),
           ncm: product?.ncm ?? null,
           cfop: cfopByLine.get(it.id) ?? null,
           icms_rate: it.icms_rate == null ? null : Number(it.icms_rate),
@@ -700,6 +704,11 @@ export async function emitirNFe(
         companyAddressNumber: settings?.address_number ?? null,
         companyAddressNeighborhood: settings?.address_neighborhood ?? null,
         companyAddressZip: settings?.address_zip ?? null,
+        customerPoNumber:
+          so.customer_po_number == null
+            ? null
+            : String(so.customer_po_number).trim() || null,
+        orderDiscount: Number(so.discount ?? 0),
         items: nfeItems,
       });
       httpRes = await emitirNFeProdutoHttp(token, env, focus_ref, payload);

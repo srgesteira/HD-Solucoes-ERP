@@ -64,6 +64,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
   }
 
+  const customerPoRaw =
+    typeof body.customer_po_number === "string"
+      ? body.customer_po_number.trim()
+      : "";
+  if (!customerPoRaw) {
+    return apiError("Informe o n.º do pedido de compra do cliente.", 400);
+  }
+  if (customerPoRaw.length > 60) {
+    return apiError("Pedido de compra do cliente: máximo 60 caracteres.", 400);
+  }
+
   const admin = createSupabaseAdminClient();
 
   const { data: quote } = await admin
@@ -111,6 +122,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       payment_installments: pi as number,
       payment_days_to_first_due: pd1 as number,
       payment_days_between_installments: pdb as number,
+      customer_po_number: customerPoRaw,
     }
   );
 

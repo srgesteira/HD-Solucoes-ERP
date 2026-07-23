@@ -108,6 +108,7 @@ export const salesOrderItemPayloadSchema = z.object({
   quantity: z.number().positive("Quantidade inválida"),
   unit: z.string().trim().optional(),
   unit_price: z.number().min(0, "Preço unitário inválido"),
+  discount: taxAmountSchema.optional(),
   icms_rate: taxRateSchema.optional(),
   icms_value: taxAmountSchema.optional(),
   ipi_rate: taxRateSchema.optional(),

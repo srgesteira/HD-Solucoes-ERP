@@ -24,6 +24,7 @@ import {
   type SalesOrderLineProduct,
 } from "@/components/sales/sales-order-items-editor";
 import { salesOrderCommercialUpdateSchema } from "@/shared/contracts/sales-order.schema";
+import { NumericInput } from "@/shared/ui/numeric-input";
 import { aggregatePurchaseLineTaxes } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import { computeSalesOrderTotal } from "@/modules/vendas/lib/sales/sales-order-totals";
 import type { SalesOrderEditGuard } from "@/modules/vendas/lib/sales/sales-order-edit";
@@ -59,6 +60,7 @@ export type SalesOrderFormData = {
   total_tax_base?: number;
   total: number;
   notes: string | null;
+  customer_po_number: string | null;
   mrp_processed: boolean;
   items?: Array<{
     id: string;
@@ -67,6 +69,7 @@ export type SalesOrderFormData = {
     quantity: number;
     unit: string;
     unit_price: number;
+    discount?: number | null;
     total_price?: number | null;
     icms_rate?: number;
     icms_value?: number;
@@ -187,6 +190,7 @@ export function itemsToSalesLines(items: OrderItemRow[]): {
       quantity: Number(item.quantity),
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       unitPrice: Number(item.unit_price),
+      discount: Number(item.discount ?? 0),
       icmsRate: Number(item.icms_rate ?? 0),
       icmsValue: Number(item.icms_value ?? item.icms_amount ?? 0),
       ipiRate: Number(item.ipi_rate ?? 0),
@@ -273,6 +277,8 @@ export function SalesOrderForm({
     isEdit ? "" : "30"
   );
   const [notes, setNotes] = useState("");
+  const [customerPoNumber, setCustomerPoNumber] = useState("");
+  const [discount, setDiscount] = useState(0);
   const [lines, setLines] = useState<SalesOrderLineDraft[]>(() => [
     newSalesOrderLine(0),
   ]);
@@ -354,6 +360,8 @@ export function SalesOrderForm({
       const pdb = order.payment_days_between_installments ?? 0;
       setPaymentDaysBetween(pdb > 0 ? String(pdb) : "");
       setNotes(order.notes ?? "");
+      setCustomerPoNumber(order.customer_po_number ?? "");
+      setDiscount(Number(order.discount ?? 0));
       setStatus(
         (SALES_ORDER_EDITABLE_STATUSES as readonly string[]).includes(
           order.status
@@ -385,6 +393,7 @@ export function SalesOrderForm({
         lines.map((l) => ({
           quantity: l.quantity,
           unitPrice: l.unitPrice,
+          discount: l.discount,
           icmsValue: l.icmsValue,
           ipiValue: l.ipiValue,
           taxBase: l.taxBase,
@@ -396,6 +405,7 @@ export function SalesOrderForm({
       totalIcms: Number(order?.total_icms ?? 0),
       totalIpi: Number(order?.total_ipi ?? 0),
       totalTaxBase: Number(order?.total_tax_base ?? 0),
+      totalDiscount: 0,
     };
   }, [
     canEditItems,
@@ -406,18 +416,19 @@ export function SalesOrderForm({
     order?.total_tax_base,
   ]);
 
-  const previewDiscount = Number(order?.discount ?? 0);
   const previewTax = Number(order?.tax ?? 0);
   const previewTotal = useMemo(
     () =>
       computeSalesOrderTotal({
         subtotal: lineTaxPreview.subtotal,
-        discount: previewDiscount,
+        discount,
         tax: previewTax,
         total_ipi: lineTaxPreview.totalIpi,
       }),
-    [lineTaxPreview.subtotal, lineTaxPreview.totalIpi, previewDiscount, previewTax]
+    [lineTaxPreview.subtotal, lineTaxPreview.totalIpi, discount, previewTax]
   );
+
+  const canEditDiscount = !isEdit || canEditCommercial || adminOnlyMode;
 
   const buildPayload = (): Record<string, unknown> => {
     const commercial = salesOrderCommercialUpdateSchema.safeParse({
@@ -438,8 +449,18 @@ export function SalesOrderForm({
       );
     }
 
+    const po = customerPoNumber.trim();
+    if (!po) {
+      throw new Error("Informe o n.º do pedido de compra do cliente.");
+    }
+    if (po.length > 60) {
+      throw new Error("Pedido de compra do cliente: máximo 60 caracteres.");
+    }
+
     const body: Record<string, unknown> = {
       notes: notes.trim() || null,
+      customer_po_number: po,
+      discount: Math.max(0, Number(discount) || 0),
       payment_installments: commercial.data.payment_installments,
       payment_days_to_first_due: commercial.data.payment_days_to_first_due,
       payment_days_between_installments:
@@ -800,14 +821,25 @@ export function SalesOrderForm({
                 {fmtBRL(lineTaxPreview.totalIpi)}
               </span>
             </div>
-            {previewDiscount > 0 ? (
-              <div className="flex justify-between gap-4">
-                <span className="text-slate-500">Desconto</span>
-                <span className="tabular-nums font-medium text-red-700">
-                  − {fmtBRL(previewDiscount)}
-                </span>
-              </div>
-            ) : null}
+            <div className="space-y-1.5 pt-1">
+              <Label htmlFor="so-discount">Desconto do pedido (R$)</Label>
+              {canEditDiscount ? (
+                <NumericInput
+                  id="so-discount"
+                  value={discount}
+                  onChange={(v) => setDiscount(Math.max(0, Number(v) || 0))}
+                  maxDecimals={2}
+                  className="h-8 text-sm max-w-[10rem]"
+                />
+              ) : (
+                <p className="tabular-nums font-medium text-red-700">
+                  {discount > 0 ? `− ${fmtBRL(discount)}` : fmtBRL(0)}
+                </p>
+              )}
+              <p className="text-xs text-slate-500">
+                Desconto extra no total (além dos descontos por item).
+              </p>
+            </div>
             {previewTax > 0 ? (
               <div className="flex justify-between gap-4">
                 <span className="text-slate-500">Outros impostos</span>
@@ -821,6 +853,31 @@ export function SalesOrderForm({
               <span className="tabular-nums font-semibold">
                 {fmtBRL(previewTotal)}
               </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Pedido de compra do cliente</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-w-md">
+              <Label htmlFor="so-customer-po">
+                N.º do pedido de compra do cliente{" "}
+                <span className="text-red-600">*</span>
+              </Label>
+              <Input
+                id="so-customer-po"
+                value={customerPoNumber}
+                onChange={(e) => setCustomerPoNumber(e.target.value)}
+                placeholder="Ex.: OC-12345 / PC-2026-001"
+                maxLength={60}
+              />
+              <p className="text-xs text-slate-500">
+                Obrigatório — este dado entra na nota fiscal (xPed / informações
+                adicionais).
+              </p>
             </div>
           </CardContent>
         </Card>
