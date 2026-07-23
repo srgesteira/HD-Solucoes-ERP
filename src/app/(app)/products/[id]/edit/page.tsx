@@ -564,38 +564,17 @@ export default function EditProductPage() {
     );
   }
 
+  const productTitle =
+    formData.name.trim() || "Produto sem descrição";
+  const productCode = formData.technical_code?.trim() || "";
+  const productUnit = formData.unit?.trim() || "—";
+
   return (
     <AppPage
       backHref="/products"
       width="wide"
       density="comfortable"
-      title={
-        <div className="flex flex-wrap items-center gap-2">
-          <span>Editar produto</span>
-          {productRaw ? (
-            <ProductLifecycleBadge
-              prefix_code={prefixCode || null}
-              product_nature={productRaw.product_nature}
-              has_composition={productRaw.has_composition}
-              released_for_sale={productRaw.released_for_sale}
-              engineering_workflow_status={
-                productRaw.engineering_workflow_status
-              }
-            />
-          ) : null}
-        </div>
-      }
-      description={
-        formData.technical_code ? (
-          <span className="font-mono text-slate-600">
-            {formData.technical_code}
-          </span>
-        ) : (
-          <span className="text-amber-700">
-            Código técnico pendente — complete a classificação e guarde.
-          </span>
-        )
-      }
+      title="Editar produto"
       actions={
         <Button
           type="button"
@@ -613,6 +592,45 @@ export default function EditProductPage() {
         </Button>
       }
     >
+      <header className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white px-4 py-4 sm:px-5 sm:py-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Produto
+            </p>
+            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 break-words">
+              {productTitle}
+            </h2>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-1">
+              {productCode ? (
+                <span className="inline-flex items-center rounded-md bg-slate-900 px-2.5 py-1 font-mono text-sm font-medium text-white">
+                  {productCode}
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-1 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
+                  Código técnico pendente
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1 text-sm text-slate-700 ring-1 ring-slate-200">
+                <span className="text-slate-500">Unidade</span>
+                <span className="font-semibold tabular-nums">{productUnit}</span>
+              </span>
+              {productRaw ? (
+                <ProductLifecycleBadge
+                  prefix_code={prefixCode || null}
+                  product_nature={productRaw.product_nature}
+                  has_composition={productRaw.has_composition}
+                  released_for_sale={productRaw.released_for_sale}
+                  engineering_workflow_status={
+                    productRaw.engineering_workflow_status
+                  }
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </header>
+
       <form onSubmit={(e) => void handleSubmit(e)}>
         <Tabs
           value={activeTab}
