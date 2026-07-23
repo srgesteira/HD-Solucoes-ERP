@@ -24,6 +24,16 @@ export function lineTotalPrice(unitPrice: number, quantity: number): number {
   return roundMoney4(q * u);
 }
 
+/** Total líquido da linha (bruto − desconto). */
+export function lineNetTotalPrice(
+  unitPrice: number,
+  quantity: number,
+  discount = 0
+): number {
+  const d = Number.isFinite(discount) ? Math.max(0, Number(discount)) : 0;
+  return roundMoney4(Math.max(0, lineTotalPrice(unitPrice, quantity) - d));
+}
+
 export function parseMarkupPercent(raw: unknown, fallback = DEFAULT_QUOTE_MARKUP_PERCENT): number {
   if (raw === undefined || raw === null || raw === "") return fallback;
   const n =

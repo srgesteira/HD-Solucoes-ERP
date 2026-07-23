@@ -141,6 +141,10 @@ export async function convertQuoteToSalesOrder(
         typeof it.unit_price === "number"
           ? it.unit_price
           : parseFloat(String(it.unit_price ?? 0)),
+      discount:
+        typeof it.discount === "number"
+          ? Math.max(0, it.discount)
+          : Math.max(0, parseFloat(String(it.discount ?? 0)) || 0),
       usage_type:
         it.usage_type === "consumo" ||
         it.usage_type === "materia_prima" ||

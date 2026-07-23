@@ -51,6 +51,7 @@ import {
 } from "@/components/sales/quote-form-fields";
 import { PaymentTermsDisplay } from "@/components/shared/payment-terms-display";
 import { Label } from "@/shared/ui/label";
+import { NumericInput } from "@/shared/ui/numeric-input";
 import { Textarea } from "@/shared/ui/textarea";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
 import {
@@ -61,7 +62,7 @@ import {
   type QuoteLineProduct,
 } from "@/components/sales/quote-items-editor";
 import {
-  lineTotalPrice,
+  lineNetTotalPrice,
   unitPriceFromCostAndMarkup,
 } from "@/modules/vendas/lib/sales/quote-line-pricing";
 import type { Tables } from "@/modules/core/types/database";
@@ -313,6 +314,7 @@ export default function QuoteDetailPage() {
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
+  const [discount, setDiscount] = useState(0);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newQuoteLine(0)]);
   const [productCache, setProductCache] = useState<
@@ -345,6 +347,7 @@ export default function QuoteDetailPage() {
     setDeliveryBusinessDays(inferDeliveryBusinessDaysFromQuote(q));
     setShippingType(q.shipping_type ?? "FOB");
     setFreightCost(Number(q.freight_cost ?? 0));
+    setDiscount(Number(q.discount ?? 0));
     setNotes(q.notes ?? "");
     const apiItems = Array.isArray(q.items) ? q.items : [];
     const { lines: loadedLines, cache } = itemsToLinesAndCache(apiItems);
@@ -379,11 +382,14 @@ export default function QuoteDetailPage() {
         line.priceMode === "markup"
           ? unitPriceFromCostAndMarkup(line.costPrice, line.markupPercent)
           : line.manualPrice;
-      subtotal += lineTotalPrice(unitPrice, line.quantity);
+      subtotal += lineNetTotalPrice(unitPrice, line.quantity, line.discount);
     }
+    const headerDiscount = Math.max(0, Number(discount) || 0);
     const freight = shippingType === "CIF" ? Number(freightCost) || 0 : 0;
-    return { subtotal, freight, total: subtotal + freight };
-  }, [lines, freightCost, shippingType]);
+    const total =
+      Math.round((subtotal - headerDiscount + freight) * 100) / 100;
+    return { subtotal, discount: headerDiscount, freight, total };
+  }, [lines, freightCost, shippingType, discount]);
 
   const seedCustomer = q ? seedCustomerFromQuote(q) : null;
 
@@ -424,6 +430,7 @@ export default function QuoteDetailPage() {
             : null,
         shipping_type: shippingType,
         freight_cost: shippingType === "CIF" ? freightCost : 0,
+        discount: Math.max(0, Number(discount) || 0),
         notes: notes.trim() || null,
         items: itemsResult,
       });
@@ -845,13 +852,38 @@ export default function QuoteDetailPage() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg">Totais</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2 text-sm max-w-sm">
+                <CardContent className="space-y-3 text-sm max-w-sm">
                   <div className="flex justify-between gap-4">
                     <span className="text-slate-500">Subtotal (itens)</span>
                     <span className="tabular-nums font-medium">
                       {fmtBRL(quoteTotals.subtotal)}
                     </span>
                   </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="quote-edit-discount">
+                      Desconto do orçamento (R$)
+                    </Label>
+                    <NumericInput
+                      id="quote-edit-discount"
+                      value={discount}
+                      onChange={(v) =>
+                        setDiscount(Math.max(0, Number(v) || 0))
+                      }
+                      maxDecimals={2}
+                      className="h-8 text-sm max-w-[10rem]"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Desconto extra no total (além dos descontos por item).
+                    </p>
+                  </div>
+                  {quoteTotals.discount > 0 ? (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-slate-500">Desconto</span>
+                      <span className="tabular-nums font-medium text-red-700">
+                        − {fmtBRL(quoteTotals.discount)}
+                      </span>
+                    </div>
+                  ) : null}
                   {quoteTotals.freight > 0 ? (
                     <div className="flex justify-between gap-4">
                       <span className="text-slate-500">Frete (CIF)</span>
@@ -1020,6 +1052,9 @@ export default function QuoteDetailPage() {
                           Preço unitário
                         </th>
                         <th className="px-3 py-2 text-right font-medium">
+                          Desc.
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">
                           Total
                         </th>
                       </tr>
@@ -1065,6 +1100,11 @@ export default function QuoteDetailPage() {
                                 </span>
                               )}
                             </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                              {Number(line.discount ?? 0) > 0
+                                ? fmtBRL(Number(line.discount))
+                                : "—"}
+                            </td>
                             <td className="px-3 py-2 text-right tabular-nums font-medium">
                               {fmtBRL(Number(line.total_price))}
                             </td>
@@ -1073,7 +1113,7 @@ export default function QuoteDetailPage() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={5}
+                            colSpan={6}
                             className="px-3 py-6 text-center text-slate-500"
                           >
                             Sem itens registados neste orçamento.
@@ -1097,14 +1137,20 @@ export default function QuoteDetailPage() {
                         {fmtBRL(q.subtotal)}
                       </span>
                     </div>
-                    {q.discount > 0 ? (
-                      <div className="flex justify-between gap-4">
-                        <span className="text-slate-500">Desconto</span>
-                        <span className="tabular-nums font-medium text-red-700 dark:text-red-400">
-                          − {fmtBRL(q.discount)}
-                        </span>
-                      </div>
-                    ) : null}
+                    <div className="flex justify-between gap-4">
+                      <span className="text-slate-500">Desconto</span>
+                      <span
+                        className={`tabular-nums font-medium ${
+                          q.discount > 0
+                            ? "text-red-700 dark:text-red-400"
+                            : ""
+                        }`}
+                      >
+                        {q.discount > 0
+                          ? `− ${fmtBRL(q.discount)}`
+                          : fmtBRL(0)}
+                      </span>
+                    </div>
                     <div className="flex justify-between gap-4">
                       <span className="text-slate-500">Imposto</span>
                       <span className="tabular-nums font-medium">

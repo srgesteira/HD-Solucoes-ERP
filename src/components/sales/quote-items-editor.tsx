@@ -10,6 +10,7 @@ import { Textarea } from "@/shared/ui/textarea";
 import { cn } from "@/shared/utils/cn";
 import {
   DEFAULT_QUOTE_MARKUP_PERCENT,
+  lineNetTotalPrice,
   lineTotalPrice,
   unitPriceFromCostAndMarkup,
   type QuoteLinePriceMode,
@@ -45,6 +46,8 @@ export type QuoteLineDraft = {
   manualPrice: number;
   costPrice: number;
   unitPrice: number;
+  /** Desconto da linha em R$. */
+  discount: number;
   unit: string;
   /** Texto livre visível ao cliente na proposta/impressão. */
   clientNotes: string;
@@ -126,6 +129,7 @@ export function newQuoteLine(index = 0): QuoteLineDraft {
     manualPrice: 0,
     costPrice: 0,
     unitPrice: 0,
+    discount: 0,
     unit: "UN",
     clientNotes: "",
     itemNotes: "",
@@ -182,7 +186,8 @@ export function QuoteItemsEditor({
   const subtotal = useMemo(
     () =>
       lines.reduce(
-        (sum, l) => sum + lineTotalPrice(l.unitPrice, l.quantity),
+        (sum, l) =>
+          sum + lineNetTotalPrice(l.unitPrice, l.quantity, l.discount),
         0
       ),
     [lines]
@@ -269,7 +274,12 @@ export function QuoteItemsEditor({
           const prod = line.productId
             ? productById.get(line.productId)
             : undefined;
-          const lineTotal = lineTotalPrice(line.unitPrice, line.quantity);
+          const lineGross = lineTotalPrice(line.unitPrice, line.quantity);
+          const lineTotal = lineNetTotalPrice(
+            line.unitPrice,
+            line.quantity,
+            line.discount
+          );
           return (
             <div
               key={line.key}
@@ -475,12 +485,38 @@ export function QuoteItemsEditor({
                   </p>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor={`quote-discount-${index}`}>
+                    Desconto da linha (R$)
+                  </Label>
+                  <NumericInput
+                    id={`quote-discount-${index}`}
+                    value={Number.isFinite(line.discount) ? line.discount : 0}
+                    onChange={(discount) => {
+                      const next = Math.max(
+                        0,
+                        Math.min(Number(discount) || 0, lineGross)
+                      );
+                      updateLineAt(index, { discount: next });
+                    }}
+                    maxDecimals={2}
+                    disabled={!line.productId}
+                  />
+                </div>
+
                 <div className="space-y-2 md:col-span-2">
                   <p className="text-sm text-slate-600">
-                    Total da linha:{" "}
+                    Total da linha
+                    {line.discount > 0 ? " (líquido)" : ""}:{" "}
                     <strong className="text-slate-900 tabular-nums">
                       {formatBRL(lineTotal)}
                     </strong>
+                    {line.discount > 0 ? (
+                      <span className="ml-2 text-xs text-slate-500">
+                        (bruto {formatBRL(lineGross)} − desc.{" "}
+                        {formatBRL(line.discount)})
+                      </span>
+                    ) : null}
                   </p>
                 </div>
 
@@ -587,7 +623,8 @@ export function QuoteItemsEditor({
           <span className="tabular-nums">{formatBRL(subtotal)}</span>
         </p>
         <p className="text-xs text-slate-500">
-          Descontos e impostos podem ser aplicados no cabeçalho do orçamento.
+          Subtotal já considera descontos por item. Use também o desconto do
+          orçamento no cartão Totais.
         </p>
       </div>
 
@@ -634,11 +671,20 @@ export function buildQuoteItemsPayload(
       return { error: "Preço unitário inválido numa linha." };
     }
 
+    const discount = Number.isFinite(line.discount)
+      ? Math.max(0, line.discount)
+      : 0;
+    const gross = lineTotalPrice(unitPrice, line.quantity);
+    if (discount > gross + 1e-9) {
+      return { error: "Desconto de item maior que o valor da linha." };
+    }
+
     const item: Record<string, unknown> = {
       product_id: prod.id,
       description: productDisplayLabel(prod),
       quantity: line.quantity,
       unit_price: unitPrice,
+      discount,
       unit: line.unit.trim() || "UN",
     };
 

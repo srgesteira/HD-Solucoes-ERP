@@ -24,10 +24,11 @@ import {
   type QuoteLineProduct,
 } from "@/components/sales/quote-items-editor";
 import {
-  lineTotalPrice,
+  lineNetTotalPrice,
   unitPriceFromCostAndMarkup,
 } from "@/modules/vendas/lib/sales/quote-line-pricing";
 import { fmtBRL } from "@/shared/utils/format-brl";
+import { NumericInput } from "@/shared/ui/numeric-input";
 
 function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -96,6 +97,7 @@ export default function NewQuotePage() {
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
+  const [discount, setDiscount] = useState(0);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<QuoteLineDraft[]>(() => [newQuoteLine(0)]);
   const [productCache, setProductCache] = useState<
@@ -141,11 +143,14 @@ export default function NewQuotePage() {
         line.priceMode === "markup"
           ? unitPriceFromCostAndMarkup(line.costPrice, line.markupPercent)
           : line.manualPrice;
-      subtotal += lineTotalPrice(unitPrice, line.quantity);
+      subtotal += lineNetTotalPrice(unitPrice, line.quantity, line.discount);
     }
+    const headerDiscount = Math.max(0, Number(discount) || 0);
     const freight = shippingType === "CIF" ? Number(freightCost) || 0 : 0;
-    return { subtotal, freight, total: subtotal + freight };
-  }, [lines, freightCost, shippingType]);
+    const total =
+      Math.round((subtotal - headerDiscount + freight) * 100) / 100;
+    return { subtotal, discount: headerDiscount, freight, total };
+  }, [lines, freightCost, shippingType, discount]);
 
   const mutation = useMutation({
     mutationFn: createQuote,
@@ -226,6 +231,7 @@ export default function NewQuotePage() {
           : null,
       shipping_type: shippingType,
       freight_cost: shippingType === "CIF" ? freightCost : 0,
+      discount: Math.max(0, Number(discount) || 0),
       notes: notes.trim() || null,
       items: itemsResult,
     };
@@ -356,13 +362,36 @@ export default function NewQuotePage() {
               Totais
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm max-w-sm">
+          <CardContent className="space-y-3 text-sm max-w-sm">
             <div className="flex justify-between gap-4">
               <span className="text-slate-500">Subtotal (itens)</span>
               <span className="tabular-nums font-medium">
                 {fmtBRL(quoteTotals.subtotal)}
               </span>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="quote-new-discount">
+                Desconto do orçamento (R$)
+              </Label>
+              <NumericInput
+                id="quote-new-discount"
+                value={discount}
+                onChange={(v) => setDiscount(Math.max(0, Number(v) || 0))}
+                maxDecimals={2}
+                className="h-8 text-sm max-w-[10rem]"
+              />
+              <p className="text-xs text-slate-500">
+                Desconto extra no total (além dos descontos por item).
+              </p>
+            </div>
+            {quoteTotals.discount > 0 ? (
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-500">Desconto</span>
+                <span className="tabular-nums font-medium text-red-700">
+                  − {fmtBRL(quoteTotals.discount)}
+                </span>
+              </div>
+            ) : null}
             {quoteTotals.freight > 0 ? (
               <div className="flex justify-between gap-4">
                 <span className="text-slate-500">Frete (CIF)</span>

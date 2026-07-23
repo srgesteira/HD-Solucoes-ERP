@@ -23,6 +23,7 @@ export type QuoteApiItem = {
   quantity: number;
   unit?: string | null;
   unit_price: number;
+  discount?: number | null;
   markup_percent?: number | null;
   client_notes?: string | null;
   item_notes?: string | null;
@@ -73,6 +74,7 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
       manualPrice: unitPrice,
       costPrice: cost,
       unitPrice,
+      discount: Math.max(0, Number(item.discount ?? 0) || 0),
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       clientNotes: item.client_notes?.trim() ?? "",
       itemNotes: item.item_notes?.trim() ?? "",

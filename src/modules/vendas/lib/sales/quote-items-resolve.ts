@@ -103,6 +103,7 @@ export async function resolveQuoteItemsFromPayload(
     unit_price: number | null;
     markup_percent: number | null;
     use_markup: boolean;
+    discount: number;
   }> = [];
 
   for (let i = 0; i < rawItems.length; i++) {
@@ -167,6 +168,18 @@ export async function resolveQuoteItemsFromPayload(
         ? usageRaw
         : null;
 
+    const discountRaw = r.discount;
+    const discountParsed =
+      discountRaw === undefined || discountRaw === null || discountRaw === ""
+        ? 0
+        : typeof discountRaw === "number"
+          ? discountRaw
+          : parseFloat(String(discountRaw).replace(",", "."));
+    if (!Number.isFinite(discountParsed) || discountParsed < 0) {
+      return { ok: false, message: `Item ${i + 1}: desconto inválido` };
+    }
+    const discount = discountParsed;
+
     productIds.push(product_id);
     drafts.push({
       product_id,
@@ -175,6 +188,7 @@ export async function resolveQuoteItemsFromPayload(
       unit_price,
       markup_percent,
       use_markup,
+      discount,
       ...(description ? { description } : {}),
       client_notes,
       item_notes,
@@ -221,6 +235,14 @@ export async function resolveQuoteItemsFromPayload(
       markup_percent = null;
     }
 
+    const gross = unit_price * d.quantity;
+    if (d.discount > gross + 1e-9) {
+      return {
+        ok: false,
+        message: `Item ${i + 1}: desconto maior que o valor da linha`,
+      };
+    }
+
     lines.push({
       product_id: d.product_id,
       description: d.description || productLabel(p),
@@ -232,6 +254,7 @@ export async function resolveQuoteItemsFromPayload(
       unit: d.unit ?? (p.unit?.trim() || "UN"),
       unit_price,
       markup_percent,
+      discount: d.discount,
     });
   }
 

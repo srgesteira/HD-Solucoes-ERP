@@ -3754,6 +3754,7 @@ export type Database = {
           client_notes: string | null
           created_at: string
           description: string
+          discount: number
           id: string
           item_notes: string | null
           markup_percent: number | null
@@ -3772,6 +3773,7 @@ export type Database = {
           client_notes?: string | null
           created_at?: string
           description: string
+          discount?: number
           id?: string
           item_notes?: string | null
           markup_percent?: number | null
@@ -3790,6 +3792,7 @@ export type Database = {
           client_notes?: string | null
           created_at?: string
           description?: string
+          discount?: number
           id?: string
           item_notes?: string | null
           markup_percent?: number | null

@@ -24,6 +24,7 @@ export const quoteItemBodySchema = z.object({
     .enum(["consumo", "materia_prima", "revenda"])
     .nullable()
     .optional(),
+  discount: z.union([z.number().min(0), z.string()]).optional(),
 });
 
 /**

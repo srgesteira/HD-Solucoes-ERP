@@ -407,6 +407,7 @@ export async function insertQuoteItemsFromLines(
     quantity: it.quantity,
     unit: it.unit ?? "UN",
     unit_price: it.unit_price,
+    discount: Math.max(0, Number(it.discount ?? 0) || 0),
     markup_percent: it.markup_percent ?? null,
   }));
   const { error } = await admin.from("quote_items").insert(rows);
