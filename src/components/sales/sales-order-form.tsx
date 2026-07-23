@@ -719,7 +719,8 @@ export function SalesOrderForm({
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Itens do pedido</CardTitle>
             <p className="text-sm text-slate-500 font-normal">
-              Produto, quantidade, preço e impostos (ICMS/IPI) por linha.
+              Produto, quantidade, preço, desconto e impostos (ICMS/IPI) por
+              linha.
             </p>
           </CardHeader>
           <CardContent>
@@ -744,6 +745,9 @@ export function SalesOrderForm({
                       <th className="px-3 py-2 text-right font-medium">
                         Unitário
                       </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Desc.
+                      </th>
                       <th className="px-3 py-2 text-right font-medium">IPI</th>
                       <th className="px-3 py-2 text-right font-medium">
                         Total
@@ -754,10 +758,15 @@ export function SalesOrderForm({
                     {Array.isArray(order?.items) && order.items.length > 0 ? (
                       order.items.map((line) => {
                         const prod = unwrapProduct(line.product);
-                        const total =
+                        const disc = Number(line.discount ?? 0);
+                        const net =
                           line.total_price ??
-                          Number(line.quantity) * Number(line.unit_price) +
-                            Number(line.ipi_value ?? 0);
+                          Math.max(
+                            0,
+                            Number(line.quantity) * Number(line.unit_price) -
+                              disc
+                          );
+                        const total = Number(net) + Number(line.ipi_value ?? 0);
                         return (
                           <tr
                             key={line.id}
@@ -773,6 +782,9 @@ export function SalesOrderForm({
                               {fmtBRL(Number(line.unit_price))}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
+                              {disc > 0 ? fmtBRL(disc) : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
                               {fmtBRL(Number(line.ipi_value ?? 0))}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums font-medium">
@@ -784,7 +796,7 @@ export function SalesOrderForm({
                     ) : (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           className="px-3 py-6 text-center text-slate-500"
                         >
                           Sem itens neste pedido.

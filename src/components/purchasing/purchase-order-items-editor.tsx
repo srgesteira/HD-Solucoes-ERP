@@ -12,6 +12,7 @@ import type { ProductSearchHit } from "@/components/products/product-search-type
 import {
   aggregatePurchaseLineTaxes,
   lineDisplayTotal,
+  lineNetSubtotal,
   lineSubtotal,
   recalcLineTaxAmounts,
   roundMoney,
@@ -55,6 +56,7 @@ export type PurchaseOrderLineDraft = {
   quantity: number;
   unit: string;
   unitPrice: number;
+  discount: number;
   icmsRate: number;
   icmsValue: number;
   ipiRate: number;
@@ -130,6 +132,7 @@ export function newPurchaseLine(index = 0): PurchaseOrderLineDraft {
     quantity: 1,
     unit: "UN",
     unitPrice: 0,
+    discount: 0,
     icmsRate: 0,
     icmsValue: 0,
     ipiRate: 0,
@@ -156,9 +159,14 @@ function withRecalcTaxes(
     if (
       patch.ipiValue !== undefined ||
       patch.quantity !== undefined ||
-      patch.unitPrice !== undefined
+      patch.unitPrice !== undefined ||
+      patch.discount !== undefined
     ) {
-      const sub = lineSubtotal(merged.quantity, merged.unitPrice);
+      const sub = lineNetSubtotal(
+        merged.quantity,
+        merged.unitPrice,
+        merged.discount
+      );
       return {
         ...merged,
         taxBase: roundMoney(sub + merged.ipiValue),
@@ -176,7 +184,8 @@ function withRecalcTaxes(
       ipiValue: merged.ipiValue,
       taxBase: merged.taxBase,
     },
-    taxMode
+    taxMode,
+    merged.discount
   );
   return {
     ...merged,
@@ -223,6 +232,7 @@ export function PurchaseOrderItemsEditor({
         lines.map((l) => ({
           quantity: l.quantity,
           unitPrice: l.unitPrice,
+          discount: l.discount,
           icmsValue: l.icmsValue,
           ipiValue: l.ipiValue,
           taxBase: l.taxBase,
@@ -327,12 +337,13 @@ export function PurchaseOrderItemsEditor({
               </th>
               {!isQuote ? (
                 <>
-                  <th className="w-[9%] px-1 py-1.5">Preço un.</th>
-                  <th className="w-[7%] px-1 py-1.5">% ICMS</th>
-                  <th className="w-[9%] px-1 py-1.5 text-right">ICMS</th>
-                  <th className="w-[7%] px-1 py-1.5">% IPI</th>
-                  <th className="w-[9%] px-1 py-1.5 text-right">IPI</th>
-                  <th className="w-[10%] px-1 py-1.5 text-right">Total</th>
+                  <th className="w-[8%] px-1 py-1.5">Preço un.</th>
+                  <th className="w-[8%] px-1 py-1.5">Desc.</th>
+                  <th className="w-[6%] px-1 py-1.5">% ICMS</th>
+                  <th className="w-[8%] px-1 py-1.5 text-right">ICMS</th>
+                  <th className="w-[6%] px-1 py-1.5">% IPI</th>
+                  <th className="w-[8%] px-1 py-1.5 text-right">IPI</th>
+                  <th className="w-[9%] px-1 py-1.5 text-right">Total</th>
                 </>
               ) : null}
             </tr>
@@ -345,10 +356,11 @@ export function PurchaseOrderItemsEditor({
               const lineTotal = lineDisplayTotal(
                 line.quantity,
                 line.unitPrice,
-                line.ipiValue
+                line.ipiValue,
+                line.discount
               );
               const unitLocked = Boolean(line.productId);
-              const colSpan = isQuote ? 6 : 12;
+              const colSpan = isQuote ? 6 : 13;
               return (
                 <Fragment key={line.key}>
                 <tr
@@ -502,6 +514,26 @@ export function PurchaseOrderItemsEditor({
                           maxDecimals={2}
                           disabled={disabled}
                           className="h-7 text-xs px-2"
+                        />
+                      </td>
+                      <td className="px-1 py-1.5 align-top">
+                        <NumericInput
+                          value={line.discount}
+                          onChange={(discount) => {
+                            const gross = lineSubtotal(
+                              line.quantity,
+                              line.unitPrice
+                            );
+                            const next = Math.max(
+                              0,
+                              Math.min(Number(discount) || 0, gross)
+                            );
+                            updateLineAt(index, { discount: next }, "both");
+                          }}
+                          maxDecimals={2}
+                          disabled={disabled}
+                          className="h-7 text-xs px-2"
+                          title="Desconto da linha em R$"
                         />
                       </td>
                       <td className="px-1 py-1.5 align-top">
@@ -669,18 +701,27 @@ export function buildPurchaseOrderItemsPayload(
     if (!Number.isFinite(line.unitPrice) || line.unitPrice < 0) {
       return { error: "Preço unitário inválido num item." };
     }
+    const discount = Number.isFinite(line.discount)
+      ? Math.max(0, line.discount)
+      : 0;
+    const gross = lineSubtotal(line.quantity, line.unitPrice);
+    if (discount > gross + 1e-9) {
+      return { error: "Desconto de item maior que o valor da linha." };
+    }
+    const net = lineNetSubtotal(line.quantity, line.unitPrice, discount);
 
     const item: Record<string, unknown> = {
       product_id: line.productId.trim() || null,
       description: line.description.trim(),
       quantity: line.quantity,
       unit_price: line.unitPrice,
+      discount,
       unit: line.unit.trim() || "UN",
       icms_rate: line.icmsRate,
       icms_value: line.icmsValue,
       ipi_rate: line.ipiRate,
       ipi_value: line.ipiValue,
-      tax_base: roundMoney(lineSubtotal(line.quantity, line.unitPrice) + line.ipiValue),
+      tax_base: roundMoney(net + line.ipiValue),
     };
     if (line.id) item.id = line.id;
     item.usage_type = isItemUsageType(line.usageType) ? line.usageType : null;

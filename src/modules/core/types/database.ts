@@ -3192,6 +3192,7 @@ export type Database = {
           actual_delivery_date: string | null
           created_at: string
           description: string
+          discount: number
           expected_delivery_date: string | null
           follow_up_date: string | null
           icms_rate: number
@@ -3228,6 +3229,7 @@ export type Database = {
           actual_delivery_date?: string | null
           created_at?: string
           description: string
+          discount?: number
           expected_delivery_date?: string | null
           follow_up_date?: string | null
           icms_rate?: number
@@ -3264,6 +3266,7 @@ export type Database = {
           actual_delivery_date?: string | null
           created_at?: string
           description?: string
+          discount?: number
           expected_delivery_date?: string | null
           follow_up_date?: string | null
           icms_rate?: number

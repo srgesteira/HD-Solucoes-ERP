@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
+import { NumericInput } from "@/shared/ui/numeric-input";
 import { PaymentTermsDisplay } from "@/components/shared/payment-terms-display";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
 import { cn } from "@/shared/utils/cn";
@@ -35,6 +36,7 @@ import type { Tables } from "@/modules/core/types/database";
 import type { ReceivableStatus } from "@/modules/core/types/finance.types";
 import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
 import { defaultExpectedDeliveryForOrder } from "@/modules/vendas/lib/sales/sales-flow";
+import { computeSalesOrderTotal } from "@/modules/vendas/lib/sales/sales-order-totals";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
 import { SalesOrderChangeHistory } from "@/components/sales/sales-order-change-history";
@@ -459,6 +461,8 @@ export default function SalesOrderDetailPage() {
   const [paymentInstallmentsDraft, setPaymentInstallmentsDraft] = useState("1");
   const [paymentDaysFirstDraft, setPaymentDaysFirstDraft] = useState("30");
   const [paymentDaysBetweenDraft, setPaymentDaysBetweenDraft] = useState("30");
+  const [discountDraft, setDiscountDraft] = useState(0);
+  const [discountSaving, setDiscountSaving] = useState(false);
 
   useEffect(() => {
     const row = orderQuery.data;
@@ -473,6 +477,7 @@ export default function SalesOrderDetailPage() {
     setPaymentDaysBetweenDraft(
       String(row.payment_days_between_installments ?? 30)
     );
+    setDiscountDraft(Number(row.discount ?? 0));
   }, [orderQuery.data]);
 
   const q = orderQuery.data;
@@ -1253,14 +1258,87 @@ export default function SalesOrderDetailPage() {
                     {fmtBRL(q.subtotal)}
                   </span>
                 </div>
-                {q.discount > 0 ? (
-                  <div className="flex justify-between gap-4">
-                    <span className="text-slate-500">Desconto</span>
-                    <span className="tabular-nums font-medium text-red-700 dark:text-red-400">
-                      − {fmtBRL(q.discount)}
-                    </span>
-                  </div>
-                ) : null}
+                <div className="space-y-1.5 py-1">
+                  <Label htmlFor="so-detail-discount">
+                    Desconto do pedido (R$)
+                  </Label>
+                  {canNavigateToEdit ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <NumericInput
+                        id="so-detail-discount"
+                        value={discountDraft}
+                        onChange={(v) =>
+                          setDiscountDraft(Math.max(0, Number(v) || 0))
+                        }
+                        maxDecimals={2}
+                        className="h-8 text-sm max-w-[10rem]"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        disabled={
+                          discountSaving ||
+                          Number(discountDraft) === Number(q.discount ?? 0)
+                        }
+                        onClick={async () => {
+                          if (!id) return;
+                          const next = Math.max(0, Number(discountDraft) || 0);
+                          setDiscountSaving(true);
+                          try {
+                            await putOrder(id, { discount: next });
+                            toast.success("Desconto actualizado.");
+                            await queryClient.invalidateQueries({
+                              queryKey: ["sales-order", id],
+                            });
+                          } catch (err) {
+                            toast.error(
+                              err instanceof Error
+                                ? err.message
+                                : "Não foi possível guardar o desconto."
+                            );
+                            setDiscountDraft(Number(q.discount ?? 0));
+                          } finally {
+                            setDiscountSaving(false);
+                          }
+                        }}
+                      >
+                        {discountSaving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : null}
+                        Guardar
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="tabular-nums font-medium text-red-700 dark:text-red-400">
+                      {Number(q.discount ?? 0) > 0
+                        ? `− ${fmtBRL(Number(q.discount))}`
+                        : fmtBRL(0)}
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-500">
+                    Desconto extra no total. Desconto por item: edite o pedido
+                    {canNavigateToEdit ? (
+                      <>
+                        {" "}
+                        (
+                        <button
+                          type="button"
+                          className="text-brand-700 underline"
+                          onClick={() =>
+                            router.push(`/sales/orders/${id}/edit`)
+                          }
+                        >
+                          Editar itens
+                        </button>
+                        ).
+                      </>
+                    ) : (
+                      "."
+                    )}
+                  </p>
+                </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-slate-500">Total ICMS</span>
                   <span className="tabular-nums font-medium">
@@ -1284,7 +1362,17 @@ export default function SalesOrderDetailPage() {
                 <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 dark:border-slate-700">
                   <span className="font-semibold">Total final</span>
                   <span className="tabular-nums font-semibold">
-                    {fmtBRL(q.total)}
+                    {fmtBRL(
+                      canNavigateToEdit &&
+                        Number(discountDraft) !== Number(q.discount ?? 0)
+                        ? computeSalesOrderTotal({
+                            subtotal: q.subtotal,
+                            discount: discountDraft,
+                            tax: q.tax,
+                            total_ipi: q.total_ipi,
+                          })
+                        : q.total
+                    )}
                   </span>
                 </div>
               </CardContent>

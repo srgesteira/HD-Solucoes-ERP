@@ -61,6 +61,7 @@ export type PurchaseOrderFormData = {
     quantity: number;
     unit: string;
     unit_price: number;
+    discount?: number | null;
     icms_rate?: number;
     icms_value?: number;
     icms_amount?: number;
@@ -154,6 +155,7 @@ export function itemsToPurchaseLines(items: OrderItemRow[]): {
       quantity: Number(item.quantity),
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
       unitPrice: Number(item.unit_price),
+      discount: Number(item.discount ?? 0),
       icmsRate: Number(item.icms_rate ?? 0),
       icmsValue: Number(item.icms_value ?? item.icms_amount ?? 0),
       ipiRate: Number(item.ipi_rate ?? 0),
@@ -368,6 +370,7 @@ export function PurchaseOrderForm({
         lines.map((l) => ({
           quantity: l.quantity,
           unitPrice: l.unitPrice,
+          discount: l.discount,
           icmsValue: l.icmsValue,
           ipiValue: l.ipiValue,
           taxBase: l.taxBase,
@@ -688,7 +691,7 @@ export function PurchaseOrderForm({
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="discount">Desconto</Label>
+              <Label htmlFor="discount">Desconto do pedido (R$)</Label>
               <NumericInput
                 id="discount"
                 value={discount}
@@ -696,6 +699,9 @@ export function PurchaseOrderForm({
                 maxDecimals={2}
                 disabled={fieldsDisabled}
               />
+              <p className="text-xs text-slate-500">
+                Extra no total — além dos descontos por item.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="tax">Outros impostos (creditáveis)</Label>

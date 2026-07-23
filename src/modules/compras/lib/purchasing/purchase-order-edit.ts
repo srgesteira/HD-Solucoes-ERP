@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import {
   aggregatePurchaseLineTaxes,
+  lineNetSubtotal,
   lineSubtotal,
   parseTaxAmount,
   parseTaxRate,
@@ -20,6 +21,7 @@ export type PurchaseOrderLineInput = {
   quantity: number;
   unit: string;
   unit_price: number;
+  discount?: number;
   icms_rate: number;
   icms_value: number;
   ipi_rate: number;
@@ -87,6 +89,27 @@ export function parsePurchaseOrderLines(raw: unknown):
       };
     }
 
+    const discountRaw = r.discount;
+    const discount =
+      discountRaw === undefined || discountRaw === null
+        ? 0
+        : typeof discountRaw === "number"
+          ? discountRaw
+          : parseFloat(String(discountRaw).replace(",", "."));
+    if (!Number.isFinite(discount) || discount < 0) {
+      return {
+        ok: false,
+        message: `Item ${i + 1}: desconto inválido.`,
+      };
+    }
+    const gross = lineSubtotal(quantity, unit_price);
+    if (discount > gross + 1e-9) {
+      return {
+        ok: false,
+        message: `Item ${i + 1}: desconto maior que o valor da linha.`,
+      };
+    }
+
     const icms_rate =
       r.icms_rate === undefined || r.icms_rate === null
         ? 0
@@ -121,7 +144,7 @@ export function parsePurchaseOrderLines(raw: unknown):
       return { ok: false, message: `Item ${i + 1}: valor IPI inválido.` };
     }
 
-    const subtotal = lineSubtotal(quantity, unit_price);
+    const subtotal = lineNetSubtotal(quantity, unit_price, discount);
     const tax_base =
       r.tax_base === undefined || r.tax_base === null
         ? roundMoney(subtotal + ipi_value)
@@ -167,6 +190,7 @@ export function parsePurchaseOrderLines(raw: unknown):
       quantity,
       unit,
       unit_price,
+      discount: roundMoney(discount),
       icms_rate,
       icms_value,
       ipi_rate,
@@ -239,7 +263,12 @@ export async function syncPurchaseOrderItems(
   }
 
   for (const line of lines) {
-    const total_price = roundMoney(lineSubtotal(line.quantity, line.unit_price));
+    const discount = roundMoney(Math.max(0, Number(line.discount ?? 0)));
+    const total_price = lineNetSubtotal(
+      line.quantity,
+      line.unit_price,
+      discount
+    );
 
     const itemPayload = {
       product_id: line.product_id,
@@ -247,6 +276,7 @@ export async function syncPurchaseOrderItems(
       quantity: line.quantity,
       unit: line.unit,
       unit_price: line.unit_price,
+      discount,
       total_price,
       icms_rate: line.icms_rate,
       icms_value: line.icms_value,
@@ -313,6 +343,7 @@ export async function syncPurchaseOrderItems(
     lines.map((l) => ({
       quantity: l.quantity,
       unitPrice: l.unit_price,
+      discount: l.discount ?? 0,
       icmsValue: l.icms_value,
       ipiValue: l.ipi_value,
       taxBase: l.tax_base,
