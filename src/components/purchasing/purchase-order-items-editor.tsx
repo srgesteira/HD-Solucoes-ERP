@@ -442,8 +442,9 @@ export function PurchaseOrderItemsEditor({
                         }
                         disabled={disabled}
                         rows={2}
-                        placeholder="Obs. do item…"
+                        placeholder="Observações do item (sai no impresso)…"
                         className="resize-y min-h-[44px] text-[11px] px-2 py-1"
+                        title="Texto impresso no pedido de compra sob o produto"
                       />
                     </div>
                   </td>
@@ -619,7 +620,9 @@ export function PurchaseOrderItemsEditor({
 
       <p className="text-[11px] text-slate-500 leading-snug">
         <strong>Código</strong> — SKU do cadastro (só leitura).{" "}
-        <strong>Descrição</strong> — texto do item nesta solicitação (editável).
+        <strong>Descrição</strong> — nome do item nesta solicitação.{" "}
+        <strong>Observações</strong> — texto livre que sai no impresso do pedido,
+        sob o produto.
         {isQuote
           ? " Sem valores — a cotação virá da resposta do fornecedor."
           : " Unidade, ICMS (R$) e IPI (R$) são calculados ou vêm do produto."}

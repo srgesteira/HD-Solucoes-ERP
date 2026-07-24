@@ -8,6 +8,7 @@ import {
   formatCompanyAddressForPrint,
   formatSupplierAddressForPrint,
   poComputedTotal,
+  poItemLineDescription,
   poItemProductLabel,
   poPaymentTermsText,
   poStatusLabel,
@@ -49,6 +50,9 @@ const PRINT_STYLES = `
 .quote-print-table thead th.qp-num { text-align: right; }
 .quote-print-table tbody td { padding: 0.28rem 0.35rem; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
 .quote-print-table tbody td.qp-num { text-align: right; font-variant-numeric: tabular-nums; }
+.qp-item-name { font-weight: 600; }
+.qp-item-extra { margin: 0.2rem 0 0; font-size: 0.65rem; color: #475569; white-space: pre-wrap; }
+.qp-item-extra-label { font-weight: 600; color: #64748b; }
 .qp-bottom-row { display: flex; justify-content: flex-end; margin-top: 0.35rem; }
 .qp-totals-inner { max-width: 240px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
 .qp-totals-row { display: flex; justify-content: space-between; padding: 0.28rem 0.55rem; font-size: 0.72rem; border-bottom: 1px solid #f1f5f9; }
@@ -192,25 +196,45 @@ export function PurchaseOrderPrintDocument({
               </tr>
             </thead>
             <tbody>
-              {items.map((item, idx) => (
-                <tr key={item.id}>
-                  <td>{idx + 1}</td>
-                  <td>{poItemProductLabel(item)}</td>
-                  <td className="qp-num">
-                    {Number(item.quantity)} {item.unit}
-                  </td>
-                  <td className="qp-num">{fmtPoBRL(Number(item.unit_price))}</td>
-                  <td className="qp-num">
-                    {fmtPoBRL(Number(item.icms_value ?? 0))}
-                  </td>
-                  <td className="qp-num">
-                    {fmtPoBRL(Number(item.ipi_value ?? 0))}
-                  </td>
-                  <td className="qp-num">
-                    {fmtPoBRL(Number(item.total_price))}
-                  </td>
-                </tr>
-              ))}
+              {items.map((item, idx) => {
+                const lineDesc = poItemLineDescription(item);
+                const itemNotes = item.item_notes?.trim() || "";
+                return (
+                  <tr key={item.id}>
+                    <td>{idx + 1}</td>
+                    <td>
+                      <div className="qp-item-name">{poItemProductLabel(item)}</div>
+                      {lineDesc ? (
+                        <p className="qp-item-extra">
+                          <span className="qp-item-extra-label">Descrição: </span>
+                          {lineDesc}
+                        </p>
+                      ) : null}
+                      {itemNotes ? (
+                        <p className="qp-item-extra">
+                          <span className="qp-item-extra-label">
+                            Observações:{" "}
+                          </span>
+                          {itemNotes}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="qp-num">
+                      {Number(item.quantity)} {item.unit}
+                    </td>
+                    <td className="qp-num">{fmtPoBRL(Number(item.unit_price))}</td>
+                    <td className="qp-num">
+                      {fmtPoBRL(Number(item.icms_value ?? 0))}
+                    </td>
+                    <td className="qp-num">
+                      {fmtPoBRL(Number(item.ipi_value ?? 0))}
+                    </td>
+                    <td className="qp-num">
+                      {fmtPoBRL(Number(item.total_price))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

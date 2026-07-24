@@ -54,6 +54,10 @@ function mapItems(
     return {
       id: String(row.id),
       description: String(row.description ?? ""),
+      item_notes:
+        typeof row.item_notes === "string" && row.item_notes.trim()
+          ? row.item_notes.trim()
+          : null,
       quantity: qty,
       unit: String(row.unit ?? "UN"),
       unit_price: unitPrice,

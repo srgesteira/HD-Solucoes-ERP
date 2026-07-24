@@ -24,6 +24,7 @@ export type PurchaseOrderPrintSupplier = {
 export type PurchaseOrderPrintItem = {
   id: string;
   description: string;
+  item_notes?: string | null;
   quantity: number;
   unit: string;
   unit_price: number;
@@ -97,6 +98,17 @@ export function poItemProductLabel(item: PurchaseOrderPrintItem): string {
   const name = p?.name?.trim() || item.description?.trim() || "—";
   if (code) return `${code} — ${name}`;
   return name;
+}
+
+/** Descrição da linha quando difere do nome do produto (aparece no impresso). */
+export function poItemLineDescription(item: PurchaseOrderPrintItem): string | null {
+  const desc = item.description?.trim();
+  if (!desc) return null;
+  const productName = item.product?.name?.trim() || "";
+  if (productName && desc === productName) return null;
+  const label = poItemProductLabel(item);
+  if (desc === label) return null;
+  return desc;
 }
 
 export function poStatusLabel(status: string): string {

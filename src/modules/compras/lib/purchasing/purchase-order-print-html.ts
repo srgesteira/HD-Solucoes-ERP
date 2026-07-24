@@ -9,6 +9,7 @@ import {
   formatCompanyAddressForPrint,
   formatSupplierAddressForPrint,
   poComputedTotal,
+  poItemLineDescription,
   poItemProductLabel,
   poPaymentTermsText,
   poStatusLabel,
@@ -48,6 +49,9 @@ body { margin: 0; background: #fff; font-family: system-ui, -apple-system, "Sego
 .quote-print-table thead th.qp-num { text-align: right; }
 .quote-print-table tbody td { padding: 0.28rem 0.35rem; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
 .quote-print-table tbody td.qp-num { text-align: right; font-variant-numeric: tabular-nums; }
+.qp-item-name { font-weight: 600; }
+.qp-item-extra { margin: 0.2rem 0 0; font-size: 0.65rem; color: #475569; white-space: pre-wrap; }
+.qp-item-extra-label { font-weight: 600; color: #64748b; }
 .qp-bottom-row { display: flex; justify-content: flex-end; margin-top: 0.35rem; }
 .qp-totals-inner { max-width: 240px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
 .qp-totals-row { display: flex; justify-content: space-between; padding: 0.28rem 0.55rem; font-size: 0.72rem; border-bottom: 1px solid #f1f5f9; }
@@ -69,18 +73,33 @@ export function buildPurchaseOrderPrintHtml(
   const supplierAddr = supplier ? formatSupplierAddressForPrint(supplier) : null;
 
   const itemRows = items
-    .map(
-      (item, idx) => `
+    .map((item, idx) => {
+      const lineDesc = poItemLineDescription(item);
+      const itemNotes = item.item_notes?.trim() || "";
+      const extras = [
+        lineDesc
+          ? `<p class="qp-item-extra"><span class="qp-item-extra-label">Descrição: </span>${esc(lineDesc)}</p>`
+          : "",
+        itemNotes
+          ? `<p class="qp-item-extra"><span class="qp-item-extra-label">Observações: </span>${esc(itemNotes)}</p>`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("");
+      return `
       <tr>
         <td>${idx + 1}</td>
-        <td>${esc(poItemProductLabel(item))}</td>
+        <td>
+          <div class="qp-item-name">${esc(poItemProductLabel(item))}</div>
+          ${extras}
+        </td>
         <td class="qp-num">${Number(item.quantity)} ${esc(item.unit)}</td>
         <td class="qp-num">${esc(fmtPoBRL(Number(item.unit_price)))}</td>
         <td class="qp-num">${esc(fmtPoBRL(Number(item.icms_value ?? 0)))}</td>
         <td class="qp-num">${esc(fmtPoBRL(Number(item.ipi_value ?? 0)))}</td>
         <td class="qp-num">${esc(fmtPoBRL(Number(item.total_price)))}</td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join("");
 
   const companyBlock = company
