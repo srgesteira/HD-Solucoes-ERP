@@ -90,7 +90,7 @@ export function PagePendingAlerts({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "mx-4 md:mx-6 mt-4 rounded-lg border p-3 space-y-2",
+        "mx-4 md:mx-6 mt-4 rounded-lg border p-3 space-y-2 print:hidden",
         hasUrgent
           ? "border-red-200 bg-red-50/80"
           : "border-amber-200 bg-amber-50/80",

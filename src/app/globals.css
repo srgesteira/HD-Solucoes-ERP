@@ -63,12 +63,20 @@ input[type="number"] {
     background: #fff !important;
   }
 
+  /* Esconde chrome da app em qualquer página /print */
+  aside[aria-label="Menu lateral"],
+  .po-print-toolbar,
+  .quote-print-toolbar {
+    display: none !important;
+  }
+
   .quote-print-shell {
     display: block !important;
     background: #fff !important;
   }
 
-  .quote-print-page {
+  .quote-print-page,
+  .po-print-page {
     min-height: auto !important;
     background: #fff !important;
   }

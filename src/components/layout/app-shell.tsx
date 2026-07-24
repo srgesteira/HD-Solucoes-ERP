@@ -677,14 +677,14 @@ export function AppShell({ children, user }: AppShellProps) {
     setOpenGroups((s) => ({ ...s, [title]: !s[title] }));
   }
 
-  const isQuotePrintRoute =
-    pathname.includes("/sales/quotes/") && pathname.endsWith("/print");
+  /** Páginas de impressão de documentos (sem menu, header nem banners). */
+  const isDocumentPrintRoute = /\/print\/?$/.test(pathname);
 
   return (
     <div
       className={cn(
         "min-h-screen min-h-[100dvh] flex bg-slate-50",
-        isQuotePrintRoute && "quote-print-shell"
+        isDocumentPrintRoute && "quote-print-shell"
       )}
     >
       <aside
@@ -692,7 +692,7 @@ export function AppShell({ children, user }: AppShellProps) {
           "fixed inset-y-0 left-0 z-40 w-64 transform border-r border-slate-200 bg-white",
           "transition-transform duration-200 lg:static lg:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
-          isQuotePrintRoute && "hidden print:hidden"
+          isDocumentPrintRoute && "hidden print:hidden"
         )}
         aria-label="Menu lateral"
       >
@@ -862,7 +862,7 @@ export function AppShell({ children, user }: AppShellProps) {
         <header
           className={cn(
             "sticky top-0 z-20 h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 lg:px-6",
-            isQuotePrintRoute && "print:hidden hidden"
+            isDocumentPrintRoute && "print:hidden hidden"
           )}
         >
           <button
@@ -881,10 +881,10 @@ export function AppShell({ children, user }: AppShellProps) {
         <main
           className={cn(
             "flex-1 min-w-0",
-            isQuotePrintRoute && "print:p-0"
+            isDocumentPrintRoute && "print:p-0"
           )}
         >
-          {!isQuotePrintRoute ? <PagePendingAlerts /> : null}
+          {!isDocumentPrintRoute ? <PagePendingAlerts /> : null}
           {children}
         </main>
       </div>
