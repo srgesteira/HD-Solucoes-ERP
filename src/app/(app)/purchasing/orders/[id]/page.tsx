@@ -244,6 +244,9 @@ export default function PurchaseOrderDetailPage() {
         queryKey: ["purchasing-order-header", orderId],
       });
       await queryClient.invalidateQueries({ queryKey: ["purchasing-orders"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["purchasing-orders-board"],
+      });
       await refetch();
     },
     onError: (err: Error) => {
@@ -263,6 +266,9 @@ export default function PurchaseOrderDetailPage() {
         queryKey: ["purchasing-order-header", orderId],
       });
       await queryClient.invalidateQueries({ queryKey: ["purchasing-orders"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["purchasing-orders-board"],
+      });
       await refetch();
     },
     onError: (err: Error) => {
@@ -294,6 +300,9 @@ export default function PurchaseOrderDetailPage() {
         queryKey: ["purchasing-order-header", orderId],
       });
       await queryClient.invalidateQueries({ queryKey: ["purchasing-orders"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["purchasing-orders-board"],
+      });
       await refetch();
     },
     onError: (err: Error) => {
@@ -453,7 +462,7 @@ export default function PurchaseOrderDetailPage() {
             <CardTitle className="text-lg font-semibold text-slate-900">
               Estado e controle
             </CardTitle>
-            {isAdmin ? (
+            {canPurchasing ? (
               <div className="flex flex-wrap items-end gap-2 shrink-0">
                 <div className="space-y-1">
                   <label
@@ -531,6 +540,9 @@ export default function PurchaseOrderDetailPage() {
             queryKey: ["purchasing-order-header", orderId],
           });
           await queryClient.invalidateQueries({ queryKey: ["purchasing-orders"] });
+          await queryClient.invalidateQueries({
+            queryKey: ["purchasing-orders-board"],
+          });
           await queryClient.invalidateQueries({ queryKey: ["finance-payables"] });
           await refetch();
         }}

@@ -64,6 +64,17 @@ export async function POST(request: NextRequest, { params }: Params) {
       toOverride,
     });
 
+    if (
+      result.sent &&
+      order.status === "draft"
+    ) {
+      await admin
+        .from("purchase_orders")
+        .update({ status: "sent" })
+        .eq("id", id)
+        .eq("tenant_id", tenantId);
+    }
+
     return apiOk({
       sent: result.sent,
       simulated: result.simulated ?? false,

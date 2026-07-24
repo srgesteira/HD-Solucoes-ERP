@@ -224,6 +224,7 @@ export function PurchaseOrdersBoardTable({
                 <PurchaseOrderBoardActionsMenu
                   orderId={row.id}
                   poNumber={row.po_number}
+                  status={row.status}
                   canPurchasing={canPurchasing}
                 />
               ),
