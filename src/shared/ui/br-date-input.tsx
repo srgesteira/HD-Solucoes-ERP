@@ -30,7 +30,7 @@ export function BrDateInput({
   onChange,
   disabled,
   className,
-  placeholder = "dd/mm/aa",
+  placeholder = "dd/mm",
   title,
   id,
   variant = "default",

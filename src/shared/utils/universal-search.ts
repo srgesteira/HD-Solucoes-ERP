@@ -1,10 +1,12 @@
 /**
  * Utilitários de busca universal para o ERP.
- * Aceita texto livre, datas (dd/mm/aaaa ou aaaa-mm-dd) e códigos.
+ * Aceita texto livre, datas (dd/mm, dd/mm/aaaa ou aaaa-mm-dd) e códigos.
  *
  * Busca inteligente: vários tokens (ex. "filtro h14") exigem que TODOS
  * apareçam nos campos (AND), em qualquer ordem — não a frase contígua.
  */
+
+import { parseBrazilianDateInput } from "@/shared/utils/date";
 
 export function escapeIlike(pattern: string): string {
   return pattern.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
@@ -77,24 +79,9 @@ export function applyTokenFieldIlikeOrFilters<
   return q;
 }
 
-/** Converte dd/mm/aaaa, dd-mm-aaaa ou aaaa-mm-dd para ISO (aaaa-mm-dd). */
+/** Converte dd/mm, dd/mm/aaaa, dd-mm-aaaa ou aaaa-mm-dd para ISO (aaaa-mm-dd). */
 export function extractIsoDateFromSearch(raw: string): string | null {
-  const t = raw.trim();
-  if (!t) return null;
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-
-  const br = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
-  if (br) {
-    const day = br[1]!.padStart(2, "0");
-    const month = br[2]!.padStart(2, "0");
-    let year = br[3]!;
-    if (year.length === 2) year = `20${year}`;
-    if (year.length !== 4) return null;
-    return `${year}-${month}-${day}`;
-  }
-
-  return null;
+  return parseBrazilianDateInput(raw);
 }
 
 export function normalizeUniversalSearch(raw: string | null | undefined): string {

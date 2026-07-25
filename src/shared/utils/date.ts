@@ -88,23 +88,34 @@ export function isoToBrazilianDateInput(
 }
 
 /**
- * Interpreta texto digitado `dd/mm/aa` ou `dd/mm/aaaa` → `yyyy-MM-dd`.
- * Retorna `null` se vazio ou inválido.
+ * Interpreta texto digitado → `yyyy-MM-dd`.
+ * Aceita `dd/mm` (usa o ano corrente), `dd/mm/aa`, `dd/mm/aaaa` ou ISO.
+ * Separadores: `/`, `-` ou `.`. Retorna `null` se vazio ou inválido.
  */
-export function parseBrazilianDateInput(raw: string): string | null {
+export function parseBrazilianDateInput(
+  raw: string,
+  referenceDate: Date = new Date()
+): string | null {
   const t = raw.trim();
   if (!t) return null;
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
 
-  const br = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
+  const brFull = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
+  const brDayMonth = t.match(/^(\d{1,2})[/.-](\d{1,2})$/);
+  const br = brFull ?? brDayMonth;
   if (!br) return null;
 
   const day = br[1]!.padStart(2, "0");
   const month = br[2]!.padStart(2, "0");
-  let year = br[3]!;
-  if (year.length === 2) year = `20${year}`;
-  if (year.length !== 4) return null;
+  let year: string;
+  if (brFull) {
+    year = brFull[3]!;
+    if (year.length === 2) year = `20${year}`;
+    if (year.length !== 4) return null;
+  } else {
+    year = String(referenceDate.getFullYear());
+  }
 
   const iso = `${year}-${month}-${day}`;
   const d = parseLocalDate(iso);
