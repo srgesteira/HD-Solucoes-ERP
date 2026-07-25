@@ -1007,17 +1007,12 @@ export function ProductCompositionPanel({
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
           role="presentation"
-          onClick={() => {
-            resetDialog();
-            setDialogOpen(false);
-          }}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="bom-dialog-title"
             className="relative z-10 w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
@@ -1354,14 +1349,12 @@ export function ProductCompositionPanel({
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50"
           role="presentation"
-          onClick={closeEditDialog}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="bom-edit-dialog-title"
             className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
