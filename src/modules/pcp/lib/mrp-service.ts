@@ -616,6 +616,8 @@ type UpsertPurchaseRequisitionArgs = {
   /** order_items.id do produto acabado na OP */
   productionOrderItemId?: string | null;
   salesOrderItemId?: string | null;
+  /** Itens do mesmo PV — localiza PC/requisição já ligada ao pedido. */
+  relatedSalesOrderItemIds?: string[];
   pcpDeadline?: string | null;
 };
 
@@ -709,10 +711,19 @@ async function upsertPurchaseRequisition(
     productLead?.purchase_lead_time_days
   );
 
+  const relatedSoiIds = [
+    ...new Set(
+      [
+        salesOrderItemId,
+        ...(args.relatedSalesOrderItemIds ?? []),
+      ].filter((id): id is string => Boolean(id && id.trim()))
+    ),
+  ];
+
   let linkedPoQuery = admin
     .from("purchase_order_items")
     .select(
-      "id, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id)"
+      "id, quantity, unit_price, purchase_order_id, purchase_order:purchase_orders!purchase_order_items_purchase_order_id_fkey(id, po_number, supplier_id, status)"
     )
     .eq("tenant_id", tenantId)
     .eq("product_id", args.productId)
@@ -720,12 +731,12 @@ async function upsertPurchaseRequisition(
     .order("created_at", { ascending: false })
     .limit(1);
 
-  if (salesOrderItemId) {
-    linkedPoQuery = linkedPoQuery.eq("sales_order_item_id", salesOrderItemId);
-  } else {
+  if (relatedSoiIds.length > 0) {
+    linkedPoQuery = linkedPoQuery.in("sales_order_item_id", relatedSoiIds);
+  } else if (productionOrderItemId) {
     linkedPoQuery = linkedPoQuery.eq(
       "production_order_item_id",
-      productionOrderItemId!
+      productionOrderItemId
     );
   }
 
@@ -735,6 +746,31 @@ async function upsertPurchaseRequisition(
       ? linkedPo.purchase_order[0]
       : linkedPo.purchase_order;
     if (po) {
+      const poStatus = String(po.status ?? "");
+      if (poStatus === "draft") {
+        const newQty = round4(args.quantity);
+        const unitPrice = round4(
+          Math.max(Number(linkedPo.unit_price ?? 0), args.unitPrice)
+        );
+        await admin
+          .from("purchase_order_items")
+          .update({
+            quantity: newQty,
+            unit_price: unitPrice,
+            total_price: round4(newQty * unitPrice),
+            trace_key: args.traceKey,
+            production_order_id: args.productionOrderId ?? null,
+            production_item_id:
+              productionOrderItemId ?? args.productionOrderItemId ?? null,
+            production_order_item_id:
+              productionOrderItemId ?? args.productionOrderItemId ?? null,
+            sales_order_item_id: salesOrderItemId,
+            need_date: needDate,
+            follow_up_date: needDate,
+          })
+          .eq("id", linkedPo.id)
+          .eq("tenant_id", tenantId);
+      }
       return {
         id: po.id,
         po_number: po.po_number,
@@ -744,7 +780,7 @@ async function upsertPurchaseRequisition(
     }
   }
 
-  const { data: draftRequisition } = await admin
+  let draftQuery = admin
     .from("purchase_order_items")
     .select("id, quantity, unit_price")
     .eq("tenant_id", tenantId)
@@ -752,8 +788,13 @@ async function upsertPurchaseRequisition(
     .is("purchase_order_id", null)
     .eq("status", "draft")
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (relatedSoiIds.length > 0) {
+    draftQuery = draftQuery.in("sales_order_item_id", relatedSoiIds);
+  }
+
+  const { data: draftRequisition } = await draftQuery.maybeSingle();
 
   if (draftRequisition?.id) {
     const newQty = round4(args.quantity);
@@ -906,6 +947,16 @@ export async function processMrpForSalesOrder(
   }
 
   const results: MrpLineResult[] = [];
+  /** Necessidade bruta agregada do PV (evita sobrescrever requisição linha a linha). */
+  const aggregatedGross = new Map<string, number>();
+  type MaterialAnchor = {
+    salesOrderItemId: string;
+    productionOrderId: string;
+    productionOrderItemId: string;
+    pcpDeadline: string | null;
+    lineNumber: number;
+  };
+  const materialAnchors = new Map<string, MaterialAnchor>();
   const bomGraph = options?.bomGraph ?? (await loadBomGraph(admin, tenantId));
   const orderNumber = String(so.order_number ?? "");
   const orderPcpDate =
@@ -1147,66 +1198,28 @@ export async function processMrpForSalesOrder(
       );
     }
 
-    const matIds = [...new Set(shortages.map((s) => s.product_id))];
-    let matProds: {
-      id: string;
-      technical_code: string;
-      cost_price: number | null;
-      default_labor_cost: number | null;
-      name: string;
-      unit: string | null;
-    }[] = [];
-    if (matIds.length) {
-      const { data: mpRows, error: mpErr } = await admin
-        .from("products")
-        .select("id, technical_code, cost_price, default_labor_cost, name, unit")
-        .eq("tenant_id", tenantId)
-        .in("id", matIds);
-      if (mpErr) throw new Error(mpErr.message);
-      matProds = (mpRows ?? []) as typeof matProds;
-    }
-    const matMap = new Map(matProds.map((m) => [m.id, m]));
-
     const createTracePOs = options?.createTracePurchaseOrders !== false;
-    if (
-      createTracePOs &&
-      shortages.length > 0 &&
-      productionOrderId &&
-      productionItemId
-    ) {
-      for (const m of shortages) {
-        try {
-          const mp = matMap.get(m.product_id);
-          const code = mp?.technical_code ?? m.product_id.slice(0, 8);
-          const traceKey = buildTraceKey(orderNumber, lineRes.line_number, code);
-          const unitPrice = mp
-            ? Number(mp.default_labor_cost ?? mp.cost_price ?? 0)
-            : 0;
-          const req = await upsertPurchaseRequisition(admin, tenantId, {
-            traceKey,
-            productId: m.product_id,
-            quantity: m.shortage,
-            unit: m.unit,
-            unitPrice,
-            description: mp?.name ?? m.description,
+    if (createTracePOs && productionOrderId && productionItemId) {
+      for (const g of gross) {
+        if (g.gross_qty <= 0.0001) continue;
+        aggregatedGross.set(
+          g.product_id,
+          round4((aggregatedGross.get(g.product_id) ?? 0) + g.gross_qty)
+        );
+        if (!materialAnchors.has(g.product_id)) {
+          materialAnchors.set(g.product_id, {
+            salesOrderItemId: row.id,
             productionOrderId,
             productionOrderItemId: productionItemId,
-            salesOrderItemId: row.id,
             pcpDeadline: pcpDate,
+            lineNumber: lineRes.line_number,
           });
-          lineRes.purchase_orders.push(req);
-        } catch (reqErr) {
-          const msg =
-            reqErr instanceof Error ? reqErr.message : "Erro na requisição";
-          lineRes.skipped_reason = lineRes.skipped_reason
-            ? `${lineRes.skipped_reason}; ${msg}`
-            : msg;
         }
       }
       if (opWasExisting && !lineRes.skipped_reason) {
         lineRes.skipped_reason =
           shortages.length > 0
-            ? "OP existente — requisições de compra actualizadas."
+            ? "OP existente — requisições de compra serão agregadas."
             : undefined;
       }
     } else if (shortages.length === 0 && opWasExisting) {
@@ -1225,6 +1238,92 @@ export async function processMrpForSalesOrder(
 
     lineRes.production_order_id = productionOrderId;
     results.push(lineRes);
+  }
+
+  const createTracePOs = options?.createTracePurchaseOrders !== false;
+  if (confirm && createTracePOs && aggregatedGross.size > 0) {
+    const soiIds = lineRows.map((r) => r.id);
+    const matIds = [...aggregatedGross.keys()];
+
+    const { error: clearDraftErr } = await admin
+      .from("purchase_order_items")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .in("product_id", matIds)
+      .in("sales_order_item_id", soiIds)
+      .is("purchase_order_id", null)
+      .eq("status", "draft");
+    if (clearDraftErr) throw new Error(clearDraftErr.message);
+
+    const grossList: GrossMaterialNeed[] = matIds.map((product_id) => ({
+      product_id,
+      gross_qty: aggregatedGross.get(product_id) ?? 0,
+    }));
+    const netReqs = await getNetRequirements(admin, tenantId, grossList);
+    const shortages = netReqs.filter((m) => m.shortage > 0.0001);
+
+    let matProds: {
+      id: string;
+      technical_code: string;
+      cost_price: number | null;
+      default_labor_cost: number | null;
+      name: string;
+      unit: string | null;
+    }[] = [];
+    if (shortages.length) {
+      const { data: mpRows, error: mpErr } = await admin
+        .from("products")
+        .select("id, technical_code, cost_price, default_labor_cost, name, unit")
+        .eq("tenant_id", tenantId)
+        .in(
+          "id",
+          shortages.map((s) => s.product_id)
+        );
+      if (mpErr) throw new Error(mpErr.message);
+      matProds = (mpRows ?? []) as typeof matProds;
+    }
+    const matMap = new Map(matProds.map((m) => [m.id, m]));
+
+    for (const m of shortages) {
+      const anchor = materialAnchors.get(m.product_id);
+      if (!anchor) continue;
+      const mp = matMap.get(m.product_id);
+      const code = mp?.technical_code ?? m.product_id.slice(0, 8);
+      const traceKey = buildTraceKey(orderNumber, anchor.lineNumber, code);
+      const unitPrice = mp
+        ? Number(mp.default_labor_cost ?? mp.cost_price ?? 0)
+        : 0;
+      try {
+        const req = await upsertPurchaseRequisition(admin, tenantId, {
+          traceKey,
+          productId: m.product_id,
+          quantity: m.shortage,
+          unit: m.unit,
+          unitPrice,
+          description: mp?.name ?? m.description,
+          productionOrderId: anchor.productionOrderId,
+          productionOrderItemId: anchor.productionOrderItemId,
+          salesOrderItemId: anchor.salesOrderItemId,
+          relatedSalesOrderItemIds: soiIds,
+          pcpDeadline: anchor.pcpDeadline,
+        });
+        const line = results.find(
+          (r) => r.sales_order_item_id === anchor.salesOrderItemId
+        );
+        line?.purchase_orders.push(req);
+      } catch (reqErr) {
+        const msg =
+          reqErr instanceof Error ? reqErr.message : "Erro na requisição";
+        const line = results.find(
+          (r) => r.sales_order_item_id === anchor.salesOrderItemId
+        );
+        if (line) {
+          line.skipped_reason = line.skipped_reason
+            ? `${line.skipped_reason}; ${msg}`
+            : msg;
+        }
+      }
+    }
   }
 
   if (confirm) {

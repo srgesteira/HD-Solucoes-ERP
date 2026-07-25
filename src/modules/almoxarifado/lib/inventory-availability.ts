@@ -69,13 +69,17 @@ export function computeSaldoFuturo(row: {
 }): number {
   const onHand = roundInventoryQty(row.quantity_on_hand);
   const reserved = roundInventoryQty(row.reserved_quantity);
+  // Empenho só consome stock físico; não pode inflacionar compra quando on_hand=0.
+  const reservedEffective = roundInventoryQty(Math.min(reserved, onHand));
   const inProd = roundInventoryQty(row.quantity_in_production);
   const incoming = roundInventoryQty(row.quantity_incoming);
   const incomingDraft = roundInventoryQty(row.quantity_incoming_draft);
   const prodTerm = mrSaldoFuturoIncludesProduction(row.product_nature)
     ? inProd
     : 0;
-  return roundInventoryQty(onHand + prodTerm + incoming + incomingDraft - reserved);
+  return roundInventoryQty(
+    onHand + prodTerm + incoming + incomingDraft - reservedEffective
+  );
 }
 
 /** Compra para repor até o estoque mínimo quando saldo_futuro < reorder_point. */
@@ -132,8 +136,9 @@ function buildAvailability(row: {
     quantity_incoming_draft: incomingDraft,
     product_nature: row.product_nature,
   });
+  const reservedEffective = roundInventoryQty(Math.min(reserved, onHand));
   const available = roundInventoryQty(
-    Math.max(0, onHand + incoming + inProd - reserved)
+    Math.max(0, onHand + incoming + inProd - reservedEffective)
   );
   return {
     product_id: row.product_id,
