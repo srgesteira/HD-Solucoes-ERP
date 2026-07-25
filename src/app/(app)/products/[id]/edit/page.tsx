@@ -568,6 +568,7 @@ export default function EditProductPage() {
     formData.name.trim() || "Produto sem descrição";
   const productCode = formData.technical_code?.trim() || "";
   const productUnit = formData.unit?.trim() || "—";
+  const productPrice = Number(formData.cost_price ?? 0);
 
   return (
     <AppPage
@@ -614,6 +615,12 @@ export default function EditProductPage() {
               <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1 text-sm text-slate-700 ring-1 ring-slate-200">
                 <span className="text-slate-500">Unidade</span>
                 <span className="font-semibold tabular-nums">{productUnit}</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1 text-sm text-slate-700 ring-1 ring-slate-200">
+                <span className="text-slate-500">Preço</span>
+                <span className="font-semibold tabular-nums text-slate-900">
+                  {fmtBRL(productPrice)}
+                </span>
               </span>
               {productRaw ? (
                 <ProductLifecycleBadge
