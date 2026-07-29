@@ -1607,7 +1607,7 @@ export async function regenerateMrpForOrder(
   return processMrpForSalesOrder(admin, tenantId, userId, salesOrderId, true);
 }
 
-/** MRP em lote: todos os pedidos confirmados com linhas pendentes. */
+/** MRP em lote: pedidos confirmados em aberto (não liberados/finalizados no PCP). */
 export async function runMrpForOpenSalesOrders(
   admin: Admin,
   tenantId: string,
@@ -1620,14 +1620,17 @@ export async function runMrpForOpenSalesOrders(
     .select("id, order_number")
     .eq("tenant_id", tenantId)
     .in("status", statuses)
+    // Alinhado ao PCP «Em aberto»: ready_for_invoice = finalizado no planeamento.
+    .eq("ready_for_invoice", false)
     .order("order_date", { ascending: true });
 
-  if (!confirm) {
-    orderQuery = orderQuery.eq("mrp_processed", false);
-  }
+  // Preview e lote: só pedidos ainda não planeados pelo MRP.
+  // (Antes, confirm=true incluía todos os confirmados — puxava finalizados no PCP.)
+  orderQuery = orderQuery.eq("mrp_processed", false);
 
   const { data: orders, error } = await orderQuery;
   if (error) throw new Error(error.message);
+  void confirm;
 
   const bomGraph = await loadBomGraph(admin, tenantId);
   const out: MrpProcessResult[] = [];

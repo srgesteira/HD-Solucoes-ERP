@@ -124,7 +124,7 @@ export async function markSalesOrderReadyForInvoice(
 ): Promise<void> {
   const { error } = await admin
     .from("sales_orders")
-    .update({ ready_for_invoice: true })
+    .update({ ready_for_invoice: true, mrp_processed: true })
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId);
 

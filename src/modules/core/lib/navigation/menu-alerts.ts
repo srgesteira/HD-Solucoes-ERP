@@ -516,6 +516,7 @@ export async function loadMenuAlerts(
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
           .eq("mrp_processed", false)
+          .eq("ready_for_invoice", false)
           .in("status", ["pending", "confirmed", "in_production"]);
         if (!error) {
           const n = count ?? 0;
