@@ -7,7 +7,9 @@ import {
 import {
   computePurchaseShortage,
   fetchProductAvailabilityMap,
+  physicalFreeStock,
   roundInventoryQty,
+  type FetchProductAvailabilityOptions,
 } from "@/modules/almoxarifado/lib/inventory-availability";
 import { reserveMaterialsForProductionOrderItem } from "@/modules/almoxarifado/lib/inventory-reservations";
 import { ensureOrderItemOperations } from "@/modules/pcp/lib/product-routing-service";
@@ -300,7 +302,8 @@ export async function calculateNeededMaterials(
 export async function getNetRequirements(
   admin: Admin,
   tenantId: string,
-  gross: GrossMaterialNeed[]
+  gross: GrossMaterialNeed[],
+  availabilityOptions?: FetchProductAvailabilityOptions
 ): Promise<MaterialRequirement[]> {
   if (!gross.length) return [];
 
@@ -310,7 +313,8 @@ export async function getNetRequirements(
   const availabilityMap = await fetchProductAvailabilityMap(
     admin,
     tenantId,
-    productIds
+    productIds,
+    availabilityOptions
   );
 
   const { data: prods, error: pErr } = await admin
@@ -374,7 +378,14 @@ export async function calculateMaterialRequirements(
   salesOrderId: string
 ): Promise<MaterialRequirement[]> {
   const gross = await calculateNeededMaterials(admin, tenantId, salesOrderId);
-  return getNetRequirements(admin, tenantId, gross);
+  const { data: soiRows } = await admin
+    .from("sales_order_items")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("sales_order_id", salesOrderId);
+  return getNetRequirements(admin, tenantId, gross, {
+    draftScopeSalesOrderItemIds: (soiRows ?? []).map((r) => r.id),
+  });
 }
 
 export type PurchaseOrdersResult = {
@@ -970,6 +981,24 @@ export async function processMrpForSalesOrder(
       ? String(so.expected_delivery).slice(0, 10)
       : null;
 
+  /** Rascunhos de outros PVs não cobrem a falta deste pedido. */
+  const draftScopeSalesOrderItemIds = lineRows.map((r) => r.id);
+  const availOpts: FetchProductAvailabilityOptions = {
+    draftScopeSalesOrderItemIds,
+  };
+
+  if (confirm && draftScopeSalesOrderItemIds.length > 0) {
+    // Sugestões de separação antigas (ex.: FG “disponível” por produção alheia)
+    // não devem bloquear reprocessamento com OP + compras.
+    const { error: clearPickErr } = await admin
+      .from("picking_suggestions")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("sales_order_id", salesOrderId)
+      .eq("status", "pending");
+    if (clearPickErr) throw new Error(clearPickErr.message);
+  }
+
   for (const row of lineRows) {
     const lineRes: MrpLineResult = {
       sales_order_item_id: row.id,
@@ -1014,7 +1043,8 @@ export async function processMrpForSalesOrder(
       const requirements = await getNetRequirements(
         admin,
         tenantId,
-        grossNoBom
+        grossNoBom,
+        availOpts
       );
       lineRes.requirements = requirements;
 
@@ -1073,7 +1103,12 @@ export async function processMrpForSalesOrder(
       row.product_id,
       qty
     );
-    const requirements = await getNetRequirements(admin, tenantId, gross);
+    const requirements = await getNetRequirements(
+      admin,
+      tenantId,
+      gross,
+      availOpts
+    );
     lineRes.requirements = requirements;
 
     if (!confirm) {
@@ -1083,10 +1118,12 @@ export async function processMrpForSalesOrder(
 
     const shortages = requirements.filter((m) => m.shortage > 0.0001);
 
+    // Separação só com stock físico livre. Produção/compras a caminho de
+    // outros pedidos não podem “cobrir” este PV (bug: PV-6 sem OP/reqs).
     const fgAvail = await fetchProductAvailabilityMap(admin, tenantId, [
       row.product_id,
     ]);
-    const fgSupply = fgAvail.get(row.product_id)?.available ?? 0;
+    const fgSupply = physicalFreeStock(fgAvail.get(row.product_id));
     if (!row.production_order_id && fgSupply >= qty - 0.0001) {
       const { error: pickErr } = await admin.from("picking_suggestions").insert({
         tenant_id: tenantId,
@@ -1259,7 +1296,12 @@ export async function processMrpForSalesOrder(
       product_id,
       gross_qty: aggregatedGross.get(product_id) ?? 0,
     }));
-    const netReqs = await getNetRequirements(admin, tenantId, grossList);
+    const netReqs = await getNetRequirements(
+      admin,
+      tenantId,
+      grossList,
+      availOpts
+    );
     const shortages = netReqs.filter((m) => m.shortage > 0.0001);
 
     let matProds: {

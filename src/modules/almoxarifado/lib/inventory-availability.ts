@@ -41,6 +41,34 @@ export type ProductAvailability = {
 
 export type ProductAvailabilityMap = Map<string, ProductAvailability>;
 
+/**
+ * Stock físico livre para separação/picking.
+ * Não inclui produção em curso nem compras a caminho — esses pertencem a outros
+ * pedidos e não podem satisfazer um PV via sugestão de separação.
+ */
+export function physicalFreeStock(
+  avail: Pick<
+    ProductAvailability,
+    "quantity_on_hand" | "reserved_quantity"
+  > | null | undefined
+): number {
+  if (!avail) return 0;
+  const onHand = roundInventoryQty(avail.quantity_on_hand);
+  const reservedEffective = roundInventoryQty(
+    Math.min(roundInventoryQty(avail.reserved_quantity), onHand)
+  );
+  return roundInventoryQty(Math.max(0, onHand - reservedEffective));
+}
+
+export type FetchProductAvailabilityOptions = {
+  /**
+   * Quando definido, rascunhos de compra ligados a outros sales_order_item_id
+   * não entram no saldo. Rascunhos sem SOI (ex.: reposição de mínimo) continuam
+   * a contar. Evita que requisições do PV-A zerarem a falta do PV-B.
+   */
+  draftScopeSalesOrderItemIds?: string[];
+};
+
 function emptyAvailability(productId: string): ProductAvailability {
   return {
     product_id: productId,
@@ -164,11 +192,16 @@ function buildAvailability(row: {
 export async function fetchProductAvailabilityMap(
   admin: Admin,
   tenantId: string,
-  productIds: string[]
+  productIds: string[],
+  options?: FetchProductAvailabilityOptions
 ): Promise<ProductAvailabilityMap> {
   const ids = [...new Set(productIds.filter(Boolean))];
   const map = new Map<string, ProductAvailability>();
   if (!ids.length) return map;
+  const draftScope =
+    options?.draftScopeSalesOrderItemIds != null
+      ? new Set(options.draftScopeSalesOrderItemIds)
+      : null;
 
   for (const id of ids) {
     map.set(id, emptyAvailability(id));
@@ -258,7 +291,7 @@ export async function fetchProductAvailabilityMap(
   const incomingDraftByProduct = new Map<string, number>();
   const { data: draftRows, error: draftErr } = await admin
     .from("purchase_order_items")
-    .select("product_id, quantity")
+    .select("product_id, quantity, sales_order_item_id")
     .eq("tenant_id", tenantId)
     .in("product_id", ids)
     .is("purchase_order_id", null)
@@ -268,6 +301,15 @@ export async function fetchProductAvailabilityMap(
 
   for (const row of draftRows ?? []) {
     if (!row.product_id) continue;
+    const soiId = row.sales_order_item_id;
+    if (
+      draftScope &&
+      soiId != null &&
+      !draftScope.has(soiId)
+    ) {
+      // Rascunho de outro pedido — não cobre a falta deste PV.
+      continue;
+    }
     const q = Number(row.quantity ?? 0);
     if (!Number.isFinite(q) || q <= 0) continue;
     incomingDraftByProduct.set(
