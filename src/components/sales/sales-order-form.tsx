@@ -722,8 +722,7 @@ export function SalesOrderForm({
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Itens do pedido</CardTitle>
             <p className="text-sm text-slate-500 font-normal">
-              Produto, quantidade, preço, desconto e impostos (ICMS/IPI) por
-              linha.
+              Quantidade, preço, desconto e impostos (ICMS/IPI) por linha.
             </p>
           </CardHeader>
           <CardContent>
@@ -742,16 +741,20 @@ export function SalesOrderForm({
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
                       <th className="px-3 py-2 text-left font-medium">
+                        Código
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium">
                         Produto
                       </th>
-                      <th className="px-3 py-2 text-right font-medium">Qtd</th>
                       <th className="px-3 py-2 text-right font-medium">
-                        Unitário
+                        Quantidade
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Preço unitário
                       </th>
                       <th className="px-3 py-2 text-right font-medium">
                         Desc.
                       </th>
-                      <th className="px-3 py-2 text-right font-medium">IPI</th>
                       <th className="px-3 py-2 text-right font-medium">
                         Total
                       </th>
@@ -770,13 +773,27 @@ export function SalesOrderForm({
                               disc
                           );
                         const total = Number(net) + Number(line.ipi_value ?? 0);
+                        const code =
+                          prod?.technical_code?.trim() ||
+                          prod?.code?.trim() ||
+                          "—";
+                        const name =
+                          prod?.name?.trim() ||
+                          line.description?.replace(
+                            /^[A-Z0-9][\w\-./]+\s*[—\-]\s*/i,
+                            ""
+                          ).trim() ||
+                          "—";
                         return (
                           <tr
                             key={line.id}
                             className="border-b border-slate-100 dark:border-slate-800"
                           >
+                            <td className="px-3 py-2 font-mono text-xs text-slate-700 dark:text-slate-300">
+                              {code}
+                            </td>
                             <td className="px-3 py-2 font-medium">
-                              {prod?.name ?? line.description ?? "—"}
+                              {name}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
                               {Number(line.quantity)}
@@ -784,11 +801,8 @@ export function SalesOrderForm({
                             <td className="px-3 py-2 text-right tabular-nums">
                               {fmtBRL(Number(line.unit_price))}
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
+                            <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                               {disc > 0 ? fmtBRL(disc) : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                              {fmtBRL(Number(line.ipi_value ?? 0))}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums font-medium">
                               {fmtBRL(Number(total))}

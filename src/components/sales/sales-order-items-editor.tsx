@@ -285,11 +285,10 @@ export function SalesOrderItemsEditor({
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-        <table className="w-full text-sm min-w-[1280px]">
+        <table className="w-full text-sm min-w-[1180px]">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
-              <th className="px-2 py-2 min-w-[140px]">Produto</th>
-              <th className="px-2 py-2 min-w-[120px]">Descrição</th>
+              <th className="px-2 py-2 min-w-[220px]">Produto</th>
               <th className="px-2 py-2 w-32">Utilização</th>
               <th className="px-2 py-2 w-20">Qtd.</th>
               <th className="px-2 py-2 w-16">Un.</th>
@@ -325,56 +324,48 @@ export function SalesOrderItemsEditor({
                   key={line.key}
                   className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                 >
-                  <td className="px-2 py-2 align-top min-w-[200px]">
-                    <ProductComboboxField
-                      compact
-                      value={
-                        prod
-                          ? {
-                              id: prod.id,
-                              code: prod.code,
-                              technical_code: prod.technical_code,
-                              name: prod.name,
-                              cost_price: 0,
-                              unit: prod.unit,
-                              product_nature: prod.product_nature ?? null,
-                              prefix: prod.prefix_code
-                                ? { code: prod.prefix_code }
-                                : null,
-                            }
-                          : null
-                      }
-                      onChange={(hit) => {
-                        if (!hit) {
-                          updateLineAt(index, {
-                            productId: "",
-                            description: "",
-                            usageType: "",
-                          });
-                          return;
-                        }
-                        const { line, product } = lineFromProduct(hit, lines[index]);
-                        onProductCacheMerge({ [product.id]: product });
-                        updateLineAt(index, line);
-                      }}
-                      productType="all"
-                      excludeIds={lines
-                        .map((l) => l.productId)
-                        .filter((id) => id && id !== line.productId)}
-                      disabled={disabled}
-                      catalogTitle="Pesquisar produto"
-                    />
-                  </td>
-                  <td className="px-2 py-2 align-top">
+                  <td className="px-2 py-2 align-top min-w-[220px]">
                     <div className="space-y-1.5">
-                      <Input
-                        value={line.description}
-                        onChange={(e) =>
-                          updateLineAt(index, { description: e.target.value })
+                      <ProductComboboxField
+                        compact
+                        value={
+                          prod
+                            ? {
+                                id: prod.id,
+                                code: prod.code,
+                                technical_code: prod.technical_code,
+                                name: prod.name,
+                                cost_price: 0,
+                                unit: prod.unit,
+                                product_nature: prod.product_nature ?? null,
+                                prefix: prod.prefix_code
+                                  ? { code: prod.prefix_code }
+                                  : null,
+                              }
+                            : null
                         }
+                        onChange={(hit) => {
+                          if (!hit) {
+                            updateLineAt(index, {
+                              productId: "",
+                              description: "",
+                              usageType: "",
+                            });
+                            return;
+                          }
+                          const { line, product } = lineFromProduct(
+                            hit,
+                            lines[index]
+                          );
+                          onProductCacheMerge({ [product.id]: product });
+                          updateLineAt(index, line);
+                        }}
+                        productType="all"
+                        excludeIds={lines
+                          .map((l) => l.productId)
+                          .filter((id) => id && id !== line.productId)}
                         disabled={disabled}
-                        className="h-8 text-sm"
-                        placeholder="Descrição…"
+                        catalogTitle="Pesquisar produto"
                       />
                       <Textarea
                         value={line.itemNotes}

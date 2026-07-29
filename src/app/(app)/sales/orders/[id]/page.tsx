@@ -39,6 +39,11 @@ import { defaultExpectedDeliveryForOrder } from "@/modules/vendas/lib/sales/sale
 import { computeSalesOrderTotal } from "@/modules/vendas/lib/sales/sales-order-totals";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
+import {
+  quoteLineItemCode,
+  quoteLineItemName,
+  type QuotePrintItem,
+} from "@/modules/vendas/lib/sales/quote-display";
 import { SalesOrderChangeHistory } from "@/components/sales/sales-order-change-history";
 import { SalesReturnCreateModal } from "@/components/sales/sales-return-create-modal";
 
@@ -51,8 +56,6 @@ const SALES_FLOW: SalesOrderStatus[] = [
   "delivered",
 ];
 
-type ProductNested = { name?: string | null } | null;
-
 type SaleItemLine = {
   id: string;
   description: string | null;
@@ -61,6 +64,7 @@ type SaleItemLine = {
   unit_price: number;
   discount?: number | null;
   total_price?: number | null;
+  item_notes?: string | null;
   product?: unknown;
 };
 
@@ -113,14 +117,6 @@ type ReceivableRow = {
   status: string;
   payment_date: string | null;
 };
-
-function unwrapProduct(raw: SaleItemLine["product"]): string {
-  if (raw == null) return "—";
-  const o = Array.isArray(raw) ? raw[0] : raw;
-  if (!o || typeof o !== "object") return "—";
-  const n = (o as { name?: unknown }).name;
-  return typeof n === "string" && n.trim() ? n : "—";
-}
 
 function unwrapQuote(raw: unknown): QuoteBrief {
   if (!raw || typeof raw !== "object") return null;
@@ -1061,13 +1057,17 @@ export default function SalesOrderDetailPage() {
               <table className="w-full text-sm min-w-[720px]">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
-                    <th className="px-3 py-2 text-left font-medium">Produto</th>
                     <th className="px-3 py-2 text-left font-medium">
-                      Descrição
+                      Código
                     </th>
-                    <th className="px-3 py-2 text-right font-medium">Qtd</th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      Produto
+                    </th>
                     <th className="px-3 py-2 text-right font-medium">
-                      Unitário
+                      Quantidade
+                    </th>
+                    <th className="px-3 py-2 text-right font-medium">
+                      Preço unitário
                     </th>
                     <th className="px-3 py-2 text-right font-medium">
                       Desc.
@@ -1082,11 +1082,22 @@ export default function SalesOrderDetailPage() {
                         key={line.id}
                         className="border-b border-slate-100 dark:border-slate-800"
                       >
-                        <td className="px-3 py-2 font-medium">
-                          {unwrapProduct(line.product)}
+                        <td className="px-3 py-2 font-mono text-xs text-slate-700 dark:text-slate-300">
+                          {quoteLineItemCode(
+                            line.product as QuotePrintItem["product"],
+                            line.description
+                          )}
                         </td>
-                        <td className="px-3 py-2">
-                          {line.description ?? "—"}
+                        <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
+                          {quoteLineItemName(
+                            line.product as QuotePrintItem["product"],
+                            line.description
+                          )}
+                          {line.item_notes?.trim() ? (
+                            <p className="text-xs text-slate-500 mt-1 font-normal whitespace-pre-wrap">
+                              Obs.: {line.item_notes.trim()}
+                            </p>
+                          ) : null}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {Number(line.quantity)}
@@ -1094,7 +1105,7 @@ export default function SalesOrderDetailPage() {
                         <td className="px-3 py-2 text-right tabular-nums">
                           {fmtBRL(Number(line.unit_price))}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                           {Number(line.discount ?? 0) > 0
                             ? fmtBRL(Number(line.discount))
                             : "—"}
