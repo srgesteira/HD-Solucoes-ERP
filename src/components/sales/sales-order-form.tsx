@@ -703,9 +703,12 @@ export function SalesOrderForm({
                 paymentDaysBetween={paymentDaysBetween}
                 onPaymentDaysBetweenChange={setPaymentDaysBetween}
                 baseDateIso={
-                  order?.order_date?.slice(0, 10) || todayISODate()
+                  expectedDelivery?.slice(0, 10) ||
+                  order?.expected_delivery?.slice(0, 10) ||
+                  order?.order_date?.slice(0, 10) ||
+                  todayISODate()
                 }
-                baseDateLabel="data do pedido"
+                baseDateLabel="prazo de entrega"
               />
             ) : (
               <p className="text-sm text-slate-500">

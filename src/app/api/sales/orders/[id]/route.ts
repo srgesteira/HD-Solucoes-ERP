@@ -35,7 +35,12 @@ import {
   ensureReceivablesSyncedForSalesOrder,
   confirmProvisionalReceivablesForSalesOrder,
   salesOrderRowToReceivablesInput,
+  syncReceivablesForSalesOrder,
 } from "@/modules/vendas/lib/sales/sales-receivables";
+import {
+  computeExpectedDeliveryFromConfirmation,
+  resolveSalesOrderDeliveryLeadBusinessDays,
+} from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
 import {
   hardDeleteSalesOrder,
   salesOrderHasAssociatedOrderItems,
@@ -568,6 +573,99 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const detailRow = asSalesOrderDetail(detail);
   if (dErr || !detailRow) return apiOk({ data: detail });
 
+  const prevStatus = String(existing.status ?? "");
+  let newStatus = String(detailRow.status ?? prevStatus);
+
+  if (newStatus === "confirmed" && prevStatus !== "confirmed") {
+    try {
+      const leadDays = await resolveSalesOrderDeliveryLeadBusinessDays(
+        admin,
+        tenantId,
+        {
+          quote_id:
+            typeof detailRow.quote_id === "string" ? detailRow.quote_id : null,
+          order_date: String(detailRow.order_date ?? ""),
+          expected_delivery:
+            typeof detailRow.expected_delivery === "string"
+              ? detailRow.expected_delivery
+              : null,
+        }
+      );
+      const confirmDate = new Date().toISOString().slice(0, 10);
+      const nextDelivery = computeExpectedDeliveryFromConfirmation(
+        confirmDate,
+        leadDays
+      );
+      const prevDelivery =
+        typeof detailRow.expected_delivery === "string"
+          ? detailRow.expected_delivery.slice(0, 10)
+          : null;
+      if (nextDelivery !== prevDelivery) {
+        const { error: delErr } = await admin
+          .from("sales_orders")
+          .update({ expected_delivery: nextDelivery })
+          .eq("id", id)
+          .eq("tenant_id", tenantId);
+        if (delErr) throw new Error(delErr.message);
+        (detailRow as { expected_delivery?: string | null }).expected_delivery =
+          nextDelivery;
+        updateData.expected_delivery = nextDelivery;
+      }
+
+      await syncReceivablesForSalesOrder(
+        admin,
+        tenantId,
+        salesOrderRowToReceivablesInput({
+          id: detailRow.id,
+          order_number: String(detailRow.order_number ?? ""),
+          order_date: String(detailRow.order_date ?? ""),
+          expected_delivery:
+            typeof detailRow.expected_delivery === "string"
+              ? detailRow.expected_delivery
+              : null,
+          actual_delivery:
+            typeof detailRow.actual_delivery === "string"
+              ? detailRow.actual_delivery
+              : null,
+          total: Number(detailRow.total ?? 0),
+          client_name: String(detailRow.client_name ?? ""),
+          client_document:
+            typeof detailRow.client_document === "string"
+              ? detailRow.client_document
+              : null,
+          payment_installments:
+            typeof detailRow.payment_installments === "number"
+              ? detailRow.payment_installments
+              : null,
+          payment_days_to_first_due:
+            typeof detailRow.payment_days_to_first_due === "number"
+              ? detailRow.payment_days_to_first_due
+              : null,
+          payment_days_between_installments:
+            typeof detailRow.payment_days_between_installments === "number"
+              ? detailRow.payment_days_between_installments
+              : null,
+        })
+      );
+    } catch (confirmSchedErr) {
+      console.warn(
+        "[sales-order] Falha ao recalcular entrega/previsão na confirmação:",
+        confirmSchedErr instanceof Error
+          ? confirmSchedErr.message
+          : confirmSchedErr
+      );
+    }
+
+    try {
+      await reserveFinishedGoodsForSalesOrder(admin, tenantId, id, user.id);
+    } catch (resErr) {
+      console.warn(
+        "[sales-order] Falha ao empenhar acabado:",
+        resErr instanceof Error ? resErr.message : resErr
+      );
+    }
+  }
+
   try {
     const recvSync = await ensureReceivablesSyncedForSalesOrder(
       admin,
@@ -576,6 +674,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
         id: detailRow.id,
         order_number: String(detailRow.order_number ?? ""),
         order_date: String(detailRow.order_date ?? ""),
+        expected_delivery:
+          typeof detailRow.expected_delivery === "string"
+            ? detailRow.expected_delivery
+            : null,
+        actual_delivery:
+          typeof detailRow.actual_delivery === "string"
+            ? detailRow.actual_delivery
+            : null,
         total: Number(detailRow.total ?? 0),
         client_name: String(detailRow.client_name ?? ""),
         client_document:
@@ -596,15 +702,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
             : null,
       }),
       {
-        total:
-          updateData.total !== undefined ||
-          itemsReplaced,
+        total: updateData.total !== undefined || itemsReplaced,
         payment_installments: updateData.payment_installments !== undefined,
         payment_days_to_first_due:
           updateData.payment_days_to_first_due !== undefined,
         payment_days_between_installments:
           updateData.payment_days_between_installments !== undefined,
         order_date: updateData.order_date !== undefined,
+        expected_delivery: updateData.expected_delivery !== undefined,
+        actual_delivery: updateData.actual_delivery !== undefined,
       }
     );
     if (recvSync?.warnings.length) {
@@ -617,25 +723,49 @@ export async function PUT(request: NextRequest, { params }: Params) {
     );
   }
 
-  const prevStatus = String(existing.status ?? "");
-  const newStatus = String(detailRow.status ?? prevStatus);
+  newStatus = String(detailRow.status ?? prevStatus);
   if (newStatus === "delivered" && prevStatus !== "delivered") {
     try {
+      await syncReceivablesForSalesOrder(
+        admin,
+        tenantId,
+        salesOrderRowToReceivablesInput({
+          id: detailRow.id,
+          order_number: String(detailRow.order_number ?? ""),
+          order_date: String(detailRow.order_date ?? ""),
+          expected_delivery:
+            typeof detailRow.expected_delivery === "string"
+              ? detailRow.expected_delivery
+              : null,
+          actual_delivery:
+            typeof detailRow.actual_delivery === "string"
+              ? detailRow.actual_delivery
+              : null,
+          total: Number(detailRow.total ?? 0),
+          client_name: String(detailRow.client_name ?? ""),
+          client_document:
+            typeof detailRow.client_document === "string"
+              ? detailRow.client_document
+              : null,
+          payment_installments:
+            typeof detailRow.payment_installments === "number"
+              ? detailRow.payment_installments
+              : null,
+          payment_days_to_first_due:
+            typeof detailRow.payment_days_to_first_due === "number"
+              ? detailRow.payment_days_to_first_due
+              : null,
+          payment_days_between_installments:
+            typeof detailRow.payment_days_between_installments === "number"
+              ? detailRow.payment_days_between_installments
+              : null,
+        })
+      );
       await confirmProvisionalReceivablesForSalesOrder(admin, tenantId, id);
     } catch (recvErr) {
       console.warn(
         "[sales-order] Falha ao confirmar recebíveis na entrega:",
         recvErr instanceof Error ? recvErr.message : recvErr
-      );
-    }
-  }
-  if (newStatus === "confirmed" && prevStatus !== "confirmed") {
-    try {
-      await reserveFinishedGoodsForSalesOrder(admin, tenantId, id, user.id);
-    } catch (resErr) {
-      console.warn(
-        "[sales-order] Falha ao empenhar acabado:",
-        resErr instanceof Error ? resErr.message : resErr
       );
     }
   }
@@ -662,15 +792,23 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
   }
 
+  const { data: freshDetail } = await admin
+    .from("sales_orders")
+    .select(ORDER_DETAIL_SELECT)
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const responseRow = asSalesOrderDetail(freshDetail) ?? detailRow;
+
   const guard = await getSalesOrderEditGuard(admin, tenantId, {
-    id: detailRow.id,
-    mrp_processed: detailRow.mrp_processed === true,
+    id: responseRow.id,
+    mrp_processed: responseRow.mrp_processed === true,
     production_order_id:
-      typeof detailRow.production_order_id === "string"
-        ? detailRow.production_order_id
+      typeof responseRow.production_order_id === "string"
+        ? responseRow.production_order_id
         : null,
   });
-  return apiOk({ data: { ...detailRow, edit_guard: guard } });
+  return apiOk({ data: { ...responseRow, edit_guard: guard } });
 }
 
 export async function DELETE(_request: NextRequest, { params }: Params) {

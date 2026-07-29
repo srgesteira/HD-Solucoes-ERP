@@ -441,6 +441,9 @@ export async function generateReceivablesForSalesOrder(
     id: string;
     order_number: string;
     order_date: string;
+    /** Prazo de entrega — base dos vencimentos (com pagamento). */
+    expected_delivery?: string | null;
+    actual_delivery?: string | null;
     total: number;
     client_name: string;
     client_document: string | null;
@@ -463,7 +466,12 @@ export async function generateReceivablesForSalesOrder(
 
   const n = Math.max(1, Math.min(999, order.payment_installments));
   const amounts = splitAmountInInstallments(order.total, n);
-  const baseDate = order.order_date.slice(0, 10);
+  const actual = order.actual_delivery?.trim().slice(0, 10);
+  const expected = order.expected_delivery?.trim().slice(0, 10);
+  const baseDate =
+    (actual && /^\d{4}-\d{2}-\d{2}$/.test(actual) && actual) ||
+    (expected && /^\d{4}-\d{2}-\d{2}$/.test(expected) && expected) ||
+    order.order_date.slice(0, 10);
 
   let due = addDaysToISODate(baseDate, order.payment_days_to_first_due);
   const rows = [];
@@ -483,7 +491,7 @@ export async function generateReceivablesForSalesOrder(
       description: `Parcela ${i + 1}/${n} — pedido ${order.order_number}`,
       original_amount: amt,
       current_amount: amt,
-      issue_date: baseDate,
+      issue_date: order.order_date.slice(0, 10),
       due_date: due,
       status: "pending" as const,
       client_name: order.client_name,

@@ -996,8 +996,10 @@ export default function SalesOrderDetailPage() {
                     onPaymentDaysFirstChange={setPaymentDaysFirstDraft}
                     paymentDaysBetween={paymentDaysBetweenDraft}
                     onPaymentDaysBetweenChange={setPaymentDaysBetweenDraft}
-                    baseDateIso={q.order_date}
-                    baseDateLabel="data do pedido"
+                    baseDateIso={
+                      q.expected_delivery?.slice(0, 10) || q.order_date
+                    }
+                    baseDateLabel="prazo de entrega"
                     onBlur={async () => {
                       if (!id || !q) return;
                       const pi = parseInt(paymentInstallmentsDraft, 10);

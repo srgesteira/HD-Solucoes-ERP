@@ -426,6 +426,8 @@ export async function POST(request: NextRequest) {
       id: fresh.id,
       order_number: fresh.order_number,
       order_date: fresh.order_date,
+      expected_delivery: fresh.expected_delivery,
+      actual_delivery: fresh.actual_delivery,
       total: fresh.total,
       client_name: fresh.client_name,
       client_document: fresh.client_document,

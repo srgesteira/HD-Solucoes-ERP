@@ -4,6 +4,7 @@ import {
   addDaysToISODate,
   splitAmountInInstallments,
 } from "@/modules/vendas/lib/sales/sales-flow";
+import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
 
 type Admin = SupabaseClient<Database>;
 
@@ -13,6 +14,8 @@ export type SalesOrderForReceivables = {
   id: string;
   order_number: string;
   order_date: string;
+  /** Base dos vencimentos (entrega prevista/real). */
+  payment_base_date: string;
   total: number;
   client_name: string;
   client_document: string | null;
@@ -36,7 +39,7 @@ export function buildSalesOrderReceivableTargets(order: SalesOrderForReceivables
   const total = Number(order.total ?? 0);
   const n = Math.max(1, Math.min(999, order.payment_installments ?? 1));
   const amounts = splitAmountInInstallments(total, n);
-  const baseDate = order.order_date.slice(0, 10);
+  const baseDate = order.payment_base_date.slice(0, 10);
   let due = addDaysToISODate(baseDate, order.payment_days_to_first_due ?? 30);
   const dueDates: string[] = [];
   const documentNumbers: string[] = [];
@@ -154,6 +157,8 @@ export function salesOrderRowToReceivablesInput(row: {
   id: string;
   order_number: string;
   order_date: string;
+  expected_delivery?: string | null;
+  actual_delivery?: string | null;
   total: number | null;
   client_name: string;
   client_document: string | null;
@@ -165,16 +170,22 @@ export function salesOrderRowToReceivablesInput(row: {
     id: row.id,
     order_number: row.order_number,
     order_date: row.order_date,
+    payment_base_date: paymentScheduleBaseDate({
+      actual_delivery: row.actual_delivery,
+      expected_delivery: row.expected_delivery,
+      order_date: row.order_date,
+    }),
     total: Number(row.total ?? 0),
     client_name: row.client_name,
     client_document: row.client_document,
     payment_installments: row.payment_installments ?? 1,
     payment_days_to_first_due: row.payment_days_to_first_due ?? 30,
-    payment_days_between_installments: row.payment_days_between_installments ?? 0,
+    payment_days_between_installments:
+      row.payment_days_between_installments ?? 0,
   };
 }
 
-/** Sincroniza recebíveis quando total ou prazos de pagamento mudam no PV. */
+/** Sincroniza recebíveis quando total, prazos ou datas de entrega mudam no PV. */
 export async function ensureReceivablesSyncedForSalesOrder(
   admin: Admin,
   tenantId: string,
@@ -185,6 +196,8 @@ export async function ensureReceivablesSyncedForSalesOrder(
     payment_days_to_first_due?: boolean;
     payment_days_between_installments?: boolean;
     order_date?: boolean;
+    expected_delivery?: boolean;
+    actual_delivery?: boolean;
   }
 ): Promise<SyncReceivablesResult | undefined> {
   const shouldSync =
@@ -192,13 +205,15 @@ export async function ensureReceivablesSyncedForSalesOrder(
     changedFields.payment_installments ||
     changedFields.payment_days_to_first_due ||
     changedFields.payment_days_between_installments ||
-    changedFields.order_date;
+    changedFields.order_date ||
+    changedFields.expected_delivery ||
+    changedFields.actual_delivery;
 
   if (!shouldSync) return undefined;
   return syncReceivablesForSalesOrder(admin, tenantId, order);
 }
 
-/** Títulos provisórios → definitivos após entrega do pedido (status delivered). */
+/** Títulos provisórios → definitivos após faturamento/entrega do pedido. */
 export async function confirmProvisionalReceivablesForSalesOrder(
   admin: Admin,
   tenantId: string,

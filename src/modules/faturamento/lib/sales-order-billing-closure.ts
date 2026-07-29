@@ -2,6 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
+import {
+  confirmProvisionalReceivablesForSalesOrder,
+  salesOrderRowToReceivablesInput,
+  syncReceivablesForSalesOrder,
+} from "@/modules/vendas/lib/sales/sales-receivables";
 
 type Admin = SupabaseClient<Database>;
 
@@ -161,6 +166,8 @@ export async function closeSalesOrderBilling(
     }
   }
 
+  const actualDelivery = new Date().toISOString().slice(0, 10);
+
   // billing_closure: coluna pós-migração — regenerar database.ts quando possível
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ordersTable = db.from("sales_orders") as any;
@@ -169,13 +176,57 @@ export async function closeSalesOrderBilling(
       billing_closure: closure,
       billing_plan: closure,
       status: "delivered",
-      actual_delivery: new Date().toISOString().slice(0, 10),
+      actual_delivery: actualDelivery,
     })
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
     .is("billing_closure", null);
 
   if (updErr) throw new Error(updErr.message);
+
+  try {
+    const { data: fresh } = await admin
+      .from("sales_orders")
+      .select(
+        "id, order_number, order_date, expected_delivery, actual_delivery, total, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      )
+      .eq("id", salesOrderId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (fresh) {
+      await syncReceivablesForSalesOrder(
+        admin,
+        tenantId,
+        salesOrderRowToReceivablesInput({
+          id: fresh.id,
+          order_number: fresh.order_number,
+          order_date: fresh.order_date,
+          expected_delivery: fresh.expected_delivery,
+          actual_delivery: fresh.actual_delivery ?? actualDelivery,
+          total: fresh.total,
+          client_name: fresh.client_name,
+          client_document: fresh.client_document,
+          payment_installments: fresh.payment_installments,
+          payment_days_to_first_due: fresh.payment_days_to_first_due,
+          payment_days_between_installments:
+            fresh.payment_days_between_installments,
+        })
+      );
+      await confirmProvisionalReceivablesForSalesOrder(
+        admin,
+        tenantId,
+        salesOrderId
+      );
+    }
+  } catch (recvErr) {
+    console.warn(
+      "[billing-closure] Falha ao efectivar previsão financeira:",
+      salesOrderId,
+      recvErr instanceof Error ? recvErr.message : recvErr
+    );
+  }
+
   return { ok: true };
 }
 
