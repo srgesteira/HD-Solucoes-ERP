@@ -12,7 +12,7 @@ export type SalesOrderLogInsert = {
   notes?: string | null;
 };
 
-/** Campos editáveis com produção já iniciada (apenas administrativos). */
+/** Campos editáveis com produção já iniciada (admin/comercial + prazo PCP). */
 export const SALES_ORDER_ADMIN_FIELDS_WHEN_PRODUCTION = new Set([
   "notes",
   "expected_delivery",
@@ -21,6 +21,8 @@ export const SALES_ORDER_ADMIN_FIELDS_WHEN_PRODUCTION = new Set([
   "payment_days_between_installments",
   "customer_po_number",
   "discount",
+  /** PCP pode alterar o prazo interno em qualquer momento. */
+  "pcp_deadline",
 ]);
 
 /** Rótulos em português para exibição no histórico. */

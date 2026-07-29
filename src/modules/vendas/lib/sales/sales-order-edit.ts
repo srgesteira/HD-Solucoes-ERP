@@ -135,7 +135,7 @@ export function assertUpdateAllowedWhenProductionStarted(
 
   return {
     ok: false,
-    message: `Produção já iniciada. Não é possível alterar: ${labels.join(", ")}. Apenas observações e parcelas podem ser editadas.`,
+    message: `Produção já iniciada. Não é possível alterar: ${labels.join(", ")}. Observações, parcelas e prazo PCP podem ser editados.`,
   };
 }
 
