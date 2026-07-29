@@ -1,12 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { Textarea } from "@/shared/ui/textarea";
-import { ProductCatalogPickerModal } from "@/components/products/product-catalog-picker-modal";
 import { ProductComboboxField } from "@/components/products/product-combobox-field";
 import type { ProductSearchHit } from "@/components/products/product-search-types";
 import {
@@ -193,9 +192,6 @@ export function SalesOrderItemsEditor({
   onProductCacheMerge,
   disabled = false,
 }: Props) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerLineIndex, setPickerLineIndex] = useState<number | null>(null);
-
   const productById = useMemo(() => {
     const map = new Map<string, SalesOrderLineProduct>();
     for (const p of Object.values(productCache)) map.set(p.id, p);
@@ -231,56 +227,12 @@ export function SalesOrderItemsEditor({
     );
   };
 
-  const openProductPicker = (lineIndex: number | null) => {
+  const addEmptyLine = () => {
     if (disabled) return;
-    setPickerLineIndex(lineIndex);
-    setPickerOpen(true);
+    onLinesChange(
+      reindexSalesOrderLines([...lines, newSalesOrderLine(lines.length)])
+    );
   };
-
-  const applySelectedProducts = (hits: ProductSearchHit[]) => {
-    if (hits.length === 0) return;
-
-    const cache: Record<string, SalesOrderLineProduct> = {};
-    let nextLines = [...lines];
-    let remaining = [...hits];
-
-    if (pickerLineIndex !== null && pickerLineIndex < nextLines.length) {
-      const { line, product } = lineFromProduct(
-        remaining[0],
-        nextLines[pickerLineIndex]
-      );
-      cache[product.id] = product;
-      nextLines[pickerLineIndex] = line;
-      remaining = remaining.slice(1);
-    }
-
-    for (let i = 0; i < nextLines.length && remaining.length > 0; i++) {
-      if (pickerLineIndex !== null && i === pickerLineIndex) continue;
-      if (!nextLines[i].productId) {
-        const { line, product } = lineFromProduct(remaining[0], nextLines[i]);
-        cache[product.id] = product;
-        nextLines[i] = line;
-        remaining = remaining.slice(1);
-      }
-    }
-
-    for (const hit of remaining) {
-      const { line, product } = lineFromProduct(
-        hit,
-        newSalesOrderLine(nextLines.length)
-      );
-      cache[product.id] = product;
-      nextLines.push(line);
-    }
-
-    onProductCacheMerge(cache);
-    onLinesChange(reindexSalesOrderLines(nextLines));
-    setPickerLineIndex(null);
-  };
-
-  const usedProductIds = lines
-    .map((l) => l.productId)
-    .filter(Boolean) as string[];
 
   return (
     <div className="space-y-4">
@@ -361,9 +313,6 @@ export function SalesOrderItemsEditor({
                           updateLineAt(index, line);
                         }}
                         productType="all"
-                        excludeIds={lines
-                          .map((l) => l.productId)
-                          .filter((id) => id && id !== line.productId)}
                         disabled={disabled}
                         catalogTitle="Pesquisar produto"
                       />
@@ -541,10 +490,7 @@ export function SalesOrderItemsEditor({
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => {
-          const firstEmpty = lines.findIndex((l) => !l.productId);
-          openProductPicker(firstEmpty >= 0 ? firstEmpty : null);
-        }}
+        onClick={addEmptyLine}
         disabled={disabled}
       >
         <Plus className="h-4 w-4" />
@@ -577,20 +523,6 @@ export function SalesOrderItemsEditor({
           </span>
         </p>
       </div>
-
-      <ProductCatalogPickerModal
-        open={pickerOpen}
-        onOpenChange={(open) => {
-          setPickerOpen(open);
-          if (!open) setPickerLineIndex(null);
-        }}
-        excludeIds={usedProductIds}
-        multiSelect
-        onComplete={applySelectedProducts}
-        productType="all"
-        showNewProductButton={false}
-        title="Pesquisar produto"
-      />
     </div>
   );
 }

@@ -180,6 +180,47 @@ export function ProductComboboxField({
     setPickerOpen(false);
   };
 
+  const findExactCodeMatch = (
+    rows: ProductSearchHit[],
+    query: string
+  ): ProductSearchHit | undefined => {
+    const q = query.trim().toUpperCase();
+    if (!q) return undefined;
+    return rows.find((p) => {
+      if (exclude.has(p.id) && p.id !== value?.id) return false;
+      const tech = p.technical_code?.trim().toUpperCase() ?? "";
+      const code = p.code?.trim().toUpperCase() ?? "";
+      return tech === q || code === q;
+    });
+  };
+
+  // Código exacto digitado na linha → carrega o produto sem abrir o catálogo.
+  useEffect(() => {
+    if (!pickerOpen || disabled || value) return;
+    if (searchQuery.isFetching) return;
+    const q = debounced.trim().toUpperCase();
+    if (!q) return;
+    const exact = (searchQuery.data ?? []).find((p) => {
+      if (exclude.has(p.id)) return false;
+      const tech = p.technical_code?.trim().toUpperCase() ?? "";
+      const code = p.code?.trim().toUpperCase() ?? "";
+      return tech === q || code === q;
+    });
+    if (!exact) return;
+    onChange(exact);
+    setInputText(productLabel(exact));
+    setPickerOpen(false);
+  }, [
+    pickerOpen,
+    disabled,
+    value,
+    searchQuery.isFetching,
+    searchQuery.data,
+    debounced,
+    exclude,
+    onChange,
+  ]);
+
   const clear = () => {
     onChange(null);
     setInputText("");
@@ -208,6 +249,19 @@ export function ProductComboboxField({
               if (value) onChange(null);
             }}
             onFocus={() => !disabled && setPickerOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              const exact = findExactCodeMatch(
+                searchQuery.data ?? filtered,
+                inputText
+              );
+              if (exact) {
+                pick(exact);
+                return;
+              }
+              if (filtered.length === 1) pick(filtered[0]!);
+            }}
             autoComplete="off"
             role="combobox"
             aria-expanded={showResults}
