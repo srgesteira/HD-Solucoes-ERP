@@ -58,23 +58,36 @@ export async function convertQuoteToSalesOrder(
   }
 
   const quoteRow = quote as Record<string, unknown>;
+
+  const coercePaymentInt = (
+    value: unknown,
+    fallback: number,
+    min = 0
+  ): number => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.max(min, Math.trunc(value));
+    }
+    if (typeof value === "string" && value.trim()) {
+      const n = parseInt(value, 10);
+      if (Number.isFinite(n)) return Math.max(min, n);
+    }
+    return fallback;
+  };
+
   const installments = Math.max(
     1,
-    opts.payment_installments ??
-      (typeof quoteRow.payment_installments === "number"
-        ? quoteRow.payment_installments
-        : 1)
+    opts.payment_installments !== undefined
+      ? coercePaymentInt(opts.payment_installments, 1, 1)
+      : coercePaymentInt(quoteRow.payment_installments, 1, 1)
   );
   const daysFirst =
-    opts.payment_days_to_first_due ??
-    (typeof quoteRow.payment_days_to_first_due === "number"
-      ? quoteRow.payment_days_to_first_due
-      : 30);
+    opts.payment_days_to_first_due !== undefined
+      ? coercePaymentInt(opts.payment_days_to_first_due, 30)
+      : coercePaymentInt(quoteRow.payment_days_to_first_due, 30);
   const daysBetween =
-    opts.payment_days_between_installments ??
-    (typeof quoteRow.payment_days_between_installments === "number"
-      ? quoteRow.payment_days_between_installments
-      : 30);
+    opts.payment_days_between_installments !== undefined
+      ? coercePaymentInt(opts.payment_days_between_installments, 30)
+      : coercePaymentInt(quoteRow.payment_days_between_installments, 30);
 
   const customerPo = (opts.customer_po_number ?? "").trim();
   if (!customerPo) {

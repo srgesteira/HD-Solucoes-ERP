@@ -11,12 +11,12 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
-function paymentInt(
+/** Só devolve número se o campo veio no body; senão `undefined` (usa o orçamento). */
+function paymentIntOptional(
   raw: Record<string, unknown>,
-  key: string,
-  def: number
-): number | { error: string } {
-  if (raw[key] === undefined || raw[key] === null) return def;
+  key: string
+): number | undefined | { error: string } {
+  if (raw[key] === undefined || raw[key] === null) return undefined;
   const v =
     typeof raw[key] === "number"
       ? raw[key]
@@ -55,9 +55,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     /* body opcional */
   }
 
-  const pi = paymentInt(body, "payment_installments", 1);
-  const pd1 = paymentInt(body, "payment_days_to_first_due", 30);
-  const pdb = paymentInt(body, "payment_days_between_installments", 30);
+  const pi = paymentIntOptional(body, "payment_installments");
+  const pd1 = paymentIntOptional(body, "payment_days_to_first_due");
+  const pdb = paymentIntOptional(body, "payment_days_between_installments");
   for (const x of [pi, pd1, pdb]) {
     if (typeof x === "object" && x !== null && "error" in x) {
       return apiError((x as { error: string }).error, 400);
@@ -119,9 +119,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     quoteId,
     user.id,
     {
-      payment_installments: pi as number,
-      payment_days_to_first_due: pd1 as number,
-      payment_days_between_installments: pdb as number,
+      ...(typeof pi === "number" ? { payment_installments: pi } : {}),
+      ...(typeof pd1 === "number" ? { payment_days_to_first_due: pd1 } : {}),
+      ...(typeof pdb === "number"
+        ? { payment_days_between_installments: pdb }
+        : {}),
       customer_po_number: customerPoRaw,
     }
   );
