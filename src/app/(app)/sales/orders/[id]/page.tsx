@@ -10,6 +10,7 @@ import {
   History,
   Loader2,
   Pencil,
+  Printer,
   Receipt,
   RefreshCw,
   RotateCcw,
@@ -689,6 +690,23 @@ export default function SalesOrderDetailPage() {
       density="comfortable"
       actions={
         <>
+          {q ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                window.open(
+                  `/sales/orders/${id}/print`,
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              <Printer className="h-4 w-4" />
+              Imprimir / PDF
+            </Button>
+          ) : null}
           {canNavigateToEdit ? (
             <Button
               type="button"

@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Loader2,
   PackageCheck,
+  Printer,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
@@ -329,6 +330,21 @@ export default function FiscalOrderReviewPage() {
       actions={
         data ? (
           <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                window.open(
+                  `/sales/orders/${orderId}/print?from=fiscal`,
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              <Printer className="h-4 w-4" />
+              Imprimir / PDF
+            </Button>
             <Button
               type="button"
               size="sm"
