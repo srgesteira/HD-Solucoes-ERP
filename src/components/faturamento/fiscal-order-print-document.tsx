@@ -183,6 +183,12 @@ export function FiscalOrderPrintDocument({
                 <dt>UF origem</dt>
                 <dd>{review.origin_uf ?? "—"}</dd>
               </div>
+              {review.customer_po_number?.trim() ? (
+                <div className="fp-info-row">
+                  <dt>Ped. compra</dt>
+                  <dd className="max-w-[11rem]">{review.customer_po_number.trim()}</dd>
+                </div>
+              ) : null}
             </dl>
             {review.client_address?.trim() ? (
               <p className="text-[0.62rem] text-slate-600 mt-1 whitespace-pre-wrap">
@@ -304,30 +310,54 @@ export function FiscalOrderPrintDocument({
         </div>
 
         <div className="fp-bottom-row">
-          {review.notes?.trim() || review.warnings.length > 0 ? (
-            <div className="fp-notes">
-              {review.notes?.trim() ? (
-                <>
-                  <h4>Observações do pedido</h4>
-                  <p className="whitespace-pre-wrap m-0 mb-2">
-                    {review.notes.trim()}
-                  </p>
-                </>
-              ) : null}
-              {review.warnings.length > 0 ? (
-                <>
-                  <h4>Avisos da conferência</h4>
-                  <ul className="m-0 pl-4">
-                    {review.warnings.map((w) => (
-                      <li key={w}>{w}</li>
-                    ))}
-                  </ul>
-                </>
-              ) : null}
-            </div>
-          ) : (
-            <div />
-          )}
+          <div className="fp-notes">
+            <h4>Observações / informações da NF</h4>
+            <dl className="m-0">
+              <div className="fp-info-row">
+                <dt>Pedido HD</dt>
+                <dd>{review.order_number}</dd>
+              </div>
+              <div className="fp-info-row">
+                <dt>Pedido de compra do cliente</dt>
+                <dd>
+                  {review.customer_po_number?.trim() || "—"}
+                </dd>
+              </div>
+            </dl>
+            {review.customer_po_number?.trim() || review.notes?.trim() ? (
+              <p className="whitespace-pre-wrap m-0 mt-2 text-[0.65rem] text-slate-700">
+                {[
+                  `Pedido HD ${review.order_number}`,
+                  review.customer_po_number?.trim()
+                    ? `Pedido compra cliente ${review.customer_po_number.trim()}`
+                    : null,
+                  review.notes?.trim() || null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            ) : (
+              <p className="m-0 mt-2 text-[0.65rem] text-slate-500">
+                Sem pedido de compra do cliente nem observações no pedido.
+              </p>
+            )}
+            {review.notes?.trim() ? (
+              <>
+                <h4 className="mt-2">Observações do pedido</h4>
+                <p className="whitespace-pre-wrap m-0">{review.notes.trim()}</p>
+              </>
+            ) : null}
+            {review.warnings.length > 0 ? (
+              <>
+                <h4 className="mt-2">Avisos da conferência</h4>
+                <ul className="m-0 pl-4">
+                  {review.warnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
           <dl className="fp-totals-inner">
             <div className="fp-totals-row">
               <dt>Base de cálculo</dt>

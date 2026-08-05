@@ -81,6 +81,8 @@ export type FiscalOrderReview = {
   billing_plan: string | null;
   billing_closure: string | null;
   invoice_document_type: string | null;
+  /** Pedido de compra do cliente — sai na NF (xPed / info. adicionais). */
+  customer_po_number: string | null;
   notes: string | null;
   items: FiscalOrderReviewItem[];
   warnings: string[];
@@ -103,6 +105,7 @@ type RawOrderRow = {
   billing_plan: string | null;
   billing_closure: string | null;
   invoice_document_type: string | null;
+  customer_po_number: string | null;
   notes: string | null;
   items?: unknown;
 };
@@ -394,6 +397,7 @@ export async function getFiscalOrderReview(
       billing_plan,
       billing_closure,
       invoice_document_type,
+      customer_po_number,
       notes,
       items:sales_order_items(
         id,
@@ -631,6 +635,10 @@ export async function getFiscalOrderReview(
     invoice_document_type:
       typeof order.invoice_document_type === "string"
         ? order.invoice_document_type
+        : null,
+    customer_po_number:
+      typeof order.customer_po_number === "string"
+        ? order.customer_po_number.trim() || null
         : null,
     notes: typeof order.notes === "string" ? order.notes : null,
     items,
