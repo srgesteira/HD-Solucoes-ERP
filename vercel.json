@@ -3,5 +3,11 @@
   "devCommand": "pnpm run dev",
   "installCommand": "pnpm install",
   "framework": "nextjs",
-  "regions": ["gru1"]
+  "regions": ["gru1"],
+  "crons": [
+    {
+      "path": "/api/alerts/finance-digest",
+      "schedule": "0 10 * * 1-5"
+    }
+  ]
 }
