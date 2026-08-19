@@ -14,6 +14,7 @@ import {
   Receipt,
   RefreshCw,
   RotateCcw,
+  Split,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppPage } from "@/shared/ui/app-page";
@@ -47,6 +48,7 @@ import {
 } from "@/modules/vendas/lib/sales/quote-display";
 import { SalesOrderChangeHistory } from "@/components/sales/sales-order-change-history";
 import { SalesReturnCreateModal } from "@/components/sales/sales-return-create-modal";
+import { SalesOrderSplitDialog } from "@/components/sales/sales-order-split-dialog";
 
 /** Progressão permitida pelo UI (exclude cancelled via acção separada). */
 const SALES_FLOW: SalesOrderStatus[] = [
@@ -104,6 +106,11 @@ type SalesOrderDetail = {
   fiscal_status?: string | null;
   items?: SaleItemLine[] | null;
   nfes?: unknown;
+  edit_guard?: {
+    can_edit_items?: boolean;
+    mrp_processed?: boolean;
+    production_started?: boolean;
+  } | null;
 };
 
 type ReceivableRow = {
@@ -483,6 +490,10 @@ export default function SalesOrderDetailPage() {
   const st = (q?.status ?? "pending") as SalesOrderStatus;
   const canNavigateToEdit =
     canSales && st !== "cancelled" && st !== "superseded";
+  const canSplitOrder =
+    canSales &&
+    (st === "pending" || st === "confirmed") &&
+    q?.edit_guard?.can_edit_items === true;
   /** Edição comercial apenas na página /edit (uma tela unificada). */
   const canEditCommercialInline = false;
   const nfeList = useMemo(() => unwrapNfes(q?.nfes), [q?.nfes]);
@@ -511,6 +522,32 @@ export default function SalesOrderDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reactivateOpen, setReactivateOpen] = useState(false);
   const [salesReturnOpen, setSalesReturnOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
+
+  const splitMutation = useMutation({
+    mutationFn: async (lines: { itemId: string; quantityToNew: number }[]) => {
+      const res = await fetch(`/api/sales/orders/${id}/split`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lines }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { newId: string; newNumber: string };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao desmembrar pedido");
+      if (!json.data?.newId) throw new Error("Resposta inválida");
+      return json.data;
+    },
+    onSuccess: (data) => {
+      toast.success(`Pedido ${data.newNumber} criado.`);
+      setSplitOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["sales-order", id] });
+      router.push(`/sales/orders/${data.newId}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const canCreateReturn =
     isAdmin && !["draft", "cancelled", "rejected"].includes(st);
@@ -716,6 +753,17 @@ export default function SalesOrderDetailPage() {
             >
               <Pencil className="h-4 w-4" />
               Editar pedido
+            </Button>
+          ) : null}
+          {canSplitOrder ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setSplitOpen(true)}
+            >
+              <Split className="h-4 w-4" />
+              Desmembrar pedido
             </Button>
           ) : null}
           {showExpedicaoEmitCta ? (
@@ -1884,6 +1932,15 @@ export default function SalesOrderDetailPage() {
           onSubmit={(p) => salesReturnMutation.mutate(p)}
         />
       ) : null}
+
+      <SalesOrderSplitDialog
+        open={splitOpen && Boolean(q)}
+        orderNumber={q?.order_number ?? ""}
+        items={q?.items ?? []}
+        busy={splitMutation.isPending}
+        onClose={() => setSplitOpen(false)}
+        onConfirm={(lines) => splitMutation.mutate(lines)}
+      />
     </AppPage>
   );
 }
