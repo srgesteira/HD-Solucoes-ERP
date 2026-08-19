@@ -834,6 +834,9 @@ export default function QuoteDetailPage() {
               <Card>
                 <CardHeader className="pb-4">
                   <CardTitle className="text-lg">Itens do orçamento</CardTitle>
+                  <p className="text-sm text-slate-500 font-normal">
+                    Quantidade, preço, desconto e markup por linha.
+                  </p>
                 </CardHeader>
                 <CardContent>
                   <QuoteItemsEditor

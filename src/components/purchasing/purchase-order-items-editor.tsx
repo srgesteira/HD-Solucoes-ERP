@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo } from "react";
+import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -269,36 +269,30 @@ export function PurchaseOrderItemsEditor({
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-        <table className="w-full table-fixed text-xs">
+        <table
+          className={
+            isQuote ? "w-full text-sm min-w-[720px]" : "w-full text-sm min-w-[1180px]"
+          }
+        >
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
-              <th className="w-[52px] px-1 py-1.5" aria-label="Acções" />
-              <th className={isQuote ? "w-[28%] px-1 py-1.5" : "w-[18%] px-1 py-1.5"}>
-                Produto
-              </th>
-              <th className={isQuote ? "w-[26%] px-1 py-1.5" : "w-[16%] px-1 py-1.5"}>
-                Descrição
-              </th>
-              <th className={isQuote ? "w-[14%] px-1 py-1.5" : "w-[10%] px-1 py-1.5"}>
-                Utilização
-              </th>
-              <th className={isQuote ? "w-[12%] px-1 py-1.5" : "w-[8%] px-1 py-1.5"}>
-                Qtd.
-              </th>
-              <th className={isQuote ? "w-[10%] px-1 py-1.5" : "w-[5%] px-1 py-1.5"}>
-                Un.
-              </th>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
+              <th className="px-2 py-2 min-w-[220px]">Produto</th>
+              <th className="px-2 py-2 w-32">Utilização</th>
+              <th className="px-2 py-2 w-20">Qtd.</th>
+              <th className="px-2 py-2 w-16">Un.</th>
               {!isQuote ? (
                 <>
-                  <th className="w-[8%] px-1 py-1.5">Preço un.</th>
-                  <th className="w-[8%] px-1 py-1.5">Desc.</th>
-                  <th className="w-[6%] px-1 py-1.5">% ICMS</th>
-                  <th className="w-[8%] px-1 py-1.5 text-right">ICMS</th>
-                  <th className="w-[6%] px-1 py-1.5">% IPI</th>
-                  <th className="w-[8%] px-1 py-1.5 text-right">IPI</th>
-                  <th className="w-[9%] px-1 py-1.5 text-right">Total</th>
+                  <th className="px-2 py-2 w-24">Preço un.</th>
+                  <th className="px-2 py-2 w-24">Desc. (R$)</th>
+                  <th className="px-2 py-2 w-20">% ICMS</th>
+                  <th className="px-2 py-2 w-24">ICMS (R$)</th>
+                  <th className="px-2 py-2 w-20">% IPI</th>
+                  <th className="px-2 py-2 w-24">IPI (R$)</th>
+                  <th className="px-2 py-2 w-28">Base cálculo</th>
+                  <th className="px-2 py-2 w-24 text-right">Total linha</th>
                 </>
               ) : null}
+              <th className="px-2 py-2 w-10" />
             </tr>
           </thead>
           <tbody>
@@ -306,6 +300,11 @@ export function PurchaseOrderItemsEditor({
               const prod = line.productId
                 ? productById.get(line.productId)
                 : undefined;
+              const lineSub = lineNetSubtotal(
+                line.quantity,
+                line.unitPrice,
+                line.discount
+              );
               const lineTotal = lineDisplayTotal(
                 line.quantity,
                 line.unitPrice,
@@ -313,76 +312,59 @@ export function PurchaseOrderItemsEditor({
                 line.discount
               );
               const unitLocked = Boolean(line.productId);
-              const colSpan = isQuote ? 6 : 13;
               return (
-                <Fragment key={line.key}>
                 <tr
-                  className="border-b border-slate-100 dark:border-slate-800"
+                  key={line.key}
+                  className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                 >
-                  <td className="px-1 py-1.5 align-top">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40"
-                      title="Excluir linha"
-                      aria-label={`Excluir item ${index + 1}`}
-                      onClick={() => removeLineAt(index)}
-                      disabled={disabled || lines.length <= 1}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </td>
-                  <td className="px-1 py-1.5 align-top min-w-[180px]">
-                    <ProductComboboxField
-                      compact
-                      value={
-                        prod
-                          ? {
-                              id: prod.id,
-                              code: prod.code,
-                              technical_code: prod.technical_code,
-                              name: prod.name,
-                              description: prod.description ?? null,
-                              cost_price: 0,
-                              unit: prod.unit,
-                              product_nature: prod.product_nature ?? null,
-                              prefix: prod.prefix_code
-                                ? { code: prod.prefix_code }
-                                : null,
-                            }
-                          : null
-                      }
-                      onChange={(hit) => {
-                        if (!hit) {
-                          updateLineAt(index, {
-                            productId: "",
-                            description: "",
-                            usageType: "",
-                          });
-                          return;
+                  <td className="px-2 py-2 align-top min-w-[220px]">
+                    <div className="space-y-1.5">
+                      <ProductComboboxField
+                        compact
+                        value={
+                          prod
+                            ? {
+                                id: prod.id,
+                                code: prod.code,
+                                technical_code: prod.technical_code,
+                                name: prod.name,
+                                description: prod.description ?? null,
+                                cost_price: 0,
+                                unit: prod.unit,
+                                product_nature: prod.product_nature ?? null,
+                                prefix: prod.prefix_code
+                                  ? { code: prod.prefix_code }
+                                  : null,
+                              }
+                            : null
                         }
-                        const { line: next, product } = lineFromProduct(
-                          hit,
-                          lines[index]
-                        );
-                        onProductCacheMerge({ [product.id]: product });
-                        updateLineAt(index, next);
-                      }}
-                      productType="all"
-                      disabled={disabled}
-                      catalogTitle="Pesquisar produto"
-                    />
-                  </td>
-                  <td className="px-1 py-1.5 align-top">
-                    <div className="space-y-1">
+                        onChange={(hit) => {
+                          if (!hit) {
+                            updateLineAt(index, {
+                              productId: "",
+                              description: "",
+                              usageType: "",
+                            });
+                            return;
+                          }
+                          const { line: next, product } = lineFromProduct(
+                            hit,
+                            lines[index]
+                          );
+                          onProductCacheMerge({ [product.id]: product });
+                          updateLineAt(index, next);
+                        }}
+                        productType="all"
+                        disabled={disabled}
+                        catalogTitle="Pesquisar produto"
+                      />
                       <Input
                         value={line.description}
                         onChange={(e) =>
                           updateLineAt(index, { description: e.target.value })
                         }
                         disabled={disabled}
-                        className="h-7 text-xs px-2"
+                        className="h-8 text-sm"
                         placeholder="Nome do item…"
                       />
                       <Textarea
@@ -392,15 +374,37 @@ export function PurchaseOrderItemsEditor({
                         }
                         disabled={disabled}
                         rows={2}
-                        placeholder="Observações do item (sai no impresso)…"
-                        className="resize-y min-h-[44px] text-[11px] px-2 py-1"
+                        placeholder="Obs. do item…"
+                        className="resize-y min-h-[48px] text-xs"
                         title="Texto impresso no pedido de compra sob o produto"
                       />
+                      {isQuote && prod ? (
+                        <label
+                          htmlFor={`poi-show-desc-${index}`}
+                          className="flex items-start gap-2 cursor-pointer"
+                        >
+                          <input
+                            id={`poi-show-desc-${index}`}
+                            type="checkbox"
+                            className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
+                            checked={Boolean(line.showProductDescription)}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              updateLineAt(index, {
+                                showProductDescription: e.target.checked,
+                              })
+                            }
+                          />
+                          <span className="text-[11px] leading-snug text-slate-600">
+                            Incluir descrição do produto na impressão
+                          </span>
+                        </label>
+                      ) : null}
                     </div>
                   </td>
-                  <td className="px-1 py-1.5 align-top">
+                  <td className="px-2 py-2 align-top">
                     <select
-                      className="h-7 w-full rounded-md border border-slate-300 bg-white px-1 text-[11px] dark:bg-slate-950 dark:border-slate-600"
+                      className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs dark:bg-slate-950 dark:border-slate-600"
                       value={line.usageType ?? ""}
                       onChange={(e) =>
                         updateLineAt(index, {
@@ -419,7 +423,7 @@ export function PurchaseOrderItemsEditor({
                       ))}
                     </select>
                   </td>
-                  <td className="px-1 py-1.5 align-top">
+                  <td className="px-2 py-2 align-top">
                     <NumericInput
                       value={line.quantity}
                       onChange={(quantity) =>
@@ -431,14 +435,14 @@ export function PurchaseOrderItemsEditor({
                       }
                       maxDecimals={4}
                       disabled={disabled}
-                      className="h-7 text-xs px-2"
+                      className="h-8 text-sm"
                       placeholder="0"
                     />
                   </td>
-                  <td className="px-1 py-1.5 align-top">
+                  <td className="px-2 py-2 align-top">
                     {unitLocked ? (
                       <span
-                        className="inline-flex h-7 w-full items-center rounded-md border border-slate-200 bg-slate-50 px-2 text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-900/40"
+                        className="inline-flex h-8 w-full items-center rounded-md border border-slate-200 bg-slate-50 px-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40"
                         title="Unidade definida no cadastro do produto"
                       >
                         {line.unit || "UN"}
@@ -450,13 +454,13 @@ export function PurchaseOrderItemsEditor({
                           updateLineAt(index, { unit: e.target.value })
                         }
                         disabled={disabled}
-                        className="h-7 text-xs px-2"
+                        className="h-8 text-sm"
                       />
                     )}
                   </td>
                   {!isQuote ? (
                     <>
-                      <td className="px-1 py-1.5 align-top">
+                      <td className="px-2 py-2 align-top">
                         <NumericInput
                           value={line.unitPrice}
                           onChange={(unitPrice) =>
@@ -464,10 +468,10 @@ export function PurchaseOrderItemsEditor({
                           }
                           maxDecimals={2}
                           disabled={disabled}
-                          className="h-7 text-xs px-2"
+                          className="h-8 text-sm"
                         />
                       </td>
-                      <td className="px-1 py-1.5 align-top">
+                      <td className="px-2 py-2 align-top">
                         <NumericInput
                           value={line.discount}
                           onChange={(discount) => {
@@ -483,11 +487,11 @@ export function PurchaseOrderItemsEditor({
                           }}
                           maxDecimals={2}
                           disabled={disabled}
-                          className="h-7 text-xs px-2"
+                          className="h-8 text-sm"
                           title="Desconto da linha em R$"
                         />
                       </td>
-                      <td className="px-1 py-1.5 align-top">
+                      <td className="px-2 py-2 align-top">
                         <NumericInput
                           value={line.icmsRate}
                           onChange={(icmsRate) =>
@@ -496,16 +500,23 @@ export function PurchaseOrderItemsEditor({
                           maxDecimals={2}
                           disabled={disabled || taxReadonlyOnOrder || taxesLocked}
                           readOnly={taxReadonlyOnOrder || taxesLocked}
-                          className="h-7 text-xs px-2"
+                          className="h-8 text-sm"
                           placeholder="0"
                         />
                       </td>
-                      <td className="px-1 py-1.5 align-top text-right tabular-nums text-slate-700 bg-slate-50/80 dark:bg-slate-900/30">
-                        <span className="inline-flex h-7 w-full items-center justify-end px-1 text-[11px]">
-                          {formatBRL(line.icmsValue)}
-                        </span>
+                      <td className="px-2 py-2 align-top">
+                        <NumericInput
+                          value={line.icmsValue}
+                          onChange={(icmsValue) =>
+                            updateLineAt(index, { icmsValue }, "none")
+                          }
+                          maxDecimals={2}
+                          disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                          readOnly={taxReadonlyOnOrder || taxesLocked}
+                          className="h-8 text-sm"
+                        />
                       </td>
-                      <td className="px-1 py-1.5 align-top">
+                      <td className="px-2 py-2 align-top">
                         <NumericInput
                           value={line.ipiRate}
                           onChange={(ipiRate) =>
@@ -514,69 +525,51 @@ export function PurchaseOrderItemsEditor({
                           maxDecimals={2}
                           disabled={disabled || taxReadonlyOnOrder || taxesLocked}
                           readOnly={taxReadonlyOnOrder || taxesLocked}
-                          className="h-7 text-xs px-2"
+                          className="h-8 text-sm"
                           placeholder="0"
                         />
                       </td>
-                      <td className="px-1 py-1.5 align-top text-right tabular-nums text-slate-700 bg-slate-50/80 dark:bg-slate-900/30">
-                        <span className="inline-flex h-7 w-full items-center justify-end px-1 text-[11px]">
-                          {formatBRL(line.ipiValue)}
-                        </span>
+                      <td className="px-2 py-2 align-top">
+                        <NumericInput
+                          value={line.ipiValue}
+                          onChange={(ipiValue) =>
+                            updateLineAt(index, { ipiValue }, "none")
+                          }
+                          maxDecimals={2}
+                          disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                          readOnly={taxReadonlyOnOrder || taxesLocked}
+                          className="h-8 text-sm"
+                        />
                       </td>
-                      <td className="px-1 py-1.5 align-top text-right tabular-nums font-medium text-slate-900 text-[11px]">
+                      <td className="px-2 py-2 align-top text-right tabular-nums text-slate-700 text-xs">
+                        {formatBRL(
+                          line.taxBase || roundMoney(lineSub + line.ipiValue)
+                        )}
+                      </td>
+                      <td className="px-2 py-2 align-top text-right tabular-nums font-medium text-slate-900 text-xs">
                         {formatBRL(lineTotal)}
                       </td>
                     </>
                   ) : null}
+                  <td className="px-2 py-2 align-top">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                      aria-label={`Remover item ${index + 1}`}
+                      onClick={() => removeLineAt(index)}
+                      disabled={disabled || lines.length <= 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
                 </tr>
-                {isQuote && prod ? (
-                  <tr className="border-b border-slate-100 last:border-0 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/30">
-                    <td colSpan={colSpan} className="px-3 py-2">
-                      <label
-                        htmlFor={`poi-show-desc-${index}`}
-                        className="flex items-start gap-3 cursor-pointer"
-                      >
-                        <input
-                          id={`poi-show-desc-${index}`}
-                          type="checkbox"
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
-                          checked={Boolean(line.showProductDescription)}
-                          disabled={disabled}
-                          onChange={(e) =>
-                            updateLineAt(index, {
-                              showProductDescription: e.target.checked,
-                            })
-                          }
-                        />
-                        <span className="space-y-0.5">
-                          <span className="block text-xs font-medium text-slate-900 dark:text-slate-100">
-                            Incluir descrição do produto na impressão
-                          </span>
-                          <span className="block text-[11px] text-slate-500 leading-relaxed">
-                            Mostra a descrição técnica cadastrada no produto no
-                            PDF/impressão desta linha.
-                          </span>
-                        </span>
-                      </label>
-                    </td>
-                  </tr>
-                ) : null}
-                </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
-
-      <p className="text-[11px] text-slate-500 leading-snug">
-        <strong>Código</strong> — SKU do cadastro (só leitura).{" "}
-        <strong>Descrição</strong> — nome do item nesta solicitação.{" "}
-        <strong>Observações</strong> — texto livre que sai no impresso do pedido,
-        sob o produto.
-        {isQuote
-          ? " Sem valores — a cotação virá da resposta do fornecedor."
-          : " Unidade, ICMS (R$) e IPI (R$) são calculados ou vêm do produto."}
-      </p>
 
       <Button
         type="button"
@@ -589,7 +582,11 @@ export function PurchaseOrderItemsEditor({
         Adicionar produto
       </Button>
 
-      {!isQuote ? (
+      {isQuote ? (
+        <p className="text-xs text-slate-500">
+          Sem valores nesta etapa — a cotação virá da resposta do fornecedor.
+        </p>
+      ) : (
         <div className="text-sm text-slate-900 space-y-1">
           <p>
             Subtotal (itens):{" "}
@@ -616,7 +613,7 @@ export function PurchaseOrderItemsEditor({
             </span>
           </p>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

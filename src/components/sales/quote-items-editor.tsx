@@ -5,9 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
-import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
-import { cn } from "@/shared/utils/cn";
 import {
   DEFAULT_QUOTE_MARKUP_PERCENT,
   lineNetTotalPrice,
@@ -153,9 +151,7 @@ function formatBRL(n: number): string {
 }
 
 const SELECT_CLASS =
-  "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 disabled:opacity-60 " +
-  "dark:bg-slate-950 dark:border-slate-600";
+  "h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs dark:bg-slate-950 dark:border-slate-600";
 
 type Props = {
   lines: QuoteLineDraft[];
@@ -221,360 +217,304 @@ export function QuoteItemsEditor({
   };
 
   return (
-    <>
-      <div className="space-y-4">
-        {lines.map((line, index) => {
-          const prod = line.productId
-            ? productById.get(line.productId)
-            : undefined;
-          const lineGross = lineTotalPrice(line.unitPrice, line.quantity);
-          const lineTotal = lineNetTotalPrice(
-            line.unitPrice,
-            line.quantity,
-            line.discount
-          );
-          return (
-            <div
-              key={line.key}
-              className={cn(
-                "rounded-lg border border-slate-200 p-4 space-y-3 dark:border-slate-800"
-              )}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium text-slate-700">
-                  Item {index + 1}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
-                  aria-label={`Remover item ${index + 1}`}
-                  onClick={() =>
-                    onLinesChange(
-                      lines.length <= 1
-                        ? lines
-                        : reindexQuoteLines(
-                            lines.filter((_, i) => i !== index)
-                          )
-                    )
-                  }
-                  disabled={lines.length <= 1}
+    <div className="space-y-4">
+      <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
+        <table className="w-full text-sm min-w-[1180px]">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
+              <th className="px-2 py-2 min-w-[220px]">Produto</th>
+              <th className="px-2 py-2 w-32">Utilização</th>
+              <th className="px-2 py-2 w-20">Qtd.</th>
+              <th className="px-2 py-2 w-16">Un.</th>
+              <th className="px-2 py-2 w-24">Custo</th>
+              <th className="px-2 py-2 w-28">Forma</th>
+              <th className="px-2 py-2 w-24">Markup %</th>
+              <th className="px-2 py-2 w-24">Preço un.</th>
+              <th className="px-2 py-2 w-24">Desc. (R$)</th>
+              <th className="px-2 py-2 w-24 text-right">Total linha</th>
+              <th className="px-2 py-2 w-10" />
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line, index) => {
+              const prod = line.productId
+                ? productById.get(line.productId)
+                : undefined;
+              const lineGross = lineTotalPrice(line.unitPrice, line.quantity);
+              const lineTotal = lineNetTotalPrice(
+                line.unitPrice,
+                line.quantity,
+                line.discount
+              );
+              return (
+                <tr
+                  key={line.key}
+                  className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                 >
-                  <Trash2 className="h-4 w-4" />
-                  Remover
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Produto acabado</Label>
-                  <ProductComboboxField
-                    value={
-                      prod
-                        ? {
-                            id: prod.id,
-                            code: prod.code,
-                            technical_code: prod.technical_code,
-                            name: prod.name,
-                            cost_price: prod.cost_price,
-                            unit: prod.unit,
-                            product_nature: prod.product_nature ?? null,
-                            prefix: prod.prefix_code
-                              ? { code: prod.prefix_code }
-                              : null,
-                          }
-                        : null
-                    }
-                    onChange={(hit) => {
-                      if (!hit) {
-                        updateLineAt(index, {
-                          productId: "",
-                          usageType: "",
-                          costPrice: 0,
-                          unitPrice: 0,
-                          manualPrice: 0,
-                        });
-                        return;
-                      }
-                      const { line: next, product } = lineFromProduct(
-                        hit,
-                        lines[index]
-                      );
-                      onProductCacheMerge({ [product.id]: product });
-                      updateLineAt(index, next);
-                    }}
-                    productType="finished"
-                    catalogTitle="Pesquisar produto acabado"
-                    showNewProductButton
-                    commercialQuickCreate
-                    sourceQuoteId={sourceQuoteId}
-                    placeholder="Digite código ou descrição do acabado…"
-                  />
-                  <div className="space-y-1.5 pt-1">
-                    <Label htmlFor={`quote-item-notes-${index}`}>
-                      Observação do item
-                    </Label>
-                    <Textarea
-                      id={`quote-item-notes-${index}`}
-                      value={line.itemNotes}
-                      onChange={(e) =>
-                        updateLineAt(index, { itemNotes: e.target.value })
-                      }
-                      rows={2}
-                      placeholder="Obs. desta linha…"
-                      className="resize-y min-h-[56px] text-sm"
-                    />
-                  </div>
-                </div>
-
-                {prod ? (
-                  <div className="space-y-2">
-                    <Label>Custo unitário</Label>
-                    <p className="text-sm font-medium tabular-nums text-slate-800">
-                      {formatBRL(line.costPrice)}
-                    </p>
-                  </div>
-                ) : null}
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor={`quote-price-mode-${index}`}>
-                    Forma de preço
-                  </Label>
-                  <select
-                    id={`quote-price-mode-${index}`}
-                    className={SELECT_CLASS}
-                    value={line.priceMode}
-                    onChange={(e) => {
-                      const mode = e.target.value as QuoteLinePriceMode;
-                      if (mode === "markup") {
-                        updateLineAt(index, { priceMode: "markup" });
-                      } else {
-                        const manual =
-                          line.manualPrice > 0
-                            ? line.manualPrice
-                            : line.unitPrice > 0
-                              ? line.unitPrice
-                              : unitPriceFromCostAndMarkup(
-                                  line.costPrice,
-                                  line.markupPercent
-                                );
-                        updateLineAt(index, {
-                          priceMode: "manual",
-                          manualPrice: manual,
-                          unitPrice: manual,
-                        });
-                      }
-                    }}
-                    disabled={!line.productId}
-                  >
-                    <option value="markup">Usar markup (%)</option>
-                    <option value="manual">Preço unitário (R$)</option>
-                  </select>
-                </div>
-
-                {line.priceMode === "markup" ? (
-                  <div className="space-y-2">
-                    <Label htmlFor={`quote-markup-${index}`}>Markup (%)</Label>
-                    <NumericInput
-                      id={`quote-markup-${index}`}
-                      value={line.markupPercent}
-                      onChange={(markup) =>
-                        updateLineAt(index, { markupPercent: markup })
-                      }
-                      maxDecimals={2}
-                      disabled={!line.productId}
-                    />
-                    <p className="text-xs text-slate-500">
-                      Preço = custo × (1 + markup/100)
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label htmlFor={`quote-manual-price-${index}`}>
-                      Preço unitário (R$)
-                    </Label>
-                    <NumericInput
-                      id={`quote-manual-price-${index}`}
-                      value={
-                        Number.isFinite(line.manualPrice) ? line.manualPrice : 0
-                      }
-                      onChange={(manualPrice) =>
-                        updateLineAt(index, { manualPrice })
-                      }
-                      maxDecimals={2}
-                      disabled={!line.productId}
-                    />
-                    <p className="text-xs text-slate-500">
-                      Valor fixo de venda (ignora custo e markup)
-                    </p>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor={`quote-qty-${index}`}>Quantidade</Label>
-                  <NumericInput
-                    id={`quote-qty-${index}`}
-                    value={Number.isFinite(line.quantity) ? line.quantity : 0}
-                    onChange={(quantity) =>
-                      updateLineAt(index, { quantity })
-                    }
-                    maxDecimals={4}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Preço unitário (venda)</Label>
-                  <p className="text-sm font-semibold tabular-nums text-slate-900">
-                    {formatBRL(line.unitPrice)}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {line.priceMode === "markup"
-                      ? "Calculado pelo markup"
-                      : "Definido manualmente"}
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`quote-discount-${index}`}>
-                    Desconto da linha (R$)
-                  </Label>
-                  <NumericInput
-                    id={`quote-discount-${index}`}
-                    value={Number.isFinite(line.discount) ? line.discount : 0}
-                    onChange={(discount) => {
-                      const next = Math.max(
-                        0,
-                        Math.min(Number(discount) || 0, lineGross)
-                      );
-                      updateLineAt(index, { discount: next });
-                    }}
-                    maxDecimals={2}
-                    disabled={!line.productId}
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <p className="text-sm text-slate-600">
-                    Total da linha
-                    {line.discount > 0 ? " (líquido)" : ""}:{" "}
-                    <strong className="text-slate-900 tabular-nums">
-                      {formatBRL(lineTotal)}
-                    </strong>
-                    {line.discount > 0 ? (
-                      <span className="ml-2 text-xs text-slate-500">
-                        (bruto {formatBRL(lineGross)} − desc.{" "}
-                        {formatBRL(line.discount)})
-                      </span>
-                    ) : null}
-                  </p>
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor={`quote-client-notes-${index}`}>
-                    Observações para o cliente
-                  </Label>
-                  <Textarea
-                    id={`quote-client-notes-${index}`}
-                    value={line.clientNotes}
-                    onChange={(e) =>
-                      updateLineAt(index, { clientNotes: e.target.value })
-                    }
-                    rows={3}
-                    placeholder="Ex.: inclui instalação no local, prazo especial, cor RAL específica…"
-                    className="resize-y min-h-[72px]"
-                  />
-                  <p className="text-xs text-slate-500">
-                    Opcional. Aparece na impressão do orçamento sob o produto.
-                  </p>
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor={`quote-usage-${index}`}>Utilização</Label>
-                  <select
-                    id={`quote-usage-${index}`}
-                    className={SELECT_CLASS}
-                    value={line.usageType}
-                    onChange={(e) =>
-                      updateLineAt(index, {
-                        usageType: isItemUsageType(e.target.value)
-                          ? e.target.value
-                          : "",
-                      })
-                    }
-                    disabled={!line.productId}
-                  >
-                    <option value="">— Seleccionar —</option>
-                    {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-slate-500">
-                    Alimenta a conferência fiscal (CFOP/tributação). Pode ficar
-                    vazio até à revisão fiscal.
-                  </p>
-                </div>
-
-                {prod ? (
-                  <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
-                    <label
-                      htmlFor={`quote-show-desc-${index}`}
-                      className="flex items-start gap-3 cursor-pointer"
-                    >
-                      <input
-                        id={`quote-show-desc-${index}`}
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
-                        checked={line.showProductDescription}
-                        onChange={(e) =>
-                          updateLineAt(index, {
-                            showProductDescription: e.target.checked,
-                          })
+                  <td className="px-2 py-2 align-top min-w-[220px]">
+                    <div className="space-y-1.5">
+                      <ProductComboboxField
+                        compact
+                        value={
+                          prod
+                            ? {
+                                id: prod.id,
+                                code: prod.code,
+                                technical_code: prod.technical_code,
+                                name: prod.name,
+                                cost_price: prod.cost_price,
+                                unit: prod.unit,
+                                product_nature: prod.product_nature ?? null,
+                                prefix: prod.prefix_code
+                                  ? { code: prod.prefix_code }
+                                  : null,
+                              }
+                            : null
                         }
+                        onChange={(hit) => {
+                          if (!hit) {
+                            updateLineAt(index, {
+                              productId: "",
+                              usageType: "",
+                              costPrice: 0,
+                              unitPrice: 0,
+                              manualPrice: 0,
+                            });
+                            return;
+                          }
+                          const { line: next, product } = lineFromProduct(
+                            hit,
+                            lines[index]
+                          );
+                          onProductCacheMerge({ [product.id]: product });
+                          updateLineAt(index, next);
+                        }}
+                        productType="finished"
+                        catalogTitle="Pesquisar produto acabado"
+                        showNewProductButton
+                        commercialQuickCreate
+                        sourceQuoteId={sourceQuoteId}
+                        placeholder="Digite código ou descrição do acabado…"
                       />
-                      <span className="space-y-1">
-                        <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
-                          Incluir descrição do produto na impressão
-                        </span>
-                        <span className="block text-xs text-slate-500 leading-relaxed">
-                          Só afecta esta linha. Mostra a descrição técnica
-                          cadastrada no produto no PDF/impressão.
-                        </span>
+                      <Textarea
+                        value={line.itemNotes}
+                        onChange={(e) =>
+                          updateLineAt(index, { itemNotes: e.target.value })
+                        }
+                        rows={2}
+                        placeholder="Obs. do item…"
+                        className="resize-y min-h-[48px] text-xs"
+                      />
+                      <Textarea
+                        value={line.clientNotes}
+                        onChange={(e) =>
+                          updateLineAt(index, { clientNotes: e.target.value })
+                        }
+                        rows={2}
+                        placeholder="Obs. para o cliente (impressão)…"
+                        className="resize-y min-h-[48px] text-xs"
+                      />
+                      {prod ? (
+                        <label
+                          htmlFor={`quote-show-desc-${index}`}
+                          className="flex items-start gap-2 cursor-pointer"
+                        >
+                          <input
+                            id={`quote-show-desc-${index}`}
+                            type="checkbox"
+                            className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
+                            checked={line.showProductDescription}
+                            onChange={(e) =>
+                              updateLineAt(index, {
+                                showProductDescription: e.target.checked,
+                              })
+                            }
+                          />
+                          <span className="text-[11px] leading-snug text-slate-600">
+                            Incluir descrição do produto na impressão
+                          </span>
+                        </label>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <select
+                      className={SELECT_CLASS}
+                      value={line.usageType}
+                      onChange={(e) =>
+                        updateLineAt(index, {
+                          usageType: isItemUsageType(e.target.value)
+                            ? e.target.value
+                            : "",
+                        })
+                      }
+                      disabled={!line.productId}
+                    >
+                      <option value="">—</option>
+                      {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <NumericInput
+                      value={Number.isFinite(line.quantity) ? line.quantity : 0}
+                      onChange={(quantity) =>
+                        updateLineAt(index, { quantity })
+                      }
+                      maxDecimals={4}
+                      className="h-8 text-sm"
+                      placeholder="0"
+                    />
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <Input
+                      value={line.unit}
+                      onChange={(e) =>
+                        updateLineAt(index, { unit: e.target.value })
+                      }
+                      className="h-8 text-sm"
+                    />
+                  </td>
+                  <td className="px-2 py-2 align-top text-right tabular-nums text-slate-700 text-xs">
+                    {prod ? formatBRL(line.costPrice) : "—"}
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <select
+                      className={SELECT_CLASS}
+                      value={line.priceMode}
+                      onChange={(e) => {
+                        const mode = e.target.value as QuoteLinePriceMode;
+                        if (mode === "markup") {
+                          updateLineAt(index, { priceMode: "markup" });
+                        } else {
+                          const manual =
+                            line.manualPrice > 0
+                              ? line.manualPrice
+                              : line.unitPrice > 0
+                                ? line.unitPrice
+                                : unitPriceFromCostAndMarkup(
+                                    line.costPrice,
+                                    line.markupPercent
+                                  );
+                          updateLineAt(index, {
+                            priceMode: "manual",
+                            manualPrice: manual,
+                            unitPrice: manual,
+                          });
+                        }
+                      }}
+                      disabled={!line.productId}
+                    >
+                      <option value="markup">Markup</option>
+                      <option value="manual">Preço fixo</option>
+                    </select>
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    {line.priceMode === "markup" ? (
+                      <NumericInput
+                        value={line.markupPercent}
+                        onChange={(markup) =>
+                          updateLineAt(index, { markupPercent: markup })
+                        }
+                        maxDecimals={2}
+                        disabled={!line.productId}
+                        className="h-8 text-sm"
+                      />
+                    ) : (
+                      <span className="inline-flex h-8 items-center text-xs text-slate-400">
+                        —
                       </span>
-                    </label>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
+                    )}
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    {line.priceMode === "manual" ? (
+                      <NumericInput
+                        value={
+                          Number.isFinite(line.manualPrice)
+                            ? line.manualPrice
+                            : 0
+                        }
+                        onChange={(manualPrice) =>
+                          updateLineAt(index, { manualPrice })
+                        }
+                        maxDecimals={2}
+                        disabled={!line.productId}
+                        className="h-8 text-sm"
+                      />
+                    ) : (
+                      <span className="inline-flex h-8 w-full items-center justify-end text-xs tabular-nums text-slate-700">
+                        {formatBRL(line.unitPrice)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <NumericInput
+                      value={Number.isFinite(line.discount) ? line.discount : 0}
+                      onChange={(discount) => {
+                        const next = Math.max(
+                          0,
+                          Math.min(Number(discount) || 0, lineGross)
+                        );
+                        updateLineAt(index, { discount: next });
+                      }}
+                      maxDecimals={2}
+                      disabled={!line.productId}
+                      className="h-8 text-sm"
+                      title="Desconto da linha em R$"
+                    />
+                  </td>
+                  <td className="px-2 py-2 align-top text-right tabular-nums font-medium text-slate-900 text-xs">
+                    {formatBRL(lineTotal)}
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                      aria-label={`Remover item ${index + 1}`}
+                      onClick={() =>
+                        onLinesChange(
+                          lines.length <= 1
+                            ? lines
+                            : reindexQuoteLines(
+                                lines.filter((_, i) => i !== index)
+                              )
+                        )
+                      }
+                      disabled={lines.length <= 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={addEmptyLine}
-        >
-          <Plus className="h-4 w-4" />
-          Adicionar produto
-        </Button>
-      </div>
+      <Button type="button" variant="outline" size="sm" onClick={addEmptyLine}>
+        <Plus className="h-4 w-4" />
+        Adicionar produto
+      </Button>
 
-      <div className="border-t border-slate-200 pt-4 space-y-1 dark:border-slate-800">
-        <p className="text-base font-semibold text-slate-900">
+      <div className="text-sm text-slate-900 space-y-1">
+        <p>
           Subtotal (itens):{" "}
-          <span className="tabular-nums">{formatBRL(subtotal)}</span>
+          <span className="font-medium tabular-nums">
+            {formatBRL(subtotal)}
+          </span>
         </p>
         <p className="text-xs text-slate-500">
           Subtotal já considera descontos por item. Use também o desconto do
           orçamento no cartão Totais.
         </p>
       </div>
-    </>
+    </div>
   );
 }
 

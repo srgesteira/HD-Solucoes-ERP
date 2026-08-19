@@ -336,12 +336,9 @@ export default function NewQuotePage() {
 
         <Card>
           <CardHeader className="pb-4">
-            <CardTitle className="text-lg font-semibold text-slate-900">
-              Itens do orçamento
-            </CardTitle>
-            <p className="text-xs text-slate-500 mt-1">
-              Apenas produtos acabados (HD1, HD2, HD3, AC). Defina o preço por markup
-              (%) ou por valor unitário fixo (R$).
+            <CardTitle className="text-lg">Itens do orçamento</CardTitle>
+            <p className="text-sm text-slate-500 font-normal">
+              Quantidade, preço, desconto e markup por linha.
             </p>
           </CardHeader>
           <CardContent className="space-y-6">

@@ -670,6 +670,9 @@ export function PurchaseOrderForm({
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Itens do pedido</CardTitle>
+          <p className="text-sm text-slate-500 font-normal">
+            Quantidade, preço, desconto e impostos (ICMS/IPI) por linha.
+          </p>
         </CardHeader>
         <CardContent>
           <PurchaseOrderItemsEditor

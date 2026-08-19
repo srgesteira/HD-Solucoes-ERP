@@ -511,6 +511,10 @@ export default function PurchaseQuoteRequestDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Itens</CardTitle>
+              <p className="text-sm text-slate-500 font-normal">
+                Produto, quantidade e observações para pedir cotação ao
+                fornecedor.
+              </p>
             </CardHeader>
             <CardContent>
               <PurchaseOrderItemsEditor
