@@ -21,6 +21,11 @@ import {
 } from "@/modules/vendas/lib/sales/sales-order-print-display";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
+import {
+  buildInstallmentDueDates,
+  formatPaymentTermsSummary,
+} from "@/shared/utils/payment-terms-format";
+import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
 
 const PRINT_STYLES = `
 @media print {
@@ -101,6 +106,22 @@ function fmtPct(value: number | null | undefined): string {
 function fmtMoney(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return fmtBRL(value);
+}
+
+function paymentDueDatesLabel(review: FiscalOrderReview): string {
+  const base = paymentScheduleBaseDate({
+    actual_delivery: review.actual_delivery,
+    expected_delivery: review.expected_delivery,
+    order_date: review.order_date,
+  });
+  const dates = buildInstallmentDueDates({
+    baseDateIso: base,
+    installments: review.payment_installments,
+    daysToFirst: review.payment_days_to_first_due,
+    daysBetween: review.payment_days_between_installments,
+  });
+  if (!dates.length) return "—";
+  return dates.map((d) => fmtDate(d)).join(" · ");
 }
 
 type Props = {
@@ -225,6 +246,27 @@ export function FiscalOrderPrintDocument({
                 <dd>{fmtDate(review.order_date)}</dd>
               </div>
               <div className="fp-info-row">
+                <dt>Condição de pagamento</dt>
+                <dd className="max-w-[12rem] text-right">
+                  {formatPaymentTermsSummary({
+                    payment_installments: review.payment_installments,
+                    payment_days_to_first_due: review.payment_days_to_first_due,
+                    payment_days_between_installments:
+                      review.payment_days_between_installments,
+                  })}
+                </dd>
+              </div>
+              <div className="fp-info-row">
+                <dt>
+                  {review.payment_installments > 1
+                    ? "Vencimentos"
+                    : "Vencimento"}
+                </dt>
+                <dd className="max-w-[12rem] text-right">
+                  {paymentDueDatesLabel(review)}
+                </dd>
+              </div>
+              <div className="fp-info-row">
                 <dt>Total</dt>
                 <dd>{fmtBRL(Number(review.total))}</dd>
               </div>
@@ -322,6 +364,25 @@ export function FiscalOrderPrintDocument({
                 <dd>
                   {review.customer_po_number?.trim() || "—"}
                 </dd>
+              </div>
+              <div className="fp-info-row">
+                <dt>Condição de pagamento</dt>
+                <dd>
+                  {formatPaymentTermsSummary({
+                    payment_installments: review.payment_installments,
+                    payment_days_to_first_due: review.payment_days_to_first_due,
+                    payment_days_between_installments:
+                      review.payment_days_between_installments,
+                  })}
+                </dd>
+              </div>
+              <div className="fp-info-row">
+                <dt>
+                  {review.payment_installments > 1
+                    ? "Vencimentos"
+                    : "Vencimento do pagamento"}
+                </dt>
+                <dd>{paymentDueDatesLabel(review)}</dd>
               </div>
             </dl>
             {review.customer_po_number?.trim() || review.notes?.trim() ? (

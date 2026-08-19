@@ -84,6 +84,11 @@ export type FiscalOrderReview = {
   /** Pedido de compra do cliente — sai na NF (xPed / info. adicionais). */
   customer_po_number: string | null;
   notes: string | null;
+  expected_delivery: string | null;
+  actual_delivery: string | null;
+  payment_installments: number;
+  payment_days_to_first_due: number;
+  payment_days_between_installments: number;
   items: FiscalOrderReviewItem[];
   warnings: string[];
 };
@@ -107,6 +112,11 @@ type RawOrderRow = {
   invoice_document_type: string | null;
   customer_po_number: string | null;
   notes: string | null;
+  expected_delivery: string | null;
+  actual_delivery: string | null;
+  payment_installments: number | null;
+  payment_days_to_first_due: number | null;
+  payment_days_between_installments: number | null;
   items?: unknown;
 };
 
@@ -399,6 +409,11 @@ export async function getFiscalOrderReview(
       invoice_document_type,
       customer_po_number,
       notes,
+      expected_delivery,
+      actual_delivery,
+      payment_installments,
+      payment_days_to_first_due,
+      payment_days_between_installments,
       items:sales_order_items(
         id,
         line_number,
@@ -641,6 +656,17 @@ export async function getFiscalOrderReview(
         ? order.customer_po_number.trim() || null
         : null,
     notes: typeof order.notes === "string" ? order.notes : null,
+    expected_delivery:
+      typeof order.expected_delivery === "string"
+        ? order.expected_delivery
+        : null,
+    actual_delivery:
+      typeof order.actual_delivery === "string" ? order.actual_delivery : null,
+    payment_installments: Number(order.payment_installments ?? 1),
+    payment_days_to_first_due: Number(order.payment_days_to_first_due ?? 30),
+    payment_days_between_installments: Number(
+      order.payment_days_between_installments ?? 0
+    ),
     items,
     warnings,
   };
