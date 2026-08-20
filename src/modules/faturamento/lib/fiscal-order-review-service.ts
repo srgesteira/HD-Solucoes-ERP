@@ -19,6 +19,7 @@ import {
   isItemUsageType,
   type ItemUsageType,
 } from "@/modules/fiscal/lib/item-usage-type";
+import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 
 type Admin = SupabaseClient<Database>;
 
@@ -34,6 +35,8 @@ export type FiscalOrderReviewItem = {
   total_price: number;
   product_id: string | null;
   product_name: string | null;
+  product_code: string | null;
+  bling_product_id: number | null;
   ncm: string | null;
   product_nature: string | null;
   cfop: string | null;
@@ -91,6 +94,18 @@ export type FiscalOrderReview = {
   payment_days_between_installments: number;
   items: FiscalOrderReviewItem[];
   warnings: string[];
+  nfe: {
+    id: string;
+    status: string;
+    nfe_number: string | null;
+    nfe_key: string | null;
+    pdf_url: string | null;
+    xml_url: string | null;
+    error_message: string | null;
+    provider: string | null;
+  } | null;
+  can_emit: boolean;
+  emit_blockers: string[];
 };
 
 type RawOrderRow = {
@@ -307,6 +322,8 @@ function buildItemFiscalFields(opts: {
   | "total_price"
   | "product_id"
   | "product_name"
+  | "product_code"
+  | "bling_product_id"
   | "ncm"
   | "product_nature"
   | "usage_type"
@@ -429,7 +446,7 @@ export async function getFiscalOrderReview(
         ipi_value,
         tax_base,
         usage_type,
-        product:products!sales_order_items_product_id_fkey(name, ncm, product_nature)
+        product:products!sales_order_items_product_id_fkey(name, ncm, product_nature, code, technical_code, bling_product_id)
       )
     `
       )
@@ -555,6 +572,16 @@ export async function getFiscalOrderReview(
       product_id: productId,
       product_name:
         product && typeof product.name === "string" ? product.name : null,
+      product_code:
+        product && typeof product.code === "string"
+          ? product.code
+          : product && typeof product.technical_code === "string"
+            ? product.technical_code
+            : null,
+      bling_product_id:
+        product && product.bling_product_id != null
+          ? Number(product.bling_product_id)
+          : null,
       ncm: product && typeof product.ncm === "string" ? product.ncm : null,
       product_nature:
         product && typeof product.product_nature === "string"
@@ -618,9 +645,46 @@ export async function getFiscalOrderReview(
       : null;
   if (billingPlan !== "without_invoice" && !invoiceDocType) {
     warnings.push(
-      "Defina o tipo de nota (NFS-e, NF-e produto ou industrialização) — a Expedição emite sem perguntar."
+      "Defina o tipo de nota (NFS-e, NF-e produto ou industrialização) antes de emitir."
     );
   }
+  const isBlingDoc =
+    invoiceDocType === "nfe_product" || invoiceDocType === "nfe_industrialization";
+  if (isBlingDoc) {
+    const unmapped = items.filter((it) => it.product_id && !it.bling_product_id);
+    if (unmapped.length) {
+      warnings.push(
+        `Produto(s) sem ID Bling: ${unmapped
+          .map((it) => it.product_code || it.product_name || it.description)
+          .join(", ")}. Sincronize o catálogo em Empresa → Integrações. A emissão não adivinha NCM/CFOP/CSOSN.`
+      );
+    }
+  }
+
+  const { data: nfeRow } = await db
+    .from("nfes")
+    .select(
+      "id, status, nfe_number, nfe_key, pdf_url, xml_url, error_message, provider"
+    )
+    .eq("tenant_id", tenantId)
+    .eq("sales_order_id", salesOrderId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nfe = nfeRow
+    ? {
+        id: String((nfeRow as { id: string }).id),
+        status: String((nfeRow as { status: string }).status),
+        nfe_number: (nfeRow as { nfe_number: string | null }).nfe_number,
+        nfe_key: (nfeRow as { nfe_key: string | null }).nfe_key,
+        pdf_url: (nfeRow as { pdf_url: string | null }).pdf_url,
+        xml_url: (nfeRow as { xml_url: string | null }).xml_url,
+        error_message: (nfeRow as { error_message: string | null }).error_message,
+        provider: (nfeRow as { provider?: string | null }).provider ?? null,
+      }
+    : null;
+
+  const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, salesOrderId);
 
   return {
     id: String(order.id),
@@ -669,6 +733,9 @@ export async function getFiscalOrderReview(
     ),
     items,
     warnings,
+    nfe,
+    can_emit: gate.ok && billingPlan !== "without_invoice",
+    emit_blockers: gate.reasons,
   };
 }
 

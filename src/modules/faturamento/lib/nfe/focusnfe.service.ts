@@ -18,6 +18,11 @@ import {
   buildNfeProductPayloadFromSalesOrder,
   type NfeProductLineInput,
 } from "@/modules/faturamento/lib/nfe/build-nfe-product-payload";
+import {
+  cancelarNfeViaBling,
+  consultarNfeViaBling,
+  emitirNfeViaBling,
+} from "@/modules/fiscal/lib/bling/bling-emit";
 
 export type FocusNFeEnv = "homologacao" | "producao";
 
@@ -495,27 +500,15 @@ function mapFocusNfeModelo55Response(data: unknown): NfseMappedFields {
 }
 
 /**
- * Emite nota na Focus conforme `invoice_document_type` gravado no Fiscal.
- * NFS-e → /v2/nfse; NF-e produto/industrialização → /v2/nfe (homolog por defeito).
+ * Emite nota conforme `invoice_document_type` gravado no Fiscal.
+ * NFS-e → FocusNFe /v2/nfse.
+ * NF-e produto/industrialização → Bling API v3 (POST /nfe + /enviar).
  */
 export async function emitirNFe(
   admin: Admin,
   tenantId: string,
   salesOrderId: string
 ): Promise<{ nfe_id: string; focus_ref: string; focus: { ok: boolean; status: number; data: unknown } }> {
-  const { data: settings, error: csErr } = await admin
-    .from("company_settings")
-    .select(
-      "cnpj, municipal_registration, tax_regime, focusnfe_token, focusnfe_environment, address_state, address_city, address_street, address_number, address_neighborhood, address_zip, state_registration, nfse_item_lista_servico, nfse_iss_aliquota, nfse_prestador_codigo_municipio, nfse_codigo_nbs, nfse_codigo_indicador_operacao, nfse_ibs_cbs_classificacao_tributaria, nfse_use_sao_paulo_payload, nfse_codigo_tributario_municipio"
-    )
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-  if (csErr) throw new Error(csErr.message);
-  const token = settings?.focusnfe_token?.trim();
-  if (!token) throw new Error("Token FocusNFe não configurado (Empresa).");
-  const env: FocusNFeEnv =
-    settings?.focusnfe_environment === "producao" ? "producao" : "homologacao";
-
   const db = asUntypedAdmin(admin);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: soRaw, error: soErr } = await (db.from("sales_orders") as any)
@@ -552,6 +545,34 @@ export async function emitirNFe(
     throw new Error("Tipo de nota inválido ou ausente.");
   }
   const docType: InvoiceDocumentType = docTypeRaw;
+
+  if (docType === "nfe_product" || docType === "nfe_industrialization") {
+    const out = await emitirNfeViaBling(admin, tenantId, salesOrderId, docType);
+    return {
+      nfe_id: out.nfe_id,
+      focus_ref: out.bling_nfe_id
+        ? `bling:${out.bling_nfe_id}`
+        : `bling-local:${out.nfe_id}`,
+      focus: {
+        ok: true,
+        status: 200,
+        data: { provider: "bling", bling_nfe_id: out.bling_nfe_id },
+      },
+    };
+  }
+
+  const { data: settings, error: csErr } = await admin
+    .from("company_settings")
+    .select(
+      "cnpj, municipal_registration, tax_regime, focusnfe_token, focusnfe_environment, address_state, address_city, address_street, address_number, address_neighborhood, address_zip, state_registration, nfse_item_lista_servico, nfse_iss_aliquota, nfse_prestador_codigo_municipio, nfse_codigo_nbs, nfse_codigo_indicador_operacao, nfse_ibs_cbs_classificacao_tributaria, nfse_use_sao_paulo_payload, nfse_codigo_tributario_municipio"
+    )
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (csErr) throw new Error(csErr.message);
+  const token = settings?.focusnfe_token?.trim();
+  if (!token) throw new Error("Token FocusNFe não configurado (Empresa).");
+  const env: FocusNFeEnv =
+    settings?.focusnfe_environment === "producao" ? "producao" : "homologacao";
 
   const { data: inserted, error: insErr } = await admin
     .from("nfes")
@@ -631,7 +652,9 @@ export async function emitirNFe(
         .eq("tenant_id", tenantId);
       if (itemsErr) throw new Error(itemsErr.message);
 
-      const lineIds = (itemRows ?? []).map((r) => String((r as { id: string }).id));
+      const lineIds = (itemRows ?? []).map((r: { id?: string }) =>
+        String(r.id)
+      );
       const { data: apps } = await db
         .from("fiscal_rule_applications")
         .select("document_line_id, output_snapshot")
@@ -654,7 +677,8 @@ export async function emitirNFe(
         }
       }
 
-      const nfeItems: NfeProductLineInput[] = (itemRows ?? []).map((raw) => {
+      const nfeItems: NfeProductLineInput[] = (itemRows ?? []).map(
+        (raw: unknown) => {
         const it = raw as {
           id: string;
           description: string;
@@ -763,14 +787,20 @@ export async function consultarNFe(
   tenantId: string,
   nfeId: string
 ): Promise<{ ok: boolean; status: number; data: unknown }> {
-  const { data: row, error } = await admin
+  const db = asUntypedAdmin(admin);
+  const { data: row, error } = await db
     .from("nfes")
-    .select("id, tenant_id")
+    .select("id, tenant_id, provider")
     .eq("id", nfeId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!row) throw new Error("NFS-e não encontrada.");
+  const provider = (row as { provider?: string }).provider;
+  if (provider === "bling") {
+    await consultarNfeViaBling(admin, tenantId, nfeId);
+    return { ok: true, status: 200, data: { provider: "bling" } };
+  }
 
   const { data: settings, error: csErr } = await admin
     .from("company_settings")
@@ -819,14 +849,19 @@ export async function cancelarNFe(
     throw new Error("Justificativa deve ter pelo menos 15 caracteres.");
   }
 
-  const { data: row, error } = await admin
+  const db = asUntypedAdmin(admin);
+  const { data: row, error } = await db
     .from("nfes")
-    .select("id, status")
+    .select("id, status, provider")
     .eq("id", nfeId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!row) throw new Error("NFS-e não encontrada.");
+  if ((row as { provider?: string }).provider === "bling") {
+    await cancelarNfeViaBling(admin, tenantId, nfeId, justificativa);
+    return { ok: true, status: 200, data: { provider: "bling" } };
+  }
 
   const { data: settings, error: csErr } = await admin
     .from("company_settings")

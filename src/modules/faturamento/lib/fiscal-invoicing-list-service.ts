@@ -26,12 +26,17 @@ type SalesOrderBase = {
   fiscal_status: string | null;
   billing_closure: string | null;
   billing_plan: string | null;
+  invoice_document_type: string | null;
 };
 
 type NfeSummary = {
   id: string;
   status: string;
   nfe_number: string | null;
+  pdf_url: string | null;
+  xml_url: string | null;
+  error_message: string | null;
+  provider: string | null;
   updated_at: string;
 };
 
@@ -40,6 +45,11 @@ export type FiscalInvoicingListRow = SalesOrderBase & {
   nfe_id: string | null;
   nfe_status: string | null;
   nfe_number: string | null;
+  nfe_pdf_url: string | null;
+  nfe_xml_url: string | null;
+  nfe_error: string | null;
+  nfe_provider: string | null;
+  invoice_document_type: string | null;
   can_emit: boolean;
   can_confirm_without_invoice: boolean;
   emit_blockers: string[];
@@ -59,9 +69,12 @@ async function loadLatestNfesByOrder(
   const out = new Map<string, NfeSummary>();
   if (!orderIds.length) return out;
 
-  const { data, error } = await admin
+  const db = asUntypedAdmin(admin);
+  const { data, error } = await db
     .from("nfes")
-    .select("id, sales_order_id, status, nfe_number, updated_at")
+    .select(
+      "id, sales_order_id, status, nfe_number, pdf_url, xml_url, error_message, provider, updated_at"
+    )
     .eq("tenant_id", tenantId)
     .in("sales_order_id", orderIds)
     .order("updated_at", { ascending: false });
@@ -75,6 +88,10 @@ async function loadLatestNfesByOrder(
       id: row.id,
       status: row.status,
       nfe_number: row.nfe_number,
+      pdf_url: (row as { pdf_url?: string | null }).pdf_url ?? null,
+      xml_url: (row as { xml_url?: string | null }).xml_url ?? null,
+      error_message: (row as { error_message?: string | null }).error_message ?? null,
+      provider: (row as { provider?: string | null }).provider ?? null,
       updated_at: row.updated_at,
     });
   }
@@ -165,7 +182,7 @@ function matchesTab(
         nfeStatus === "authorized" || row.billing_closure === "without_invoice"
       );
     case "nfe_error":
-      return nfeStatus === "error";
+      return nfeStatus === "error" || nfeStatus === "rejected";
     default:
       return true;
   }
@@ -221,7 +238,7 @@ export async function listFiscalInvoicingOrders(
   let query = db
     .from("sales_orders")
     .select(
-      "id, order_number, client_name, order_date, total, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan",
+      "id, order_number, client_name, order_date, total, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan, invoice_document_type",
       { count: "exact" }
     )
     .eq("tenant_id", tenantId)
@@ -300,7 +317,7 @@ export async function listFiscalInvoicingOrders(
         .from("nfes")
         .select("sales_order_id")
         .eq("tenant_id", tenantId)
-        .in("status", ["error"])
+        .in("status", ["error", "rejected"])
         .not("sales_order_id", "is", null);
       if (nfeErr) throw new Error(nfeErr.message);
       const ids = [
@@ -362,6 +379,11 @@ export async function listFiscalInvoicingOrders(
       nfe_id: nfe?.id ?? null,
       nfe_status: nfe?.status ?? null,
       nfe_number: nfe?.nfe_number ?? null,
+      nfe_pdf_url: nfe?.pdf_url ?? null,
+      nfe_xml_url: nfe?.xml_url ?? null,
+      nfe_error: nfe?.error_message ?? null,
+      nfe_provider: nfe?.provider ?? null,
+      invoice_document_type: row.invoice_document_type ?? null,
       can_emit: gate.ok,
       can_confirm_without_invoice: canConfirmWithoutInvoice,
       emit_blockers: gate.reasons,

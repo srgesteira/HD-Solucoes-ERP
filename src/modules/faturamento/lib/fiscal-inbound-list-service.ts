@@ -80,7 +80,7 @@ export async function listFiscalInboundOrders(
   const { data, error } = await query.limit(fetchLimit);
   if (error) throw new Error(error.message);
 
-  const rows: FiscalInboundListRow[] = (data ?? []).map((raw) => {
+  const rows: FiscalInboundListRow[] = (data ?? []).map((raw: unknown) => {
     const r = raw as {
       id: string;
       po_number: string;

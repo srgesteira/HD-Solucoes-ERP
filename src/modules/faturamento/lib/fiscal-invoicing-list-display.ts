@@ -15,6 +15,8 @@ export function nfeStatusLabelPt(status: string | null | undefined): string {
       return "Processando";
     case "authorized":
       return "Autorizada";
+    case "rejected":
+      return "Rejeitada";
     case "error":
       return "Erro";
     case "cancelled":
@@ -42,9 +44,10 @@ export function nfeStatusPill(status: string | null | undefined): {
         className:
           "bg-emerald-50 text-emerald-950 ring-1 ring-emerald-200 dark:bg-emerald-950/35 dark:text-emerald-100",
       };
+    case "rejected":
     case "error":
       return {
-        label: "Erro",
+        label: nfeStatusLabelPt(status),
         className:
           "bg-red-50 text-red-900 ring-1 ring-red-200 dark:bg-red-950/40 dark:text-red-100",
       };

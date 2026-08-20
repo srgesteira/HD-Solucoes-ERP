@@ -11,6 +11,7 @@ import {
   PackageCheck,
   Printer,
   RefreshCw,
+  Send,
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +35,7 @@ import {
   FiscalItemEditModal,
 } from "@/components/fiscal/fiscal-item-edit-modal";
 import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-billing-display";
+import { nfeStatusPill } from "@/modules/faturamento/lib/fiscal-invoicing-list-display";
 import {
   INVOICE_DOCUMENT_TYPE_LABELS,
   INVOICE_DOCUMENT_TYPES,
@@ -183,6 +185,17 @@ async function postInvoiceDocumentType(
   return json.data;
 }
 
+async function postEmitNfe(salesOrderId: string): Promise<void> {
+  const res = await fetch("/api/nfe/emitir", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sales_order_id: salesOrderId }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao emitir nota");
+}
+
 export default function FiscalOrderReviewPage() {
   const params = useParams();
   const router = useRouter();
@@ -266,6 +279,18 @@ export default function FiscalOrderReviewPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const emitMutation = useMutation({
+    mutationFn: () => postEmitNfe(orderId),
+    onSuccess: () => {
+      toast.success("Emissão enviada ao Bling. Acompanhe o status da nota.");
+      void queryClient.invalidateQueries({
+        queryKey: ["fiscal-order-review", orderId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const runAi = async () => {
     setAiLoading(true);
     try {
@@ -297,9 +322,18 @@ export default function FiscalOrderReviewPage() {
     const d = billingNfeDisplayLabel({
       billing_closure: data.billing_closure,
       billing_plan: data.billing_plan,
-      nfe_status: null,
+      nfe_status: data.nfe?.status ?? null,
     });
     if (d.label) return d;
+    if (data.nfe?.status) {
+      const pill = nfeStatusPill(data.nfe.status);
+      return {
+        label: data.nfe.nfe_number
+          ? `${pill.label} · ${data.nfe.nfe_number}`
+          : pill.label,
+        className: pill.className,
+      };
+    }
     return { label: "Sem NF-e", className: "bg-slate-100 text-slate-700" };
   }, [data]);
 
@@ -402,6 +436,26 @@ export default function FiscalOrderReviewPage() {
                   <PackageCheck className="h-4 w-4" />
                 )}
                 Confirmar sem nota
+              </Button>
+            ) : null}
+            {data.can_emit && data.billing_plan !== "without_invoice" ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={!isAdmin || emitMutation.isPending}
+                title={
+                  data.emit_blockers.length
+                    ? data.emit_blockers.join(" ")
+                    : "Emitir NF-e via Bling (produto) ou NFS-e via Focus"
+                }
+                onClick={() => emitMutation.mutate()}
+              >
+                {emitMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Emitir nota
               </Button>
             ) : null}
             <Link
@@ -544,6 +598,33 @@ export default function FiscalOrderReviewPage() {
                     {nfeDisplay.label}
                   </span>
                 </div>
+                {data.nfe?.error_message ? (
+                  <p className="text-xs text-red-700">{data.nfe.error_message}</p>
+                ) : null}
+                {data.nfe?.pdf_url || data.nfe?.xml_url ? (
+                  <div className="flex gap-3 text-xs">
+                    {data.nfe.pdf_url ? (
+                      <a
+                        href={data.nfe.pdf_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-700 hover:underline"
+                      >
+                        DANFE
+                      </a>
+                    ) : null}
+                    {data.nfe.xml_url ? (
+                      <a
+                        href={data.nfe.xml_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-700 hover:underline"
+                      >
+                        XML
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-slate-500">Data pedido</span>
@@ -631,6 +712,14 @@ export default function FiscalOrderReviewPage() {
                         </div>
                         {!it.product_id ? (
                           <div className="text-[10px] text-amber-700">Sem produto</div>
+                        ) : null}
+                        {it.product_id && !it.bling_product_id &&
+                        (data.invoice_document_type === "nfe_product" ||
+                          data.invoice_document_type === "nfe_industrialization") ? (
+                          <div className="text-[10px] text-red-700">
+                            Sem produto correspondente no Bling
+                            {it.product_code ? ` (SKU ${it.product_code})` : ""}
+                          </div>
                         ) : null}
                         {it.line_warnings.length > 0 ? (
                           <div className="mt-1 text-[10px] text-amber-800">

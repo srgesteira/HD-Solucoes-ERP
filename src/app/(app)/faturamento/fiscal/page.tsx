@@ -102,6 +102,17 @@ async function fetchFiscalInvoicing(filters: {
   return json;
 }
 
+async function postEmitNfe(salesOrderId: string): Promise<void> {
+  const res = await fetch("/api/nfe/emitir", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sales_order_id: salesOrderId }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao emitir nota");
+}
+
 async function consultNfe(nfeId: string): Promise<void> {
   const res = await fetch(
     `/api/nfe/consultar?nfe_id=${encodeURIComponent(nfeId)}`,
@@ -175,6 +186,7 @@ export default function FiscalInvoicingPage() {
   const [page, setPage] = useState(1);
   const limit = 25;
   const [syncingNfeId, setSyncingNfeId] = useState<string | null>(null);
+  const [emittingOrderId, setEmittingOrderId] = useState<string | null>(null);
   const [closingWithoutInvoiceId, setClosingWithoutInvoiceId] = useState<
     string | null
   >(null);
@@ -218,11 +230,24 @@ export default function FiscalInvoicingPage() {
     void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
   };
 
+  const emitNfe = useCallback(async (orderId: string) => {
+    setEmittingOrderId(orderId);
+    try {
+      await postEmitNfe(orderId);
+      toast.success("Emissão enviada. Acompanhe o status da nota nesta lista.");
+      invalidateList();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao emitir");
+    } finally {
+      setEmittingOrderId(null);
+    }
+  }, []);
+
   const syncNfe = useCallback(async (nfeId: string) => {
     setSyncingNfeId(nfeId);
     try {
       await consultNfe(nfeId);
-      toast.success("Estado da NFS-e actualizado.");
+      toast.success("Estado da nota actualizado.");
       invalidateList();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
@@ -394,15 +419,41 @@ export default function FiscalInvoicingPage() {
           }
           const pill = nfeStatusPill(row.nfe_status);
           return (
-            <span
-              className={cn(
-                "inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset",
-                pill.className
-              )}
-              title={row.nfe_number ?? undefined}
-            >
-              {row.nfe_number ? `${pill.label} · ${row.nfe_number}` : pill.label}
-            </span>
+            <div className="flex flex-col gap-0.5">
+              <span
+                className={cn(
+                  "inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset",
+                  pill.className
+                )}
+                title={row.nfe_error ?? row.nfe_number ?? undefined}
+              >
+                {row.nfe_number ? `${pill.label} · ${row.nfe_number}` : pill.label}
+              </span>
+              {row.nfe_pdf_url || row.nfe_xml_url ? (
+                <span className="flex gap-1 text-[10px]">
+                  {row.nfe_pdf_url ? (
+                    <a
+                      href={row.nfe_pdf_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-700 hover:underline"
+                    >
+                      DANFE
+                    </a>
+                  ) : null}
+                  {row.nfe_xml_url ? (
+                    <a
+                      href={row.nfe_xml_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-700 hover:underline"
+                    >
+                      XML
+                    </a>
+                  ) : null}
+                </span>
+              ) : null}
+            </div>
           );
         },
       },
@@ -540,12 +591,21 @@ export default function FiscalInvoicingPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="primary"
                   className="h-7 px-2 text-[11px]"
-                  title="Emissão na Expedição"
-                  onClick={() => router.push("/logistics/shipping")}
+                  title={
+                    row.emit_blockers.length
+                      ? row.emit_blockers.join(" ")
+                      : "Emitir nota"
+                  }
+                  disabled={emittingOrderId === row.id}
+                  onClick={() => void emitNfe(row.id)}
                 >
-                  <Send className="h-3.5 w-3.5" />
+                  {emittingOrderId === row.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Send className="h-3.5 w-3.5" />
+                  )}
                 </Button>
               ) : null}
               {isAdmin &&
@@ -627,7 +687,7 @@ export default function FiscalInvoicingPage() {
   return (
     <AppPage
       title="Faturamento fiscal"
-      description="Lista por fase — conferência fiscal, liberação PCP e emissão (via Expedição)."
+        description="Lista por fase — conferência fiscal, liberação PCP e emissão da nota (NF-e via Bling, NFS-e via Focus)."
       width="wide"
       density="comfortable"
       actions={

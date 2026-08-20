@@ -7,6 +7,7 @@ import {
   salesOrderRowToReceivablesInput,
   syncReceivablesForSalesOrder,
 } from "@/modules/vendas/lib/sales/sales-receivables";
+import { notifyCustomerNfeAuthorized } from "@/modules/fiscal/lib/bling/send-nfe-status-email";
 
 type Admin = SupabaseClient<Database>;
 
@@ -245,6 +246,8 @@ export async function maybeCloseSalesOrderOnNfeAuthorized(
 
   if (error) throw new Error(error.message);
   if (!nfe?.sales_order_id || nfe.status !== "authorized") return;
+
+  await notifyCustomerNfeAuthorized(admin, tenantId, nfeId);
 
   const result = await closeSalesOrderBilling(
     admin,

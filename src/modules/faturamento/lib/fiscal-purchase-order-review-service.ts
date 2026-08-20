@@ -122,7 +122,7 @@ export async function getFiscalPurchaseOrderReview(
 
   const warnings: string[] = [];
   const reviewItems: FiscalPurchaseOrderReviewItem[] = (items ?? []).map(
-    (raw) => {
+    (raw: unknown) => {
       const it = raw as {
         id: string;
         description: string;

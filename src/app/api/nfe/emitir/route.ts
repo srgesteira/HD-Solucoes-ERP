@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   const canFaturamento = await currentUserCanMenuModule("faturamento");
   if (!isAdmin && !canExpedicao && !canFaturamento) {
     return apiError(
-      "Sem permissão para emitir NFS-e (Expedição ou Faturamento).",
+      "Sem permissão para emitir nota (Expedição ou Faturamento).",
       403
     );
   }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Download, Loader2, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -25,7 +25,7 @@ type CompanyRow = Tables<"company_settings"> & {
   focusnfe_configured?: boolean;
 };
 
-type TabKey = "info" | "address" | "documents";
+type TabKey = "info" | "address" | "documents" | "integrations";
 
 async function fetchCompany(): Promise<CompanyRow | null> {
   const res = await fetch("/api/company/settings", {
@@ -97,22 +97,45 @@ function emptyDraft(): Partial<CompanyRow> {
     default_payment_terms: "30 dias",
     default_delivery_days: 30,
     cash_flow_opening_balance: 0,
-      das_aliquot: null,
-      focusnfe_token: "",
-      focusnfe_environment: "homologacao",
-      nfse_item_lista_servico: null,
-      nfse_iss_aliquota: null,
-      nfse_prestador_codigo_municipio: "3550308",
-      nfse_codigo_nbs: "000000000",
-      nfse_codigo_indicador_operacao: "000000",
-      nfse_ibs_cbs_classificacao_tributaria: "000001",
-      nfse_use_sao_paulo_payload: false,
-      nfse_codigo_tributario_municipio: null,
+    das_aliquot: null,
+    focusnfe_token: "",
+    focusnfe_environment: "homologacao",
+    nfse_item_lista_servico: null,
+    nfse_iss_aliquota: null,
+    nfse_prestador_codigo_municipio: "3550308",
+    nfse_codigo_nbs: "000000000",
+    nfse_codigo_indicador_operacao: "000000",
+    nfse_ibs_cbs_classificacao_tributaria: "000001",
+    nfse_use_sao_paulo_payload: false,
+    nfse_codigo_tributario_municipio: null,
     };
+}
+
+type BlingStatus = {
+  app_configured: boolean;
+  connected: boolean;
+  expires_at: string | null;
+  connected_at: string | null;
+  can_manage: boolean;
+};
+
+async function fetchBlingStatus(): Promise<BlingStatus> {
+  const res = await fetch("/api/integrations/bling/status", {
+    credentials: "include",
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: BlingStatus;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao ler estado do Bling");
+  if (!json.data) throw new Error("Resposta inválida");
+  return json.data;
 }
 
 export default function CompanySettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { data: me, isLoading: meLoading } = useMe();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -126,6 +149,67 @@ export default function CompanySettingsPage() {
     queryFn: fetchCompany,
     enabled: !meLoading && me?.role === "admin",
   });
+
+  const blingQuery = useQuery({
+    queryKey: ["bling-status"],
+    queryFn: fetchBlingStatus,
+    enabled: !meLoading && me?.role === "admin",
+  });
+
+  const disconnectBlingMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/integrations/bling/disconnect", {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao desligar");
+    },
+    onSuccess: () => {
+      toast.success("Bling desligado.");
+      void queryClient.invalidateQueries({ queryKey: ["bling-status"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const syncBlingMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/integrations/bling/sync", {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { linked: number; missing: number; scanned: number };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao sincronizar");
+      return json.data;
+    },
+    onSuccess: (data) => {
+      toast.success(
+        `Catálogo: ${data?.linked ?? 0} ligados, ${data?.missing ?? 0} sem correspondente no Bling.`
+      );
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t === "integrations" || t === "info" || t === "address" || t === "documents") {
+      setTab(t);
+    }
+    const bling = searchParams.get("bling");
+    if (!bling) return;
+    if (bling === "connected") {
+      toast.success("Bling autorizado com sucesso.");
+      void queryClient.invalidateQueries({ queryKey: ["bling-status"] });
+    } else if (bling === "error") {
+      toast.error(
+        searchParams.get("reason") || "Falha na autorização do Bling."
+      );
+    }
+    router.replace("/settings/company?tab=integrations", { scroll: false });
+  }, [searchParams, queryClient, router]);
 
   useEffect(() => {
     if (meLoading) return;
@@ -314,6 +398,7 @@ export default function CompanySettingsPage() {
     { key: "info", label: "Informações" },
     { key: "address", label: "Endereço" },
     { key: "documents", label: "Documentos" },
+    { key: "integrations", label: "Integrações" },
   ];
 
   if (meLoading || (me && me.role !== "admin")) {
@@ -1097,6 +1182,101 @@ export default function CompanySettingsPage() {
             </Card>
           ) : null}
 
+          {tab === "integrations" ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Bling — emissão de NF-e</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <p className="text-slate-600">
+                  A NF-e de produto é emitida no Bling (configuração fiscal do
+                  contador: NCM, CFOP, CSOSN). A NFS-e municipal continua na
+                  FocusNFe. Tokens OAuth não são exibidos.
+                </p>
+                {blingQuery.isLoading ? (
+                  <LoadingState label="A verificar ligação…" />
+                ) : blingQuery.error ? (
+                  <p className="text-red-700">
+                    {blingQuery.error instanceof Error
+                      ? blingQuery.error.message
+                      : "Erro ao ler o Bling"}
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {blingQuery.data?.connected ? (
+                        <StatusBadge tone="success">Ligado</StatusBadge>
+                      ) : (
+                        <StatusBadge tone="muted">Não ligado</StatusBadge>
+                      )}
+                      {!blingQuery.data?.app_configured ? (
+                        <StatusBadge tone="muted">
+                          Falta BLING_CLIENT_ID / SECRET no ambiente
+                        </StatusBadge>
+                      ) : null}
+                    </div>
+                    {blingQuery.data?.connected_at ? (
+                      <p className="text-xs text-slate-500">
+                        Autorizado em{" "}
+                        {new Date(blingQuery.data.connected_at).toLocaleString(
+                          "pt-BR"
+                        )}
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!blingQuery.data?.app_configured}
+                        onClick={() => {
+                          window.location.href =
+                            "/api/integrations/bling/authorize";
+                        }}
+                      >
+                        {blingQuery.data?.connected
+                          ? "Reautorizar Bling"
+                          : "Ligar Bling"}
+                      </Button>
+                      {blingQuery.data?.connected ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={syncBlingMutation.isPending}
+                            onClick={() => syncBlingMutation.mutate()}
+                          >
+                            {syncBlingMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : null}
+                            Sincronizar produtos (SKU)
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={disconnectBlingMutation.isPending}
+                            onClick={() => disconnectBlingMutation.mutate()}
+                          >
+                            Desligar
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Redirect URI a cadastrar no painel do Bling:{" "}
+                      <code className="text-[11px]">
+                        {typeof window !== "undefined"
+                          ? `${window.location.origin}/api/integrations/bling/callback`
+                          : "/api/integrations/bling/callback"}
+                      </code>
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
           <Card className="border-slate-200">
             <CardHeader>
               <CardTitle className="text-lg">Dados pessoais (LGPD)</CardTitle>
@@ -1133,6 +1313,7 @@ export default function CompanySettingsPage() {
             </CardContent>
           </Card>
 
+          {tab !== "integrations" ? (
           <div className="flex justify-end">
             <Button
               type="button"
@@ -1147,6 +1328,7 @@ export default function CompanySettingsPage() {
               Guardar alterações
             </Button>
           </div>
+          ) : null}
         </>
       )}
     </AppPage>
