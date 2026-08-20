@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/integrations/bling/reconcile",
-      "schedule": "*/10 * * * *"
+      "schedule": "20 11 * * *"
     }
   ]
 }
