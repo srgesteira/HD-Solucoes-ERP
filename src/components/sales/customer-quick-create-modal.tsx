@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
 import { Button } from "@/shared/ui/button";
@@ -142,6 +142,7 @@ export function CustomerQuickCreateModal({
   editCustomer,
 }: Props) {
   const isEdit = Boolean(editCustomer?.id);
+  const ieInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [document, setDocument] = useState("");
   const [stateRegistration, setStateRegistration] = useState("");
@@ -183,7 +184,7 @@ export function CustomerQuickCreateModal({
     if (!open || !isEdit) return;
     if ((editCustomer?.state_registration ?? "").trim()) return;
     const frame = window.requestAnimationFrame(() => {
-      document.getElementById("qc-ie")?.focus();
+      ieInputRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [open, isEdit, editCustomer?.id, editCustomer?.state_registration]);
@@ -383,6 +384,7 @@ export function CustomerQuickCreateModal({
               <Label htmlFor="qc-ie">Inscrição estadual (IE)</Label>
               <Input
                 id="qc-ie"
+                ref={ieInputRef}
                 value={stateRegistration}
                 onChange={(e) => setStateRegistration(e.target.value)}
                 placeholder="Ex.: 112.366.822.114"
