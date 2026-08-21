@@ -6,6 +6,8 @@ import { unwrapBlingData } from "@/modules/fiscal/lib/bling/bling-nfe-status";
 import {
   blingEnderecoFromParts,
   parseFreeformAddressToBling,
+  readEnderecoFromBlingContact,
+  toBlingContatoEndereco,
   type BlingEnderecoPayload,
 } from "@/modules/fiscal/lib/bling/bling-contact-address";
 import { lookupCnpj } from "@/shared/utils/external/document-lookup";
@@ -35,15 +37,52 @@ async function resolveBlingEndereco(input: {
   address: string | null;
   document: string | null;
 }): Promise<BlingEnderecoPayload | null> {
-  const parsed = parseFreeformAddressToBling(input.address);
-  if (parsed) return parsed;
-  const doc = digitsOnly(input.document);
+  const parsed =
+    parseFreeformAddressToBling(input.address) ??
+    (digitsOnly(input.document).length === 14
+      ? await lookupEnderecoByCnpj(input.document)
+      : null);
+  if (!parsed) return null;
+  return normalizeMunicipioViaCep(parsed);
+}
+
+async function lookupEnderecoByCnpj(
+  document: string | null
+): Promise<BlingEnderecoPayload | null> {
+  const doc = digitsOnly(document);
   if (doc.length !== 14) return null;
   try {
     const lookup = await lookupCnpj(doc);
     return blingEnderecoFromParts(lookup.address_parts);
   } catch {
     return null;
+  }
+}
+
+async function normalizeMunicipioViaCep(
+  end: BlingEnderecoPayload
+): Promise<BlingEnderecoPayload> {
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${end.cep}/json/`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) return end;
+    const j = (await res.json()) as {
+      erro?: boolean;
+      localidade?: string;
+      uf?: string;
+      bairro?: string;
+    };
+    if (j.erro) return end;
+    return {
+      ...end,
+      municipio: (j.localidade ?? "").trim() || end.municipio,
+      uf: (j.uf ?? end.uf).trim().toUpperCase().slice(0, 2),
+      bairro: end.bairro || (j.bairro ?? "").trim() || "Centro",
+    };
+  } catch {
+    return end;
   }
 }
 
@@ -63,7 +102,9 @@ function contactPayload(input: {
     numeroDocumento: doc || undefined,
     email: input.email?.trim() || undefined,
     telefone: input.phone?.trim() || undefined,
-    ...(input.endereco ? { endereco: input.endereco } : {}),
+    ...(input.endereco
+      ? { endereco: toBlingContatoEndereco(input.endereco) }
+      : {}),
   };
 }
 
@@ -142,17 +183,7 @@ function readBlingContactEndereco(
 ): { cep: string; municipio: string; uf: string; endereco: string } | null {
   const data = unwrapBlingData(payload);
   if (!data) return null;
-  const raw =
-    data.endereco && typeof data.endereco === "object"
-      ? (data.endereco as Record<string, unknown>)
-      : null;
-  if (!raw) return null;
-  return {
-    cep: String(raw.cep ?? "").replace(/\D/g, ""),
-    municipio: String(raw.municipio ?? "").trim(),
-    uf: String(raw.uf ?? "").trim(),
-    endereco: String(raw.endereco ?? "").trim(),
-  };
+  return readEnderecoFromBlingContact(data);
 }
 
 async function assertBlingContactHasAddress(

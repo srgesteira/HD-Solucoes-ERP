@@ -128,3 +128,55 @@ export function parseFreeformAddressToBling(
     pais: "BR",
   };
 }
+
+export function formatCepBling(cep: string): string {
+  const d = cepDigits(cep);
+  if (d.length === 8) return `${d.slice(0, 5)}-${d.slice(5)}`;
+  return d;
+}
+
+/** Schema oficial v3: `endereco.geral` / `endereco.cobranca`. */
+export function toBlingContatoEndereco(end: BlingEnderecoPayload): {
+  geral: Record<string, string>;
+  cobranca: Record<string, string>;
+} {
+  const geral: Record<string, string> = {
+    endereco: end.endereco,
+    numero: end.numero,
+    bairro: end.bairro,
+    municipio: end.municipio,
+    uf: end.uf,
+    cep: formatCepBling(end.cep),
+  };
+  if (end.complemento) geral.complemento = end.complemento;
+  return { geral, cobranca: { ...geral } };
+}
+
+function municipioNome(value: unknown): string {
+  if (value && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    return trimPart(String(o.nome ?? o.descricao ?? o.municipio ?? ""));
+  }
+  return trimPart(String(value ?? ""));
+}
+
+export function readEnderecoFromBlingContact(data: Record<string, unknown>): {
+  cep: string;
+  municipio: string;
+  uf: string;
+  endereco: string;
+} | null {
+  const end = data.endereco;
+  if (!end || typeof end !== "object") return null;
+  const root = end as Record<string, unknown>;
+  const geral =
+    root.geral && typeof root.geral === "object"
+      ? (root.geral as Record<string, unknown>)
+      : root;
+  const cep = cepDigits(String(geral.cep ?? ""));
+  const municipio = municipioNome(geral.municipio);
+  const uf = trimPart(String(geral.uf ?? "")).toUpperCase();
+  const endereco = trimPart(String(geral.endereco ?? ""));
+  if (!cep && !municipio && !endereco) return null;
+  return { cep, municipio, uf, endereco };
+}
