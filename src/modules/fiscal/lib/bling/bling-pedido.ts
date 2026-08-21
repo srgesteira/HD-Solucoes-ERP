@@ -175,12 +175,12 @@ async function cancelOrphanBlingPedidos(
   }
 }
 
-async function resolveCanonicalBlingPedidoId(
+async function resolveCanonicalBlingPedido(
   admin: Admin,
   tenantId: string,
   orderNumber: string,
   storedId: number | null
-): Promise<number | null> {
+): Promise<BlingPedidoHit | null> {
   const hits: BlingPedidoHit[] = [];
   const seen = new Set<number>();
   if (storedId && Number.isFinite(storedId)) {
@@ -200,11 +200,30 @@ async function resolveCanonicalBlingPedidoId(
     hits.push(detail ?? hit);
     seen.add(hit.id);
   }
-  const canonical = pickCanonicalBlingPedidoId(hits, storedId);
-  if (canonical) {
-    await cancelOrphanBlingPedidos(admin, tenantId, canonical, hits);
+  const canonicalId = pickCanonicalBlingPedidoId(hits, storedId);
+  if (!canonicalId) return null;
+  await cancelOrphanBlingPedidos(admin, tenantId, canonicalId, hits);
+  return hits.find((h) => h.id === canonicalId) ?? { id: canonicalId, nfeId: null };
+}
+
+function isBlingPedidoLockedByNfe(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  return /nota fiscal do pedido já foi gerada/i.test(msg);
+}
+
+async function putBlingPedidoUnlessLocked(
+  admin: Admin,
+  tenantId: string,
+  pedidoId: number,
+  body: Record<string, unknown>
+): Promise<boolean> {
+  try {
+    await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, body);
+    return true;
+  } catch (e) {
+    if (isBlingPedidoLockedByNfe(e)) return false;
+    throw e;
   }
-  return canonical;
 }
 
 function isBlingNotFound(e: unknown): boolean {
@@ -630,16 +649,26 @@ export async function ensureBlingPedidoForSalesOrder(
   const storedId = so.bling_pedido_venda_id
     ? Number(so.bling_pedido_venda_id)
     : null;
-  let pedidoId = await resolveCanonicalBlingPedidoId(
+  const canonical = await resolveCanonicalBlingPedido(
     admin,
     tenantId,
     so.order_number,
     storedId && Number.isFinite(storedId) ? storedId : null
   );
+  let pedidoId = canonical?.id ?? null;
+  let lockedByNfe = Boolean(canonical?.nfeId);
   let created = false;
 
   if (pedidoId) {
-    await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, payloadBase);
+    if (!lockedByNfe) {
+      const wrote = await putBlingPedidoUnlessLocked(
+        admin,
+        tenantId,
+        pedidoId,
+        payloadBase
+      );
+      if (!wrote) lockedByNfe = true;
+    }
   } else {
     const createdPayload = await blingPost(
       admin,
@@ -659,18 +688,22 @@ export async function ensureBlingPedidoForSalesOrder(
   const blingTotal = readBlingPedidoTotal(fetched) ?? netTotal;
   const mirrored = parseBlingPedidoTransporte(fetched);
   const amounts = splitAmountInInstallments(blingTotal, nfeParcelas.length);
-  try {
-    await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, {
-      ...payloadBase,
-      parcelas: nfeParcelas.map((p, i) => ({
-        dataVencimento: p.data,
-        valor: amounts[i],
-        observacoes: p.observacoes,
-        formaPagamento: { id: formaPagamentoId },
-      })),
-    });
-  } catch {
-    // Pedido já gravado; o Bling gera parcelas iguais ao total se as nossas forem recusadas.
+  if (!lockedByNfe) {
+    const wroteParcelas = await putBlingPedidoUnlessLocked(
+      admin,
+      tenantId,
+      pedidoId,
+      {
+        ...payloadBase,
+        parcelas: nfeParcelas.map((p, i) => ({
+          dataVencimento: p.data,
+          valor: amounts[i],
+          observacoes: p.observacoes,
+          formaPagamento: { id: formaPagamentoId },
+        })),
+      }
+    );
+    if (!wroteParcelas) lockedByNfe = true;
   }
 
   const { error: saveErr } = await db
@@ -705,7 +738,9 @@ export async function ensureBlingPedidoForSalesOrder(
     throw new Error(mirrorErr.message);
   }
 
-  await reopenBlingPedidoEmAberto(admin, tenantId, pedidoId);
+  if (!lockedByNfe) {
+    await reopenBlingPedidoEmAberto(admin, tenantId, pedidoId);
+  }
 
   return {
     pedido_venda_id: pedidoId,
