@@ -9,6 +9,7 @@ import {
   FileText,
   Loader2,
   PackageCheck,
+  Printer,
   Save,
   Send,
   Truck,
@@ -30,6 +31,8 @@ import {
 import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
 import { canEditField } from "@/shared/auth/field-permissions";
 import { formatBrazilianDateTime, formatShortDate } from "@/shared/utils/date";
+import { cn } from "@/shared/utils/cn";
+import { nfeStatusPill } from "@/modules/faturamento/lib/fiscal-invoicing-list-display";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -62,6 +65,13 @@ type Detail = {
     can_emit: boolean;
     reasons: string[];
     order_number: string | null;
+  } | null;
+  nfe?: {
+    id: string;
+    status: string;
+    nfe_number: string | null;
+    pdf_url: string | null;
+    error_message: string | null;
   } | null;
 };
 
@@ -222,6 +232,10 @@ export default function ShipmentDetailPage() {
     queryKey: ["shipment", id],
     queryFn: () => fetchShipment(id),
     enabled: Boolean(id),
+    refetchInterval: (q) => {
+      const status = q.state.data?.nfe?.status;
+      return status === "pending" || status === "processing" ? 4000 : false;
+    },
   });
 
   useEffect(() => {
@@ -306,6 +320,9 @@ export default function ShipmentDetailPage() {
   if (!query.data || !form) return null;
   const s = query.data.shipment;
   const gate = query.data.invoice_gate ?? null;
+  const nfe = query.data.nfe ?? null;
+  const danfeUrl = nfe?.status === "authorized" ? nfe.pdf_url?.trim() || null : null;
+  const nfePill = nfeStatusPill(nfe?.status);
   const busy =
     dispatchMut.isPending ||
     deliverMut.isPending ||
@@ -357,6 +374,39 @@ export default function ShipmentDetailPage() {
               )}
               Emitir nota
             </Button>
+          ) : null}
+          {s.sales_order_id ? (
+            danfeUrl ? (
+              <Button
+                type="button"
+                onClick={() =>
+                  window.open(danfeUrl, "_blank", "noopener,noreferrer")
+                }
+                title={
+                  nfe?.nfe_number
+                    ? `DANFE oficial NF-e ${nfe.nfe_number}`
+                    : "DANFE oficial (PDF Bling / SEFAZ)"
+                }
+              >
+                <Printer className="h-4 w-4" />
+                Imprimir DANFE
+              </Button>
+            ) : (
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset",
+                  nfePill.className
+                )}
+                title={nfe?.error_message ?? undefined}
+              >
+                {nfe?.nfe_number
+                  ? `${nfePill.label} · ${nfe.nfe_number}`
+                  : nfePill.label}
+                {nfe?.status === "authorized" && !danfeUrl
+                  ? " — DANFE ainda não disponível"
+                  : null}
+              </span>
+            )
           ) : null}
           {s.status === "prepared" ? (
             <Button
@@ -425,6 +475,9 @@ export default function ShipmentDetailPage() {
                 <p className="text-xs text-emerald-800">
                   Pedido pronto — «Emitir nota» habilitado neste despacho.
                 </p>
+              ) : null}
+              {nfe?.error_message ? (
+                <p className="text-xs text-red-700">{nfe.error_message}</p>
               ) : null}
             </div>
           ) : null}

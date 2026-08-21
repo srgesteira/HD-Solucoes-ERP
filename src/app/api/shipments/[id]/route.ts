@@ -39,6 +39,13 @@ export async function GET(_request: NextRequest, { params }: Params) {
       reasons: string[];
       order_number: string | null;
     } | null = null;
+    let nfe: {
+      id: string;
+      status: string;
+      nfe_number: string | null;
+      pdf_url: string | null;
+      error_message: string | null;
+    } | null = null;
 
     if (shipment.sales_order_id) {
       const gate = await validateSalesOrderCanEmitNfe(
@@ -58,9 +65,28 @@ export async function GET(_request: NextRequest, { params }: Params) {
         order_number:
           so && typeof so.order_number === "string" ? so.order_number : null,
       };
+
+      const { data: nfeRows, error: nfeErr } = await admin
+        .from("nfes")
+        .select("id, status, nfe_number, pdf_url, error_message, updated_at")
+        .eq("tenant_id", tenantId)
+        .eq("sales_order_id", shipment.sales_order_id)
+        .order("updated_at", { ascending: false })
+        .limit(1);
+      if (nfeErr) throw new Error(nfeErr.message);
+      const nfeRow = nfeRows?.[0];
+      if (nfeRow) {
+        nfe = {
+          id: nfeRow.id,
+          status: nfeRow.status,
+          nfe_number: nfeRow.nfe_number,
+          pdf_url: nfeRow.pdf_url,
+          error_message: nfeRow.error_message,
+        };
+      }
     }
 
-    return apiOk({ shipment, invoice_gate });
+    return apiOk({ shipment, invoice_gate, nfe });
   } catch (e) {
     return apiError(
       e instanceof Error ? e.message : "Erro ao buscar despacho",
