@@ -19,6 +19,7 @@ export type CustomerOption = {
   id: string;
   name: string;
   document: string | null;
+  state_registration?: string | null;
   email: string | null;
   phone: string | null;
   address?: string | null;
@@ -29,6 +30,7 @@ export type CustomerFormValues = {
   id?: string;
   name: string;
   document: string | null;
+  state_registration?: string | null;
   email: string | null;
   phone: string | null;
   address: string | null;
@@ -78,6 +80,7 @@ async function saveCustomer(
     address: string | null;
     notes?: string | null;
     is_active?: boolean;
+    state_registration?: string | null;
   }
 ): Promise<CustomerOption> {
   const url =
@@ -141,6 +144,7 @@ export function CustomerQuickCreateModal({
   const isEdit = Boolean(editCustomer?.id);
   const [name, setName] = useState("");
   const [document, setDocument] = useState("");
+  const [stateRegistration, setStateRegistration] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -158,6 +162,7 @@ export function CustomerQuickCreateModal({
           ? formatDocumentMask(editCustomer.document)
           : ""
       );
+      setStateRegistration(editCustomer.state_registration ?? "");
       setEmail(editCustomer.email ?? "");
       setPhone(editCustomer.phone ?? "");
       setAddress(editCustomer.address ?? "");
@@ -165,6 +170,7 @@ export function CustomerQuickCreateModal({
     } else {
       setName("");
       setDocument("");
+      setStateRegistration("");
       setEmail("");
       setPhone("");
       setAddress("");
@@ -173,11 +179,21 @@ export function CustomerQuickCreateModal({
     setError(null);
   }, [open, editCustomer]);
 
+  useEffect(() => {
+    if (!open || !isEdit) return;
+    if ((editCustomer?.state_registration ?? "").trim()) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("qc-ie")?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, isEdit, editCustomer?.id, editCustomer?.state_registration]);
+
   if (!open) return null;
 
   const reset = () => {
     setName("");
     setDocument("");
+    setStateRegistration("");
     setEmail("");
     setPhone("");
     setAddress("");
@@ -252,10 +268,11 @@ export function CustomerQuickCreateModal({
       const payload = {
         name: n,
         document: normalizeDocumentForSave(document),
+        state_registration: stateRegistration.trim() || null,
         email: email.trim() || null,
         phone: phone.trim() || null,
         address: address.trim() || null,
-        ...(isEdit && notes.trim() ? { notes: notes.trim() } : {}),
+        ...(isEdit ? { notes: notes.trim() || null } : {}),
         is_active: editCustomer?.is_active ?? true,
       };
       const row = await saveCustomer(
@@ -271,6 +288,7 @@ export function CustomerQuickCreateModal({
           id: row.id,
           name: row.name,
           document: row.document ?? null,
+          state_registration: row.state_registration ?? null,
           email: row.email ?? null,
           phone: row.phone ?? null,
           address: row.address ?? null,
@@ -317,40 +335,6 @@ export function CustomerQuickCreateModal({
         </h2>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="qc-doc">CNPJ / CPF</Label>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                id="qc-doc"
-                value={document}
-                onChange={(e) =>
-                  setDocument(formatDocumentMask(e.target.value))
-                }
-                placeholder="00.000.000/0000-00 ou 000.000.000-00"
-                inputMode="numeric"
-                autoComplete="off"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                className="shrink-0"
-                disabled={!canLookup}
-                onClick={() => void handleLookup()}
-              >
-                {lookupBusy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="h-4 w-4" />
-                )}
-                Buscar dados
-              </Button>
-            </div>
-            <p className="text-xs text-slate-500">
-              CNPJ: consulta Receita (BrasilAPI). CPF: quando o serviço estiver
-              disponível.
-            </p>
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="qc-name">Nome *</Label>
             <Input
               id="qc-name"
@@ -359,6 +343,56 @@ export function CustomerQuickCreateModal({
               required
               autoFocus={!document.trim()}
             />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="qc-doc">CNPJ / CPF</Label>
+              <div className="flex flex-col gap-2">
+                <Input
+                  id="qc-doc"
+                  value={document}
+                  onChange={(e) =>
+                    setDocument(formatDocumentMask(e.target.value))
+                  }
+                  placeholder="00.000.000/0000-00"
+                  inputMode="numeric"
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={!canLookup}
+                  onClick={() => void handleLookup()}
+                >
+                  {lookupBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                  Buscar dados
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500">
+                CNPJ: consulta Receita. CPF: quando o serviço estiver disponível.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="qc-ie">Inscrição estadual (IE)</Label>
+              <Input
+                id="qc-ie"
+                value={stateRegistration}
+                onChange={(e) => setStateRegistration(e.target.value)}
+                placeholder="Ex.: 112.366.822.114"
+                autoComplete="off"
+              />
+              <p className="text-xs text-slate-500">
+                Preencha em todo cliente contribuinte de ICMS. Sem IE a NF-e
+                sai como não contribuinte.
+              </p>
+            </div>
           </div>
 
           <div className="space-y-2">

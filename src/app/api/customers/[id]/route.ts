@@ -87,6 +87,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (b.is_active !== undefined) {
     updateData.is_active = Boolean(b.is_active);
   }
+  if (b.state_registration !== undefined) {
+    updateData.state_registration =
+      b.state_registration == null
+        ? null
+        : String(b.state_registration).trim() || null;
+  }
 
   if (Object.keys(updateData).length === 0) {
     return apiError("Nenhum campo para atualizar", 400);

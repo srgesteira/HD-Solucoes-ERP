@@ -91,10 +91,12 @@ function contactPayload(input: {
   document: string | null;
   email: string | null;
   phone: string | null;
+  ie?: string | null;
   endereco: BlingEnderecoPayload | null;
 }): Record<string, unknown> {
   const doc = digitsOnly(input.document);
   const tipo = doc.length === 14 ? "J" : "F";
+  const ie = digitsOnly(input.ie);
   return {
     nome: input.name.trim() || "Cliente",
     tipo,
@@ -102,10 +104,36 @@ function contactPayload(input: {
     numeroDocumento: doc || undefined,
     email: input.email?.trim() || undefined,
     telefone: input.phone?.trim() || undefined,
+    ...(ie.length >= 8
+      ? { ie, contribuinte: 1, indicadorIe: 1 }
+      : {}),
     ...(input.endereco
       ? { endereco: toBlingContatoEndereco(input.endereco) }
       : {}),
   };
+}
+
+export async function loadCustomerStateRegistration(
+  admin: Admin,
+  tenantId: string,
+  document: string | null | undefined
+): Promise<string | null> {
+  const doc = digitsOnly(document);
+  if (doc.length < 11) return null;
+  const db = asUntypedAdmin(admin);
+  const { data } = await db
+    .from("customers")
+    .select("document, state_registration")
+    .eq("tenant_id", tenantId)
+    .not("document", "is", null);
+  const match = (
+    (data ?? []) as Array<{
+      document: string | null;
+      state_registration: string | null;
+    }>
+  ).find((c) => digitsOnly(c.document) === doc);
+  const ie = match?.state_registration?.trim() || "";
+  return ie || null;
 }
 
 export async function findBlingProductIdByCodigo(
@@ -149,6 +177,7 @@ export async function createBlingContact(
     email: string | null;
     phone: string | null;
     address: string | null;
+    ie?: string | null;
   }
 ): Promise<number> {
   const endereco = await requireBlingEndereco(input);
@@ -210,6 +239,7 @@ async function upsertBlingContactAddress(
     email: string | null;
     phone: string | null;
     address: string | null;
+    ie?: string | null;
   }
 ): Promise<void> {
   const endereco = await requireBlingEndereco(input);
@@ -262,6 +292,11 @@ export async function resolveBlingCatalogForSalesOrder(
   };
 
   const doc = digitsOnly(so.client_document);
+  const clientIe = await loadCustomerStateRegistration(
+    admin,
+    tenantId,
+    so.client_document
+  );
   let contactId: number | null = null;
   let contactCreated = false;
 
@@ -304,6 +339,7 @@ export async function resolveBlingCatalogForSalesOrder(
       email: so.client_email,
       phone: so.client_phone,
       address: so.client_address,
+      ie: clientIe,
     });
     contactCreated = true;
   } else {
@@ -313,6 +349,7 @@ export async function resolveBlingCatalogForSalesOrder(
       email: so.client_email,
       phone: so.client_phone,
       address: so.client_address,
+      ie: clientIe,
     });
   }
 

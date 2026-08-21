@@ -50,6 +50,7 @@ export function fiscalReviewToBlingNfeCreateInput(
     | "delivery_address_formatted"
     | "client_name"
     | "client_document"
+    | "client_state_registration"
     | "client_email"
     | "client_phone"
     | "client_address"
@@ -71,6 +72,7 @@ export function fiscalReviewToBlingNfeCreateInput(
     contactId,
     clientName: review.client_name,
     clientDocument: review.client_document,
+    clientIe: review.client_state_registration,
     clientEmail: review.client_email,
     clientPhone: review.client_phone,
     clientAddress: review.client_address,
@@ -143,6 +145,19 @@ function roundMoney(value: number): number {
 /** CSOSN permitido pela SEFAZ (rej. 600) quando o destino é não contribuinte. */
 export const CSOSN_NAO_CONTRIBUINTE = "102";
 
+export function inscricaoEstadualDigits(
+  value: string | null | undefined
+): string {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+/** Sem IE válida → não contribuinte (indicador 9). Com IE → contribuinte ICMS. */
+export function isNaoContribuinteIe(
+  ie: string | null | undefined
+): boolean {
+  return inscricaoEstadualDigits(ie).length < 8;
+}
+
 export function isConsumidorFinal(
   items: Array<{ usage_type?: string | null }>
 ): boolean {
@@ -197,6 +212,7 @@ export type BlingNfeCreateBodyInput = {
   contactId?: number | null;
   clientName: string;
   clientDocument: string | null;
+  clientIe?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
   clientAddress?: string | null;
@@ -222,13 +238,14 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
   finalidade: 1;
   dataOperacao: string;
   consumidorFinal?: boolean;
-  contato: {
-    id?: number;
-    nome: string;
-    tipoPessoa: "F" | "J";
-    numeroDocumento: string;
-    contribuinte?: 1 | 2 | 9;
-    indicadorIe?: number;
+    contato: {
+      id?: number;
+      nome: string;
+      tipoPessoa: "F" | "J";
+      numeroDocumento: string;
+      ie?: string;
+      contribuinte?: 1 | 2 | 9;
+      indicadorIe?: number;
     email?: string;
     telefone?: string;
     endereco?: ReturnType<typeof parseFreeformAddressToBling>;
@@ -258,6 +275,8 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
 
   const missingSku: string[] = [];
   const consumidorFinal = isConsumidorFinal(input.items);
+  const ie = inscricaoEstadualDigits(input.clientIe);
+  const naoContribuinte = isNaoContribuinteIe(ie);
   const itens = input.items.map((it) => {
     const codigo = skuForBlingNfeItem({
       code: it.code,
@@ -277,7 +296,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       tipo: "P" as const,
       classificacaoFiscal: ncmToClassificacaoFiscal(it.ncm),
       origem: 0,
-      ...(consumidorFinal
+      ...(naoContribuinte
         ? {
             situacaoTributaria: CSOSN_NAO_CONTRIBUINTE,
             cst: CSOSN_NAO_CONTRIBUINTE,
@@ -315,9 +334,13 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       nome: input.clientName.trim() || "Cliente",
       tipoPessoa: numeroDocumento.length === 14 ? "J" : "F",
       numeroDocumento,
-      ...(consumidorFinal
+      ...(naoContribuinte
         ? { contribuinte: 9 as const, indicadorIe: 9 }
-        : {}),
+        : {
+            contribuinte: 1 as const,
+            indicadorIe: 1,
+            ...(ie ? { ie } : {}),
+          }),
       ...(email ? { email } : {}),
       ...(telefone ? { telefone } : {}),
       ...(endereco ? { endereco } : {}),
@@ -364,16 +387,46 @@ export function applyNaoContribuinteCsosnToNfeData(
     naturezaOperacao: _natureza,
     ...rest
   } = data;
+  const { ie: _ie, ...contatoSemIe } = contatoRaw;
   return {
     ...rest,
     consumidorFinal: true,
     contato: {
-      ...contatoRaw,
+      ...contatoSemIe,
       contribuinte: 9,
       indicadorIe: 9,
     },
     itens,
   };
+}
+
+/** Destinatário com IE: contribuinte ICMS (CSOSN 101 da natureza é válido). */
+export function applyContribuinteIeToNfeData(
+  data: Record<string, unknown>,
+  ieRaw: string | null | undefined
+): Record<string, unknown> {
+  const ie = inscricaoEstadualDigits(ieRaw);
+  const contatoRaw =
+    data.contato && typeof data.contato === "object"
+      ? (data.contato as Record<string, unknown>)
+      : {};
+  return {
+    ...data,
+    contato: {
+      ...contatoRaw,
+      contribuinte: 1,
+      indicadorIe: 1,
+      ...(ie ? { ie } : {}),
+    },
+  };
+}
+
+export function applyFiscalDestinoToNfeData(
+  data: Record<string, unknown>,
+  ie: string | null | undefined
+): Record<string, unknown> {
+  if (isNaoContribuinteIe(ie)) return applyNaoContribuinteCsosnToNfeData(data);
+  return applyContribuinteIeToNfeData(data, ie);
 }
 
 /**

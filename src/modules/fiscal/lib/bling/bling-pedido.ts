@@ -9,6 +9,7 @@ import type { InvoiceDocumentType } from "@/modules/core/types/sales-order-billi
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import {
   createAndLinkBlingProduct,
+  loadCustomerStateRegistration,
   patchBlingProductNcm,
   resolveBlingCatalogForSalesOrder,
 } from "@/modules/fiscal/lib/bling/bling-catalog";
@@ -18,6 +19,8 @@ import {
   blingNfeNaturezaOperacao,
   buildBlingNfeObservacoes,
   isConsumidorFinal,
+  inscricaoEstadualDigits,
+  isNaoContribuinteIe,
 } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
 import {
@@ -365,7 +368,7 @@ export async function ensureBlingPedidoForSalesOrder(
   const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
     .select(
-      "order_number, order_date, client_name, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id, quote_id"
+      "order_number, order_date, client_name, client_document, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id, quote_id"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -376,6 +379,7 @@ export async function ensureBlingPedidoForSalesOrder(
     order_number: string;
     order_date: string;
     client_name: string;
+    client_document: string | null;
     customer_po_number: string | null;
     discount: number | null;
     total: number | null;
@@ -440,19 +444,31 @@ export async function ensureBlingPedidoForSalesOrder(
     .order("line_number", { ascending: true });
   if (itemsErr) throw new Error(itemsErr.message);
 
-  if (
-    catalog.contactId &&
-    isConsumidorFinal(
-      (itemRows ?? []) as Array<{ usage_type?: string | null }>
-    )
-  ) {
+  if (catalog.contactId) {
+    const ie = await loadCustomerStateRegistration(
+      admin,
+      tenantId,
+      so.client_document
+    );
     try {
-      await blingPatch(admin, tenantId, `/contatos/${catalog.contactId}`, {
-        contribuinte: 9,
-        indicadorIe: 9,
-      });
+      if (!isNaoContribuinteIe(ie)) {
+        await blingPatch(admin, tenantId, `/contatos/${catalog.contactId}`, {
+          ie: inscricaoEstadualDigits(ie),
+          contribuinte: 1,
+          indicadorIe: 1,
+        });
+      } else if (
+        isConsumidorFinal(
+          (itemRows ?? []) as Array<{ usage_type?: string | null }>
+        )
+      ) {
+        await blingPatch(admin, tenantId, `/contatos/${catalog.contactId}`, {
+          contribuinte: 9,
+          indicadorIe: 9,
+        });
+      }
     } catch {
-      // O CSOSN 102 na NF-e é o que a SEFAZ valida; o contacto é só auxílio.
+      // O indicador IE na NF-e é o que a SEFAZ valida; o contacto é só auxílio.
     }
   }
 

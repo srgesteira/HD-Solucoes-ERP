@@ -833,6 +833,7 @@ export type Database = {
           name: string
           notes: string | null
           phone: string | null
+          state_registration: string | null
           tenant_id: string
           updated_at: string
         }
@@ -848,6 +849,7 @@ export type Database = {
           name: string
           notes?: string | null
           phone?: string | null
+          state_registration?: string | null
           tenant_id: string
           updated_at?: string
         }
@@ -863,6 +865,7 @@ export type Database = {
           name?: string
           notes?: string | null
           phone?: string | null
+          state_registration?: string | null
           tenant_id?: string
           updated_at?: string
         }

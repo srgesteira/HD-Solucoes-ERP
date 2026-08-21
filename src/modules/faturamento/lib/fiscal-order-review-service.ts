@@ -24,6 +24,7 @@ import {
   type ItemUsageType,
 } from "@/modules/fiscal/lib/item-usage-type";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
+import { loadCustomerStateRegistration } from "@/modules/fiscal/lib/bling/bling-catalog";
 
 type Admin = SupabaseClient<Database>;
 
@@ -104,6 +105,7 @@ export type FiscalOrderReview = {
   order_date: string;
   client_name: string;
   client_document: string | null;
+  client_state_registration: string | null;
   client_address: string | null;
   client_email: string | null;
   client_phone: string | null;
@@ -790,6 +792,11 @@ export async function getFiscalOrderReview(
     client_name: String(order.client_name),
     client_document:
       typeof order.client_document === "string" ? order.client_document : null,
+    client_state_registration: await loadCustomerStateRegistration(
+      admin,
+      tenantId,
+      typeof order.client_document === "string" ? order.client_document : null
+    ),
     client_address:
       typeof order.client_address === "string" ? order.client_address : null,
     client_email:

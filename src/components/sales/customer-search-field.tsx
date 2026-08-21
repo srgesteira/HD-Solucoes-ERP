@@ -39,7 +39,11 @@ async function fetchCustomers(search: string): Promise<CustomerOption[]> {
 }
 
 function formatCustomerLabel(c: CustomerOption): string {
-  return c.document?.trim() ? `${c.name} (${c.document})` : c.name;
+  const doc = c.document?.trim();
+  const ie = c.state_registration?.trim();
+  if (doc && ie) return `${c.name} (${doc} · IE ${ie})`;
+  if (doc) return `${c.name} (${doc})`;
+  return c.name;
 }
 
 export type CustomerSearchFieldProps = {
@@ -102,7 +106,12 @@ export function CustomerSearchField({
   const searchResults = useMemo(() => {
     if (!debouncedSearch.trim()) return [];
     const matchesQuery = (c: CustomerOption) =>
-      matchesTokenSearch(debouncedSearch, [c.name, c.document, c.email]);
+      matchesTokenSearch(debouncedSearch, [
+        c.name,
+        c.document,
+        c.state_registration,
+        c.email,
+      ]);
     const map = new Map<string, CustomerOption>();
     for (const c of customersQuery.data ?? []) {
       if (c.id) map.set(c.id, c);
@@ -257,8 +266,17 @@ export function CustomerSearchField({
                       onClick={() => pickCustomer(c)}
                     >
                       <span className="font-medium text-slate-900 block">{c.name}</span>
-                      {c.document?.trim() ? (
-                        <span className="text-xs text-slate-500">{c.document}</span>
+                      {c.document?.trim() || c.state_registration?.trim() ? (
+                        <span className="text-xs text-slate-500">
+                          {[
+                            c.document?.trim(),
+                            c.state_registration?.trim()
+                              ? `IE ${c.state_registration.trim()}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
                       ) : null}
                     </button>
                   </li>

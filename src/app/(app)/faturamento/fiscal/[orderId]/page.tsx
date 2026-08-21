@@ -581,6 +581,10 @@ export default function FiscalOrderReviewPage() {
                     <p>{data.client_document ?? "—"}</p>
                   </div>
                   <div>
+                    <span className="text-slate-500">Inscrição estadual</span>
+                    <p>{data.client_state_registration ?? "—"}</p>
+                  </div>
+                  <div>
                     <span className="text-slate-500">UF destino</span>
                     <p className="font-semibold">{data.destination_uf ?? "—"}</p>
                   </div>

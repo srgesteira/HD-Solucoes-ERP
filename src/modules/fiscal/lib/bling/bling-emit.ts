@@ -31,10 +31,12 @@ import { resolveBlingCatalogForSalesOrder } from "@/modules/fiscal/lib/bling/bli
 import { ensureBlingPedidoForSalesOrder } from "@/modules/fiscal/lib/bling/bling-pedido";
 import { readBlingPedidoNotaFiscalId } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 import {
+  applyFiscalDestinoToNfeData,
   applyNaoContribuinteCsosnToNfeData,
   buildBlingNfeCreateBody,
   fiscalReviewToBlingNfeCreateInput,
   isConsumidorFinal,
+  isNaoContribuinteIe,
 } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 
 type Admin = SupabaseClient<Database>;
@@ -205,7 +207,7 @@ async function rewriteBlingNfeDraft(
     existing.contato && typeof existing.contato === "object"
       ? (existing.contato as Record<string, unknown>)
       : {};
-  const consumidorFinal = isConsumidorFinal(review.items);
+  const naoContribuinte = isNaoContribuinteIe(review.client_state_registration);
   const merged: Record<string, unknown> = {
     ...existing,
     ...created,
@@ -217,14 +219,14 @@ async function rewriteBlingNfeDraft(
     itens: created.itens,
   };
   delete merged.naturezaOperacao;
-  if (!consumidorFinal && naturezaOperacaoId) {
+  if (!naoContribuinte && naturezaOperacaoId) {
     merged.naturezaOperacao = { id: naturezaOperacaoId };
   }
   await blingPut(
     admin,
     tenantId,
     `/nfe/${blingNfeId}`,
-    consumidorFinal ? applyNaoContribuinteCsosnToNfeData(merged) : merged
+    applyFiscalDestinoToNfeData(merged, review.client_state_registration)
   );
 }
 
@@ -290,19 +292,20 @@ async function upsertSequentialNfe(
   if (!review) {
     throw new Error("Pedido de venda não encontrado para montar a NF-e.");
   }
-  const consumidorFinal = isConsumidorFinal(review.items);
+  const naoContribuinte = isNaoContribuinteIe(review.client_state_registration);
   const body: Record<string, unknown> = {
     ...buildBlingNfeCreateBody(
       fiscalReviewToBlingNfeCreateInput(review, contactId)
     ),
     numero,
   };
-  if (!consumidorFinal && naturezaOperacaoId) {
+  if (!naoContribuinte && naturezaOperacaoId) {
     body.naturezaOperacao = { id: naturezaOperacaoId };
   }
-  const toSend = consumidorFinal
-    ? applyNaoContribuinteCsosnToNfeData(body)
-    : body;
+  const toSend = applyFiscalDestinoToNfeData(
+    body,
+    review.client_state_registration
+  );
   const created = await blingPost(admin, tenantId, "/nfe", toSend);
   const id = Number(unwrapBlingData(created)?.id);
   if (!Number.isFinite(id)) {
@@ -330,14 +333,10 @@ async function alignBlingNfeCsosnIfConsumidorFinal(
   salesOrderId: string,
   blingNfeId: number
 ): Promise<void> {
-  const db = asUntypedAdmin(admin);
-  const { data: itemRows } = await db
-    .from("sales_order_items")
-    .select("usage_type")
-    .eq("sales_order_id", salesOrderId)
-    .eq("tenant_id", tenantId);
-  const items = (itemRows ?? []) as Array<{ usage_type?: string | null }>;
-  if (!isConsumidorFinal(items)) return;
+  const review = await getFiscalOrderReview(admin, tenantId, salesOrderId);
+  if (!review) return;
+  if (!isConsumidorFinal(review.items)) return;
+  if (!isNaoContribuinteIe(review.client_state_registration)) return;
 
   const payload = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
   const data = unwrapBlingData(payload);

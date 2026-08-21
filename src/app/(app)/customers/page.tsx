@@ -38,9 +38,11 @@ interface CustomerRow {
   id: string;
   name: string;
   document: string | null;
+  state_registration: string | null;
   email: string | null;
   phone: string | null;
   address: string | null;
+  notes: string | null;
   is_active: boolean;
 }
 
@@ -84,6 +86,33 @@ async function fetchCustomers(filters: {
     throw new Error("Resposta inválida da API");
   }
   return json;
+}
+
+async function fetchCustomerById(id: string): Promise<CustomerFormValues> {
+  const res = await fetch(`/api/customers/${id}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: CustomerFormValues & { id: string };
+    error?: string;
+  };
+  if (!res.ok || !json.data?.id) {
+    throw new Error(
+      typeof json.error === "string" ? json.error : "Erro ao carregar cliente"
+    );
+  }
+  return {
+    id: json.data.id,
+    name: json.data.name,
+    document: json.data.document ?? null,
+    state_registration: json.data.state_registration ?? null,
+    email: json.data.email ?? null,
+    phone: json.data.phone ?? null,
+    address: json.data.address ?? null,
+    notes: json.data.notes ?? null,
+    is_active: json.data.is_active ?? true,
+  };
 }
 
 async function setCustomerActive(id: string, isActive: boolean): Promise<void> {
@@ -173,12 +202,21 @@ export default function CustomersPage() {
       id: row.id,
       name: row.name,
       document: row.document,
+      state_registration: row.state_registration ?? null,
       email: row.email,
       phone: row.phone,
       address: row.address,
+      notes: row.notes ?? null,
       is_active: row.is_active,
     });
     setModalOpen(true);
+    void fetchCustomerById(row.id)
+      .then((full) => setEditTarget(full))
+      .catch((err) => {
+        toast.error(
+          err instanceof Error ? err.message : "Não foi possível carregar o cliente."
+        );
+      });
   };
 
   const tableColumns = useMemo((): SortableTableColumn<CustomerRow>[] => {
@@ -205,6 +243,19 @@ export default function CustomersPage() {
         render: (row) => (
           <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
             {row.document?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "state_registration",
+        label: "IE",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => row.state_registration,
+        truncate: false,
+        render: (row) => (
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
+            {row.state_registration?.trim() || "—"}
           </span>
         ),
       },
@@ -265,7 +316,7 @@ export default function CustomersPage() {
         <CronogramaSearch
           value={searchInput}
           onChange={setSearchInput}
-          placeholder="Buscar nome, documento, e-mail, telefone ou morada…"
+          placeholder="Buscar nome, documento, IE, e-mail, telefone ou morada…"
         />
       }
       error={

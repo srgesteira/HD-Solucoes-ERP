@@ -31,7 +31,10 @@ export async function GET(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   let q = admin
     .from("customers")
-    .select("*", { count: "exact" })
+    .select(
+      "id, name, document, state_registration, email, phone, address, notes, is_active, created_at, updated_at",
+      { count: "exact" }
+    )
     .eq("tenant_id", tenantId);
 
   if (isActive !== null && isActive !== "" && isActive !== "all") {
@@ -39,7 +42,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (search) {
-    q = applyTokenFieldIlikeOrFilters(q, ["name", "document", "email"], search);
+    q = applyTokenFieldIlikeOrFilters(q, ["name", "document", "state_registration", "email"], search);
   }
 
   const { data, error, count } = await q
@@ -95,6 +98,10 @@ export async function POST(request: NextRequest) {
       b.document == null || b.document === ""
         ? null
         : String(b.document).trim() || null,
+    state_registration:
+      b.state_registration == null || b.state_registration === ""
+        ? null
+        : String(b.state_registration).trim() || null,
     email:
       b.email == null || b.email === ""
         ? null
