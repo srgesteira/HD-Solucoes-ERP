@@ -59,8 +59,8 @@ export function PrepareBlingOrderPanel({
     onSuccess: (data) => {
       toast.success(
         data.created
-          ? `Pedido criado no Bling (#${data.pedido_venda_id}). Já pode emitir a nota.`
-          : `Pedido Bling #${data.pedido_venda_id} actualizado. Já pode emitir a nota.`
+          ? `Cliente, produtos e pedido criados no Bling (#${data.pedido_venda_id}). Já pode emitir a nota.`
+          : `Cliente, produtos e pedido Bling #${data.pedido_venda_id} actualizados. Já pode emitir a nota.`
       );
       void queryClient.invalidateQueries({
         queryKey: ["fiscal-order-review", orderId],
@@ -86,14 +86,14 @@ export function PrepareBlingOrderPanel({
       <p className="font-semibold">
         {prepared
           ? `Pedido Bling #${review.bling_pedido_venda_id} pronto para emitir`
-          : "Preparar pedido completo no Bling"}
+          : "Criar e actualizar pedido no Bling"}
       </p>
       <p className="mt-1 text-xs opacity-90">
-        Cria ou actualiza no Bling o cliente, os produtos com NCM da conferência
-        e o pedido de venda (itens, valores e parcelas). O CFOP{" "}
+        Este botão faz o cadastro completo no Bling: cliente (CNPJ e endereço),
+        produtos com NCM da conferência e o pedido de venda (itens, valores e
+        parcelas). O CFOP{" "}
         {cfops.length ? `(${cfops.join(", ")}) ` : ""}
-        entra pela natureza de operação do Bling. «Emitir nota» só autoriza a
-        NF-e desse pedido.
+        entra pela natureza de operação. «Emitir nota» só envia a NF-e à SEFAZ.
       </p>
       <ul className="mt-2 space-y-0.5 text-xs">
         <li>
@@ -115,7 +115,7 @@ export function PrepareBlingOrderPanel({
         {mutation.isPending ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : null}
-        {prepared ? "Actualizar pedido no Bling" : "Preparar pedido no Bling"}
+        Criar e actualizar pedido no Bling
       </Button>
     </div>
   );

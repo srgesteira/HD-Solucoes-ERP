@@ -9,6 +9,7 @@ export type BlingEnderecoPayload = {
   municipio: string;
   uf: string;
   cep: string;
+  pais?: string;
 };
 
 const UF_SET = new Set<string>(BRAZIL_UF_CODES);
@@ -41,6 +42,7 @@ export function blingEnderecoFromParts(
     municipio,
     uf,
     cep,
+    pais: "BR",
   };
 }
 
@@ -123,5 +125,6 @@ export function parseFreeformAddressToBling(
     municipio,
     uf,
     cep,
+    pais: "BR",
   };
 }

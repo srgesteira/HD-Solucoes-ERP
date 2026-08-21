@@ -1,7 +1,7 @@
 /**
- * Prepara o pedido de venda completo no Bling a partir da conferência:
- * cliente, produtos (com NCM), natureza (CFOP) e o pedido com itens/parcelas.
- * A emissão da NF-e usa `pedidoVendaId`.
+ * Botão «Criar e actualizar pedido no Bling»:
+ * cliente (CNPJ + endereço), produtos com NCM, pedido com itens/parcelas.
+ * «Emitir nota» só gera a NF-e a partir deste pedido.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";

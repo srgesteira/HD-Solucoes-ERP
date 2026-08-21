@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
-import { blingGet, blingPatch, blingPost } from "@/modules/fiscal/lib/bling/bling-client";
+import { blingGet, blingPatch, blingPost, blingPut } from "@/modules/fiscal/lib/bling/bling-client";
 import { unwrapBlingData } from "@/modules/fiscal/lib/bling/bling-nfe-status";
 import {
   blingEnderecoFromParts,
@@ -110,10 +110,7 @@ export async function createBlingContact(
     address: string | null;
   }
 ): Promise<number> {
-  const endereco = await resolveBlingEndereco({
-    address: input.address,
-    document: input.document,
-  });
+  const endereco = await requireBlingEndereco(input);
   const payload = await blingPost(
     admin,
     tenantId,
@@ -125,10 +122,54 @@ export async function createBlingContact(
   if (!Number.isFinite(id)) {
     throw new Error("Bling criou o contato mas não devolveu o ID.");
   }
+  await assertBlingContactHasAddress(admin, tenantId, id);
   return id;
 }
 
-async function patchBlingContactAddress(
+async function requireBlingEndereco(input: {
+  address: string | null;
+  document: string | null;
+}): Promise<BlingEnderecoPayload> {
+  const endereco = await resolveBlingEndereco(input);
+  if (endereco) return endereco;
+  throw new Error(
+    "Cliente sem endereço completo (logradouro, cidade, UF e CEP). Preencha o endereço no pedido — o Bling precisa disso para a NF-e."
+  );
+}
+
+function readBlingContactEndereco(
+  payload: unknown
+): { cep: string; municipio: string; uf: string; endereco: string } | null {
+  const data = unwrapBlingData(payload);
+  if (!data) return null;
+  const raw =
+    data.endereco && typeof data.endereco === "object"
+      ? (data.endereco as Record<string, unknown>)
+      : null;
+  if (!raw) return null;
+  return {
+    cep: String(raw.cep ?? "").replace(/\D/g, ""),
+    municipio: String(raw.municipio ?? "").trim(),
+    uf: String(raw.uf ?? "").trim(),
+    endereco: String(raw.endereco ?? "").trim(),
+  };
+}
+
+async function assertBlingContactHasAddress(
+  admin: Admin,
+  tenantId: string,
+  contactId: number
+): Promise<void> {
+  const payload = await blingGet(admin, tenantId, `/contatos/${contactId}`);
+  const end = readBlingContactEndereco(payload);
+  if (!end || end.cep.length !== 8 || !end.municipio || !end.endereco) {
+    throw new Error(
+      "O Bling gravou o cliente sem endereço completo. Abra o contacto no Bling e confira CEP, município e logradouro."
+    );
+  }
+}
+
+async function upsertBlingContactAddress(
   admin: Admin,
   tenantId: string,
   contactId: number,
@@ -140,17 +181,14 @@ async function patchBlingContactAddress(
     address: string | null;
   }
 ): Promise<void> {
-  const endereco = await resolveBlingEndereco({
-    address: input.address,
-    document: input.document,
-  });
-  if (!endereco && !digitsOnly(input.document)) return;
-  await blingPatch(
-    admin,
-    tenantId,
-    `/contatos/${contactId}`,
-    contactPayload({ ...input, endereco })
-  );
+  const endereco = await requireBlingEndereco(input);
+  const body = contactPayload({ ...input, endereco });
+  try {
+    await blingPut(admin, tenantId, `/contatos/${contactId}`, body);
+  } catch {
+    await blingPatch(admin, tenantId, `/contatos/${contactId}`, body);
+  }
+  await assertBlingContactHasAddress(admin, tenantId, contactId);
 }
 
 export type UnmappedBlingProduct = {
@@ -168,9 +206,7 @@ export type BlingCatalogReadiness = {
 };
 
 /**
- * Resolve vínculos produto/contato. Não cria produto no Bling —
- * a configuração fiscal (NCM/CFOP/CSOSN) é do contador, no Bling.
- * Contato: busca por CNPJ/CPF e cria se não existir.
+ * Neste botão: cria/actualiza cliente (CNPJ + endereço), produtos e o pedido.
  */
 export async function resolveBlingCatalogForSalesOrder(
   admin: Admin,
@@ -240,17 +276,13 @@ export async function resolveBlingCatalogForSalesOrder(
     });
     contactCreated = true;
   } else {
-    try {
-      await patchBlingContactAddress(admin, tenantId, contactId, {
-        name: so.client_name,
-        document: so.client_document,
-        email: so.client_email,
-        phone: so.client_phone,
-        address: so.client_address,
-      });
-    } catch {
-      // Contato já existe; a NF-e ainda envia o endereço no destinatário.
-    }
+    await upsertBlingContactAddress(admin, tenantId, contactId, {
+      name: so.client_name,
+      document: so.client_document,
+      email: so.client_email,
+      phone: so.client_phone,
+      address: so.client_address,
+    });
   }
 
   if (contactId && doc.length >= 11) {
