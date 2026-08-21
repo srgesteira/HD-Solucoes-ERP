@@ -231,6 +231,11 @@ export function quoteLineItemName(
   return raw || "—";
 }
 
+export function formatQuoteItemSeq(indexZeroBased: number): string {
+  const n = indexZeroBased + 1;
+  return String(n).padStart(2, "0");
+}
+
 export function formatCompanyAddressForPrint(
   s: Tables<"company_settings">
 ): string | null {

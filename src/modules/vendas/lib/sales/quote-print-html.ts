@@ -3,6 +3,7 @@ import {
   fmtQuoteBRL,
   fmtQuoteDay,
   formatCompanyAddressForPrint,
+  formatQuoteItemSeq,
   formatQuoteNumberWithRevision,
   unwrapQuoteCustomer,
   unwrapQuoteProductCode,
@@ -137,11 +138,13 @@ table.qp-items tbody.qp-item-block td {
 table.qp-items thead th { padding: 5px 6px; text-align: left; font-size: 8.5pt; font-weight: 600; }
 table.qp-items thead th.num { text-align: right; }
 table.qp-items thead th.qty-col { text-align: center; width: 56px; }
+table.qp-items thead th.item-col { text-align: center; width: 36px; }
 table.qp-items thead th.code-col { width: 110px; }
 table.qp-items tbody td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
 table.qp-items tbody:last-child tr:last-child td { border-bottom: none; }
 table.qp-items tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.qp-items tbody td.qty { text-align: center; }
+table.qp-items tbody td.item { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 .qp-code { font-family: ui-monospace, monospace; font-size: 8.5pt; }
 .qp-product-name { font-weight: 600; }
 .qp-product-desc { margin: 3px 0 0; font-size: 8.5pt; color: #475569; }
@@ -270,7 +273,7 @@ export function buildQuotePrintHtml(
   const itemsHtml =
     items.length > 0
       ? items
-          .map((line) => {
+          .map((line, index) => {
             const showProductDesc = Boolean(line.show_product_description);
             const productDesc = showProductDesc
               ? unwrapQuoteProductDescription(line.product)
@@ -281,6 +284,7 @@ export function buildQuotePrintHtml(
             const code = unwrapQuoteProductCode(line.product);
             const name = unwrapQuoteProductName(line.product);
             return `<tbody class="qp-item-block"><tr>
+              <td class="item">${escapeHtml(formatQuoteItemSeq(index))}</td>
               <td class="qp-code">${escapeHtml(code)}</td>
               <td>
                 <div class="qp-product-name">${escapeHtml(name)}</div>
@@ -294,7 +298,7 @@ export function buildQuotePrintHtml(
             </tr></tbody>`;
           })
           .join("")
-      : `<tbody><tr><td colspan="5" style="text-align:center;padding:12px;">Sem itens neste orçamento.</td></tr></tbody>`;
+      : `<tbody><tr><td colspan="6" style="text-align:center;padding:12px;">Sem itens neste orçamento.</td></tr></tbody>`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -359,6 +363,7 @@ export function buildQuotePrintHtml(
   <table class="qp-items">
     <thead>
       <tr>
+        <th class="item-col">Item</th>
         <th class="code-col">Código</th>
         <th>Produto</th>
         <th class="qty-col">Qtd.</th>

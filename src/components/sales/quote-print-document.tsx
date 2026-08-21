@@ -5,6 +5,7 @@ import {
   fmtQuoteBRL,
   fmtQuoteDay,
   formatCompanyAddressForPrint,
+  formatQuoteItemSeq,
   formatQuoteNumberWithRevision,
   quoteStatusBadge,
   unwrapQuoteCustomer,
@@ -338,6 +339,11 @@ const PRINT_STYLES = `
   width: 3.25rem;
 }
 
+.quote-print-table thead th.qp-item-col {
+  text-align: center;
+  width: 2.15rem;
+}
+
 .quote-print-table thead th.qp-code-col {
   width: 6.5rem;
 }
@@ -386,6 +392,15 @@ const PRINT_STYLES = `
 .qp-code {
   font-family: ui-monospace, monospace;
   font-size: 0.62rem;
+}
+
+.qp-item-num {
+  display: block;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  color: #0f172a;
 }
 
 .qp-product-name {
@@ -754,6 +769,7 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
           <table className="quote-print-table">
             <thead>
               <tr>
+                <th className="qp-item-col">Item</th>
                 <th className="qp-code-col">Código</th>
                 <th>Produto</th>
                 <th className="qp-qty-col">Qtd.</th>
@@ -762,7 +778,7 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
               </tr>
             </thead>
             {items.length > 0 ? (
-              items.map((line) => {
+              items.map((line, index) => {
                 const showProductDesc = Boolean(line.show_product_description);
                 const productDesc = showProductDesc
                   ? unwrapQuoteProductDescription(line.product)
@@ -776,6 +792,11 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                 return (
                 <tbody key={line.id} className="qp-item-block">
                   <tr>
+                    <td>
+                      <span className="qp-item-num">
+                        {formatQuoteItemSeq(index)}
+                      </span>
+                    </td>
                     <td className="qp-code">
                       {unwrapQuoteProductCode(line.product)}
                     </td>
@@ -836,7 +857,7 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
             ) : (
               <tbody>
                 <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "0.75rem" }}>
+                  <td colSpan={6} style={{ textAlign: "center", padding: "0.75rem" }}>
                     Sem itens neste orçamento.
                   </td>
                 </tr>
