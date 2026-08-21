@@ -1,3 +1,53 @@
+export const NFE_FREIGHT_ACCOUNT_OPTIONS = [
+  {
+    value: "CIF",
+    label: "CIF — por conta do remetente (emitente)",
+  },
+  {
+    value: "FOB",
+    label: "FOB — por conta do destinatário (cliente)",
+  },
+  {
+    value: "Outro",
+    label: "Sem ocorrência de transporte / terceiros",
+  },
+] as const;
+
+export function freightPayerFromShippingType(
+  shippingType: string | null | undefined
+): "remetente" | "destinatario" | "terceiros" {
+  const s = String(shippingType ?? "").trim().toUpperCase();
+  if (s === "CIF") return "remetente";
+  if (s === "FOB") return "destinatario";
+  return "terceiros";
+}
+
+export function buildBlingTransportePayload(input: {
+  shippingType?: string | null;
+  freightCost?: number | null;
+  carrierName?: string | null;
+}): {
+  fretePorConta: 0 | 1 | 9;
+  frete?: number;
+  contato?: { nome: string };
+} {
+  const freight = Number(input.freightCost ?? 0);
+  const nome = String(input.carrierName ?? "").trim();
+  return {
+    fretePorConta: fretePorContaFromShipping(input.shippingType),
+    ...(Number.isFinite(freight) && freight > 0
+      ? { frete: Math.round((freight + Number.EPSILON) * 100) / 100 }
+      : {}),
+    ...(nome ? { contato: { nome } } : {}),
+  };
+}
+
+export function fretePorContaLabel(code: 0 | 1 | 9): string {
+  if (code === 0) return "0 — Remetente (CIF)";
+  if (code === 1) return "1 — Destinatário (FOB)";
+  return "9 — Sem ocorrência de transporte";
+}
+
 /** CIF = remetente (0), FOB = destinatário (1), sem transporte = 9. */
 export function fretePorContaFromShipping(
   shippingType: string | null | undefined

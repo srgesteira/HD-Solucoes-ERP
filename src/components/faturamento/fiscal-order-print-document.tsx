@@ -12,6 +12,7 @@ import { formatShortDate } from "@/shared/utils/date";
 import { isInvoiceDocumentType } from "@/modules/core/types/sales-order-billing.types";
 import { INVOICE_DOCUMENT_TYPE_LABELS } from "@/modules/core/types/sales-order-billing.types";
 import { buildBlingNfePayloadView } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
+import { fretePorContaLabel } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 import { CreateBlingProductButton } from "@/components/faturamento/create-bling-product-button";
 import { UnmappedBlingProductsPanel } from "@/components/faturamento/unmapped-bling-products-panel";
 
@@ -345,7 +346,9 @@ export function FiscalOrderPrintDocument({
             <tr>
               <td>
                 <span className="lbl">Frete</span>
-                <div className="val right">0,00</div>
+                <div className="val right">
+                  {money(payload.transporte.frete ?? review.freight_cost ?? 0)}
+                </div>
               </td>
               <td>
                 <span className="lbl">Seguro</span>
@@ -373,18 +376,25 @@ export function FiscalOrderPrintDocument({
               <td colSpan={5}>
                 <span className="lbl">Transportador / volumes</span>
                 <div className="val-sm muted">
-                  Não enviado no POST /nfe (sem grupo transporte).
+                  Grupo transporte enviado no POST /nfe (frete por conta e
+                  transportadora da conferência).
                 </div>
               </td>
             </tr>
             <tr>
               <td colSpan={2}>
                 <span className="lbl">Razão social</span>
-                <div className="val muted">—</div>
+                <div className="val">
+                  {payload.transporte.contato?.nome ??
+                    review.carrier_name ??
+                    "—"}
+                </div>
               </td>
               <td>
                 <span className="lbl">Frete por conta</span>
-                <div className="val muted">—</div>
+                <div className="val">
+                  {fretePorContaLabel(payload.transporte.fretePorConta)}
+                </div>
               </td>
               <td>
                 <span className="lbl">ANTT / placa</span>

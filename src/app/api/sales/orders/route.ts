@@ -17,6 +17,7 @@ import {
   rollbackSalesOrderCreation,
 } from "@/modules/vendas/lib/sales/sales-flow";
 import { parseRequiredExpectedDelivery } from "@/shared/contracts/sales-order.schema";
+import { paymentDueFieldsFromBody } from "@/shared/utils/payment-due";
 import {
   EMPTY_DELIVERY_ADDRESS,
   parseSalesOrderDeliveryAddressBody,
@@ -251,6 +252,8 @@ export async function POST(request: NextRequest) {
     return apiError("Parâmetros de pagamento inválidos", 400);
   }
   if (pi < 1) return apiError("payment_installments mínimo 1", 400);
+  const dueParsed = paymentDueFieldsFromBody(b, pi);
+  if (!dueParsed.ok) return apiError(dueParsed.message, 400);
 
   const admin = createSupabaseAdminClient();
 
@@ -396,6 +399,8 @@ export async function POST(request: NextRequest) {
       payment_installments: pi,
       payment_days_to_first_due: pd1,
       payment_days_between_installments: pdb,
+      payment_due_mode: dueParsed.payment_due_mode ?? "from_emission",
+      payment_fixed_due_dates: dueParsed.payment_fixed_due_dates ?? [],
     })
     .select()
     .single();
@@ -448,6 +453,9 @@ export async function POST(request: NextRequest) {
       payment_installments: fresh.payment_installments,
       payment_days_to_first_due: fresh.payment_days_to_first_due,
       payment_days_between_installments: fresh.payment_days_between_installments,
+      payment_due_mode: (fresh as { payment_due_mode?: string }).payment_due_mode,
+      payment_fixed_due_dates: (fresh as { payment_fixed_due_dates?: string[] })
+        .payment_fixed_due_dates,
     },
     { provisional: true }
   );

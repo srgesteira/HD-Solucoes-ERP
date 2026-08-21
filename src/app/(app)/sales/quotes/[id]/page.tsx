@@ -37,6 +37,10 @@ import { cn } from "@/shared/utils/cn";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
 import { useMe } from "@/hooks/use-me";
+import {
+  parsePaymentDueMode,
+  type PaymentDueMode,
+} from "@/shared/utils/payment-due";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { QuoteStatus } from "@/modules/core/types/sales.types";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
@@ -106,6 +110,8 @@ type QuoteDetail = {
   payment_installments: number | null;
   payment_days_to_first_due: number | null;
   payment_days_between_installments: number | null;
+  payment_due_mode?: string | null;
+  payment_fixed_due_dates?: string[] | null;
   delivery_deadline: string | null;
   shipping_type: string | null;
   freight_cost?: number | null;
@@ -311,6 +317,9 @@ export default function QuoteDetailPage() {
   const [paymentInstallments, setPaymentInstallments] = useState("1");
   const [paymentDaysFirst, setPaymentDaysFirst] = useState("30");
   const [paymentDaysBetween, setPaymentDaysBetween] = useState("30");
+  const [paymentDueMode, setPaymentDueMode] =
+    useState<PaymentDueMode>("from_emission");
+  const [paymentFixedDates, setPaymentFixedDates] = useState<string[]>([]);
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
@@ -344,6 +353,8 @@ export default function QuoteDetailPage() {
     setPaymentInstallments(String(q.payment_installments ?? 1));
     setPaymentDaysFirst(String(q.payment_days_to_first_due ?? 30));
     setPaymentDaysBetween(String(q.payment_days_between_installments ?? 30));
+    setPaymentDueMode(parsePaymentDueMode(q.payment_due_mode));
+    setPaymentFixedDates(q.payment_fixed_due_dates ?? []);
     setDeliveryBusinessDays(inferDeliveryBusinessDaysFromQuote(q));
     setShippingType(q.shipping_type ?? "FOB");
     setFreightCost(Number(q.freight_cost ?? 0));
@@ -424,6 +435,8 @@ export default function QuoteDetailPage() {
           paymentDaysBetween.trim() === ""
             ? 0
             : parseInt(paymentDaysBetween, 10) || 0,
+        payment_due_mode: paymentDueMode,
+        payment_fixed_due_dates: paymentFixedDates,
         delivery_business_days:
           deliveryDaysParsed != null && Number.isFinite(deliveryDaysParsed)
             ? deliveryDaysParsed
@@ -820,6 +833,10 @@ export default function QuoteDetailPage() {
                     onPaymentDaysFirstChange={setPaymentDaysFirst}
                     paymentDaysBetween={paymentDaysBetween}
                     onPaymentDaysBetweenChange={setPaymentDaysBetween}
+                    paymentDueMode={paymentDueMode}
+                    onPaymentDueModeChange={setPaymentDueMode}
+                    paymentFixedDates={paymentFixedDates}
+                    onPaymentFixedDatesChange={setPaymentFixedDates}
                     deliveryBusinessDays={deliveryBusinessDays}
                     onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
                     shippingType={shippingType}

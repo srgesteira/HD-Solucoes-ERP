@@ -56,6 +56,8 @@ export const createQuoteBodySchema = z.object({
   payment_days_between_installments: z
     .union([z.number().int().min(0), z.string()])
     .optional(),
+  payment_due_mode: z.enum(["from_emission", "fixed_dates"]).optional(),
+  payment_fixed_due_dates: z.array(z.string()).optional(),
   shipping_type: z.enum(QUOTE_SHIPPING_TYPES).optional(),
   freight_cost: z.union([z.number().min(0), z.string()]).optional(),
   notes: z.string().nullable().optional(),

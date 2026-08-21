@@ -7,10 +7,9 @@ import {
   type QuotePrintData,
 } from "@/modules/vendas/lib/sales/quote-display";
 import { generateQuotePdfBuffer } from "@/modules/vendas/lib/sales/generate-quote-pdf";
-import {
-  sendResendEmail,
-  type SendResendEmailResult,
-} from "@/shared/utils/email/send-resend-email";
+import { sendOutboundEmail } from "@/shared/utils/email/send-outbound-email";
+import { resolveMailConfig } from "@/shared/utils/email/mail-config";
+import type { SendOutboundEmailResult } from "@/shared/utils/email/send-outbound-email";
 
 function escapeHtml(s: string | null | undefined): string {
   if (s == null) return "";
@@ -47,7 +46,7 @@ export type SendQuoteEmailArgs = {
  */
 export async function sendQuoteEmail(
   args: SendQuoteEmailArgs
-): Promise<SendResendEmailResult> {
+): Promise<SendOutboundEmailResult> {
   const { quote, company } = args;
   const cust = unwrapQuoteCustomer(quote.customer, quote.client_name);
 
@@ -96,10 +95,11 @@ export async function sendQuoteEmail(
 
   const pdfBuffer = await generateQuotePdfBuffer(quote, company);
 
-  return sendResendEmail({
+  return sendOutboundEmail({
     to: recipients,
     subject,
     html,
+    mail: resolveMailConfig(company),
     attachments: [
       {
         filename: quoteFileName(quote),

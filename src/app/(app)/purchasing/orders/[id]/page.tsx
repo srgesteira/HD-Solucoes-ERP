@@ -14,10 +14,6 @@ import {
   RotateCcw,
   ShoppingCart,
 } from "lucide-react";
-import {
-  openPurchaseOrderEmailDraft,
-  purchaseOrderEmailDraftHint,
-} from "@/modules/compras/lib/purchasing/open-purchase-order-email-draft";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -402,21 +398,42 @@ export default function PurchaseOrderDetailPage() {
             onClick={async () => {
               setEmailPending(true);
               try {
-                const result = await openPurchaseOrderEmailDraft({
-                  orderId,
-                  poNumber: orderSummary.po_number,
-                });
-                if (result.mode === "eml") {
-                  toast.info("Abra o ficheiro .eml descarregado", {
-                    description: purchaseOrderEmailDraftHint(result),
-                    duration: 16_000,
-                  });
-                } else {
-                  toast.success(purchaseOrderEmailDraftHint(result));
+                const res = await fetch(
+                  `/api/purchasing/orders/${orderId}/email`,
+                  {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({}),
+                  }
+                );
+                const json = (await res.json().catch(() => ({}))) as {
+                  error?: string;
+                  simulated?: boolean;
+                  message?: string;
+                };
+                if (!res.ok) {
+                  throw new Error(json.error ?? "Erro ao enviar e-mail");
                 }
+                if (json.simulated) {
+                  toast.info(json.message ?? "E-mail simulado.");
+                } else {
+                  toast.success(
+                    json.message ?? "Pedido enviado ao fornecedor."
+                  );
+                }
+                await queryClient.invalidateQueries({
+                  queryKey: ["purchasing-order", orderId],
+                });
+                await queryClient.invalidateQueries({
+                  queryKey: ["purchasing-order-header", orderId],
+                });
+                await queryClient.invalidateQueries({
+                  queryKey: ["purchasing-orders"],
+                });
               } catch (e) {
                 toast.error(
-                  e instanceof Error ? e.message : "Erro ao preparar e-mail"
+                  e instanceof Error ? e.message : "Erro ao enviar e-mail"
                 );
               } finally {
                 setEmailPending(false);
@@ -428,7 +445,7 @@ export default function PurchaseOrderDetailPage() {
             ) : (
               <Mail className="h-4 w-4" />
             )}
-            Abrir no e-mail
+            Enviar por e-mail
           </Button>
           {canCancel ? (
             <Button

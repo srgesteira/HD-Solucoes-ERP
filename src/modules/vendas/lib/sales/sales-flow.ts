@@ -8,7 +8,9 @@ import {
   parseTaxValueField,
   roundMoney,
 } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
+import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
 import { recalculateSalesOrderHeaderTotals } from "@/modules/vendas/lib/sales/sales-order-totals";
+import { resolvePaymentDueDates } from "@/shared/utils/payment-due";
 
 export type AdminClient = SupabaseClient<Database>;
 
@@ -450,6 +452,8 @@ export async function generateReceivablesForSalesOrder(
     payment_installments: number;
     payment_days_to_first_due: number;
     payment_days_between_installments: number;
+    payment_due_mode?: string | null;
+    payment_fixed_due_dates?: string[] | null;
   },
   options?: { provisional?: boolean }
 ): Promise<{ error?: string }> {
@@ -466,23 +470,24 @@ export async function generateReceivablesForSalesOrder(
 
   const n = Math.max(1, Math.min(999, order.payment_installments));
   const amounts = splitAmountInInstallments(order.total, n);
-  const actual = order.actual_delivery?.trim().slice(0, 10);
-  const expected = order.expected_delivery?.trim().slice(0, 10);
-  const baseDate =
-    (actual && /^\d{4}-\d{2}-\d{2}$/.test(actual) && actual) ||
-    (expected && /^\d{4}-\d{2}-\d{2}$/.test(expected) && expected) ||
-    order.order_date.slice(0, 10);
-
-  let due = addDaysToISODate(baseDate, order.payment_days_to_first_due);
+  const baseDate = paymentScheduleBaseDate({
+    actual_delivery: order.actual_delivery,
+    expected_delivery: order.expected_delivery,
+    order_date: order.order_date,
+  });
+  const dueDates = resolvePaymentDueDates(
+    {
+      payment_due_mode: order.payment_due_mode,
+      payment_fixed_due_dates: order.payment_fixed_due_dates,
+      payment_installments: n,
+      payment_days_to_first_due: order.payment_days_to_first_due,
+      payment_days_between_installments: order.payment_days_between_installments,
+    },
+    baseDate
+  );
   const rows = [];
 
   for (let i = 0; i < n; i++) {
-    if (i > 0) {
-      due = addDaysToISODate(
-        due,
-        order.payment_days_between_installments
-      );
-    }
     const amt = amounts[i] ?? 0;
     rows.push({
       tenant_id: tenantId,
@@ -492,7 +497,7 @@ export async function generateReceivablesForSalesOrder(
       original_amount: amt,
       current_amount: amt,
       issue_date: order.order_date.slice(0, 10),
-      due_date: due,
+      due_date: dueDates[i] ?? baseDate,
       status: "pending" as const,
       client_name: order.client_name,
       client_document: order.client_document,

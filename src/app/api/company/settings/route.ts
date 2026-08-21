@@ -13,20 +13,29 @@ export const dynamic = "force-dynamic";
 
 type CompanyRow = Database["public"]["Tables"]["company_settings"]["Row"];
 
-/** Resposta GET sem expor o token FocusNFe. */
-export type CompanySettingsSafe = Omit<CompanyRow, "focusnfe_token"> & {
+/** Resposta GET sem expor o token FocusNFe nem a senha SMTP. */
+export type CompanySettingsSafe = Omit<
+  CompanyRow,
+  "focusnfe_token" | "smtp_password"
+> & {
   focusnfe_token: null;
   focusnfe_configured: boolean;
+  smtp_password: null;
+  smtp_configured: boolean;
 };
 
-function stripFocusToken(row: CompanyRow | null): CompanySettingsSafe | null {
+function stripSecrets(row: CompanyRow | null): CompanySettingsSafe | null {
   if (!row) return null;
-  const { focusnfe_token: _t, ...rest } = row;
+  const { focusnfe_token: _t, smtp_password: _p, ...rest } = row;
   const token = _t?.trim() ?? "";
+  const smtpPass = _p?.trim() ?? "";
+  const smtpUser = row.smtp_user?.trim() ?? "";
   return {
-    ...(rest as Omit<CompanyRow, "focusnfe_token">),
+    ...(rest as Omit<CompanyRow, "focusnfe_token" | "smtp_password">),
     focusnfe_token: null,
     focusnfe_configured: token.length > 0,
+    smtp_password: null,
+    smtp_configured: smtpUser.length > 0 && smtpPass.length > 0,
   };
 }
 
@@ -64,7 +73,7 @@ export async function GET() {
     );
   }
 
-  return apiOk({ data: stripFocusToken(data as CompanyRow | null) });
+  return apiOk({ data: stripSecrets(data as CompanyRow | null) });
 }
 
 export async function POST() {
@@ -122,7 +131,7 @@ export async function POST() {
     );
   }
 
-  return apiOk({ data: stripFocusToken(data as CompanyRow) }, 201);
+  return apiOk({ data: stripSecrets(data as CompanyRow) }, 201);
 }
 
 export async function PUT(request: NextRequest) {
@@ -267,6 +276,30 @@ export async function PUT(request: NextRequest) {
     updatePayload.nfse_codigo_tributario_municipio =
       b.nfse_codigo_tributario_municipio;
   }
+  if (b.smtp_host !== undefined) {
+    updatePayload.smtp_host = b.smtp_host?.trim() || null;
+  }
+  if (b.smtp_port !== undefined) {
+    updatePayload.smtp_port = b.smtp_port;
+  }
+  if (b.smtp_user !== undefined) {
+    updatePayload.smtp_user = b.smtp_user?.trim() || null;
+  }
+  if (b.smtp_password !== undefined) {
+    const p = b.smtp_password;
+    if (p != null && String(p).trim() !== "") {
+      updatePayload.smtp_password = String(p).trim();
+    }
+  }
+  if (b.smtp_from_name !== undefined) {
+    updatePayload.smtp_from_name = b.smtp_from_name?.trim() || null;
+  }
+  if (b.smtp_from_email !== undefined) {
+    updatePayload.smtp_from_email = normalizeEmail(b.smtp_from_email);
+  }
+  if (b.smtp_secure !== undefined) {
+    updatePayload.smtp_secure = b.smtp_secure;
+  }
 
   const nextRegime = b.tax_regime ?? row.tax_regime;
   const nextDas =
@@ -295,5 +328,5 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  return apiOk({ data: stripFocusToken(data as CompanyRow) });
+  return apiOk({ data: stripSecrets(data as CompanyRow) });
 }

@@ -13,6 +13,7 @@ import { quoteStatusBumpsRevisionOnContentSave } from "@/modules/vendas/lib/sale
 import { QUOTE_STATUSES, type QuoteUpdate } from "@/modules/core/types/sales.types";
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
 import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
+import { paymentDueFieldsFromBody } from "@/shared/utils/payment-due";
 import { formatPaymentTermsSummary } from "@/shared/utils/payment-terms-format";
 import { resolveQuoteDeliveryFromBody } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
@@ -133,6 +134,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     b.payment_installments !== undefined ||
     b.payment_days_to_first_due !== undefined ||
     b.payment_days_between_installments !== undefined ||
+    b.payment_due_mode !== undefined ||
+    b.payment_fixed_due_dates !== undefined ||
     b.shipping_type !== undefined ||
     b.freight_cost !== undefined ||
     b.notes !== undefined ||
@@ -290,6 +293,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return apiError("payment_days_between_installments inválido", 400);
     }
     updateData.payment_days_between_installments = v;
+  }
+  {
+    const nextN = Number(
+      updateData.payment_installments ?? existing.payment_installments ?? 1
+    );
+    const dueParsed = paymentDueFieldsFromBody(b, nextN);
+    if (!dueParsed.ok) return apiError(dueParsed.message, 400);
+    if (dueParsed.payment_due_mode !== undefined) {
+      updateData.payment_due_mode = dueParsed.payment_due_mode;
+    }
+    if (dueParsed.payment_fixed_due_dates !== undefined) {
+      updateData.payment_fixed_due_dates = dueParsed.payment_fixed_due_dates;
+    }
   }
   if (
     (b.payment_installments !== undefined ||

@@ -10,6 +10,7 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { AppPage } from "@/shared/ui/app-page";
 import { useMe } from "@/hooks/use-me";
+import { type PaymentDueMode } from "@/shared/utils/payment-due";
 import {
   QuoteCommercialFields,
   QuoteFormFields,
@@ -94,6 +95,9 @@ export default function NewQuotePage() {
   const [paymentInstallments, setPaymentInstallments] = useState("1");
   const [paymentDaysFirst, setPaymentDaysFirst] = useState("30");
   const [paymentDaysBetween, setPaymentDaysBetween] = useState("30");
+  const [paymentDueMode, setPaymentDueMode] =
+    useState<PaymentDueMode>("from_emission");
+  const [paymentFixedDates, setPaymentFixedDates] = useState<string[]>([]);
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
@@ -225,6 +229,8 @@ export default function NewQuotePage() {
         paymentDaysBetween.trim() === ""
           ? 0
           : parseInt(paymentDaysBetween, 10) || 0,
+      payment_due_mode: paymentDueMode,
+      payment_fixed_due_dates: paymentFixedDates,
       delivery_business_days:
         deliveryDaysParsed != null && Number.isFinite(deliveryDaysParsed)
           ? deliveryDaysParsed
@@ -323,6 +329,10 @@ export default function NewQuotePage() {
               onPaymentDaysFirstChange={setPaymentDaysFirst}
               paymentDaysBetween={paymentDaysBetween}
               onPaymentDaysBetweenChange={setPaymentDaysBetween}
+              paymentDueMode={paymentDueMode}
+              onPaymentDueModeChange={setPaymentDueMode}
+              paymentFixedDates={paymentFixedDates}
+              onPaymentFixedDatesChange={setPaymentFixedDates}
               deliveryBusinessDays={deliveryBusinessDays}
               onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
               shippingType={shippingType}

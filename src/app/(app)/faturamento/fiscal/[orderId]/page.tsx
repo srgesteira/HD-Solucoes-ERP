@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ExternalLink,
   Loader2,
+  Mail,
   PackageCheck,
   Printer,
   RefreshCw,
@@ -23,6 +24,17 @@ import {
 import { AppPage } from "@/shared/ui/app-page";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
+import {
+  parsePaymentDueMode,
+  resolvePaymentDueDates,
+  type PaymentDueMode,
+} from "@/shared/utils/payment-due";
+import { formatShortDate, todayIsoSaoPaulo } from "@/shared/utils/date";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { NumericInput } from "@/shared/ui/numeric-input";
+import { NFE_FREIGHT_ACCOUNT_OPTIONS } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import type {
@@ -51,7 +63,6 @@ import {
   type InvoiceDocumentType,
 } from "@/modules/core/types/sales-order-billing.types";
 import { fmtBRL } from "@/shared/utils/format-brl";
-import { formatShortDate } from "@/shared/utils/date";
 import { cn } from "@/shared/utils/cn";
 
 function fmtPct(value: number | null | undefined): string {
@@ -246,6 +257,15 @@ export default function FiscalOrderReviewPage() {
   const [aiQuestions, setAiQuestions] = useState<string[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [editItem, setEditItem] = useState<FiscalOrderReviewItem | null>(null);
+  const [payInstallments, setPayInstallments] = useState("1");
+  const [payDaysFirst, setPayDaysFirst] = useState("30");
+  const [payDaysBetween, setPayDaysBetween] = useState("");
+  const [payDueMode, setPayDueMode] = useState<PaymentDueMode>("from_emission");
+  const [payFixedDates, setPayFixedDates] = useState<string[]>([]);
+  const [shippingType, setShippingType] = useState("FOB");
+  const [freightCost, setFreightCost] = useState(0);
+  const [carrierName, setCarrierName] = useState("");
+  const [customerPo, setCustomerPo] = useState("");
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["fiscal-order-review", orderId],
@@ -253,6 +273,20 @@ export default function FiscalOrderReviewPage() {
     enabled: Boolean(orderId) && canFaturamento,
     staleTime: 15_000,
   });
+
+  useEffect(() => {
+    if (!data) return;
+    setPayInstallments(String(data.payment_installments ?? 1));
+    setPayDaysFirst(String(data.payment_days_to_first_due ?? 30));
+    const pdb = data.payment_days_between_installments ?? 0;
+    setPayDaysBetween(pdb > 0 ? String(pdb) : "");
+    setPayDueMode(parsePaymentDueMode(data.payment_due_mode));
+    setPayFixedDates(data.payment_fixed_due_dates ?? []);
+    setShippingType(data.shipping_type ?? "FOB");
+    setFreightCost(Number(data.freight_cost ?? 0));
+    setCarrierName(data.carrier_name ?? "");
+    setCustomerPo(data.customer_po_number ?? "");
+  }, [data]);
 
   const alignMutation = useMutation({
     mutationFn: () => postAlignFiscal(orderId),
@@ -342,6 +376,70 @@ export default function FiscalOrderReviewPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const sendNfeEmailMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(
+        `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/send-nfe-email`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { sent?: boolean; message?: string };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao enviar e-mail");
+      return json.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data?.message ?? "DANFE e XML enviados por e-mail.");
+      void queryClient.invalidateQueries({
+        queryKey: ["fiscal-order-review", orderId],
+      });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const paymentMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(
+        `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/payment`,
+        {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            payment_installments: parseInt(payInstallments, 10) || 1,
+            payment_days_to_first_due: parseInt(payDaysFirst, 10) || 0,
+            payment_days_between_installments:
+              parseInt(payDaysBetween, 10) || 0,
+            payment_due_mode: payDueMode,
+            payment_fixed_due_dates: payFixedDates,
+            shipping_type: shippingType,
+            freight_cost: freightCost,
+            carrier_name: carrierName,
+            customer_po_number: customerPo,
+          }),
+        }
+      );
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao gravar dados da nota");
+    },
+    onSuccess: () => {
+      toast.success("Dados da nota gravados. Frete, pagamento e PC entram na NF-e.");
+      void queryClient.invalidateQueries({
+        queryKey: ["fiscal-order-review", orderId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["fiscal-order-print", orderId],
+      });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const runAi = async () => {
     setAiLoading(true);
     try {
@@ -387,6 +485,33 @@ export default function FiscalOrderReviewPage() {
     }
     return { label: "Sem NF-e", className: "bg-slate-100 text-slate-700" };
   }, [data]);
+
+  const installmentPreview = useMemo(() => {
+    const n = parseInt(payInstallments, 10) || 1;
+    const dates = resolvePaymentDueDates(
+      {
+        payment_due_mode: payDueMode,
+        payment_fixed_due_dates: payFixedDates,
+        payment_installments: n,
+        payment_days_to_first_due: parseInt(payDaysFirst, 10) || 0,
+        payment_days_between_installments: parseInt(payDaysBetween, 10) || 0,
+      },
+      todayIsoSaoPaulo()
+    );
+    const total = Number(data?.total ?? 0);
+    const share = n > 0 ? Math.round((total / n) * 100) / 100 : total;
+    return dates.map((d, i) => ({
+      date: d,
+      value: i === n - 1 ? Math.round((total - share * (n - 1)) * 100) / 100 : share,
+    }));
+  }, [
+    data?.total,
+    payInstallments,
+    payDueMode,
+    payFixedDates,
+    payDaysFirst,
+    payDaysBetween,
+  ]);
 
   if (!canFaturamento) {
     return (
@@ -695,7 +820,7 @@ export default function FiscalOrderReviewPage() {
                   </div>
                 ) : null}
                 {data.nfe?.pdf_url || data.nfe?.xml_url ? (
-                  <div className="flex gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
                     {data.nfe.pdf_url ? (
                       <a
                         href={data.nfe.pdf_url}
@@ -715,6 +840,23 @@ export default function FiscalOrderReviewPage() {
                       >
                         XML
                       </a>
+                    ) : null}
+                    {data.nfe?.status === "authorized" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        disabled={!isAdmin || sendNfeEmailMutation.isPending}
+                        onClick={() => sendNfeEmailMutation.mutate()}
+                      >
+                        {sendNfeEmailMutation.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Mail className="h-3.5 w-3.5" />
+                        )}
+                        Enviar DANFE + XML
+                      </Button>
                     ) : null}
                   </div>
                 ) : null}
@@ -744,6 +886,132 @@ export default function FiscalOrderReviewPage() {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-base">
+                Dados da nota (conferência)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <p className="text-sm text-slate-600">
+                Tudo o que entra na NF-e — frete por conta de quem, transportadora,
+                pedido de compra do cliente e condições de pagamento — edita-se
+                aqui. Depois grave e emita nesta mesma tela.
+              </p>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-1">
+                  <Label htmlFor="fiscal-shipping-type">Frete por conta de quem</Label>
+                  <select
+                    id="fiscal-shipping-type"
+                    className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm disabled:opacity-60"
+                    disabled={!isAdmin || Boolean(data.billing_closure)}
+                    value={shippingType}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setShippingType(next);
+                      if (next !== "CIF" && next !== "FOB") setFreightCost(0);
+                    }}
+                  >
+                    {NFE_FREIGHT_ACCOUNT_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {shippingType === "CIF" || shippingType === "FOB" ? (
+                  <div className="space-y-1">
+                    <Label htmlFor="fiscal-freight-cost">Valor do frete</Label>
+                    <NumericInput
+                      id="fiscal-freight-cost"
+                      value={freightCost}
+                      onChange={setFreightCost}
+                      maxDecimals={2}
+                      disabled={!isAdmin || Boolean(data.billing_closure)}
+                      placeholder="0,00"
+                    />
+                  </div>
+                ) : null}
+                <div className="space-y-1">
+                  <Label htmlFor="fiscal-carrier">Transportadora</Label>
+                  <Input
+                    id="fiscal-carrier"
+                    value={carrierName}
+                    onChange={(e) => setCarrierName(e.target.value)}
+                    disabled={!isAdmin || Boolean(data.billing_closure)}
+                    placeholder="Nome na NF-e"
+                    maxLength={120}
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="fiscal-customer-po">
+                    Pedido de compra do cliente (info. complementares)
+                  </Label>
+                  <Input
+                    id="fiscal-customer-po"
+                    value={customerPo}
+                    onChange={(e) => setCustomerPo(e.target.value)}
+                    disabled={!isAdmin || Boolean(data.billing_closure)}
+                    placeholder="N.º do PC do cliente"
+                    maxLength={80}
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-4 space-y-3">
+                <p className="text-sm font-medium text-slate-800">
+                  Condições de pagamento (duplicata)
+                </p>
+                <p className="text-sm text-slate-600">
+                  O prazo em dias conta a partir da{" "}
+                  <strong>emissão da NF-e</strong>, não do prazo de entrega. Se o
+                  cliente combinou uma data específica, escolha «Datas específicas
+                  de pagamento».
+                </p>
+                <PaymentTermsFields
+                  idPrefix="fiscal-pay"
+                  showDueMode
+                  dueMode={payDueMode}
+                  onDueModeChange={setPayDueMode}
+                  fixedDueDates={payFixedDates}
+                  onFixedDueDatesChange={setPayFixedDates}
+                  paymentInstallments={payInstallments}
+                  onPaymentInstallmentsChange={setPayInstallments}
+                  paymentDaysFirst={payDaysFirst}
+                  onPaymentDaysFirstChange={setPayDaysFirst}
+                  paymentDaysBetween={payDaysBetween}
+                  onPaymentDaysBetweenChange={setPayDaysBetween}
+                  disabled={!isAdmin || Boolean(data.billing_closure)}
+                />
+                {installmentPreview.length > 0 ? (
+                  <ul className="text-xs text-slate-600 space-y-0.5">
+                    {installmentPreview.map((p, i) => (
+                      <li key={`${p.date}-${i}`}>
+                        Parcela {i + 1}/{installmentPreview.length}:{" "}
+                        {formatShortDate(p.date)} · {fmtBRL(p.value)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+
+              {isAdmin && !data.billing_closure ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={paymentMutation.isPending}
+                  onClick={() => paymentMutation.mutate()}
+                >
+                  {paymentMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Gravar dados da nota
+                </Button>
+              ) : null}
+            </CardContent>
+          </Card>
 
           <PrepareBlingOrderPanel
             orderId={orderId}

@@ -6,10 +6,16 @@ import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { RECEIVABLE_STATUSES } from "@/modules/core/types/finance.types";
 import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
+import {
+  isReceivablesListTab,
+  type ReceivablesListTab,
+} from "@/modules/faturamento/lib/receivables-list-tabs";
 
 export const dynamic = "force-dynamic";
 
 const RECEIVABLE_SET = new Set<string>(RECEIVABLE_STATUSES);
+
+const UNPAID_STATUSES = ["pending", "partial", "overdue"] as const;
 
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
@@ -28,6 +34,10 @@ export async function GET(request: NextRequest) {
   const overdue = searchParams.get("overdue");
   const client = searchParams.get("client")?.trim();
   const sales_order_id = searchParams.get("sales_order_id")?.trim();
+  const tabRaw = searchParams.get("tab");
+  const tab: ReceivablesListTab | null =
+    tabRaw && isReceivablesListTab(tabRaw) ? tabRaw : null;
+  const today = new Date().toISOString().slice(0, 10);
 
   const page = Math.max(
     1,
@@ -44,8 +54,18 @@ export async function GET(request: NextRequest) {
   let query = admin
     .from("receivables")
     .select("*", { count: "exact" })
-    .eq("tenant_id", tenantId)
-    .eq("is_forecast", false);
+    .eq("tenant_id", tenantId);
+
+  if (tab === "open") {
+    query = query.eq("is_forecast", false).in("status", [...UNPAID_STATUSES]);
+  } else if (tab === "forecast") {
+    query = query.eq("is_forecast", true);
+  } else if (tab === "paid") {
+    query = query.eq("status", "paid");
+  } else if (!tab) {
+    // Compat: listagem antiga sem tab continua a excluir previsões.
+    query = query.eq("is_forecast", false);
+  }
 
   if (sales_order_id) {
     query = query.eq("sales_order_id", sales_order_id);
@@ -59,8 +79,8 @@ export async function GET(request: NextRequest) {
   }
 
   if (overdue === "1") {
-    const today = new Date().toISOString().slice(0, 10);
     query = query
+      .eq("is_forecast", false)
       .in("status", ["pending", "partial"])
       .lt("due_date", today);
   }
@@ -87,5 +107,6 @@ export async function GET(request: NextRequest) {
   return apiOk({
     data: data ?? [],
     pagination: { page, limit, total: count ?? 0 },
+    tab: tab ?? undefined,
   });
 }

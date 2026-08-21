@@ -53,6 +53,16 @@ export const companySettingsUpdateSchema = z.object({
   nfse_ibs_cbs_classificacao_tributaria: z.string().max(32).nullable().optional(),
   nfse_use_sao_paulo_payload: z.boolean().optional(),
   nfse_codigo_tributario_municipio: z.string().max(32).nullable().optional(),
+  smtp_host: z.string().max(200).nullable().optional(),
+  smtp_port: z.coerce.number().int().min(1).max(65535).nullable().optional(),
+  smtp_user: z.string().max(320).nullable().optional(),
+  smtp_password: z.string().max(500).nullable().optional(),
+  smtp_from_name: z.string().max(200).nullable().optional(),
+  smtp_from_email: z
+    .union([z.string().email().max(320), z.literal("")])
+    .nullable()
+    .optional(),
+  smtp_secure: z.boolean().optional(),
 });
 
 export type CompanySettingsUpdateInput = z.infer<

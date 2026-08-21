@@ -38,25 +38,22 @@ import {
 } from "@/components/finance/finance-table-ui";
 import { FinanceRowActions } from "@/components/finance/finance-row-actions";
 import { FinanceTitleEditDialog } from "@/components/finance/finance-title-edit-dialog";
+import {
+  RECEIVABLES_LIST_TABS,
+  RECEIVABLES_LIST_TAB_LABELS,
+  RECEIVABLES_LIST_TAB_DEFAULT,
+  isReceivablesListTab,
+  type ReceivablesListTab,
+} from "@/modules/faturamento/lib/receivables-list-tabs";
 
-type ReceivableTab = "all" | "pending" | "partial" | "paid" | "cancelled" | "overdue";
-
-function parseReceivableTab(raw: string | null): ReceivableTab {
-  if (
-    raw === "pending" ||
-    raw === "partial" ||
-    raw === "paid" ||
-    raw === "cancelled" ||
-    raw === "overdue"
-  ) {
-    return raw;
-  }
-  return "all";
-}
-
-function initialReceivableTab(searchParams: URLSearchParams): ReceivableTab {
-  if (searchParams.get("overdue") === "1") return "overdue";
-  return parseReceivableTab(searchParams.get("status"));
+function initialReceivableTab(
+  searchParams: URLSearchParams,
+  embedded: boolean
+): ReceivablesListTab {
+  if (!embedded) return RECEIVABLES_LIST_TAB_DEFAULT;
+  const list = searchParams.get("list");
+  if (list && isReceivablesListTab(list)) return list;
+  return RECEIVABLES_LIST_TAB_DEFAULT;
 }
 
 type ReceivableRow = {
@@ -69,16 +66,8 @@ type ReceivableRow = {
   status: string;
   sales_order_id: string | null;
   due_date?: string | null;
+  is_forecast?: boolean;
 };
-
-const TAB_OPTIONS: Array<{ value: ReceivableTab; label: string }> = [
-  { value: "all", label: "Todos" },
-  { value: "pending", label: "Pendentes" },
-  { value: "partial", label: "Parciais" },
-  { value: "paid", label: "Pagos" },
-  { value: "cancelled", label: "Cancelados" },
-  { value: "overdue", label: "Vencidos" },
-];
 
 const RECEIVABLE_STATUS_LABELS: Record<string, string> = {
   pending: "Pendente",
@@ -131,8 +120,8 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
   const { can, isLoading: permLoading } = usePermissions();
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
-  const [activeTab, setActiveTab] = useState<ReceivableTab>(() =>
-    embedded ? initialReceivableTab(searchParams) : "all"
+  const [activeTab, setActiveTab] = useState<ReceivablesListTab>(() =>
+    initialReceivableTab(searchParams, embedded)
   );
   const { input: searchInput, setInput: setSearchInput, debounced: search } =
     useCronogramaSearch();
@@ -154,7 +143,7 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
 
   useEffect(() => {
     if (embedded) {
-      setActiveTab(initialReceivableTab(searchParams));
+      setActiveTab(initialReceivableTab(searchParams, true));
     }
   }, [embedded, searchParams]);
 
@@ -168,12 +157,8 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
       const params = new URLSearchParams({
         page: String(page),
         limit: String(limit),
+        tab: activeTab,
       });
-      if (activeTab === "overdue") {
-        params.set("overdue", "1");
-      } else if (activeTab !== "all") {
-        params.set("status", activeTab);
-      }
       if (search.trim()) params.set("client", search.trim());
       const res = await fetch(`/api/finance/receivables?${params}`, {
         credentials: "include",
@@ -434,13 +419,14 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
         data={visibleRows}
         getRowKey={(row) => row.id}
         isLoading={loading}
-        emptyMessage="Sem registos."
+        emptyMessage={`Sem contas em «${RECEIVABLES_LIST_TAB_LABELS[activeTab]}».`}
         actionsColumn={{
           label: "Acções",
           width: "w-[7rem]",
           render: (row) => {
             const open =
-              row.status === "pending" || row.status === "partial";
+              row.is_forecast !== true &&
+              (row.status === "pending" || row.status === "partial");
             return (
               <FinanceRowActions
                 canSettle={open}
@@ -487,19 +473,24 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
       <Tabs
         value={activeTab}
         onValueChange={(v) => {
-          setActiveTab(v as ReceivableTab);
+          setActiveTab(v as ReceivablesListTab);
           setPage(1);
+          if (embedded) {
+            const p = new URLSearchParams({ tab: "receber" });
+            if (v !== "open") p.set("list", v);
+            router.replace(`/finance/contas?${p.toString()}`, { scroll: false });
+          }
         }}
       >
         <TabsList className="w-full flex flex-wrap h-auto gap-1">
-          {TAB_OPTIONS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
-              {tab.label}
+          {RECEIVABLES_LIST_TABS.map((tabId) => (
+            <TabsTrigger key={tabId} value={tabId} className="text-xs sm:text-sm">
+              {RECEIVABLES_LIST_TAB_LABELS[tabId]}
             </TabsTrigger>
           ))}
         </TabsList>
-        {TAB_OPTIONS.map((tab) => (
-          <TabsContent key={tab.value} value={tab.value} className="mt-4">
+        {RECEIVABLES_LIST_TABS.map((tabId) => (
+          <TabsContent key={tabId} value={tabId} className="mt-4">
             {listPanel}
           </TabsContent>
         ))}

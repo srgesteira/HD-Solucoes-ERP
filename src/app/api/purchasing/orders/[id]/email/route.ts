@@ -8,7 +8,10 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
 import { fetchPurchaseOrderForExport } from "@/modules/compras/lib/purchasing/fetch-purchase-order-for-export";
+import { fetchPurchaseOrderPrintContext } from "@/modules/compras/lib/purchasing/fetch-purchase-order-print";
+import { generatePurchaseOrderPdfBuffer } from "@/modules/compras/lib/purchasing/generate-purchase-order-pdf";
 import { sendPurchaseOrderEmail } from "@/modules/compras/lib/purchasing/send-purchase-order-email";
+import { loadTenantMailConfig } from "@/shared/utils/email/load-tenant-mail-config";
 
 export const dynamic = "force-dynamic";
 
@@ -57,11 +60,24 @@ export async function POST(request: NextRequest, { params }: Params) {
   const order = await fetchPurchaseOrderForExport(admin, tenantId, id);
   if (!order) return apiError("Pedido não encontrado", 404);
 
+  const mail = await loadTenantMailConfig(admin, tenantId);
+  let pdfBuffer: Buffer | null = null;
+  try {
+    const printCtx = await fetchPurchaseOrderPrintContext(admin, tenantId, id);
+    if (printCtx) {
+      pdfBuffer = await generatePurchaseOrderPdfBuffer(printCtx);
+    }
+  } catch {
+    pdfBuffer = null;
+  }
+
   try {
     const result = await sendPurchaseOrderEmail({
       order,
       appOrigin: appOrigin(request),
       toOverride,
+      mail,
+      pdfBuffer,
     });
 
     if (

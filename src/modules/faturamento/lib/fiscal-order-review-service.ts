@@ -137,6 +137,8 @@ export type FiscalOrderReview = {
   payment_installments: number;
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
+  payment_due_mode: string;
+  payment_fixed_due_dates: string[];
   items: FiscalOrderReviewItem[];
   warnings: string[];
   nfe: {
@@ -154,6 +156,10 @@ export type FiscalOrderReview = {
   emit_warnings: string[];
   bling_pedido_venda_id: number | null;
   bling_pedido_prepared_at: string | null;
+  shipping_type: string | null;
+  freight_cost: number;
+  carrier_name: string | null;
+  freight_payer: string | null;
 };
 
 type RawOrderRow = {
@@ -184,6 +190,13 @@ type RawOrderRow = {
   payment_installments: number | null;
   payment_days_to_first_due: number | null;
   payment_days_between_installments: number | null;
+  payment_due_mode?: string | null;
+  payment_fixed_due_dates?: string[] | null;
+  shipping_type?: string | null;
+  freight_cost?: number | null;
+  carrier_name?: string | null;
+  freight_payer?: string | null;
+  quote_id?: string | null;
   delivery_address_different?: boolean | null;
   delivery_street?: string | null;
   delivery_number?: string | null;
@@ -496,6 +509,13 @@ export async function getFiscalOrderReview(
       payment_installments,
       payment_days_to_first_due,
       payment_days_between_installments,
+      payment_due_mode,
+      payment_fixed_due_dates,
+      shipping_type,
+      freight_cost,
+      carrier_name,
+      freight_payer,
+      quote_id,
       delivery_address_different,
       delivery_street,
       delivery_number,
@@ -782,6 +802,26 @@ export async function getFiscalOrderReview(
       bling_pedido_prepared_at?: string | null;
     } | null) ?? null;
 
+  let shippingType =
+    typeof order.shipping_type === "string" && order.shipping_type.trim()
+      ? order.shipping_type.trim()
+      : null;
+  let freightCost = Number(order.freight_cost ?? 0);
+  if ((!shippingType || freightCost <= 0) && order.quote_id) {
+    const { data: quoteRow } = await db
+      .from("quotes")
+      .select("shipping_type, freight_cost")
+      .eq("id", order.quote_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const q = quoteRow as {
+      shipping_type?: string | null;
+      freight_cost?: number | null;
+    } | null;
+    if (!shippingType) shippingType = q?.shipping_type?.trim() || null;
+    if (!(freightCost > 0)) freightCost = Number(q?.freight_cost ?? 0);
+  }
+
   const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, salesOrderId);
 
   return {
@@ -868,6 +908,21 @@ export async function getFiscalOrderReview(
     payment_days_between_installments: Number(
       order.payment_days_between_installments ?? 0
     ),
+    payment_due_mode:
+      order.payment_due_mode === "fixed_dates" ? "fixed_dates" : "from_emission",
+    payment_fixed_due_dates: Array.isArray(order.payment_fixed_due_dates)
+      ? order.payment_fixed_due_dates.map((d) => String(d).slice(0, 10))
+      : [],
+    shipping_type: shippingType,
+    freight_cost: Number.isFinite(freightCost) ? freightCost : 0,
+    carrier_name:
+      typeof order.carrier_name === "string"
+        ? order.carrier_name.trim() || null
+        : null,
+    freight_payer:
+      typeof order.freight_payer === "string"
+        ? order.freight_payer.trim() || null
+        : null,
     items,
     warnings,
     nfe,
@@ -1146,6 +1201,53 @@ export async function saveSalesOrderItemUsageType(
 
   if (updErr) throw new Error(updErr.message);
   return { ok: true };
+}
+
+const REOPEN_CONFERENCE_STATUSES = [
+  "rules_applied",
+  "manual_override",
+  "approved",
+] as const;
+
+/** Volta pedidos sem nota autorizada para a aba «Fiscal a conferir». */
+export async function reopenFiscalConferenceQueue(
+  admin: Admin,
+  tenantId: string
+): Promise<{ updated: number }> {
+  const db = asUntypedAdmin(admin);
+  const { data: nfeRows, error: nfeErr } = await admin
+    .from("nfes")
+    .select("sales_order_id")
+    .eq("tenant_id", tenantId)
+    .eq("status", "authorized")
+    .not("sales_order_id", "is", null);
+  if (nfeErr) throw new Error(nfeErr.message);
+  const skip = new Set(
+    (nfeRows ?? [])
+      .map((r) => r.sales_order_id)
+      .filter((id): id is string => Boolean(id))
+  );
+
+  const { data: rows, error: loadErr } = await db
+    .from("sales_orders")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .is("billing_closure", null)
+    .in("fiscal_status", [...REOPEN_CONFERENCE_STATUSES]);
+  if (loadErr) throw new Error(loadErr.message);
+
+  const ids = ((rows ?? []) as Array<{ id: string }>)
+    .map((r) => r.id)
+    .filter((id) => !skip.has(id));
+  if (ids.length === 0) return { updated: 0 };
+
+  const { error: updErr } = await db
+    .from("sales_orders")
+    .update({ fiscal_status: "review_required" })
+    .eq("tenant_id", tenantId)
+    .in("id", ids);
+  if (updErr) throw new Error(updErr.message);
+  return { updated: ids.length };
 }
 
 export { parseManualItemInput };

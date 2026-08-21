@@ -19,6 +19,8 @@ export const SALES_ORDER_ADMIN_FIELDS_WHEN_PRODUCTION = new Set([
   "payment_installments",
   "payment_days_to_first_due",
   "payment_days_between_installments",
+  "payment_due_mode",
+  "payment_fixed_due_dates",
   "customer_po_number",
   "discount",
   "delivery_address_different",

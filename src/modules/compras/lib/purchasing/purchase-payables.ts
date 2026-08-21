@@ -4,6 +4,7 @@ import {
   addDaysToISODate,
   splitAmountInInstallments,
 } from "@/modules/vendas/lib/sales/sales-flow";
+import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
 import {
   computePurchaseOrderTotal,
   type PurchaseOrderExtraCosts,
@@ -15,6 +16,8 @@ export type PurchaseOrderForPayables = PurchaseOrderExtraCosts & {
   id: string;
   po_number: string;
   order_date: string;
+  expected_delivery?: string | null;
+  actual_delivery?: string | null;
   supplier_id: string | null;
   payment_installments: number;
   payment_days_to_first_due: number;
@@ -26,6 +29,8 @@ type PurchaseOrderPayableRow = {
   id: string;
   po_number: string;
   order_date: string;
+  expected_delivery?: string | null;
+  actual_delivery?: string | null;
   supplier_id: string | null;
   payment_installments?: number | null;
   payment_days_to_first_due?: number | null;
@@ -47,6 +52,8 @@ export function purchaseOrderRowToPayablesInput(
     id: row.id,
     po_number: row.po_number,
     order_date: row.order_date,
+    expected_delivery: row.expected_delivery ?? null,
+    actual_delivery: row.actual_delivery ?? null,
     supplier_id: row.supplier_id,
     payment_installments: row.payment_installments ?? 1,
     payment_days_to_first_due: row.payment_days_to_first_due ?? 30,
@@ -113,7 +120,12 @@ export function buildPurchaseOrderPayableTargets(order: PurchaseOrderForPayables
   const total = purchaseOrderPayableTotal(order);
   const n = Math.max(1, Math.min(999, order.payment_installments ?? 1));
   const amounts = total > 0 ? splitAmountInInstallments(total, n) : [];
-  const baseDate = order.order_date.slice(0, 10);
+  // Espelha vendas: actual_delivery → expected_delivery → order_date
+  const baseDate = paymentScheduleBaseDate({
+    actual_delivery: order.actual_delivery,
+    expected_delivery: order.expected_delivery,
+    order_date: order.order_date,
+  });
   let due = addDaysToISODate(baseDate, order.payment_days_to_first_due ?? 30);
   const dueDates: string[] = [];
   const descriptions: string[] = [];
@@ -468,6 +480,8 @@ export async function ensurePayablesSyncedForPurchaseOrder(
     payment_days_to_first_due?: boolean;
     payment_days_between_installments?: boolean;
     order_date?: boolean;
+    expected_delivery?: boolean;
+    actual_delivery?: boolean;
     supplier_id?: boolean;
   }
 ): Promise<SyncPayablesResult | undefined> {
@@ -477,6 +491,8 @@ export async function ensurePayablesSyncedForPurchaseOrder(
     changedFields.payment_days_to_first_due ||
     changedFields.payment_days_between_installments ||
     changedFields.order_date ||
+    changedFields.expected_delivery ||
+    changedFields.actual_delivery ||
     changedFields.supplier_id;
 
   if (!shouldSync) return undefined;
@@ -602,7 +618,7 @@ export async function listPayablesRecalcDryRun(
   const { data: orders, error: poErr } = await admin
     .from("purchase_orders")
     .select(
-      "id, po_number, order_date, supplier_id, subtotal, discount, tax, total_ipi, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments, is_suggestion"
+      "id, po_number, order_date, expected_delivery, actual_delivery, supplier_id, subtotal, discount, tax, total_ipi, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments, is_suggestion"
     )
     .eq("tenant_id", tenantId)
     .in("id", poIds);
@@ -728,7 +744,7 @@ export async function applyPayablesRecalc(
   return { updated, errors };
 }
 
-/** Títulos provisórios → definitivos após recebimento do PC (status received). */
+/** Títulos provisórios → definitivos (só flag). Preferir `effectivatePurchaseOrderPayables`. */
 export async function confirmProvisionalPayablesForPurchaseOrder(
   admin: Admin,
   tenantId: string,
@@ -744,4 +760,117 @@ export async function confirmProvisionalPayablesForPurchaseOrder(
 
   if (error) throw new Error(error.message);
   return { updated: (data ?? []).length };
+}
+
+function dayOnlyIso(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const s = iso.trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+export type EffectivatePurchaseOrderPayablesOptions = {
+  /**
+   * Data da NF (marco fiscal). Tem prioridade sobre actual_delivery
+   * como data-base do vencimento.
+   */
+  invoiceIssueDate?: string | null;
+  /** Prazo real da conciliação; se omitido, usa payment_days_* do PC. */
+  payment_days_to_first_due?: number;
+  payment_days_between_installments?: number;
+  payment_installments?: number;
+};
+
+export type EffectivatePurchaseOrderPayablesResult = {
+  baseDate: string;
+  sync: SyncPayablesResult;
+  confirmed: number;
+};
+
+/**
+ * Único caminho permitido previsão → real para AP de compra.
+ * Pré-requisito: `actual_delivery` (ou `invoiceIssueDate`) já persistido / informado
+ * — data de entrada do material. Nunca calcular com só expected_delivery.
+ *
+ * Vencimento = data-base + prazo (override NF ou padrão do PC).
+ * Sempre regrava due_date e is_forecast = false.
+ */
+export async function effectivatePurchaseOrderPayables(
+  admin: Admin,
+  tenantId: string,
+  purchaseOrderId: string,
+  options?: EffectivatePurchaseOrderPayablesOptions
+): Promise<EffectivatePurchaseOrderPayablesResult> {
+  const { data: po, error } = await admin
+    .from("purchase_orders")
+    .select(
+      "id, po_number, order_date, expected_delivery, actual_delivery, supplier_id, is_suggestion, subtotal, discount, tax, total_ipi, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+    )
+    .eq("id", purchaseOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!po) throw new Error("Pedido de compra não encontrado para efectivar pagáveis.");
+
+  const baseDate =
+    dayOnlyIso(options?.invoiceIssueDate) ??
+    dayOnlyIso(po.actual_delivery);
+
+  if (!baseDate) {
+    throw new Error(
+      "Sem data de entrada do material (NF ou recebimento). Grave actual_delivery antes de efectivar."
+    );
+  }
+
+  const order = purchaseOrderRowToPayablesInput({
+    ...po,
+    // Força paymentScheduleBaseDate a usar a data de entrada, não a prevista.
+    actual_delivery: baseDate,
+    expected_delivery: po.expected_delivery,
+    payment_installments:
+      options?.payment_installments ?? po.payment_installments,
+    payment_days_to_first_due:
+      options?.payment_days_to_first_due ?? po.payment_days_to_first_due,
+    payment_days_between_installments:
+      options?.payment_days_between_installments ??
+      po.payment_days_between_installments,
+  });
+
+  // Garante linhas (ainda como previsão se recém-criadas) e depois alinha a received.
+  const generated = await generatePayablesForPurchaseOrder(
+    admin,
+    tenantId,
+    order
+  );
+  if (
+    generated.created === 0 &&
+    generated.skipped &&
+    ![
+      "purchase_order_is_suggestion",
+      "total_zero",
+      "already_exists",
+      "no_rows",
+    ].includes(generated.skipped)
+  ) {
+    throw new Error("Falha ao gerar pagáveis: " + generated.skipped);
+  }
+
+  const sync = await reconcilePayablesForPurchaseOrder(
+    admin,
+    tenantId,
+    order,
+    "received"
+  );
+
+  const confirmed = await confirmProvisionalPayablesForPurchaseOrder(
+    admin,
+    tenantId,
+    purchaseOrderId
+  );
+
+  return {
+    baseDate,
+    sync,
+    confirmed: confirmed.updated,
+  };
 }

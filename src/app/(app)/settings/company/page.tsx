@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Download, Loader2, Save, Upload } from "lucide-react";
+import { Building2, Download, Loader2, Mail, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -23,6 +23,7 @@ import type { Tables } from "@/modules/core/types/database";
 
 type CompanyRow = Tables<"company_settings"> & {
   focusnfe_configured?: boolean;
+  smtp_configured?: boolean;
 };
 
 type TabKey = "info" | "address" | "documents" | "integrations";
@@ -108,6 +109,13 @@ function emptyDraft(): Partial<CompanyRow> {
     nfse_ibs_cbs_classificacao_tributaria: "000001",
     nfse_use_sao_paulo_payload: false,
     nfse_codigo_tributario_municipio: null,
+    smtp_host: "smtp.zoho.com",
+    smtp_port: 465,
+    smtp_user: null,
+    smtp_password: "",
+    smtp_from_name: null,
+    smtp_from_email: null,
+    smtp_secure: true,
     };
 }
 
@@ -143,6 +151,7 @@ export default function CompanySettingsPage() {
   const [tab, setTab] = useState<TabKey>("info");
   const [draft, setDraft] = useState<Partial<CompanyRow>>(emptyDraft);
   const [exporting, setExporting] = useState(false);
+  const [mailTestTo, setMailTestTo] = useState("");
 
   const companyQuery = useQuery({
     queryKey: ["company-settings"],
@@ -225,6 +234,9 @@ export default function CompanySettingsPage() {
     setDraft({
       ...row,
       focusnfe_token: "",
+      smtp_password: "",
+      smtp_host: row.smtp_host ?? "smtp.zoho.com",
+      smtp_port: row.smtp_port ?? 465,
       default_delivery_days:
         row.default_delivery_days != null ?
           Number(row.default_delivery_days)
@@ -244,6 +256,27 @@ export default function CompanySettingsPage() {
     onSuccess: async () => {
       toast.success("Configurações da empresa gravadas.");
       await queryClient.invalidateQueries({ queryKey: ["company-settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const testMailMutation = useMutation({
+    mutationFn: async (to: string) => {
+      const res = await fetch("/api/company/mail/test", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: to.trim() || undefined }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { message?: string; sent?: boolean };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Falha no teste de e-mail");
+      return json.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data?.message ?? "E-mail de teste enviado.");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -341,6 +374,18 @@ export default function CompanySettingsPage() {
         d.nfse_ibs_cbs_classificacao_tributaria?.trim() || "000001",
       nfse_use_sao_paulo_payload: Boolean(d.nfse_use_sao_paulo_payload),
       nfse_codigo_tributario_municipio: d.nfse_codigo_tributario_municipio ?? null,
+      smtp_host: d.smtp_host?.trim() || "smtp.zoho.com",
+      smtp_port:
+        d.smtp_port != null && Number.isFinite(Number(d.smtp_port))
+          ? Math.floor(Number(d.smtp_port))
+          : 465,
+      smtp_user: d.smtp_user?.trim() || null,
+      ...(typeof d.smtp_password === "string" && d.smtp_password.trim()
+        ? { smtp_password: d.smtp_password.trim() }
+        : {}),
+      smtp_from_name: d.smtp_from_name?.trim() || null,
+      smtp_from_email: d.smtp_from_email?.trim() || null,
+      smtp_secure: d.smtp_secure !== false,
     };
   }, [draft]);
 
@@ -1183,6 +1228,7 @@ export default function CompanySettingsPage() {
           ) : null}
 
           {tab === "integrations" ? (
+            <>
             <Card>
               <CardHeader>
                 <CardTitle>Bling — emissão de NF-e</CardTitle>
@@ -1275,6 +1321,152 @@ export default function CompanySettingsPage() {
                 )}
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Zoho Mail — envio de documentos</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <p className="text-slate-600">
+                  Os e-mails saem da sua caixa Zoho: orçamentos (PDF), pedidos
+                  de compra (PDF) e NF-e autorizada (DANFE + XML). No Zoho,
+                  crie uma <strong>senha de aplicação</strong> (não use a senha
+                  normal da conta).
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {companyQuery.data?.smtp_configured ? (
+                    <StatusBadge tone="success">Ligado</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="muted">Não ligado</StatusBadge>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp_host">Servidor SMTP</Label>
+                    <Input
+                      id="smtp_host"
+                      value={draft.smtp_host ?? "smtp.zoho.com"}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, smtp_host: e.target.value }))
+                      }
+                      placeholder="smtp.zoho.com"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Conta paga: smtppro.zoho.com. Padrão: smtp.zoho.com.
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp_port">Porta</Label>
+                    <Input
+                      id="smtp_port"
+                      type="number"
+                      value={draft.smtp_port ?? 465}
+                      onChange={(e) =>
+                        setDraft((d) => ({
+                          ...d,
+                          smtp_port:
+                            e.target.value === ""
+                              ? 465
+                              : Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp_user">E-mail Zoho (utilizador)</Label>
+                    <Input
+                      id="smtp_user"
+                      type="email"
+                      value={draft.smtp_user ?? ""}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, smtp_user: e.target.value }))
+                      }
+                      placeholder="helder@suaempresa.com.br"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp_password">Senha de aplicação</Label>
+                    <Input
+                      id="smtp_password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={
+                        typeof draft.smtp_password === "string"
+                          ? draft.smtp_password
+                          : ""
+                      }
+                      onChange={(e) =>
+                        setDraft((d) => ({
+                          ...d,
+                          smtp_password: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        companyQuery.data?.smtp_configured
+                          ? "•••••••• (deixe em branco para manter)"
+                          : "Senha de aplicação Zoho"
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp_from_name">Nome do remetente</Label>
+                    <Input
+                      id="smtp_from_name"
+                      value={draft.smtp_from_name ?? ""}
+                      onChange={(e) =>
+                        setDraft((d) => ({
+                          ...d,
+                          smtp_from_name: e.target.value,
+                        }))
+                      }
+                      placeholder="HD Soluções Industriais"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="smtp_from_email">E-mail remetente</Label>
+                    <Input
+                      id="smtp_from_email"
+                      type="email"
+                      value={draft.smtp_from_email ?? ""}
+                      onChange={(e) =>
+                        setDraft((d) => ({
+                          ...d,
+                          smtp_from_email: e.target.value,
+                        }))
+                      }
+                      placeholder="igual ao utilizador SMTP"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                  <div className="flex-1 space-y-1">
+                    <Label htmlFor="mail-test-to">Enviar teste para</Label>
+                    <Input
+                      id="mail-test-to"
+                      type="email"
+                      value={mailTestTo}
+                      onChange={(e) => setMailTestTo(e.target.value)}
+                      placeholder="seu e-mail para confirmar"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={testMailMutation.isPending}
+                    onClick={() => testMailMutation.mutate(mailTestTo)}
+                  >
+                    {testMailMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Mail className="h-4 w-4" />
+                    )}
+                    Enviar e-mail de teste
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </>
           ) : null}
 
           <Card className="border-slate-200">

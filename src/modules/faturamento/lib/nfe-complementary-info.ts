@@ -1,6 +1,5 @@
-import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
-import { formatShortDate } from "@/shared/utils/date";
-import { buildInstallmentDueDates } from "@/shared/utils/payment-terms-format";
+import { formatShortDate, todayIsoSaoPaulo } from "@/shared/utils/date";
+import { resolvePaymentDueDates } from "@/shared/utils/payment-due";
 
 /**
  * Campos usados na NF-e. Não inclui `sales_orders.notes` —
@@ -13,6 +12,8 @@ export type NfeComplementaryInfoSource = {
   payment_installments: number;
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
+  payment_due_mode?: string | null;
+  payment_fixed_due_dates?: string[] | null;
   actual_delivery: string | null;
   expected_delivery: string | null;
   order_date: string;
@@ -21,17 +22,7 @@ export type NfeComplementaryInfoSource = {
 export function formatNfePaymentDueDates(
   source: NfeComplementaryInfoSource
 ): string {
-  const base = paymentScheduleBaseDate({
-    actual_delivery: source.actual_delivery,
-    expected_delivery: source.expected_delivery,
-    order_date: source.order_date,
-  });
-  const dates = buildInstallmentDueDates({
-    baseDateIso: base,
-    installments: source.payment_installments,
-    daysToFirst: source.payment_days_to_first_due,
-    daysBetween: source.payment_days_between_installments,
-  });
+  const dates = resolvePaymentDueDates(source, todayIsoSaoPaulo());
   if (!dates.length) return "";
   return dates
     .map((d) => {

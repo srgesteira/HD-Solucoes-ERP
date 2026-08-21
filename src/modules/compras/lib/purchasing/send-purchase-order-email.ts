@@ -1,5 +1,7 @@
 import type { PurchaseOrderExportData } from "@/modules/compras/lib/purchasing/fetch-purchase-order-for-export";
 import { fmtPoBRL, fmtPoDate } from "@/modules/compras/lib/purchasing/fetch-purchase-order-for-export";
+import { sendOutboundEmail } from "@/shared/utils/email/send-outbound-email";
+import type { OutboundMailConfig } from "@/shared/utils/email/mail-config";
 
 function escapeHtml(s: string): string {
   return s
@@ -50,12 +52,9 @@ export async function sendPurchaseOrderEmail(args: {
   order: PurchaseOrderExportData;
   appOrigin: string;
   toOverride?: string[];
+  mail?: OutboundMailConfig | null;
+  pdfBuffer?: Buffer | null;
 }): Promise<SendPurchaseOrderEmailResult> {
-  const resendKey = process.env.RESEND_API_KEY?.trim();
-  const from =
-    process.env.NOTIFICATIONS_EMAIL_FROM?.trim() ??
-    "ERP HD Soluções <onboarding@resend.dev>";
-
   const recipients = [
     ...new Set(
       (args.toOverride?.length
@@ -74,15 +73,7 @@ export async function sendPurchaseOrderEmail(args: {
       sent: false,
       simulated: true,
       message:
-        "Fornecedor sem e-mail cadastrado — envio simulado (configure o e-mail do fornecedor).",
-    };
-  }
-
-  if (!resendKey) {
-    return {
-      sent: false,
-      simulated: true,
-      message: "E-mail enviado (simulado) — RESEND_API_KEY não configurada.",
+        "Fornecedor sem e-mail cadastrado — configure o e-mail do fornecedor.",
     };
   }
 
@@ -110,27 +101,26 @@ export async function sendPurchaseOrderEmail(args: {
     </html>
   `.trim();
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: recipients,
-      subject,
-      html,
-    }),
+  const poSafe = args.order.po_number.replace(/[^a-zA-Z0-9._-]+/g, "_");
+  const result = await sendOutboundEmail({
+    to: recipients,
+    subject,
+    html,
+    mail: args.mail,
+    attachments: args.pdfBuffer
+      ? [
+          {
+            filename: `Pedido-${poSafe}.pdf`,
+            content: args.pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ]
+      : undefined,
   });
 
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Falha ao enviar e-mail (${res.status}): ${txt}`);
-  }
-
   return {
-    sent: true,
-    message: `E-mail enviado para ${recipients.join(", ")}.`,
+    sent: result.sent,
+    simulated: result.simulated,
+    message: result.message,
   };
 }

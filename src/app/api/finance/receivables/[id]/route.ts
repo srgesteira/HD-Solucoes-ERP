@@ -6,10 +6,8 @@ import { requireMenuModule } from "@/modules/core/lib/api-guards";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import type { ReceivableUpdate } from "@/modules/core/types/finance.types";
 import { RECEIVABLE_STATUSES } from "@/modules/core/types/finance.types";
-import {
-  buildReceivableMovementDescription,
-  recordFinancialMovement,
-} from "@/modules/finance/lib/financial-movements";
+import { buildReceivableMovementDescription } from "@/modules/finance/lib/financial-movements";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -112,7 +110,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 
   const updateData: ReceivableUpdate = {};
-  let paymentMovement: { amount: number; movementDate: string } | null = null;
+  let settlement: {
+    amount: number;
+    interestAdjustment: number;
+    discountAdjustment: number;
+    paymentDate: string;
+  } | null = null;
 
   if (b.adjust_amount !== undefined && b.received_amount !== undefined) {
     return apiError(
@@ -205,80 +208,71 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (!Number.isFinite(discountAdj) || discountAdj < 0)
       return apiError("discount_adjustment inválido", 400);
 
-    const newPaid = roundMoney(Number(current.paid_amount) + recv);
-    let newCurrent = roundMoney(
-      Number(current.current_amount) - recv + interestAdj - discountAdj
-    );
-
-    updateData.interest_amount = roundMoney(
-      Number(current.interest_amount) + interestAdj
-    );
-    updateData.discount_amount = roundMoney(
-      Number(current.discount_amount) + discountAdj
-    );
-    updateData.paid_amount = newPaid;
-
     const payDateRaw =
       typeof b.payment_date === "string" && b.payment_date.trim()
         ? String(b.payment_date).slice(0, 10)
         : new Date().toISOString().slice(0, 10);
 
-    if (newCurrent <= 0.005) {
-      updateData.current_amount = 0;
-      updateData.status = "paid";
-      updateData.payment_date = payDateRaw;
-    } else {
-      updateData.current_amount = newCurrent;
-      updateData.status = "partial";
-      updateData.payment_date = payDateRaw;
-    }
-
-    paymentMovement = { amount: recv, movementDate: payDateRaw };
+    settlement = {
+      amount: recv,
+      interestAdjustment: interestAdj,
+      discountAdjustment: discountAdj,
+      paymentDate: payDateRaw,
+    };
   }
 
-  if (Object.keys(updateData).length === 0) {
+  if (Object.keys(updateData).length === 0 && !settlement) {
     return apiError("Nenhum campo para atualizar", 400);
   }
 
-  const { data: updated, error } = await admin
-    .from("receivables")
-    .update(updateData)
-    .eq("id", id)
-    .eq("tenant_id", tenantId)
-    .select("*")
-    .maybeSingle();
+  let updated: Record<string, unknown> | null = current;
 
-  if (error) {
-    return apiError(
-      "Erro ao atualizar título: " + error.message,
-      supabaseErrorToHttp(error.code)
-    );
+  if (Object.keys(updateData).length > 0) {
+    const { data, error } = await admin
+      .from("receivables")
+      .update(updateData)
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      return apiError(
+        "Erro ao atualizar título: " + error.message,
+        supabaseErrorToHttp(error.code)
+      );
+    }
+    if (!data) return apiError("Título não encontrado", 404);
+    updated = data;
   }
-  if (!updated) return apiError("Título não encontrado", 404);
 
-  if (paymentMovement) {
-    try {
-      await recordFinancialMovement(admin, {
-        tenantId,
-        direction: "in",
-        amount: paymentMovement.amount,
-        movementDate: paymentMovement.movementDate,
-        sourceKind: "receivable",
-        sourceId: id,
-        description: buildReceivableMovementDescription(
+  if (settlement) {
+    const rpcAdmin = asUntypedAdmin(admin);
+    const { data: settled, error: settleErr } = await rpcAdmin.rpc(
+      "fn_settle_receivable",
+      {
+        p_tenant_id: tenantId,
+        p_receivable_id: id,
+        p_amount: settlement.amount,
+        p_interest_adjustment: settlement.interestAdjustment,
+        p_discount_adjustment: settlement.discountAdjustment,
+        p_payment_date: settlement.paymentDate,
+        p_description: buildReceivableMovementDescription(
           current.description,
           current.client_name
         ),
-        referenceId: current.sales_order_id,
-        createdBy: user.id,
-      });
-    } catch (movErr) {
+        p_reference_id: current.sales_order_id,
+        p_created_by: user.id,
+      }
+    );
+
+    if (settleErr) {
       return apiError(
-        "Recebimento registado, mas falhou ao gravar movimento: " +
-          (movErr instanceof Error ? movErr.message : "erro desconhecido"),
-        500
+        "Erro ao registar recebimento: " + settleErr.message,
+        400
       );
     }
+    updated = Array.isArray(settled) ? settled[0] : settled;
   }
 
   const { data: detail } = await admin

@@ -2,6 +2,9 @@ import type { QuoteInsert, QuoteUpdate } from "@/modules/core/types/sales.types"
 import { parsePaymentInt } from "@/modules/vendas/lib/sales/payment-fields";
 import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
 import { formatPaymentTermsSummary } from "@/shared/utils/payment-terms-format";
+import {
+  paymentDueFieldsFromBody,
+} from "@/shared/utils/payment-due";
 import { resolveQuoteDeliveryFromBody } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
   computeValidUntil,
@@ -23,6 +26,8 @@ export type ParsedQuoteHeader = {
   payment_installments: number;
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
+  payment_due_mode: string;
+  payment_fixed_due_dates: string[];
   shipping_type: string;
   freight_cost: number;
   notes: string | null;
@@ -109,6 +114,9 @@ export function parseQuoteHeaderFromBody(
     }
   }
 
+  const dueParsed = paymentDueFieldsFromBody(b, pi as number);
+  if (!dueParsed.ok) return { ok: false, message: dueParsed.message };
+
   const deliveryResolved = resolveQuoteDeliveryFromBody(b, quote_date);
   if ("error" in deliveryResolved) {
     return { ok: false, message: deliveryResolved.error };
@@ -138,6 +146,8 @@ export function parseQuoteHeaderFromBody(
       payment_installments: pi as number,
       payment_days_to_first_due: pd1 as number,
       payment_days_between_installments: pdb as number,
+      payment_due_mode: dueParsed.payment_due_mode ?? "from_emission",
+      payment_fixed_due_dates: dueParsed.payment_fixed_due_dates ?? [],
       shipping_type,
       freight_cost: freightParsed as number,
       notes:
@@ -179,6 +189,8 @@ export function quoteHeaderToInsert(
     payment_installments: header.payment_installments,
     payment_days_to_first_due: header.payment_days_to_first_due,
     payment_days_between_installments: header.payment_days_between_installments,
+    payment_due_mode: header.payment_due_mode,
+    payment_fixed_due_dates: header.payment_fixed_due_dates,
     shipping_type: header.shipping_type,
     freight_cost: header.freight_cost,
     notes: header.notes,
@@ -213,6 +225,12 @@ export function quoteHeaderToUpdate(
   if (header.payment_days_between_installments !== undefined) {
     u.payment_days_between_installments =
       header.payment_days_between_installments;
+  }
+  if (header.payment_due_mode !== undefined) {
+    u.payment_due_mode = header.payment_due_mode;
+  }
+  if (header.payment_fixed_due_dates !== undefined) {
+    u.payment_fixed_due_dates = header.payment_fixed_due_dates;
   }
   if (header.shipping_type !== undefined) u.shipping_type = header.shipping_type;
   if (header.freight_cost !== undefined) u.freight_cost = header.freight_cost;

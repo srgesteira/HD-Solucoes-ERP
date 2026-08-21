@@ -6,6 +6,7 @@ import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
+import { type PaymentDueMode } from "@/shared/utils/payment-due";
 import { formatDeliveryBusinessDaysLabel } from "@/modules/vendas/lib/sales/quote-delivery";
 import { computeValidUntil, QUOTE_SHIPPING_TYPES } from "@/modules/vendas/lib/sales/quote-validity";
 import { addBusinessDays, formatShortDate } from "@/shared/utils/date";
@@ -40,6 +41,10 @@ export interface QuoteCommercialFormProps {
   onPaymentDaysFirstChange: (value: string) => void;
   paymentDaysBetween: string;
   onPaymentDaysBetweenChange: (value: string) => void;
+  paymentDueMode: PaymentDueMode;
+  onPaymentDueModeChange: (mode: PaymentDueMode) => void;
+  paymentFixedDates: string[];
+  onPaymentFixedDatesChange: (dates: string[]) => void;
   deliveryBusinessDays: string;
   onDeliveryBusinessDaysChange: (value: string) => void;
   shippingType: string;
@@ -162,6 +167,10 @@ export function QuoteCommercialFields({
   onPaymentDaysFirstChange,
   paymentDaysBetween,
   onPaymentDaysBetweenChange,
+  paymentDueMode,
+  onPaymentDueModeChange,
+  paymentFixedDates,
+  onPaymentFixedDatesChange,
   deliveryBusinessDays,
   onDeliveryBusinessDaysChange,
   shippingType,
@@ -189,14 +198,17 @@ export function QuoteCommercialFields({
         <Label>Condições de pagamento</Label>
         <PaymentTermsFields
           idPrefix="quote-payment"
+          showDueMode
+          dueMode={paymentDueMode}
+          onDueModeChange={onPaymentDueModeChange}
+          fixedDueDates={paymentFixedDates}
+          onFixedDueDatesChange={onPaymentFixedDatesChange}
           paymentInstallments={paymentInstallments}
           onPaymentInstallmentsChange={onPaymentInstallmentsChange}
           paymentDaysFirst={paymentDaysFirst}
           onPaymentDaysFirstChange={onPaymentDaysFirstChange}
           paymentDaysBetween={paymentDaysBetween}
           onPaymentDaysBetweenChange={onPaymentDaysBetweenChange}
-          baseDateIso={quoteDate}
-          baseDateLabel="data do orçamento"
         />
       </div>
 

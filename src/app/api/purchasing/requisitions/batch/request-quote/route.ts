@@ -6,6 +6,7 @@ import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { assertRequisitionsSameSuggestedSupplier } from "@/modules/compras/lib/purchasing/requisition-batch";
 import { sendPurchaseQuotationEmail } from "@/modules/compras/lib/purchasing/send-quotation-email";
+import { loadTenantMailConfig } from "@/shared/utils/email/load-tenant-mail-config";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest) {
       subject: `Solicitação de cotação — ${supplierName}`,
       message,
       lines,
+      mail: await loadTenantMailConfig(admin, tenantId),
     });
 
     const now = new Date().toISOString();

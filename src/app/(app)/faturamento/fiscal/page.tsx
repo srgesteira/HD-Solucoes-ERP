@@ -230,6 +230,31 @@ export default function FiscalInvoicingPage() {
     void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
   };
 
+  const reopenConferenceMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/faturamento/fiscal/reopen-conference", {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { updated?: number };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao reabrir conferência");
+      return json.data?.updated ?? 0;
+    },
+    onSuccess: (updated) => {
+      toast.success(
+        updated > 0
+          ? `${updated} pedido(s) voltaram para «Fiscal a conferir».`
+          : "Não havia pedidos a reabrir."
+      );
+      setTab("fiscal_pending");
+      invalidateList();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const emitNfe = useCallback(
     async (orderId: string, warnings: string[] = []) => {
       if (warnings.length) {
@@ -728,11 +753,33 @@ export default function FiscalInvoicingPage() {
   return (
     <AppPage
       title="Faturamento fiscal"
-        description="Lista por fase — conferência fiscal, liberação PCP e emissão da nota (NF-e via Bling, NFS-e via Focus)."
+        description="Lista por fase — conferência fiscal (frete, pagamento e dados da nota), liberação PCP e emissão."
       width="wide"
       density="comfortable"
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          {isAdmin ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={reopenConferenceMutation.isPending}
+              onClick={() => {
+                const ok = window.confirm(
+                  "Voltar todos os pedidos sem nota autorizada para «Fiscal a conferir»? A conferência de frete e pagamento fica de novo obrigatória."
+                );
+                if (!ok) return;
+                reopenConferenceMutation.mutate();
+              }}
+            >
+              {reopenConferenceMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Voltar para conferência
+            </Button>
+          ) : null}
           <Button
             type="button"
             size="sm"

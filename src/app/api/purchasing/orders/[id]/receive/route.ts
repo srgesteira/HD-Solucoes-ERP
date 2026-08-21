@@ -8,10 +8,6 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
 import { finalizePurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive-finalize";
-import {
-  ensurePayablesForPurchaseOrder,
-  purchaseOrderRowToPayablesInput,
-} from "@/modules/compras/lib/purchasing/purchase-payables";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +37,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
   const { data: existing, error: fetchErr } = await admin
     .from("purchase_orders")
     .select(
-      "id, status, po_number, order_date, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "id, status, po_number, order_date, expected_delivery, actual_delivery, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
     )
     .eq("id", id)
     .eq("tenant_id", tenantId)
@@ -64,23 +60,12 @@ export async function POST(_request: NextRequest, { params }: Params) {
   }
 
   try {
-    const payablesOrder = purchaseOrderRowToPayablesInput(existing);
-    const payablesResult = await ensurePayablesForPurchaseOrder(
-      admin,
-      tenantId,
-      payablesOrder,
-      {
-        previousStatus: existing.status,
-        currentStatus: "received",
-      }
-    );
-
     const { order, receive } = await finalizePurchaseOrderReceive(
       admin,
       tenantId,
       id
     );
-    return apiOk({ data: order, receive, payables: payablesResult });
+    return apiOk({ data: order, receive });
   } catch (err) {
     return apiError(
       err instanceof Error ? err.message : "Erro ao processar recebimento.",

@@ -14,6 +14,7 @@ import {
   parseExpectedDeliveryForUpdate,
   parsePaymentDaysBetween,
 } from "@/shared/contracts/sales-order.schema";
+import { paymentDueFieldsFromBody } from "@/shared/utils/payment-due";
 import {
   assertUpdateAllowedWhenProductionStarted,
   bodyWantsSalesOrderContentEdit,
@@ -33,7 +34,7 @@ import { parseSaleLines } from "@/modules/vendas/lib/sales/sales-flow";
 import { recalculateSalesOrderHeaderTotals } from "@/modules/vendas/lib/sales/sales-order-totals";
 import {
   ensureReceivablesSyncedForSalesOrder,
-  confirmProvisionalReceivablesForSalesOrder,
+  effectivateSalesOrderReceivables,
   salesOrderRowToReceivablesInput,
   syncReceivablesForSalesOrder,
 } from "@/modules/vendas/lib/sales/sales-receivables";
@@ -161,7 +162,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
     b.expected_delivery !== undefined ||
     b.payment_installments !== undefined ||
     b.payment_days_to_first_due !== undefined ||
-    b.payment_days_between_installments !== undefined;
+    b.payment_days_between_installments !== undefined ||
+    b.payment_due_mode !== undefined ||
+    b.payment_fixed_due_dates !== undefined;
 
   const wantsPcp = b.pcp_deadline !== undefined;
   const wantsProductionLink = b.production_order_id !== undefined;
@@ -398,6 +401,21 @@ export async function PUT(request: NextRequest, { params }: Params) {
     updateData.payment_days_between_installments = parsePaymentDaysBetween(
       b.payment_days_between_installments
     );
+  }
+  {
+    const nextInstallments =
+      updateData.payment_installments ??
+      (typeof existing.payment_installments === "number"
+        ? existing.payment_installments
+        : 1);
+    const dueParsed = paymentDueFieldsFromBody(b, Number(nextInstallments));
+    if (!dueParsed.ok) return apiError(dueParsed.message, 400);
+    if (dueParsed.payment_due_mode !== undefined) {
+      updateData.payment_due_mode = dueParsed.payment_due_mode;
+    }
+    if (dueParsed.payment_fixed_due_dates !== undefined) {
+      updateData.payment_fixed_due_dates = dueParsed.payment_fixed_due_dates;
+    }
   }
 
   let itemsReplaced = false;
@@ -708,6 +726,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
           typeof detailRow.payment_days_between_installments === "number"
             ? detailRow.payment_days_between_installments
             : null,
+        payment_due_mode:
+          typeof detailRow.payment_due_mode === "string"
+            ? detailRow.payment_due_mode
+            : null,
+        payment_fixed_due_dates: Array.isArray(detailRow.payment_fixed_due_dates)
+          ? (detailRow.payment_fixed_due_dates as string[])
+          : null,
       }),
       {
         total: updateData.total !== undefined || itemsReplaced,
@@ -716,6 +741,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
           updateData.payment_days_to_first_due !== undefined,
         payment_days_between_installments:
           updateData.payment_days_between_installments !== undefined,
+        payment_due_mode: updateData.payment_due_mode !== undefined,
+        payment_fixed_due_dates:
+          updateData.payment_fixed_due_dates !== undefined,
         order_date: updateData.order_date !== undefined,
         expected_delivery: updateData.expected_delivery !== undefined,
         actual_delivery: updateData.actual_delivery !== undefined,
@@ -734,42 +762,23 @@ export async function PUT(request: NextRequest, { params }: Params) {
   newStatus = String(detailRow.status ?? prevStatus);
   if (newStatus === "delivered" && prevStatus !== "delivered") {
     try {
-      await syncReceivablesForSalesOrder(
-        admin,
-        tenantId,
-        salesOrderRowToReceivablesInput({
-          id: detailRow.id,
-          order_number: String(detailRow.order_number ?? ""),
-          order_date: String(detailRow.order_date ?? ""),
-          expected_delivery:
-            typeof detailRow.expected_delivery === "string"
-              ? detailRow.expected_delivery
-              : null,
-          actual_delivery:
-            typeof detailRow.actual_delivery === "string"
-              ? detailRow.actual_delivery
-              : null,
-          total: Number(detailRow.total ?? 0),
-          client_name: String(detailRow.client_name ?? ""),
-          client_document:
-            typeof detailRow.client_document === "string"
-              ? detailRow.client_document
-              : null,
-          payment_installments:
-            typeof detailRow.payment_installments === "number"
-              ? detailRow.payment_installments
-              : null,
-          payment_days_to_first_due:
-            typeof detailRow.payment_days_to_first_due === "number"
-              ? detailRow.payment_days_to_first_due
-              : null,
-          payment_days_between_installments:
-            typeof detailRow.payment_days_between_installments === "number"
-              ? detailRow.payment_days_between_installments
-              : null,
-        })
-      );
-      await confirmProvisionalReceivablesForSalesOrder(admin, tenantId, id);
+      const deliveryDate =
+        typeof detailRow.actual_delivery === "string"
+          ? detailRow.actual_delivery
+          : new Date().toISOString().slice(0, 10);
+      if (
+        typeof detailRow.actual_delivery !== "string" ||
+        !detailRow.actual_delivery
+      ) {
+        await admin
+          .from("sales_orders")
+          .update({ actual_delivery: deliveryDate.slice(0, 10) })
+          .eq("id", id)
+          .eq("tenant_id", tenantId);
+      }
+      await effectivateSalesOrderReceivables(admin, tenantId, id, {
+        billingOrDeliveryDate: deliveryDate,
+      });
     } catch (recvErr) {
       console.warn(
         "[sales-order] Falha ao confirmar recebíveis na entrega:",

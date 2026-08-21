@@ -26,6 +26,10 @@ import { Label } from "@/shared/ui/label";
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { PaymentTermsDisplay } from "@/components/shared/payment-terms-display";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
+import {
+  parsePaymentDueMode,
+  type PaymentDueMode,
+} from "@/shared/utils/payment-due";
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -99,6 +103,8 @@ type SalesOrderDetail = {
   payment_installments: number;
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
+  payment_due_mode?: string | null;
+  payment_fixed_due_dates?: string[] | null;
   subtotal: number;
   discount: number;
   tax: number;
@@ -473,6 +479,11 @@ export default function SalesOrderDetailPage() {
   const [paymentInstallmentsDraft, setPaymentInstallmentsDraft] = useState("1");
   const [paymentDaysFirstDraft, setPaymentDaysFirstDraft] = useState("30");
   const [paymentDaysBetweenDraft, setPaymentDaysBetweenDraft] = useState("30");
+  const [paymentDueModeDraft, setPaymentDueModeDraft] =
+    useState<PaymentDueMode>("from_emission");
+  const [paymentFixedDatesDraft, setPaymentFixedDatesDraft] = useState<
+    string[]
+  >([]);
   const [discountDraft, setDiscountDraft] = useState(0);
   const [discountSaving, setDiscountSaving] = useState(false);
 
@@ -489,6 +500,8 @@ export default function SalesOrderDetailPage() {
     setPaymentDaysBetweenDraft(
       String(row.payment_days_between_installments ?? 30)
     );
+    setPaymentDueModeDraft(parsePaymentDueMode(row.payment_due_mode));
+    setPaymentFixedDatesDraft(row.payment_fixed_due_dates ?? []);
     setDiscountDraft(Number(row.discount ?? 0));
   }, [orderQuery.data]);
 
@@ -1079,16 +1092,17 @@ export default function SalesOrderDetailPage() {
                 {canEditCommercialInline ? (
                   <PaymentTermsFields
                     idPrefix="so-detail"
+                    showDueMode
+                    dueMode={paymentDueModeDraft}
+                    onDueModeChange={setPaymentDueModeDraft}
+                    fixedDueDates={paymentFixedDatesDraft}
+                    onFixedDueDatesChange={setPaymentFixedDatesDraft}
                     paymentInstallments={paymentInstallmentsDraft}
                     onPaymentInstallmentsChange={setPaymentInstallmentsDraft}
                     paymentDaysFirst={paymentDaysFirstDraft}
                     onPaymentDaysFirstChange={setPaymentDaysFirstDraft}
                     paymentDaysBetween={paymentDaysBetweenDraft}
                     onPaymentDaysBetweenChange={setPaymentDaysBetweenDraft}
-                    baseDateIso={
-                      q.expected_delivery?.slice(0, 10) || q.order_date
-                    }
-                    baseDateLabel="prazo de entrega"
                     onBlur={async () => {
                       if (!id || !q) return;
                       const pi = parseInt(paymentInstallmentsDraft, 10);
@@ -1105,18 +1119,13 @@ export default function SalesOrderDetailPage() {
                         toast.error("Valores de pagamento inválidos.");
                         return;
                       }
-                      if (
-                        pi === q.payment_installments &&
-                        pd1 === q.payment_days_to_first_due &&
-                        pdb === q.payment_days_between_installments
-                      ) {
-                        return;
-                      }
                       try {
                         await putOrder(id, {
                           payment_installments: pi,
                           payment_days_to_first_due: pd1,
                           payment_days_between_installments: pdb,
+                          payment_due_mode: paymentDueModeDraft,
+                          payment_fixed_due_dates: paymentFixedDatesDraft,
                         });
                         await queryClient.invalidateQueries({
                           queryKey: ["sales-order", id],

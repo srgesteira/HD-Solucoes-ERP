@@ -12,6 +12,11 @@ export function addLocalCalendarDays(yyyyMmDd: string, dayCount: number): string
   return format(d, "yyyy-MM-dd");
 }
 
+/** Hoje (AAAA-MM-DD) no fuso de São Paulo — data de emissão da NF-e. */
+export function todayIsoSaoPaulo(d = new Date()): string {
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
 /** Verifica se a data de fim já passou (hoje não conta como atrasado) */
 export function isPastDeadline(dateStr: string | null): boolean {
   if (!dateStr) return false;

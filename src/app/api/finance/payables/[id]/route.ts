@@ -13,10 +13,8 @@ import {
   appendNote,
   formatManualAdjustmentNote,
 } from "@/modules/compras/lib/purchasing/purchase-payables";
-import {
-  buildPayableMovementDescription,
-  recordFinancialMovement,
-} from "@/modules/finance/lib/financial-movements";
+import { buildPayableMovementDescription } from "@/modules/finance/lib/financial-movements";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 
 export const dynamic = "force-dynamic";
 
@@ -62,8 +60,6 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
   if (!row) return apiError("Registro não encontrado", 404);
 
   let current_amount = Number(row.current_amount ?? 0);
-  let status = row.status as string;
-  let payment_date = row.payment_date as string | null;
 
   if (b.adjust_amount != null && b.pay_amount != null) {
     return apiError(
@@ -83,21 +79,7 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     if (newAmt <= 0) {
       return apiError("Valor ajustado deve ser positivo.", 400);
     }
-    const prev = current_amount;
     current_amount = newAmt;
-  }
-
-  if (b.pay_amount != null) {
-    current_amount = Math.round((current_amount - b.pay_amount) * 100) / 100;
-    if (current_amount < 0) {
-      return apiError("Valor de pagamento superior ao saldo.", 400);
-    }
-    if (current_amount === 0) {
-      status = "paid";
-      payment_date = new Date().toISOString().slice(0, 10);
-    } else {
-      status = "pending";
-    }
   }
 
   const update: AccountsPayableUpdate = {};
@@ -126,29 +108,28 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
       );
     }
   }
-  if (b.pay_amount != null) {
-    update.current_amount = current_amount;
-    update.status = status;
-    update.payment_date = payment_date;
-  }
-
-  if (Object.keys(update).length === 0) {
+  if (Object.keys(update).length === 0 && b.pay_amount == null) {
     return apiOk({ data: row });
   }
 
-  const { data, error } = await admin
-    .from("accounts_payable")
-    .update(update)
-    .eq("id", id)
-    .eq("tenant_id", tenantId)
-    .select("*")
-    .single();
+  let data: Record<string, unknown> = row;
 
-  if (error) {
-    return apiError(
-      "Erro ao atualizar: " + error.message,
-      supabaseErrorToHttp(error.code)
-    );
+  if (Object.keys(update).length > 0) {
+    const { data: updRow, error } = await admin
+      .from("accounts_payable")
+      .update(update)
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .select("*")
+      .single();
+
+    if (error) {
+      return apiError(
+        "Erro ao atualizar: " + error.message,
+        supabaseErrorToHttp(error.code)
+      );
+    }
+    data = updRow;
   }
 
   if (b.pay_amount != null) {
@@ -160,25 +141,27 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     const movementDate =
       b.payment_date ?? new Date().toISOString().slice(0, 10);
 
-    try {
-      await recordFinancialMovement(admin, {
-        tenantId,
-        direction: "out",
-        amount: b.pay_amount,
-        movementDate,
-        sourceKind: "payable",
-        sourceId: id,
-        description: buildPayableMovementDescription(row.description),
-        referenceId: row.purchase_order_id,
-        createdBy: user?.id ?? null,
-      });
-    } catch (movErr) {
+    const rpcAdmin = asUntypedAdmin(admin);
+    const { data: settled, error: settleErr } = await rpcAdmin.rpc(
+      "fn_settle_payable",
+      {
+        p_tenant_id: tenantId,
+        p_payable_id: id,
+        p_amount: b.pay_amount,
+        p_payment_date: movementDate,
+        p_description: buildPayableMovementDescription(row.description),
+        p_reference_id: row.purchase_order_id,
+        p_created_by: user?.id ?? null,
+      }
+    );
+
+    if (settleErr) {
       return apiError(
-        "Pagamento registado, mas falhou ao gravar movimento: " +
-          (movErr instanceof Error ? movErr.message : "erro desconhecido"),
-        500
+        "Erro ao registar pagamento: " + settleErr.message,
+        400
       );
     }
+    data = Array.isArray(settled) ? settled[0] : settled;
   }
 
   return apiOk({ data });

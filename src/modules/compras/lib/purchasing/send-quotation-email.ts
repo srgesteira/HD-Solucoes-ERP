@@ -15,6 +15,8 @@ function escapeHtml(s: string): string {
 }
 
 import { formatShortDate } from "@/shared/utils/date";
+import { sendOutboundEmail } from "@/shared/utils/email/send-outbound-email";
+import type { OutboundMailConfig } from "@/shared/utils/email/mail-config";
 
 function fmtNeedDate(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -62,23 +64,11 @@ export async function sendPurchaseQuotationEmail(args: {
   subject?: string;
   message: string;
   lines: QuotationEmailLine[];
+  mail?: OutboundMailConfig | null;
 }): Promise<{ sent: boolean; warning?: string }> {
-  const resendKey = process.env.RESEND_API_KEY?.trim();
-  const from =
-    process.env.NOTIFICATIONS_EMAIL_FROM?.trim() ??
-    "ERP HD Soluções <onboarding@resend.dev>";
-
   const recipients = [...new Set(args.to.map((e) => e.trim()).filter(Boolean))];
   if (!recipients.length) {
     throw new Error("Indique pelo menos um e-mail de fornecedor.");
-  }
-
-  if (!resendKey) {
-    return {
-      sent: false,
-      warning:
-        "RESEND_API_KEY não configurada — orçamento registado sem envio de e-mail.",
-    };
   }
 
   const subject =
@@ -96,24 +86,17 @@ export async function sendPurchaseQuotationEmail(args: {
     </html>
   `.trim();
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: recipients,
-      subject,
-      html,
-    }),
+  const result = await sendOutboundEmail({
+    to: recipients,
+    subject,
+    html,
+    mail: args.mail,
   });
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Falha ao enviar e-mail (${res.status}): ${txt}`);
+  if (!result.sent) {
+    return {
+      sent: false,
+      warning: result.message ?? "E-mail não enviado.",
+    };
   }
-
   return { sent: true };
 }

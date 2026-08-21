@@ -41,13 +41,12 @@ export async function GET(request: NextRequest) {
   let q = admin
     .from("accounts_payable")
     .select("*", { count: "exact" })
-    .eq("tenant_id", tenantId)
-    .eq("is_forecast", false);
+    .eq("tenant_id", tenantId);
 
   if (tab === "open") {
-    q = q.in("status", [...UNPAID_STATUSES]).lte("due_date", today);
+    q = q.eq("is_forecast", false).in("status", [...UNPAID_STATUSES]);
   } else if (tab === "forecast") {
-    q = q.in("status", [...UNPAID_STATUSES]).gt("due_date", today);
+    q = q.eq("is_forecast", true);
   } else if (tab === "paid") {
     q = q.eq("status", "paid");
   }
@@ -61,6 +60,7 @@ export async function GET(request: NextRequest) {
   }
   if (overdue === "1") {
     q = q
+      .eq("is_forecast", false)
       .in("status", [...UNPAID_STATUSES])
       .lt("due_date", today);
   }

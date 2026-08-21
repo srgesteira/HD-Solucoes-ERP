@@ -190,7 +190,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existingOrder, error: existingErr } = await admin
     .from("purchase_orders")
     .select(
-      "id, status, po_number, order_date, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "id, status, po_number, order_date, expected_delivery, actual_delivery, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
     )
     .eq("id", id)
     .eq("tenant_id", tenantId)
@@ -555,32 +555,31 @@ export async function PUT(request: NextRequest, { params }: Params) {
     payment_days_between_installments:
       updateData.payment_days_between_installments !== undefined,
     order_date: updateData.order_date !== undefined,
+    expected_delivery: updateData.expected_delivery !== undefined,
     supplier_id: updateData.supplier_id !== undefined,
   };
-  const payablesResult = await ensurePayablesForPurchaseOrder(
-    admin,
-    tenantId,
-    payablesOrder,
-    {
-      previousStatus,
-      currentStatus: data.status,
-    }
-  );
-  const payablesReconcile = await ensurePayablesSyncedForPurchaseOrder(
-    admin,
-    tenantId,
-    payablesOrder,
-    data.status,
-    payablesChangedFields
-  );
+  const payablesResult =
+    transitioningToReceived
+      ? {}
+      : await ensurePayablesForPurchaseOrder(admin, tenantId, payablesOrder, {
+          previousStatus,
+          currentStatus: data.status,
+        });
+  const payablesReconcile =
+    transitioningToReceived
+      ? undefined
+      : await ensurePayablesSyncedForPurchaseOrder(
+          admin,
+          tenantId,
+          payablesOrder,
+          data.status,
+          payablesChangedFields
+        );
 
   if (transitioningToReceived) {
     try {
-      const { receive } = await finalizePurchaseOrderReceive(
-        admin,
-        tenantId,
-        id
-      );
+      const { receive, payablesBaseDate, payablesConfirmed } =
+        await finalizePurchaseOrderReceive(admin, tenantId, id);
       const { data: detail } = await admin
         .from("purchase_orders")
         .select(ORDER_DETAIL_SELECT)
@@ -590,7 +589,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return apiOk({
         data: detail ?? data,
         receive,
-        payables: { ...payablesResult, reconcile: payablesReconcile },
+        payables: {
+          effectivated: true,
+          baseDate: payablesBaseDate,
+          confirmed: payablesConfirmed,
+        },
       });
     } catch (err) {
       return apiError(

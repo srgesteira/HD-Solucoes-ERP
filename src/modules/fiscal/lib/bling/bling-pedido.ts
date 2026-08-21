@@ -368,7 +368,7 @@ export async function ensureBlingPedidoForSalesOrder(
   const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
     .select(
-      "order_number, order_date, client_name, client_document, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id, quote_id"
+      "order_number, order_date, client_name, client_document, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id, quote_id"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -386,6 +386,8 @@ export async function ensureBlingPedidoForSalesOrder(
     payment_installments: number | null;
     payment_days_to_first_due: number | null;
     payment_days_between_installments: number | null;
+    payment_due_mode: string | null;
+    payment_fixed_due_dates: string[] | null;
     expected_delivery: string | null;
     actual_delivery: string | null;
     delivery_address_different: boolean | null;
@@ -643,6 +645,10 @@ export async function ensureBlingPedidoForSalesOrder(
     payment_days_between_installments: Number(
       so.payment_days_between_installments ?? 0
     ),
+    payment_due_mode: so.payment_due_mode,
+    payment_fixed_due_dates: Array.isArray(so.payment_fixed_due_dates)
+      ? so.payment_fixed_due_dates
+      : [],
     expected_delivery: so.expected_delivery,
     actual_delivery: so.actual_delivery,
     order_date: so.order_date,

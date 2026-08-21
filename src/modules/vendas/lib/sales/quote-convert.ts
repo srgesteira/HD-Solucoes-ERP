@@ -208,6 +208,16 @@ export async function convertQuoteToSalesOrder(
       payment_installments: installments,
       payment_days_to_first_due: daysFirst,
       payment_days_between_installments: daysBetween,
+      payment_due_mode:
+        (quote as { payment_due_mode?: string }).payment_due_mode ===
+        "fixed_dates"
+          ? "fixed_dates"
+          : "from_emission",
+      payment_fixed_due_dates: Array.isArray(
+        (quote as { payment_fixed_due_dates?: string[] }).payment_fixed_due_dates
+      )
+        ? (quote as { payment_fixed_due_dates: string[] }).payment_fixed_due_dates
+        : [],
       customer_po_number: customerPo,
       shipping_type: quote.shipping_type ?? "FOB",
       freight_cost: Number(quote.freight_cost ?? 0),
@@ -265,6 +275,9 @@ export async function convertQuoteToSalesOrder(
       payment_installments: fresh.payment_installments,
       payment_days_to_first_due: fresh.payment_days_to_first_due,
       payment_days_between_installments: fresh.payment_days_between_installments,
+      payment_due_mode: (fresh as { payment_due_mode?: string }).payment_due_mode,
+      payment_fixed_due_dates: (fresh as { payment_fixed_due_dates?: string[] })
+        .payment_fixed_due_dates,
     },
     { provisional: true }
   );

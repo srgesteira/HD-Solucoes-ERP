@@ -163,6 +163,8 @@ export function bodyWantsSalesOrderContentEdit(
     "payment_installments",
     "payment_days_to_first_due",
     "payment_days_between_installments",
+    "payment_due_mode",
+    "payment_fixed_due_dates",
     "items",
     "order_date",
     "order_number",

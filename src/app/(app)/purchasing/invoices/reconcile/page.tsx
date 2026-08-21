@@ -197,6 +197,9 @@ export default function PurchaseInvoiceReconcilePage() {
     {}
   );
   const [inboxLoading, setInboxLoading] = useState(false);
+  const [paymentDaysFirst, setPaymentDaysFirst] = useState("");
+  const [paymentDaysBetween, setPaymentDaysBetween] = useState("");
+  const [paymentInstallments, setPaymentInstallments] = useState("");
 
   const preferredPoNumber = useMemo(() => {
     if (!preferredPoId || !reconcile) return null;
@@ -328,6 +331,21 @@ export default function PurchaseInvoiceReconcilePage() {
           supplierId: supplier.id,
           invoiceData: reconcile.invoiceData,
           mappings: payloadMappings,
+          ...(paymentDaysFirst.trim() !== ""
+            ? {
+                payment_days_to_first_due: Number(paymentDaysFirst),
+              }
+            : {}),
+          ...(paymentDaysBetween.trim() !== ""
+            ? {
+                payment_days_between_installments: Number(paymentDaysBetween),
+              }
+            : {}),
+          ...(paymentInstallments.trim() !== ""
+            ? {
+                payment_installments: Number(paymentInstallments),
+              }
+            : {}),
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {
@@ -760,6 +778,49 @@ export default function PurchaseInvoiceReconcilePage() {
                   </div>
                 );
               })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">4. Prazo real de pagamento (opcional)</CardTitle>
+              <p className="text-sm text-slate-500 font-normal">
+                Se informar, o vencimento da conta a pagar é recalculado com a
+                data da nota + este prazo. Se deixar em branco, mantém a previsão
+                já calculada (entrega prevista + prazo do pedido).
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Dias até 1.ª parcela</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="Ex.: 30"
+                  value={paymentDaysFirst}
+                  onChange={(e) => setPaymentDaysFirst(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Dias entre parcelas</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="Ex.: 30"
+                  value={paymentDaysBetween}
+                  onChange={(e) => setPaymentDaysBetween(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">N.º de parcelas</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="Ex.: 1"
+                  value={paymentInstallments}
+                  onChange={(e) => setPaymentInstallments(e.target.value)}
+                />
+              </div>
             </CardContent>
           </Card>
 

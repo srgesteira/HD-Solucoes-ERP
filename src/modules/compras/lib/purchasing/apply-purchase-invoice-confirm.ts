@@ -4,10 +4,6 @@ import type { PurchaseInvoiceConfirmInput } from "@/shared/contracts/purchase-in
 import { applyInventoryInbound } from "@/modules/almoxarifado/lib/inventory-inbound";
 import { INVENTORY_ORIGIN } from "@/modules/almoxarifado/lib/inventory-origins";
 import { finalizePurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive-finalize";
-import {
-  ensurePayablesForPurchaseOrder,
-  purchaseOrderRowToPayablesInput,
-} from "@/modules/compras/lib/purchasing/purchase-payables";
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
 
 type Admin = SupabaseClient<Database>;
@@ -23,7 +19,13 @@ export type ConfirmPurchaseInvoiceResult = {
 async function refreshPurchaseOrderStatus(
   admin: Admin,
   tenantId: string,
-  purchaseOrderId: string
+  purchaseOrderId: string,
+  finalizeOpts?: {
+    actualDelivery?: string;
+    payment_days_to_first_due?: number;
+    payment_days_between_installments?: number;
+    payment_installments?: number;
+  }
 ): Promise<void> {
   const { data: items, error } = await admin
     .from("purchase_order_items")
@@ -46,7 +48,7 @@ async function refreshPurchaseOrderStatus(
     const { data: existing, error: poErr } = await admin
       .from("purchase_orders")
       .select(
-        "id, status, po_number, order_date, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+        "id, status, po_number, order_date, expected_delivery, actual_delivery, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
       )
       .eq("id", purchaseOrderId)
       .eq("tenant_id", tenantId)
@@ -54,12 +56,20 @@ async function refreshPurchaseOrderStatus(
       .maybeSingle();
     if (poErr) throw new Error(poErr.message);
     if (existing && existing.status !== "received") {
-      const payablesOrder = purchaseOrderRowToPayablesInput(existing);
-      await ensurePayablesForPurchaseOrder(admin, tenantId, payablesOrder, {
-        previousStatus: existing.status,
-        currentStatus: "received",
-      });
-      await finalizePurchaseOrderReceive(admin, tenantId, purchaseOrderId);
+      await finalizePurchaseOrderReceive(
+        admin,
+        tenantId,
+        purchaseOrderId,
+        finalizeOpts
+          ? {
+              invoiceIssueDate: finalizeOpts.actualDelivery,
+              payment_days_to_first_due: finalizeOpts.payment_days_to_first_due,
+              payment_days_between_installments:
+                finalizeOpts.payment_days_between_installments,
+              payment_installments: finalizeOpts.payment_installments,
+            }
+          : undefined
+      );
     }
     return;
   }
@@ -232,8 +242,15 @@ export async function applyPurchaseInvoiceConfirm(
     });
   }
 
+  const finalizeOpts = {
+    actualDelivery: inv.issueDate,
+    payment_days_to_first_due: input.payment_days_to_first_due,
+    payment_days_between_installments: input.payment_days_between_installments,
+    payment_installments: input.payment_installments,
+  };
+
   for (const poId of touchedPoIds) {
-    await refreshPurchaseOrderStatus(admin, tenantId, poId);
+    await refreshPurchaseOrderStatus(admin, tenantId, poId, finalizeOpts);
   }
 
   if (divergenceNotes.length) {

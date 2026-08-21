@@ -642,6 +642,13 @@ export type Database = {
           nfse_prestador_codigo_municipio: string | null
           nfse_use_sao_paulo_payload: boolean
           phone: string | null
+          smtp_from_email: string | null
+          smtp_from_name: string | null
+          smtp_host: string | null
+          smtp_password: string | null
+          smtp_port: number | null
+          smtp_secure: boolean
+          smtp_user: string | null
           state_registration: string | null
           tax_regime: string | null
           tenant_id: string
@@ -682,6 +689,13 @@ export type Database = {
           nfse_prestador_codigo_municipio?: string | null
           nfse_use_sao_paulo_payload?: boolean
           phone?: string | null
+          smtp_from_email?: string | null
+          smtp_from_name?: string | null
+          smtp_host?: string | null
+          smtp_password?: string | null
+          smtp_port?: number | null
+          smtp_secure?: boolean
+          smtp_user?: string | null
           state_registration?: string | null
           tax_regime?: string | null
           tenant_id: string
@@ -722,6 +736,13 @@ export type Database = {
           nfse_prestador_codigo_municipio?: string | null
           nfse_use_sao_paulo_payload?: boolean
           phone?: string | null
+          smtp_from_email?: string | null
+          smtp_from_name?: string | null
+          smtp_host?: string | null
+          smtp_password?: string | null
+          smtp_port?: number | null
+          smtp_secure?: boolean
+          smtp_user?: string | null
           state_registration?: string | null
           tax_regime?: string | null
           tenant_id?: string
@@ -3904,6 +3925,8 @@ export type Database = {
           payment_days_between_installments: number
           payment_days_to_first_due: number
           payment_installments: number
+          payment_due_mode: string
+          payment_fixed_due_dates: string[]
           payment_terms: string | null
           quote_date: string
           quote_number: string
@@ -3940,6 +3963,8 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          payment_due_mode?: string
+          payment_fixed_due_dates?: string[]
           payment_terms?: string | null
           quote_date?: string
           quote_number: string
@@ -3976,6 +4001,8 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          payment_due_mode?: string
+          payment_fixed_due_dates?: string[]
           payment_terms?: string | null
           quote_date?: string
           quote_number?: string
@@ -4598,6 +4625,10 @@ export type Database = {
           finance_blocked_at: string | null
           finance_blocked_reason: string | null
           fiscal_status: string
+          freight_cost: number
+          freight_payer: string | null
+          carrier_name: string | null
+          shipping_type: string | null
           id: string
           mrp_processed: boolean
           notes: string | null
@@ -4606,6 +4637,8 @@ export type Database = {
           payment_days_between_installments: number
           payment_days_to_first_due: number
           payment_installments: number
+          payment_due_mode: string
+          payment_fixed_due_dates: string[]
           pcp_deadline: string | null
           pcp_reply_comercial_observation: string | null
           pcp_reply_comercial_observation_at: string | null
@@ -4650,6 +4683,10 @@ export type Database = {
           finance_blocked_at?: string | null
           finance_blocked_reason?: string | null
           fiscal_status?: string
+          freight_cost?: number
+          freight_payer?: string | null
+          carrier_name?: string | null
+          shipping_type?: string | null
           id?: string
           mrp_processed?: boolean
           notes?: string | null
@@ -4658,6 +4695,8 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          payment_due_mode?: string
+          payment_fixed_due_dates?: string[]
           pcp_deadline?: string | null
           pcp_reply_comercial_observation?: string | null
           pcp_reply_comercial_observation_at?: string | null
@@ -4702,6 +4741,10 @@ export type Database = {
           finance_blocked_at?: string | null
           finance_blocked_reason?: string | null
           fiscal_status?: string
+          freight_cost?: number
+          freight_payer?: string | null
+          carrier_name?: string | null
+          shipping_type?: string | null
           id?: string
           mrp_processed?: boolean
           notes?: string | null
@@ -4710,6 +4753,8 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          payment_due_mode?: string
+          payment_fixed_due_dates?: string[]
           pcp_deadline?: string | null
           pcp_reply_comercial_observation?: string | null
           pcp_reply_comercial_observation_at?: string | null

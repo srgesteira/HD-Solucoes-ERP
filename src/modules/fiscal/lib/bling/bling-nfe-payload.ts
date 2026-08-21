@@ -7,6 +7,7 @@ import {
 } from "@/modules/faturamento/lib/nfe-complementary-info";
 import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
 import { parseFreeformAddressToBling } from "@/modules/fiscal/lib/bling/bling-contact-address";
+import { buildBlingTransportePayload } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 
 export function blingNfeNaturezaOperacao(docType: InvoiceDocumentType): string {
   return docType === "nfe_industrialization"
@@ -60,9 +61,14 @@ export function fiscalReviewToBlingNfeCreateInput(
     | "payment_installments"
     | "payment_days_to_first_due"
     | "payment_days_between_installments"
+    | "payment_due_mode"
+    | "payment_fixed_due_dates"
     | "actual_delivery"
     | "expected_delivery"
     | "total"
+    | "shipping_type"
+    | "freight_cost"
+    | "carrier_name"
   >,
   contactId: number | null,
   operationDate?: string
@@ -96,6 +102,9 @@ export function fiscalReviewToBlingNfeCreateInput(
       delivery_address_formatted: review.delivery_address_formatted,
     },
     paymentSource: fiscalReviewToNfePayloadSource(review),
+    shippingType: review.shipping_type,
+    freightCost: review.freight_cost,
+    carrierName: review.carrier_name,
   };
 }
 
@@ -108,6 +117,8 @@ export function fiscalReviewToNfePayloadSource(
     | "payment_installments"
     | "payment_days_to_first_due"
     | "payment_days_between_installments"
+    | "payment_due_mode"
+    | "payment_fixed_due_dates"
     | "actual_delivery"
     | "expected_delivery"
     | "order_date"
@@ -122,6 +133,8 @@ export function fiscalReviewToNfePayloadSource(
     payment_days_to_first_due: review.payment_days_to_first_due,
     payment_days_between_installments:
       review.payment_days_between_installments,
+    payment_due_mode: review.payment_due_mode,
+    payment_fixed_due_dates: review.payment_fixed_due_dates,
     actual_delivery: review.actual_delivery,
     expected_delivery: review.expected_delivery,
     order_date: review.order_date,
@@ -224,6 +237,9 @@ export type BlingNfeCreateBodyInput = {
     "order_number" | "customer_po_number" | "delivery_address_formatted"
   >;
   paymentSource: NfeComplementaryInfoSource & { total: number };
+  shippingType?: string | null;
+  freightCost?: number | null;
+  carrierName?: string | null;
 };
 
 /**
@@ -267,6 +283,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
   desconto?: number;
   observacoes: string;
   parcelas: ReturnType<typeof buildBlingNfeParcelas>;
+  transporte: ReturnType<typeof buildBlingTransportePayload>;
 } {
   const numeroDocumento = digitsOnlyDoc(input.clientDocument);
   if (numeroDocumento.length < 11) {
@@ -352,6 +369,11 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       input.salesOrderId
     ),
     parcelas: buildBlingNfeParcelas(input.paymentSource),
+    transporte: buildBlingTransportePayload({
+      shippingType: input.shippingType,
+      freightCost: input.freightCost,
+      carrierName: input.carrierName,
+    }),
   };
 }
 
@@ -441,6 +463,7 @@ export function buildBlingNfePayloadView(review: FiscalOrderReview): {
   desconto?: number;
   observacoes: string;
   parcelas: ReturnType<typeof buildBlingNfeParcelas>;
+  transporte: ReturnType<typeof buildBlingTransportePayload>;
   itens: BlingNfePayloadViewItem[];
 } {
   const source = fiscalReviewToNfePayloadSource(review);
@@ -458,6 +481,11 @@ export function buildBlingNfePayloadView(review: FiscalOrderReview): {
     desconto: desconto > 0 ? desconto : undefined,
     observacoes: buildBlingNfeObservacoes(source, review.id),
     parcelas: buildBlingNfeParcelas(source),
+    transporte: buildBlingTransportePayload({
+      shippingType: review.shipping_type,
+      freightCost: review.freight_cost,
+      carrierName: review.carrier_name,
+    }),
     itens: review.items.map((it) => {
       const disc = Number(it.discount ?? 0);
       return {

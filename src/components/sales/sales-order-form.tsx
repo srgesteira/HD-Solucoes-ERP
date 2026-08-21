@@ -12,6 +12,10 @@ import { Input } from "@/shared/ui/input";
 import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
+import {
+  parsePaymentDueMode,
+  type PaymentDueMode,
+} from "@/shared/utils/payment-due";
 import { SalesOrderFormFields } from "@/components/sales/sales-order-form-fields";
 import { SalesOrderDeliveryAddressFields } from "@/components/sales/sales-order-delivery-address-fields";
 import { Textarea } from "@/shared/ui/textarea";
@@ -59,6 +63,8 @@ export type SalesOrderFormData = {
   payment_installments: number;
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
+  payment_due_mode?: string | null;
+  payment_fixed_due_dates?: string[] | null;
   subtotal: number;
   discount: number;
   tax: number;
@@ -291,6 +297,9 @@ export function SalesOrderForm({
   const [paymentDaysBetween, setPaymentDaysBetween] = useState(
     isEdit ? "" : "30"
   );
+  const [paymentDueMode, setPaymentDueMode] =
+    useState<PaymentDueMode>("from_emission");
+  const [paymentFixedDates, setPaymentFixedDates] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [customerPoNumber, setCustomerPoNumber] = useState("");
   const [deliveryAddress, setDeliveryAddress] =
@@ -376,6 +385,8 @@ export function SalesOrderForm({
       setPaymentDaysFirst(String(order.payment_days_to_first_due ?? 30));
       const pdb = order.payment_days_between_installments ?? 0;
       setPaymentDaysBetween(pdb > 0 ? String(pdb) : "");
+      setPaymentDueMode(parsePaymentDueMode(order.payment_due_mode));
+      setPaymentFixedDates(order.payment_fixed_due_dates ?? []);
       setNotes(order.notes ?? "");
       setCustomerPoNumber(order.customer_po_number ?? "");
       setDeliveryAddress(deliveryAddressFromRow(order));
@@ -486,6 +497,8 @@ export function SalesOrderForm({
       payment_days_to_first_due: commercial.data.payment_days_to_first_due,
       payment_days_between_installments:
         commercial.data.payment_days_between_installments,
+      payment_due_mode: paymentDueMode,
+      payment_fixed_due_dates: paymentFixedDates,
       ...deliveryAddressFromRow(deliveryAddress),
     };
 
@@ -736,19 +749,17 @@ export function SalesOrderForm({
             {canEditCommercial || adminOnlyMode || !isEdit ? (
               <PaymentTermsFields
                 idPrefix={adminOnlyMode ? "so-adm" : "so-form"}
+                showDueMode
+                dueMode={paymentDueMode}
+                onDueModeChange={setPaymentDueMode}
+                fixedDueDates={paymentFixedDates}
+                onFixedDueDatesChange={setPaymentFixedDates}
                 paymentInstallments={paymentInstallments}
                 onPaymentInstallmentsChange={setPaymentInstallments}
                 paymentDaysFirst={paymentDaysFirst}
                 onPaymentDaysFirstChange={setPaymentDaysFirst}
                 paymentDaysBetween={paymentDaysBetween}
                 onPaymentDaysBetweenChange={setPaymentDaysBetween}
-                baseDateIso={
-                  expectedDelivery?.slice(0, 10) ||
-                  order?.expected_delivery?.slice(0, 10) ||
-                  order?.order_date?.slice(0, 10) ||
-                  todayISODate()
-                }
-                baseDateLabel="prazo de entrega"
               />
             ) : (
               <p className="text-sm text-slate-500">

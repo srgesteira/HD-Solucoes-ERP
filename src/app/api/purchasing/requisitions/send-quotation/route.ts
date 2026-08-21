@@ -5,6 +5,7 @@ import { apiError, apiOk } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { sendPurchaseQuotationEmail } from "@/modules/compras/lib/purchasing/send-quotation-email";
+import { loadTenantMailConfig } from "@/shared/utils/email/load-tenant-mail-config";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
       to: supplier_emails,
       message,
       lines,
+      mail: await loadTenantMailConfig(admin, tenantId),
     });
 
     const now = new Date().toISOString();

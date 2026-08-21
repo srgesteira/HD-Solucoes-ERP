@@ -27,6 +27,10 @@ export const purchaseInvoiceConfirmSchema = z.object({
     .array(purchaseInvoiceMappingSchema)
     .min(1, "Indique pelo menos um mapeamento."),
   invoiceNotes: z.string().max(4000).nullable().optional(),
+  /** Prazo real informado no faturamento (opcional). */
+  payment_days_to_first_due: z.coerce.number().int().min(0).optional(),
+  payment_days_between_installments: z.coerce.number().int().min(0).optional(),
+  payment_installments: z.coerce.number().int().min(1).max(999).optional(),
 });
 
 export type PurchaseInvoiceConfirmInput = z.infer<

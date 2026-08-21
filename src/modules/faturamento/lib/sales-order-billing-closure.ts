@@ -8,6 +8,7 @@ import {
   syncReceivablesForSalesOrder,
 } from "@/modules/vendas/lib/sales/sales-receivables";
 import { notifyCustomerNfeAuthorized } from "@/modules/fiscal/lib/bling/send-nfe-status-email";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
 
@@ -192,7 +193,7 @@ export async function closeSalesOrderBilling(
     const { data: fresh } = await admin
       .from("sales_orders")
       .select(
-        "id, order_number, order_date, expected_delivery, actual_delivery, total, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+        "id, order_number, order_date, expected_delivery, actual_delivery, total, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates"
       )
       .eq("id", salesOrderId)
       .eq("tenant_id", tenantId)
@@ -215,6 +216,13 @@ export async function closeSalesOrderBilling(
           payment_days_to_first_due: fresh.payment_days_to_first_due,
           payment_days_between_installments:
             fresh.payment_days_between_installments,
+          payment_due_mode: (
+            fresh as { payment_due_mode?: string | null }
+          ).payment_due_mode,
+          payment_fixed_due_dates: (
+            fresh as { payment_fixed_due_dates?: string[] | null }
+          ).payment_fixed_due_dates,
+          payment_base_date: todayIsoSaoPaulo(),
         })
       );
       await confirmProvisionalReceivablesForSalesOrder(
