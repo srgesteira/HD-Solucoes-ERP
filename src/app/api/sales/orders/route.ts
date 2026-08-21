@@ -17,6 +17,10 @@ import {
   rollbackSalesOrderCreation,
 } from "@/modules/vendas/lib/sales/sales-flow";
 import { parseRequiredExpectedDelivery } from "@/shared/contracts/sales-order.schema";
+import {
+  EMPTY_DELIVERY_ADDRESS,
+  parseSalesOrderDeliveryAddressBody,
+} from "@/modules/vendas/lib/sales/sales-order-delivery-address";
 import { isSalesOrderListTab } from "@/modules/vendas/lib/sales/sales-order-list-display";
 import {
   buildSalesOrderUniversalSearchOrFilter,
@@ -344,6 +348,15 @@ export async function POST(request: NextRequest) {
     return apiError("Pedido de compra do cliente: máximo 60 caracteres.", 400);
   }
 
+  const deliveryParsed = parseSalesOrderDeliveryAddressBody(b);
+  if (!deliveryParsed.ok) {
+    return apiError(deliveryParsed.message, 400);
+  }
+  const delivery =
+    !deliveryParsed.skip && deliveryParsed.value
+      ? deliveryParsed.value
+      : EMPTY_DELIVERY_ADDRESS;
+
   const st = b.status !== undefined ? String(b.status) : "pending";
   if (!SO_SET.has(st)) return apiError("Status inválido", 400);
 
@@ -377,6 +390,7 @@ export async function POST(request: NextRequest) {
       tax,
       notes,
       customer_po_number: customerPoRaw,
+      ...delivery,
       status: st,
       created_by: profile?.id ?? null,
       payment_installments: pi,

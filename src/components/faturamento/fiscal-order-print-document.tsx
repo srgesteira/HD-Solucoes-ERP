@@ -3,125 +3,90 @@
 import { cn } from "@/shared/utils/cn";
 import type { FiscalOrderReview } from "@/modules/faturamento/lib/fiscal-order-review-service";
 import {
-  ITEM_USAGE_TYPE_OPTIONS,
-  type ItemUsageType,
-} from "@/modules/fiscal/lib/item-usage-type";
-import {
-  INVOICE_DOCUMENT_TYPE_LABELS,
-  isInvoiceDocumentType,
-} from "@/modules/core/types/sales-order-billing.types";
-import {
-  PRODUCT_NATURE_LABELS,
-  type ProductNatureCode,
-} from "@/modules/engenharia/lib/products/mrp-product-nature";
-import {
   companyDisplayName,
   formatCompanyAddressForPrint,
   type CompanySettingsRow,
 } from "@/modules/vendas/lib/sales/sales-order-print-display";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
-import {
-  buildInstallmentDueDates,
-  formatPaymentTermsSummary,
-} from "@/shared/utils/payment-terms-format";
-import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
+import { isInvoiceDocumentType } from "@/modules/core/types/sales-order-billing.types";
+import { INVOICE_DOCUMENT_TYPE_LABELS } from "@/modules/core/types/sales-order-billing.types";
+import { buildBlingNfePayloadView } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
+import { CreateBlingProductButton } from "@/components/faturamento/create-bling-product-button";
+import { UnmappedBlingProductsPanel } from "@/components/faturamento/unmapped-bling-products-panel";
 
 const PRINT_STYLES = `
 @media print {
-  @page { size: A4 landscape; margin: 8mm 8mm 12mm 8mm; }
+  @page { size: A4 portrait; margin: 6mm; }
   body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .so-print-toolbar, .fiscal-print-toolbar, .print\\:hidden { display: none !important; }
   .fiscal-print-document { box-shadow: none !important; padding: 0 !important; max-width: none !important; }
-  .fiscal-print-table thead { background: #1e293b !important; color: #fff !important; }
 }
 .fiscal-print-document {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-  font-size: 8.5pt; line-height: 1.25; color: #0f172a;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 7.5pt;
+  line-height: 1.2;
+  color: #111;
 }
-.fp-header { padding-bottom: 0.4rem; border-bottom: 1.5px solid #1e293b; margin-bottom: 0.45rem; }
-.fp-header-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.fp-logo { max-height: 64px; max-width: 180px; object-fit: contain; }
-.fp-header-company { flex: 1; text-align: right; }
-.fp-company-meta { font-size: 0.65rem; color: #475569; margin: 0.08rem 0; }
-.fp-header-doc { margin-top: 0.35rem; padding-top: 0.3rem; text-align: center; border-top: 1px solid #e2e8f0; }
-.fp-doc-title { margin: 0; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.06em; color: #1e293b; text-transform: uppercase; }
-.fp-doc-sub { font-size: 0.72rem; color: #64748b; margin: 0.12rem 0 0; }
-.fp-info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; margin-bottom: 0.4rem; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
-.fp-info-col { padding: 0.35rem 0.5rem; }
-.fp-info-col + .fp-info-col { border-left: 1px solid #e2e8f0; }
-.fp-info-col h3 { font-size: 0.55rem; font-weight: 700; text-transform: uppercase; color: #64748b; margin: 0 0 0.2rem; }
-.fp-info-row { display: flex; justify-content: space-between; font-size: 0.68rem; margin-bottom: 0.12rem; gap: 0.4rem; }
-.fp-info-row dt { color: #64748b; flex-shrink: 0; }
-.fp-info-row dd { margin: 0; font-weight: 600; text-align: right; }
-.fp-table-wrap { margin: 0.35rem 0; border: 1px solid #e2e8f0; border-radius: 5px; overflow: hidden; }
-.fiscal-print-table { width: 100%; border-collapse: collapse; font-size: 0.62rem; }
-.fiscal-print-table thead { background: #1e293b; color: #fff; }
-.fiscal-print-table thead th { padding: 0.25rem 0.28rem; font-weight: 600; text-align: left; white-space: nowrap; }
-.fiscal-print-table thead th.fp-num { text-align: right; }
-.fiscal-print-table tbody td { padding: 0.22rem 0.28rem; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-.fiscal-print-table tbody td.fp-num { text-align: right; font-variant-numeric: tabular-nums; }
-.fp-item-name { font-weight: 600; }
-.fp-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.fp-bottom-row { display: flex; justify-content: space-between; gap: 1rem; margin-top: 0.35rem; align-items: flex-start; }
-.fp-totals-inner { min-width: 220px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
-.fp-totals-row { display: flex; justify-content: space-between; padding: 0.25rem 0.5rem; font-size: 0.68rem; border-bottom: 1px solid #f1f5f9; }
-.fp-totals-row dd { margin: 0; font-weight: 600; }
-.fp-totals-row--grand { background: #f8fafc; font-weight: 800; }
-.fp-notes { flex: 1; font-size: 0.68rem; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.35rem 0.5rem; }
-.fp-notes h4 { margin: 0 0 0.15rem; font-size: 0.55rem; text-transform: uppercase; color: #64748b; }
-.fp-warn { margin-top: 0.35rem; font-size: 0.65rem; color: #92400e; border: 1px solid #fde68a; background: #fffbeb; border-radius: 6px; padding: 0.35rem 0.5rem; }
+.danfe { width: 100%; border-collapse: collapse; }
+.danfe, .danfe td, .danfe th { border: 1px solid #111; }
+.danfe td, .danfe th { padding: 2px 4px; vertical-align: top; }
+.danfe .lbl {
+  display: block;
+  font-size: 5.5pt;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #333;
+  margin: 0 0 1px;
+}
+.danfe .val { font-size: 8pt; font-weight: 600; }
+.danfe .val-sm { font-size: 7pt; }
+.danfe .center { text-align: center; }
+.danfe .right { text-align: right; font-variant-numeric: tabular-nums; }
+.danfe .muted { font-weight: 400; color: #333; }
+.danfe-title { font-size: 11pt; font-weight: 800; letter-spacing: 0.12em; margin: 0; }
+.danfe-sub { font-size: 6.5pt; margin: 2px 0 0; }
+.danfe-logo { max-height: 52px; max-width: 140px; object-fit: contain; }
+.danfe-items { width: 100%; border-collapse: collapse; font-size: 6.5pt; }
+.danfe-items th, .danfe-items td { border: 1px solid #111; padding: 2px 3px; }
+.danfe-items thead th {
+  font-size: 5.5pt;
+  text-transform: uppercase;
+  background: #f1f5f9;
+  font-weight: 700;
+}
+.danfe-items .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.danfe-banner {
+  border: 1px solid #ca8a04;
+  background: #fffbeb;
+  color: #854d0e;
+  padding: 6px 8px;
+  font-size: 7.5pt;
+  margin-bottom: 6px;
+}
+.danfe-warn { color: #9a3412; font-size: 7pt; }
 `;
 
+function money(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "0,00";
+  return fmtBRL(value).replace("R$", "").trim();
+}
+
 function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "";
   const formatted = formatShortDate(String(iso).slice(0, 10));
-  return formatted === "--" ? "—" : formatted;
-}
-
-function usageLabel(usage: ItemUsageType | null): string {
-  if (!usage) return "—";
-  return (
-    ITEM_USAGE_TYPE_OPTIONS.find((o) => o.value === usage)?.label ?? usage
-  );
-}
-
-function natureLabel(nature: string | null): string {
-  if (!nature) return "—";
-  const code = nature.trim().toUpperCase() as ProductNatureCode;
-  return PRODUCT_NATURE_LABELS[code] ?? nature;
+  return formatted === "--" ? String(iso).slice(0, 10) : formatted;
 }
 
 function invoiceTypeLabel(raw: string | null): string {
-  if (!raw) return "—";
+  if (!raw) return "NF-e";
   if (isInvoiceDocumentType(raw)) return INVOICE_DOCUMENT_TYPE_LABELS[raw];
   return raw;
 }
 
-function fmtPct(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return `${value}%`;
-}
-
-function fmtMoney(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return fmtBRL(value);
-}
-
-function paymentDueDatesLabel(review: FiscalOrderReview): string {
-  const base = paymentScheduleBaseDate({
-    actual_delivery: review.actual_delivery,
-    expected_delivery: review.expected_delivery,
-    order_date: review.order_date,
-  });
-  const dates = buildInstallmentDueDates({
-    baseDateIso: base,
-    installments: review.payment_installments,
-    daysToFirst: review.payment_days_to_first_due,
-    daysBetween: review.payment_days_between_installments,
-  });
-  if (!dates.length) return "—";
-  return dates.map((d) => fmtDate(d)).join(" · ");
+function isBlingProductNfe(type: string | null): boolean {
+  return type === "nfe_product" || type === "nfe_industrialization";
 }
 
 type Props = {
@@ -135,309 +100,446 @@ export function FiscalOrderPrintDocument({
   company,
   className,
 }: Props) {
+  const payload = buildBlingNfePayloadView(review);
+  const nfeNum = review.nfe?.nfe_number?.trim() || "—";
+  const serie = "—";
+  const emitente = company ? companyDisplayName(company) : "—";
+  const emitAddr = company ? formatCompanyAddressForPrint(company) : null;
+  const productsTotal = payload.itens.reduce((acc, it) => {
+    return acc + Math.max(0, it.quantidade * it.valor - (it.desconto ?? 0));
+  }, 0);
+  const pis = review.items.reduce((s, it) => s + Number(it.pis_value ?? 0), 0);
+  const cofins = review.items.reduce(
+    (s, it) => s + Number(it.cofins_value ?? 0),
+    0
+  );
+  const showBlingActions = isBlingProductNfe(review.invoice_document_type);
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
       <article className={cn("fiscal-print-document", className)}>
-        <header className="fp-header">
-          <div className="fp-header-top">
-            <div>
-              {company?.logo_url?.trim() ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={company.logo_url.trim()}
-                  alt=""
-                  className="fp-logo"
-                />
-              ) : null}
-            </div>
-            <div className="fp-header-company">
-              {company ? (
-                <>
-                  <p className="font-bold text-sm text-slate-900">
-                    {companyDisplayName(company)}
-                  </p>
-                  {company.cnpj?.trim() ? (
-                    <p className="fp-company-meta">
-                      CNPJ: {company.cnpj.trim()}
-                    </p>
-                  ) : null}
-                  {formatCompanyAddressForPrint(company) ? (
-                    <p className="fp-company-meta">
-                      {formatCompanyAddressForPrint(company)}
-                    </p>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-          </div>
-          <div className="fp-header-doc">
-            <h1 className="fp-doc-title">Conferência fiscal — Pedido de venda</h1>
-            <p className="fp-doc-sub">
-              N.º {review.order_number} · {review.fiscal_status_label}
-              {review.invoice_document_type
-                ? ` · ${invoiceTypeLabel(review.invoice_document_type)}`
-                : ""}
-            </p>
-          </div>
-        </header>
-
-        <div className="fp-info-grid">
-          <div className="fp-info-col">
-            <h3>Cliente e destino</h3>
-            <dl>
-              <div className="fp-info-row">
-                <dt>Nome</dt>
-                <dd>{review.client_name?.trim() || "—"}</dd>
-              </div>
-              {review.client_document?.trim() ? (
-                <div className="fp-info-row">
-                  <dt>CNPJ/CPF</dt>
-                  <dd>{review.client_document.trim()}</dd>
-                </div>
-              ) : null}
-              <div className="fp-info-row">
-                <dt>UF destino</dt>
-                <dd>{review.destination_uf ?? "—"}</dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>UF origem</dt>
-                <dd>{review.origin_uf ?? "—"}</dd>
-              </div>
-              {review.customer_po_number?.trim() ? (
-                <div className="fp-info-row">
-                  <dt>Ped. compra</dt>
-                  <dd className="max-w-[11rem]">{review.customer_po_number.trim()}</dd>
-                </div>
-              ) : null}
-            </dl>
-            {review.client_address?.trim() ? (
-              <p className="text-[0.62rem] text-slate-600 mt-1 whitespace-pre-wrap">
-                {review.client_address.trim()}
-              </p>
-            ) : null}
-          </div>
-          <div className="fp-info-col">
-            <h3>Operação fiscal</h3>
-            <dl>
-              <div className="fp-info-row">
-                <dt>Regime</dt>
-                <dd>{review.tax_regime ?? "—"}</dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Tipo de nota</dt>
-                <dd>{invoiceTypeLabel(review.invoice_document_type)}</dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Estado fiscal</dt>
-                <dd>{review.fiscal_status_label}</dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Alinhado</dt>
-                <dd>{review.fiscal_configured ? "Sim" : "Não"}</dd>
-              </div>
-            </dl>
-          </div>
-          <div className="fp-info-col">
-            <h3>Pedido</h3>
-            <dl>
-              <div className="fp-info-row">
-                <dt>Data</dt>
-                <dd>{fmtDate(review.order_date)}</dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Condição de pagamento</dt>
-                <dd className="max-w-[12rem] text-right">
-                  {formatPaymentTermsSummary({
-                    payment_installments: review.payment_installments,
-                    payment_days_to_first_due: review.payment_days_to_first_due,
-                    payment_days_between_installments:
-                      review.payment_days_between_installments,
-                  })}
-                </dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>
-                  {review.payment_installments > 1
-                    ? "Vencimentos"
-                    : "Vencimento"}
-                </dt>
-                <dd className="max-w-[12rem] text-right">
-                  {paymentDueDatesLabel(review)}
-                </dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Total</dt>
-                <dd>{fmtBRL(Number(review.total))}</dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Base cálculo</dt>
-                <dd>{fmtBRL(Number(review.total_tax_base))}</dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Total ICMS</dt>
-                <dd>{fmtBRL(Number(review.total_icms))}</dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Total IPI</dt>
-                <dd>{fmtBRL(Number(review.total_ipi))}</dd>
-              </div>
-            </dl>
-          </div>
+        <div className="danfe-banner print:hidden">
+          Pré-visualização no estilo DANFE — não é a NF-e autorizada. Parcelas,
+          observações e entrega são os mesmos campos do POST /nfe. NCM/CFOP/CSOSN
+          da nota autorizada vêm do cadastro fiscal do produto no Bling.
         </div>
 
-        <div className="fp-table-wrap">
-          <table className="fiscal-print-table">
-            <thead>
+        <UnmappedBlingProductsPanel
+          orderId={review.id}
+          invoiceDocumentType={review.invoice_document_type}
+          items={review.items}
+          className="mb-2"
+        />
+
+        <table className="danfe">
+          <tbody>
+            <tr>
+              <td rowSpan={3} style={{ width: "46%" }}>
+                {company?.logo_url?.trim() ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={company.logo_url.trim()}
+                    alt=""
+                    className="danfe-logo"
+                  />
+                ) : null}
+                <div className="val">{emitente}</div>
+                {emitAddr ? (
+                  <div className="val-sm muted">{emitAddr}</div>
+                ) : null}
+                <div className="val-sm muted">
+                  CNPJ: {company?.cnpj?.trim() || "—"}
+                  {company?.state_registration?.trim()
+                    ? ` · IE: ${company.state_registration.trim()}`
+                    : ""}
+                </div>
+                {company?.phone?.trim() ? (
+                  <div className="val-sm muted">Tel: {company.phone.trim()}</div>
+                ) : null}
+              </td>
+              <td className="center" style={{ width: "24%" }}>
+                <p className="danfe-title">DANFE</p>
+                <p className="danfe-sub">
+                  Documento Auxiliar da Nota Fiscal Eletrônica
+                </p>
+                <p className="danfe-sub">
+                  0 — Entrada &nbsp;&nbsp; 1 — Saída
+                  <br />
+                  <strong>1</strong>
+                </p>
+                <p className="danfe-sub">Folha 1/1</p>
+              </td>
+              <td className="center" style={{ width: "30%" }}>
+                <span className="lbl">NF-e</span>
+                <div className="val">N.º {nfeNum}</div>
+                <div className="val-sm muted">Série {serie}</div>
+                <div className="val-sm muted">
+                  {invoiceTypeLabel(review.invoice_document_type)}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2}>
+                <span className="lbl">Chave de acesso</span>
+                <div className="val-sm muted">
+                  {review.nfe?.nfe_key?.trim() ||
+                    "Pré-visualização — chave após autorização SEFAZ"}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2}>
+                <span className="lbl">Protocolo de autorização</span>
+                <div className="val-sm muted">
+                  {review.nfe?.status === "authorized"
+                    ? review.nfe.status
+                    : "Ainda não emitida"}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2}>
+                <span className="lbl">Natureza da operação</span>
+                <div className="val">{payload.naturezaOperacao}</div>
+              </td>
+              <td>
+                <span className="lbl">Data da emissão / operação</span>
+                <div className="val">{fmtDate(payload.data)}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table className="danfe" style={{ marginTop: "-1px" }}>
+          <tbody>
+            <tr>
+              <td colSpan={6}>
+                <span className="lbl">Destinatário / remetente</span>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={3}>
+                <span className="lbl">Nome / razão social</span>
+                <div className="val">{review.client_name?.trim() || "—"}</div>
+              </td>
+              <td colSpan={2}>
+                <span className="lbl">CNPJ / CPF</span>
+                <div className="val">
+                  {review.client_document?.trim() || "—"}
+                </div>
+              </td>
+              <td>
+                <span className="lbl">Data saída</span>
+                <div className="val">
+                  {fmtDate(review.actual_delivery || review.expected_delivery)}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={4}>
+                <span className="lbl">Endereço de faturamento</span>
+                <div className="val-sm">
+                  {review.client_address?.trim() || "—"}
+                </div>
+              </td>
+              <td>
+                <span className="lbl">UF</span>
+                <div className="val">{review.destination_uf ?? "—"}</div>
+              </td>
+              <td>
+                <span className="lbl">Fone / e-mail</span>
+                <div className="val-sm">
+                  {[review.client_phone, review.client_email]
+                    .filter((v) => v?.trim())
+                    .join(" · ") || "—"}
+                </div>
+              </td>
+            </tr>
+            {review.delivery_address_formatted ? (
               <tr>
-                <th>#</th>
-                <th>Produto</th>
-                <th>NCM</th>
-                <th>Natureza</th>
-                <th>Utilização</th>
-                <th>CFOP</th>
-                <th>Regra</th>
-                <th className="fp-num">Qtd.</th>
-                <th className="fp-num">Total</th>
-                <th className="fp-num">Base</th>
-                <th className="fp-num">ICMS %</th>
-                <th className="fp-num">ICMS R$</th>
-                <th className="fp-num">IPI %</th>
-                <th className="fp-num">IPI R$</th>
-                <th className="fp-num">PIS %</th>
-                <th className="fp-num">COFINS %</th>
+                <td colSpan={6}>
+                  <span className="lbl">Local de entrega (observações da NF)</span>
+                  <div className="val">{review.delivery_address_formatted}</div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {review.items.map((item) => (
+            ) : null}
+          </tbody>
+        </table>
+
+        <table className="danfe" style={{ marginTop: "-1px" }}>
+          <tbody>
+            <tr>
+              <td colSpan={4}>
+                <span className="lbl">Fatura / duplicata</span>
+                <div className="val-sm muted">
+                  Campo estruturado <code>parcelas</code> do POST /nfe
+                </div>
+              </td>
+            </tr>
+            <tr>
+              {payload.parcelas.length ? (
+                payload.parcelas.map((p, i) => (
+                  <td key={`${p.data}-${i}`}>
+                    <span className="lbl">
+                      {payload.parcelas.length > 1
+                        ? `Duplicata ${i + 1}/${payload.parcelas.length}`
+                        : "Duplicata"}
+                    </span>
+                    <div className="val">{fmtDate(p.data)}</div>
+                    <div className="val">{fmtBRL(p.valor)}</div>
+                    {p.observacoes ? (
+                      <div className="val-sm muted">{p.observacoes}</div>
+                    ) : null}
+                  </td>
+                ))
+              ) : (
+                <td>—</td>
+              )}
+              {payload.parcelas.length < 4
+                ? Array.from({ length: 4 - payload.parcelas.length }).map(
+                    (_, i) => <td key={`empty-${i}`} />
+                  )
+                : null}
+            </tr>
+          </tbody>
+        </table>
+
+        <table className="danfe" style={{ marginTop: "-1px" }}>
+          <tbody>
+            <tr>
+              <td colSpan={6}>
+                <span className="lbl">Cálculo do imposto</span>
+                <div className="val-sm muted">
+                  Totais da conferência no ERP (alíquotas do pedido). CSOSN no
+                  DANFE autorizado sai do produto no Bling.
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span className="lbl">Base ICMS</span>
+                <div className="val right">{money(review.total_tax_base)}</div>
+              </td>
+              <td>
+                <span className="lbl">Valor ICMS</span>
+                <div className="val right">{money(review.total_icms)}</div>
+              </td>
+              <td>
+                <span className="lbl">Valor IPI</span>
+                <div className="val right">{money(review.total_ipi)}</div>
+              </td>
+              <td>
+                <span className="lbl">PIS</span>
+                <div className="val right">{money(pis)}</div>
+              </td>
+              <td>
+                <span className="lbl">COFINS</span>
+                <div className="val right">{money(cofins)}</div>
+              </td>
+              <td>
+                <span className="lbl">Valor produtos</span>
+                <div className="val right">{money(productsTotal)}</div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span className="lbl">Frete</span>
+                <div className="val right">0,00</div>
+              </td>
+              <td>
+                <span className="lbl">Seguro</span>
+                <div className="val right">0,00</div>
+              </td>
+              <td>
+                <span className="lbl">Desconto</span>
+                <div className="val right">{money(payload.desconto ?? 0)}</div>
+              </td>
+              <td>
+                <span className="lbl">Outras despesas</span>
+                <div className="val right">0,00</div>
+              </td>
+              <td colSpan={2}>
+                <span className="lbl">Valor total da nota</span>
+                <div className="val right">{fmtBRL(review.total)}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table className="danfe" style={{ marginTop: "-1px" }}>
+          <tbody>
+            <tr>
+              <td colSpan={5}>
+                <span className="lbl">Transportador / volumes</span>
+                <div className="val-sm muted">
+                  Não enviado no POST /nfe (sem grupo transporte).
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2}>
+                <span className="lbl">Razão social</span>
+                <div className="val muted">—</div>
+              </td>
+              <td>
+                <span className="lbl">Frete por conta</span>
+                <div className="val muted">—</div>
+              </td>
+              <td>
+                <span className="lbl">ANTT / placa</span>
+                <div className="val muted">—</div>
+              </td>
+              <td>
+                <span className="lbl">CNPJ / CPF</span>
+                <div className="val muted">—</div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span className="lbl">Quantidade</span>
+                <div className="val muted">—</div>
+              </td>
+              <td>
+                <span className="lbl">Espécie</span>
+                <div className="val muted">—</div>
+              </td>
+              <td>
+                <span className="lbl">Marca</span>
+                <div className="val muted">—</div>
+              </td>
+              <td>
+                <span className="lbl">Numeração</span>
+                <div className="val muted">—</div>
+              </td>
+              <td>
+                <span className="lbl">Peso líq. / bruto</span>
+                <div className="val muted">—</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table className="danfe-items" style={{ marginTop: "-1px" }}>
+          <thead>
+            <tr>
+              <th>Cód.</th>
+              <th>Descrição dos produtos / serviços</th>
+              <th>NCM</th>
+              <th>CST/CSOSN</th>
+              <th>CFOP</th>
+              <th>Un</th>
+              <th className="num">Qtd</th>
+              <th className="num">V. unit.</th>
+              <th className="num">Desc.</th>
+              <th className="num">V. total</th>
+              <th className="num">BC ICMS</th>
+              <th className="num">V. ICMS</th>
+              <th className="num">V. IPI</th>
+              <th className="num">Alíq. ICMS</th>
+              <th className="num">Alíq. IPI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {review.items.map((item, idx) => {
+              const line = payload.itens[idx];
+              const lineTotal = line
+                ? Math.max(
+                    0,
+                    line.quantidade * line.valor - (line.desconto ?? 0)
+                  )
+                : Number(item.total_price ?? 0);
+              const unmapped =
+                showBlingActions && item.product_id && !item.bling_product_id;
+              return (
                 <tr key={item.id}>
-                  <td>{item.line_number}</td>
+                  <td>{line?.codigo || "—"}</td>
                   <td>
-                    <div className="fp-item-name">
-                      {item.product_name?.trim() ||
-                        item.description?.trim() ||
-                        "—"}
-                    </div>
-                    {item.description?.trim() &&
-                    item.product_name?.trim() &&
-                    item.description.trim() !== item.product_name.trim() ? (
-                      <div className="text-slate-500 text-[0.58rem]">
-                        {item.description.trim()}
+                    <div>{line?.descricao || "—"}</div>
+                    {unmapped ? (
+                      <div className="danfe-warn print:hidden">
+                        Sem produto correspondente no Bling
+                        {item.product_code ? ` (SKU ${item.product_code})` : ""}
+                        <div className="mt-1">
+                          <CreateBlingProductButton
+                            orderId={review.id}
+                            productId={item.product_id!}
+                            sku={item.product_code}
+                          />
+                        </div>
                       </div>
                     ) : null}
                   </td>
-                  <td className="fp-mono">{item.ncm?.trim() || "—"}</td>
-                  <td>{natureLabel(item.product_nature)}</td>
-                  <td>{usageLabel(item.usage_type)}</td>
-                  <td className="fp-mono font-semibold">
-                    {item.cfop?.trim() || "—"}
+                  <td>{item.ncm?.trim() || "—"}</td>
+                  <td>—</td>
+                  <td>{item.cfop?.trim() || "—"}</td>
+                  <td>{line?.unidade || item.unit || "UN"}</td>
+                  <td className="num">{line?.quantidade ?? item.quantity}</td>
+                  <td className="num">{money(line?.valor ?? item.unit_price)}</td>
+                  <td className="num">{money(line?.desconto ?? 0)}</td>
+                  <td className="num">{money(lineTotal)}</td>
+                  <td className="num">{money(item.tax_base)}</td>
+                  <td className="num">{money(item.icms_value)}</td>
+                  <td className="num">{money(item.ipi_value)}</td>
+                  <td className="num">
+                    {item.icms_rate != null ? `${item.icms_rate}%` : "—"}
                   </td>
-                  <td>{item.fiscal_rule_name?.trim() || item.fiscal_source_label}</td>
-                  <td className="fp-num">
-                    {Number(item.quantity)}
-                    {item.unit?.trim() ? ` ${item.unit.trim()}` : ""}
+                  <td className="num">
+                    {item.ipi_rate != null ? `${item.ipi_rate}%` : "—"}
                   </td>
-                  <td className="fp-num">{fmtMoney(item.total_price)}</td>
-                  <td className="fp-num">{fmtMoney(item.tax_base)}</td>
-                  <td className="fp-num">{fmtPct(item.icms_rate)}</td>
-                  <td className="fp-num">{fmtMoney(item.icms_value)}</td>
-                  <td className="fp-num">{fmtPct(item.ipi_rate)}</td>
-                  <td className="fp-num">{fmtMoney(item.ipi_value)}</td>
-                  <td className="fp-num">{fmtPct(item.pis_rate)}</td>
-                  <td className="fp-num">{fmtPct(item.cofins_rate)}</td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
 
-        <div className="fp-bottom-row">
-          <div className="fp-notes">
-            <h4>Observações / informações da NF</h4>
-            <dl className="m-0">
-              <div className="fp-info-row">
-                <dt>Pedido HD</dt>
-                <dd>{review.order_number}</dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Pedido de compra do cliente</dt>
-                <dd>
-                  {review.customer_po_number?.trim() || "—"}
-                </dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>Condição de pagamento</dt>
-                <dd>
-                  {formatPaymentTermsSummary({
-                    payment_installments: review.payment_installments,
-                    payment_days_to_first_due: review.payment_days_to_first_due,
-                    payment_days_between_installments:
-                      review.payment_days_between_installments,
-                  })}
-                </dd>
-              </div>
-              <div className="fp-info-row">
-                <dt>
-                  {review.payment_installments > 1
-                    ? "Vencimentos"
-                    : "Vencimento do pagamento"}
-                </dt>
-                <dd>{paymentDueDatesLabel(review)}</dd>
-              </div>
-            </dl>
-            {review.customer_po_number?.trim() || review.notes?.trim() ? (
-              <p className="whitespace-pre-wrap m-0 mt-2 text-[0.65rem] text-slate-700">
-                {[
-                  `Pedido HD ${review.order_number}`,
-                  review.customer_po_number?.trim()
-                    ? `Pedido compra cliente ${review.customer_po_number.trim()}`
-                    : null,
-                  review.notes?.trim() || null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            ) : (
-              <p className="m-0 mt-2 text-[0.65rem] text-slate-500">
-                Sem pedido de compra do cliente nem observações no pedido.
-              </p>
-            )}
-            {review.notes?.trim() ? (
-              <>
-                <h4 className="mt-2">Observações do pedido</h4>
-                <p className="whitespace-pre-wrap m-0">{review.notes.trim()}</p>
-              </>
-            ) : null}
-            {review.warnings.length > 0 ? (
-              <>
-                <h4 className="mt-2">Avisos da conferência</h4>
-                <ul className="m-0 pl-4">
-                  {review.warnings.map((w) => (
-                    <li key={w}>{w}</li>
-                  ))}
-                </ul>
-              </>
-            ) : null}
+        <table className="danfe" style={{ marginTop: "-1px" }}>
+          <tbody>
+            <tr>
+              <td style={{ width: "70%" }}>
+                <span className="lbl">Dados adicionais — informações complementares</span>
+                <div className="val-sm muted">
+                  Campo <code>observacoes</code> do POST /nfe (infCpl)
+                </div>
+                <pre
+                  className="val-sm"
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    margin: "4px 0 0",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {payload.observacoes || "—"}
+                </pre>
+              </td>
+              <td>
+                <span className="lbl">Reservado ao fisco</span>
+                <div className="val-sm muted">—</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        {review.notes?.trim() ? (
+          <div className="print:hidden danfe-banner" style={{ marginTop: 8 }}>
+            <strong>Observações do pedido (interno)</strong> — não entram na
+            NF-e.
+            <div style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>
+              {review.notes.trim()}
+            </div>
           </div>
-          <dl className="fp-totals-inner">
-            <div className="fp-totals-row">
-              <dt>Base de cálculo</dt>
-              <dd>{fmtBRL(Number(review.total_tax_base))}</dd>
-            </div>
-            <div className="fp-totals-row">
-              <dt>Total ICMS</dt>
-              <dd>{fmtBRL(Number(review.total_icms))}</dd>
-            </div>
-            <div className="fp-totals-row">
-              <dt>Total IPI</dt>
-              <dd>{fmtBRL(Number(review.total_ipi))}</dd>
-            </div>
-            <div className="fp-totals-row fp-totals-row--grand">
-              <dt>Total do pedido</dt>
-              <dd>{fmtBRL(Number(review.total))}</dd>
-            </div>
-          </dl>
-        </div>
+        ) : null}
+
+        {review.warnings.length > 0 ? (
+          <div className="print:hidden danfe-banner" style={{ marginTop: 8 }}>
+            <strong>Avisos da conferência</strong>
+            <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+              {review.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </article>
     </>
   );

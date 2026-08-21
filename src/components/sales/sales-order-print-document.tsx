@@ -14,6 +14,10 @@ import {
   type CompanySettingsRow,
   type SalesOrderPrintData,
 } from "@/modules/vendas/lib/sales/sales-order-print-display";
+import {
+  deliveryAddressFromRow,
+  formatDeliveryAddressOneLine,
+} from "@/modules/vendas/lib/sales/sales-order-delivery-address";
 
 const PRINT_STYLES = `
 @media print {
@@ -75,6 +79,9 @@ export function SalesOrderPrintDocument({
 }: Props) {
   const items = order.items ?? [];
   const paymentText = soPaymentTermsText(order);
+  const deliveryLine = formatDeliveryAddressOneLine(
+    deliveryAddressFromRow(order)
+  );
 
   return (
     <>
@@ -163,7 +170,14 @@ export function SalesOrderPrintDocument({
             </dl>
             {order.client_address?.trim() ? (
               <p className="text-[0.65rem] text-slate-600 mt-1 whitespace-pre-wrap">
-                {order.client_address.trim()}
+                {deliveryLine
+                  ? `Faturamento: ${order.client_address.trim()}`
+                  : order.client_address.trim()}
+              </p>
+            ) : null}
+            {deliveryLine ? (
+              <p className="text-[0.65rem] text-slate-600 mt-1 whitespace-pre-wrap">
+                Entrega: {deliveryLine}
               </p>
             ) : null}
           </div>

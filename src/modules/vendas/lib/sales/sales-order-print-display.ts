@@ -34,6 +34,14 @@ export type SalesOrderPrintData = {
   client_email: string | null;
   client_phone: string | null;
   client_address: string | null;
+  delivery_address_different?: boolean;
+  delivery_street?: string | null;
+  delivery_number?: string | null;
+  delivery_complement?: string | null;
+  delivery_neighborhood?: string | null;
+  delivery_city?: string | null;
+  delivery_state?: string | null;
+  delivery_zip?: string | null;
   customer_po_number: string | null;
   payment_installments: number;
   payment_days_to_first_due: number;

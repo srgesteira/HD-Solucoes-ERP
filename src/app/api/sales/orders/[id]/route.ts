@@ -49,6 +49,7 @@ import {
   releaseSalesOrderFinishedGoodsReservations,
   reserveFinishedGoodsForSalesOrder,
 } from "@/modules/almoxarifado/lib/inventory-reservations";
+import { parseSalesOrderDeliveryAddressBody } from "@/modules/vendas/lib/sales/sales-order-delivery-address";
 
 export const dynamic = "force-dynamic";
 
@@ -283,6 +284,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return apiError("Pedido de compra do cliente: máximo 60 caracteres.", 400);
     }
     updateData.customer_po_number = raw;
+  }
+  const deliveryParsed = parseSalesOrderDeliveryAddressBody(b);
+  if (!deliveryParsed.ok) {
+    return apiError(deliveryParsed.message, 400);
+  }
+  if (!deliveryParsed.skip) {
+    Object.assign(updateData, deliveryParsed.value);
   }
   if (b.quote_id !== undefined) {
     if (b.quote_id === null) updateData.quote_id = null;

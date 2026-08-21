@@ -13,6 +13,7 @@ import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
 import { SalesOrderFormFields } from "@/components/sales/sales-order-form-fields";
+import { SalesOrderDeliveryAddressFields } from "@/components/sales/sales-order-delivery-address-fields";
 import { Textarea } from "@/shared/ui/textarea";
 import type { CustomerOption } from "@/components/sales/customer-quick-create-modal";
 import {
@@ -39,6 +40,12 @@ import {
 import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
 import { cn } from "@/shared/utils/cn";
 import { fmtBRL } from "@/shared/utils/format-brl";
+import {
+  deliveryAddressFromRow,
+  EMPTY_DELIVERY_ADDRESS,
+  type SalesOrderDeliveryAddress,
+  validateDeliveryAddress,
+} from "@/modules/vendas/lib/sales/sales-order-delivery-address";
 
 export type SalesOrderFormData = {
   id: string;
@@ -61,6 +68,14 @@ export type SalesOrderFormData = {
   total: number;
   notes: string | null;
   customer_po_number: string | null;
+  delivery_address_different?: boolean;
+  delivery_street?: string | null;
+  delivery_number?: string | null;
+  delivery_complement?: string | null;
+  delivery_neighborhood?: string | null;
+  delivery_city?: string | null;
+  delivery_state?: string | null;
+  delivery_zip?: string | null;
   mrp_processed: boolean;
   items?: Array<{
     id: string;
@@ -278,6 +293,8 @@ export function SalesOrderForm({
   );
   const [notes, setNotes] = useState("");
   const [customerPoNumber, setCustomerPoNumber] = useState("");
+  const [deliveryAddress, setDeliveryAddress] =
+    useState<SalesOrderDeliveryAddress>(EMPTY_DELIVERY_ADDRESS);
   const [discount, setDiscount] = useState(0);
   const [lines, setLines] = useState<SalesOrderLineDraft[]>(() => [
     newSalesOrderLine(0),
@@ -361,6 +378,7 @@ export function SalesOrderForm({
       setPaymentDaysBetween(pdb > 0 ? String(pdb) : "");
       setNotes(order.notes ?? "");
       setCustomerPoNumber(order.customer_po_number ?? "");
+      setDeliveryAddress(deliveryAddressFromRow(order));
       setDiscount(Number(order.discount ?? 0));
       setStatus(
         (SALES_ORDER_EDITABLE_STATUSES as readonly string[]).includes(
@@ -457,6 +475,9 @@ export function SalesOrderForm({
       throw new Error("Pedido de compra do cliente: máximo 60 caracteres.");
     }
 
+    const deliveryErr = validateDeliveryAddress(deliveryAddress);
+    if (deliveryErr) throw new Error(deliveryErr);
+
     const body: Record<string, unknown> = {
       notes: notes.trim() || null,
       customer_po_number: po,
@@ -465,6 +486,7 @@ export function SalesOrderForm({
       payment_days_to_first_due: commercial.data.payment_days_to_first_due,
       payment_days_between_installments:
         commercial.data.payment_days_between_installments,
+      ...deliveryAddressFromRow(deliveryAddress),
     };
 
     if (isEdit) {
@@ -685,6 +707,24 @@ export function SalesOrderForm({
                 onExpectedDeliveryChange={setExpectedDelivery}
               />
             ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Endereço de entrega</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {canEditCommercial || adminOnlyMode || !isEdit ? (
+              <SalesOrderDeliveryAddressFields
+                value={deliveryAddress}
+                onChange={setDeliveryAddress}
+              />
+            ) : (
+              <p className="text-sm text-slate-500">
+                Endereço de entrega bloqueado neste estado.
+              </p>
+            )}
           </CardContent>
         </Card>
 

@@ -14,6 +14,10 @@ import {
   type FiscalStatus,
 } from "@/modules/fiscal/lib/fiscal-rules-types";
 import { recalculateSalesOrderHeaderTotals } from "@/modules/vendas/lib/sales/sales-order-totals";
+import {
+  deliveryAddressFromRow,
+  formatDeliveryAddressOneLine,
+} from "@/modules/vendas/lib/sales/sales-order-delivery-address";
 import { usageTypeConferenceWarning } from "@/modules/fiscal/lib/item-usage-type-warnings";
 import {
   isItemUsageType,
@@ -33,6 +37,7 @@ export type FiscalOrderReviewItem = {
   unit: string;
   unit_price: number;
   total_price: number;
+  discount: number;
   product_id: string | null;
   product_name: string | null;
   product_code: string | null;
@@ -70,10 +75,14 @@ export type FiscalOrderReview = {
   client_name: string;
   client_document: string | null;
   client_address: string | null;
+  client_email: string | null;
+  client_phone: string | null;
   origin_uf: string | null;
   destination_uf: string | null;
   tax_regime: string | null;
   total: number;
+  subtotal: number;
+  discount: number;
   total_icms: number;
   total_ipi: number;
   total_tax_base: number;
@@ -84,8 +93,12 @@ export type FiscalOrderReview = {
   billing_plan: string | null;
   billing_closure: string | null;
   invoice_document_type: string | null;
-  /** Pedido de compra do cliente — sai na NF (xPed / info. adicionais). */
+  /** Pedido de compra do cliente — sai na NF (info. complementares). */
   customer_po_number: string | null;
+  delivery_address_different: boolean;
+  /** Endereço de entrega formatado (só se diferente do faturamento). */
+  delivery_address_formatted: string | null;
+  /** Texto livre do pedido — interno / produção. Não vai para a NF-e. */
   notes: string | null;
   expected_delivery: string | null;
   actual_delivery: string | null;
@@ -116,7 +129,11 @@ type RawOrderRow = {
   client_name: string;
   client_document: string | null;
   client_address: string | null;
+  client_email: string | null;
+  client_phone: string | null;
   total: number | null;
+  subtotal: number | null;
+  discount: number | null;
   total_icms: number | null;
   total_ipi: number | null;
   total_tax_base: number | null;
@@ -132,6 +149,14 @@ type RawOrderRow = {
   payment_installments: number | null;
   payment_days_to_first_due: number | null;
   payment_days_between_installments: number | null;
+  delivery_address_different?: boolean | null;
+  delivery_street?: string | null;
+  delivery_number?: string | null;
+  delivery_complement?: string | null;
+  delivery_neighborhood?: string | null;
+  delivery_city?: string | null;
+  delivery_state?: string | null;
+  delivery_zip?: string | null;
   items?: unknown;
 };
 
@@ -320,6 +345,7 @@ function buildItemFiscalFields(opts: {
   | "unit"
   | "unit_price"
   | "total_price"
+  | "discount"
   | "product_id"
   | "product_name"
   | "product_code"
@@ -415,7 +441,11 @@ export async function getFiscalOrderReview(
       client_name,
       client_document,
       client_address,
+      client_email,
+      client_phone,
       total,
+      subtotal,
+      discount,
       total_icms,
       total_ipi,
       total_tax_base,
@@ -431,6 +461,14 @@ export async function getFiscalOrderReview(
       payment_installments,
       payment_days_to_first_due,
       payment_days_between_installments,
+      delivery_address_different,
+      delivery_street,
+      delivery_number,
+      delivery_complement,
+      delivery_neighborhood,
+      delivery_city,
+      delivery_state,
+      delivery_zip,
       items:sales_order_items(
         id,
         line_number,
@@ -439,6 +477,7 @@ export async function getFiscalOrderReview(
         unit,
         unit_price,
         total_price,
+        discount,
         product_id,
         icms_rate,
         icms_value,
@@ -569,6 +608,7 @@ export async function getFiscalOrderReview(
       unit: String(it.unit ?? "UN"),
       unit_price: unitPrice,
       total_price: Number(it.total_price ?? 0),
+      discount: Number(it.discount ?? 0) || 0,
       product_id: productId,
       product_name:
         product && typeof product.name === "string" ? product.name : null,
@@ -656,7 +696,7 @@ export async function getFiscalOrderReview(
       warnings.push(
         `Produto(s) sem ID Bling: ${unmapped
           .map((it) => it.product_code || it.product_name || it.description)
-          .join(", ")}. Sincronize o catálogo em Empresa → Integrações. A emissão não adivinha NCM/CFOP/CSOSN.`
+          .join(", ")}. Crie o cadastro base na conferência (botão «Criar no Bling»). A emissão não adivinha NCM/CFOP/CSOSN.`
       );
     }
   }
@@ -696,10 +736,16 @@ export async function getFiscalOrderReview(
       typeof order.client_document === "string" ? order.client_document : null,
     client_address:
       typeof order.client_address === "string" ? order.client_address : null,
+    client_email:
+      typeof order.client_email === "string" ? order.client_email : null,
+    client_phone:
+      typeof order.client_phone === "string" ? order.client_phone : null,
     origin_uf: company?.address_state ?? null,
     destination_uf: destinationUf,
     tax_regime: company?.tax_regime ?? null,
     total: Number(order.total ?? 0),
+    subtotal: Number(order.subtotal ?? 0),
+    discount: Number(order.discount ?? 0),
     total_icms: Number(order.total_icms ?? 0),
     total_ipi: Number(order.total_ipi ?? 0),
     total_tax_base: Number(order.total_tax_base ?? 0),
@@ -719,6 +765,34 @@ export async function getFiscalOrderReview(
       typeof order.customer_po_number === "string"
         ? order.customer_po_number.trim() || null
         : null,
+    delivery_address_different: order.delivery_address_different === true,
+    delivery_address_formatted: formatDeliveryAddressOneLine(
+      deliveryAddressFromRow({
+        delivery_address_different: order.delivery_address_different === true,
+        delivery_street:
+          typeof order.delivery_street === "string"
+            ? order.delivery_street
+            : null,
+        delivery_number:
+          typeof order.delivery_number === "string"
+            ? order.delivery_number
+            : null,
+        delivery_complement:
+          typeof order.delivery_complement === "string"
+            ? order.delivery_complement
+            : null,
+        delivery_neighborhood:
+          typeof order.delivery_neighborhood === "string"
+            ? order.delivery_neighborhood
+            : null,
+        delivery_city:
+          typeof order.delivery_city === "string" ? order.delivery_city : null,
+        delivery_state:
+          typeof order.delivery_state === "string" ? order.delivery_state : null,
+        delivery_zip:
+          typeof order.delivery_zip === "string" ? order.delivery_zip : null,
+      })
+    ),
     notes: typeof order.notes === "string" ? order.notes : null,
     expected_delivery:
       typeof order.expected_delivery === "string"

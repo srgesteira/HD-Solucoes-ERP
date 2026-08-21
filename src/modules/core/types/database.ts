@@ -4581,6 +4581,14 @@ export type Database = {
           created_at: string
           created_by: string | null
           customer_po_number: string | null
+          delivery_address_different: boolean
+          delivery_city: string | null
+          delivery_complement: string | null
+          delivery_neighborhood: string | null
+          delivery_number: string | null
+          delivery_state: string | null
+          delivery_street: string | null
+          delivery_zip: string | null
           discount: number
           expected_delivery: string | null
           finance_blocked: boolean
@@ -4625,6 +4633,14 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_po_number?: string | null
+          delivery_address_different?: boolean
+          delivery_city?: string | null
+          delivery_complement?: string | null
+          delivery_neighborhood?: string | null
+          delivery_number?: string | null
+          delivery_state?: string | null
+          delivery_street?: string | null
+          delivery_zip?: string | null
           discount?: number
           expected_delivery?: string | null
           finance_blocked?: boolean
@@ -4669,6 +4685,14 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_po_number?: string | null
+          delivery_address_different?: boolean
+          delivery_city?: string | null
+          delivery_complement?: string | null
+          delivery_neighborhood?: string | null
+          delivery_number?: string | null
+          delivery_state?: string | null
+          delivery_street?: string | null
+          delivery_zip?: string | null
           discount?: number
           expected_delivery?: string | null
           finance_blocked?: boolean

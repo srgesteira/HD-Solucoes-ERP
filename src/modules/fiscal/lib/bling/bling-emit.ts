@@ -20,6 +20,15 @@ import {
 } from "@/modules/fiscal/lib/bling/bling-nfe-status";
 import { applyBlingNfeSnapshot } from "@/modules/fiscal/lib/bling/bling-apply-status";
 import { searchBlingNfeForErpOrder } from "@/modules/fiscal/lib/bling/bling-reconcile";
+import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
+import {
+  blingNfeNaturezaOperacao,
+  buildBlingNfeObservacoes,
+} from "@/modules/fiscal/lib/bling/bling-nfe-payload";
+import {
+  deliveryAddressFromRow,
+  formatDeliveryAddressOneLine,
+} from "@/modules/vendas/lib/sales/sales-order-delivery-address";
 
 type Admin = SupabaseClient<Database>;
 
@@ -31,16 +40,6 @@ type NfeRow = {
   sales_order_id: string | null;
   error_message: string | null;
 };
-
-function erpMarker(salesOrderId: string): string {
-  return `HD-ERP:${salesOrderId}`;
-}
-
-function naturezaOperacao(docType: InvoiceDocumentType): string {
-  return docType === "nfe_industrialization"
-    ? "Industrialização"
-    : "Venda de mercadorias";
-}
 
 async function loadClaimedNfe(
   admin: Admin,
@@ -188,7 +187,7 @@ export async function emitirNfeViaBling(
   const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
     .select(
-      "order_number, order_date, client_name, customer_po_number, discount"
+      "order_number, order_date, client_name, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -200,6 +199,20 @@ export async function emitirNfeViaBling(
     client_name: string;
     customer_po_number: string | null;
     discount: number | null;
+    total: number | null;
+    payment_installments: number | null;
+    payment_days_to_first_due: number | null;
+    payment_days_between_installments: number | null;
+    expected_delivery: string | null;
+    actual_delivery: string | null;
+    delivery_address_different: boolean | null;
+    delivery_street: string | null;
+    delivery_number: string | null;
+    delivery_complement: string | null;
+    delivery_neighborhood: string | null;
+    delivery_city: string | null;
+    delivery_state: string | null;
+    delivery_zip: string | null;
   };
 
   const { data: itemRows, error: itemsErr } = await db
@@ -251,25 +264,42 @@ export async function emitirNfeViaBling(
     };
   });
 
-  const observacoes = [
-    `Pedido HD ${so.order_number}`,
-    erpMarker(salesOrderId),
-    so.customer_po_number?.trim()
-      ? `PC cliente: ${so.customer_po_number.trim()}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const paymentSource = {
+    order_number: so.order_number,
+    customer_po_number: so.customer_po_number,
+    payment_installments: Number(so.payment_installments ?? 1),
+    payment_days_to_first_due: Number(so.payment_days_to_first_due ?? 30),
+    payment_days_between_installments: Number(
+      so.payment_days_between_installments ?? 0
+    ),
+    expected_delivery: so.expected_delivery,
+    actual_delivery: so.actual_delivery,
+    order_date: so.order_date,
+    total: Number(so.total ?? 0),
+  };
+
+  const observacoes = buildBlingNfeObservacoes(
+    {
+      order_number: so.order_number,
+      customer_po_number: so.customer_po_number,
+      delivery_address_formatted: formatDeliveryAddressOneLine(
+        deliveryAddressFromRow(so)
+      ),
+    },
+    salesOrderId
+  );
 
   const payload = {
     tipo: 1,
     finalidade: 1,
-    naturezaOperacao: naturezaOperacao(docType),
+    naturezaOperacao: blingNfeNaturezaOperacao(docType),
     data: String(so.order_date ?? new Date().toISOString()).slice(0, 10),
     contato: { id: catalog.contactId },
     itens,
     desconto: Number(so.discount ?? 0) || undefined,
     observacoes,
+    /** Grupo fatura/duplicata da NF-e (cobrança estruturada, não infCpl). */
+    parcelas: buildBlingNfeParcelas(paymentSource),
   };
 
   await db

@@ -519,9 +519,17 @@ export default function FiscalOrderReviewPage() {
                   </div>
                 </div>
                 <div>
-                  <span className="text-slate-500">Endereço</span>
+                  <span className="text-slate-500">Endereço de faturamento</span>
                   <p className="text-slate-700">{data.client_address ?? "—"}</p>
                 </div>
+                {data.delivery_address_formatted ? (
+                  <div>
+                    <span className="text-slate-500">Endereço de entrega</span>
+                    <p className="text-slate-700">
+                      {data.delivery_address_formatted}
+                    </p>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
 

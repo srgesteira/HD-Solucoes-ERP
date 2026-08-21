@@ -88,6 +88,14 @@ type SalesOrderDetail = {
   client_email: string | null;
   client_phone: string | null;
   client_address: string | null;
+  delivery_address_different?: boolean;
+  delivery_street?: string | null;
+  delivery_number?: string | null;
+  delivery_complement?: string | null;
+  delivery_neighborhood?: string | null;
+  delivery_city?: string | null;
+  delivery_state?: string | null;
+  delivery_zip?: string | null;
   payment_installments: number;
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
@@ -955,11 +963,30 @@ export default function SalesOrderDetailPage() {
                 <p className="font-medium">{q.client_phone ?? "—"}</p>
               </div>
               <div className="sm:col-span-2">
-                <p className="text-slate-500">Endereço</p>
+                <p className="text-slate-500">Endereço de faturamento</p>
                 <p className="font-medium whitespace-pre-wrap">
                   {q.client_address?.trim() ? q.client_address : "—"}
                 </p>
               </div>
+              {q.delivery_address_different ? (
+                <div className="sm:col-span-2">
+                  <p className="text-slate-500">Endereço de entrega</p>
+                  <p className="font-medium whitespace-pre-wrap">
+                    {[
+                      [q.delivery_street, q.delivery_number]
+                        .filter(Boolean)
+                        .join(", "),
+                      q.delivery_complement,
+                      q.delivery_neighborhood,
+                      q.delivery_city,
+                      q.delivery_state,
+                      q.delivery_zip,
+                    ]
+                      .filter((p) => typeof p === "string" && p.trim())
+                      .join(" — ") || "—"}
+                  </p>
+                </div>
+              ) : null}
               <div className="sm:col-span-2">
                 <p className="text-slate-500">
                   Pedido de compra do cliente

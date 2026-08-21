@@ -127,7 +127,7 @@ export async function splitSalesOrder(
   const { data: order, error: orderErr } = await admin
     .from("sales_orders")
     .select(
-      "id, order_number, status, mrp_processed, production_order_id, quote_id, client_name, client_document, client_email, client_phone, client_address, order_date, expected_delivery, pcp_deadline, notes, customer_po_number, payment_installments, payment_days_to_first_due, payment_days_between_installments, actual_delivery, total, discount"
+      "id, order_number, status, mrp_processed, production_order_id, quote_id, client_name, client_document, client_email, client_phone, client_address, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, order_date, expected_delivery, pcp_deadline, notes, customer_po_number, payment_installments, payment_days_to_first_due, payment_days_between_installments, actual_delivery, total, discount"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -294,6 +294,14 @@ export async function splitSalesOrder(
       client_email: order.client_email,
       client_phone: order.client_phone,
       client_address: order.client_address,
+      delivery_address_different: order.delivery_address_different === true,
+      delivery_street: order.delivery_street,
+      delivery_number: order.delivery_number,
+      delivery_complement: order.delivery_complement,
+      delivery_neighborhood: order.delivery_neighborhood,
+      delivery_city: order.delivery_city,
+      delivery_state: order.delivery_state,
+      delivery_zip: order.delivery_zip,
       order_date: order.order_date,
       expected_delivery: expectedDelivery,
       pcp_deadline: order.pcp_deadline,

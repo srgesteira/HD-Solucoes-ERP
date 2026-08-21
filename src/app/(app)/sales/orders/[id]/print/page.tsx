@@ -135,7 +135,7 @@ export default function SalesOrderPrintPage() {
           <FiscalOrderPrintDocument
             review={fiscalQuery.data}
             company={companyQuery.data ?? null}
-            className="mx-auto max-w-[297mm] shadow-lg print:shadow-none p-4 sm:p-6 print:p-0 bg-white"
+            className="mx-auto max-w-[210mm] shadow-lg print:shadow-none p-4 sm:p-5 print:p-0 bg-white"
           />
         ) : orderQuery.data ? (
           <SalesOrderPrintDocument
