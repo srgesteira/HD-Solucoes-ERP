@@ -163,7 +163,7 @@ export async function ensureBlingPedidoForSalesOrder(
   const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
     .select(
-      "order_number, order_date, client_name, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id, quote_id, shipping_type, freight_cost, carrier_name"
+      "order_number, order_date, client_name, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id, quote_id"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -192,14 +192,27 @@ export async function ensureBlingPedidoForSalesOrder(
     delivery_zip: string | null;
     bling_pedido_venda_id: number | null;
     quote_id: string | null;
-    shipping_type: string | null;
-    freight_cost: number | null;
-    carrier_name: string | null;
   };
 
-  let shippingType = so.shipping_type;
-  let freightCost = Number(so.freight_cost ?? 0);
-  let carrierName = so.carrier_name?.trim() || null;
+  let shippingType: string | null = null;
+  let freightCost = 0;
+  let carrierName: string | null = null;
+  const { data: soExtra } = await db
+    .from("sales_orders")
+    .select("shipping_type, freight_cost, carrier_name")
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (soExtra && typeof soExtra === "object") {
+    const extra = soExtra as {
+      shipping_type?: string | null;
+      freight_cost?: number | null;
+      carrier_name?: string | null;
+    };
+    shippingType = extra.shipping_type ?? null;
+    freightCost = Number(extra.freight_cost ?? 0);
+    carrierName = extra.carrier_name?.trim() || null;
+  }
   if ((!shippingType || freightCost <= 0) && so.quote_id) {
     const { data: quoteRow } = await db
       .from("quotes")
