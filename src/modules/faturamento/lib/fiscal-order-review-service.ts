@@ -27,6 +27,28 @@ import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-or
 
 type Admin = SupabaseClient<Database>;
 
+const NFE_REVIEW_STATUS_RANK: Record<string, number> = {
+  authorized: 0,
+  processing: 1,
+  pending: 2,
+  rejected: 3,
+};
+
+function pickActiveNfeForReview<
+  T extends { status: string; created_at?: string | null; provider?: string | null },
+>(rows: T[]): T | null {
+  const usable = rows.filter((row) => row.status !== "cancelled");
+  if (usable.length === 0) return null;
+  const blingFirst = usable.filter((row) => row.provider === "bling");
+  const pool = blingFirst.length > 0 ? blingFirst : usable;
+  return [...pool].sort((a, b) => {
+    const ra = NFE_REVIEW_STATUS_RANK[a.status] ?? 4;
+    const rb = NFE_REVIEW_STATUS_RANK[b.status] ?? 4;
+    if (ra !== rb) return ra - rb;
+    return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+  })[0];
+}
+
 export type FiscalItemSource = "applied" | "preview" | "stored" | "manual" | "none";
 
 export type FiscalOrderReviewItem = {
@@ -704,16 +726,27 @@ export async function getFiscalOrderReview(
     }
   }
 
-  const { data: nfeRow } = await db
+  const { data: nfeRows } = await db
     .from("nfes")
     .select(
-      "id, status, nfe_number, nfe_key, pdf_url, xml_url, error_message, provider"
+      "id, status, nfe_number, nfe_key, pdf_url, xml_url, error_message, provider, created_at"
     )
     .eq("tenant_id", tenantId)
     .eq("sales_order_id", salesOrderId)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .neq("status", "cancelled");
+  const nfeRow = pickActiveNfeForReview(
+    (nfeRows ?? []) as Array<{
+      id: string;
+      status: string;
+      nfe_number: string | null;
+      nfe_key: string | null;
+      pdf_url: string | null;
+      xml_url: string | null;
+      error_message: string | null;
+      provider?: string | null;
+      created_at?: string | null;
+    }>
+  );
   const nfe = nfeRow
     ? {
         id: String((nfeRow as { id: string }).id),
