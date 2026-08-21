@@ -332,3 +332,128 @@ export async function syncBlingProductLinks(
 
   return { linked, missing, scanned: rows.length };
 }
+
+export type CreateBlingProductResult = {
+  bling_product_id: number;
+  created: boolean;
+  codigo: string;
+};
+
+/**
+ * Cria só o cadastro base no Bling (SKU, nome, unidade).
+ * Não envia tributação — NCM/CFOP/CSOSN ficam para o contador no Bling.
+ */
+export async function createBlingProduct(
+  admin: Admin,
+  tenantId: string,
+  input: { nome: string; codigo: string; unidade: string | null }
+): Promise<number> {
+  const nome = input.nome.trim();
+  const codigo = input.codigo.trim();
+  if (!nome) throw new Error("Nome do produto é obrigatório para criar no Bling.");
+  if (!codigo) throw new Error("Código/SKU é obrigatório para criar no Bling.");
+
+  const payload = await blingPost(admin, tenantId, "/produtos", {
+    nome,
+    codigo,
+    tipo: "P",
+    situacao: "A",
+    formato: "S",
+    unidade: input.unidade?.trim() || "UN",
+  });
+  const id = Number(unwrapBlingData(payload)?.id);
+  if (!Number.isFinite(id)) {
+    throw new Error("Bling criou o produto mas não devolveu o ID.");
+  }
+  return id;
+}
+
+export async function createAndLinkBlingProduct(
+  admin: Admin,
+  tenantId: string,
+  productId: string
+): Promise<CreateBlingProductResult> {
+  const db = asUntypedAdmin(admin);
+  const { data, error } = await db
+    .from("products")
+    .select("id, code, technical_code, name, unit, bling_product_id")
+    .eq("id", productId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Produto não encontrado.");
+
+  const product = data as {
+    id: string;
+    code: string | null;
+    technical_code: string | null;
+    name: string;
+    unit: string | null;
+    bling_product_id: number | null;
+  };
+
+  if (product.bling_product_id) {
+    return {
+      bling_product_id: Number(product.bling_product_id),
+      created: false,
+      codigo: (product.code ?? product.technical_code ?? "").trim(),
+    };
+  }
+
+  const codigo = (product.code ?? product.technical_code ?? "").trim();
+  if (!codigo) {
+    throw new Error(
+      "Produto sem código/SKU. Preencha o código no cadastro antes de criar no Bling."
+    );
+  }
+
+  let blingId = await findBlingProductIdByCodigo(admin, tenantId, codigo);
+  let created = false;
+  if (!blingId) {
+    try {
+      blingId = await createBlingProduct(admin, tenantId, {
+        nome: product.name,
+        codigo,
+        unidade: product.unit,
+      });
+      created = true;
+    } catch (e) {
+      const existing = await findBlingProductIdByCodigo(admin, tenantId, codigo);
+      if (existing) {
+        blingId = existing;
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  await db
+    .from("products")
+    .update({ bling_product_id: blingId })
+    .eq("id", product.id)
+    .eq("tenant_id", tenantId);
+
+  return { bling_product_id: blingId, created, codigo };
+}
+
+export async function createAndLinkBlingProductForSalesOrder(
+  admin: Admin,
+  tenantId: string,
+  salesOrderId: string,
+  productId: string
+): Promise<CreateBlingProductResult> {
+  const db = asUntypedAdmin(admin);
+  const { data, error } = await db
+    .from("sales_order_items")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("sales_order_id", salesOrderId)
+    .eq("product_id", productId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error("Este produto não pertence ao pedido.");
+  }
+  return createAndLinkBlingProduct(admin, tenantId, productId);
+}

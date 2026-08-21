@@ -394,6 +394,36 @@ export default function FiscalInvoicingPage() {
         ),
       },
       {
+        key: "unmapped_bling",
+        label: "Bling",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => (row.unmapped_bling_skus ?? []).join(", "),
+        render: (row) => {
+          if (
+            row.invoice_document_type !== "nfe_product" &&
+            row.invoice_document_type !== "nfe_industrialization"
+          ) {
+            return <span className="text-slate-400">—</span>;
+          }
+          if (!row.unmapped_bling_skus?.length) {
+            return (
+              <span className="text-[10px] font-medium text-emerald-800">
+                Produtos ok
+              </span>
+            );
+          }
+          return (
+            <span
+              className="inline-flex max-w-full rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ring-red-200 bg-red-50 text-red-800"
+              title={row.unmapped_bling_skus.join(", ")}
+            >
+              Sem Bling ({row.unmapped_bling_skus.length})
+            </span>
+          );
+        },
+      },
+      {
         key: "nfe_status",
         label: "NF-e",
         type: "text",

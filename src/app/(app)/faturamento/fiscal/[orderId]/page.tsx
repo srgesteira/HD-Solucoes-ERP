@@ -34,6 +34,8 @@ import {
   FiscalItemEditButton,
   FiscalItemEditModal,
 } from "@/components/fiscal/fiscal-item-edit-modal";
+import { CreateBlingProductButton } from "@/components/faturamento/create-bling-product-button";
+import { UnmappedBlingProductsPanel } from "@/components/faturamento/unmapped-bling-products-panel";
 import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-billing-display";
 import { nfeStatusPill } from "@/modules/faturamento/lib/fiscal-invoicing-list-display";
 import {
@@ -652,6 +654,12 @@ export default function FiscalOrderReviewPage() {
             </Card>
           </div>
 
+          <UnmappedBlingProductsPanel
+            orderId={orderId}
+            invoiceDocumentType={data.invoice_document_type}
+            items={data.items}
+          />
+
           <Card>
             <CardHeader className="py-3">
               <CardTitle className="text-base">Conferência fiscal por item</CardTitle>
@@ -716,9 +724,16 @@ export default function FiscalOrderReviewPage() {
                         {it.product_id && !it.bling_product_id &&
                         (data.invoice_document_type === "nfe_product" ||
                           data.invoice_document_type === "nfe_industrialization") ? (
-                          <div className="text-[10px] text-red-700">
-                            Sem produto correspondente no Bling
-                            {it.product_code ? ` (SKU ${it.product_code})` : ""}
+                          <div className="mt-1 space-y-1">
+                            <div className="text-[10px] text-red-700">
+                              Sem produto correspondente no Bling
+                              {it.product_code ? ` (SKU ${it.product_code})` : ""}
+                            </div>
+                            <CreateBlingProductButton
+                              orderId={orderId}
+                              productId={it.product_id}
+                              sku={it.product_code}
+                            />
                           </div>
                         ) : null}
                         {it.line_warnings.length > 0 ? (

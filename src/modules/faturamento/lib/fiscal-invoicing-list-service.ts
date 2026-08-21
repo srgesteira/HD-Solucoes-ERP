@@ -53,6 +53,7 @@ export type FiscalInvoicingListRow = SalesOrderBase & {
   can_emit: boolean;
   can_confirm_without_invoice: boolean;
   emit_blockers: string[];
+  unmapped_bling_skus: string[];
 };
 
 export type FiscalInvoicingListResult = {
@@ -118,6 +119,58 @@ async function loadCreditStatusByOrder(
     if (row.sales_order_ref) {
       out.set(row.sales_order_ref, row.status);
     }
+  }
+  return out;
+}
+
+async function loadUnmappedBlingSkusByOrder(
+  admin: Admin,
+  tenantId: string,
+  orderIds: string[]
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (!orderIds.length) return out;
+  const db = asUntypedAdmin(admin);
+  const { data, error } = await db
+    .from("sales_order_items")
+    .select(
+      "sales_order_id, product_id, product:products!sales_order_items_product_id_fkey(code, technical_code, name, bling_product_id)"
+    )
+    .eq("tenant_id", tenantId)
+    .in("sales_order_id", orderIds);
+  if (error) throw new Error(error.message);
+
+  for (const raw of data ?? []) {
+    const row = raw as {
+      sales_order_id: string;
+      product_id: string | null;
+      product?:
+        | {
+            code: string | null;
+            technical_code: string | null;
+            name: string | null;
+            bling_product_id: number | null;
+          }
+        | Array<{
+            code: string | null;
+            technical_code: string | null;
+            name: string | null;
+            bling_product_id: number | null;
+          }>
+        | null;
+    };
+    if (!row.product_id) continue;
+    const product = Array.isArray(row.product) ? row.product[0] : row.product;
+    if (!product || product.bling_product_id) continue;
+    const sku = (
+      product.code ??
+      product.technical_code ??
+      product.name ??
+      row.product_id
+    ).trim();
+    const list = out.get(row.sales_order_id) ?? [];
+    if (!list.includes(sku)) list.push(sku);
+    out.set(row.sales_order_id, list);
   }
   return out;
 }
@@ -349,9 +402,10 @@ export async function listFiscalInvoicingOrders(
 
   const baseRows = (data ?? []) as unknown as SalesOrderBase[];
   const orderIds = baseRows.map((r) => r.id);
-  const [nfesByOrder, creditByOrder] = await Promise.all([
+  const [nfesByOrder, creditByOrder, unmappedByOrder] = await Promise.all([
     loadLatestNfesByOrder(admin, tenantId, orderIds),
     loadCreditStatusByOrder(admin, tenantId, orderIds),
+    loadUnmappedBlingSkusByOrder(admin, tenantId, orderIds),
   ]);
 
   const enriched: FiscalInvoicingListRow[] = [];
@@ -387,6 +441,11 @@ export async function listFiscalInvoicingOrders(
       can_emit: gate.ok,
       can_confirm_without_invoice: canConfirmWithoutInvoice,
       emit_blockers: gate.reasons,
+      unmapped_bling_skus:
+        row.invoice_document_type === "nfe_product" ||
+        row.invoice_document_type === "nfe_industrialization"
+          ? unmappedByOrder.get(row.id) ?? []
+          : [],
     };
 
     if (
