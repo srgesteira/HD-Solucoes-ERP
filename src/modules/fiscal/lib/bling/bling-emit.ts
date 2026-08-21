@@ -11,7 +11,7 @@ import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import type { InvoiceDocumentType } from "@/modules/core/types/sales-order-billing.types";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 import { BlingApiError } from "@/modules/fiscal/lib/bling/bling-errors";
-import { blingGet, blingPost } from "@/modules/fiscal/lib/bling/bling-client";
+import { blingGet, blingPost, blingPut } from "@/modules/fiscal/lib/bling/bling-client";
 import {
   parseBlingNfeSnapshot,
   unwrapBlingData,
@@ -109,12 +109,6 @@ export async function emitirNfeViaBling(
     return { nfe_id: nfe.id, bling_nfe_id: nfe.bling_nfe_id };
   }
 
-  if (nfe.bling_nfe_id) {
-    await syncExistingBlingNfe(admin, tenantId, nfe.id, Number(nfe.bling_nfe_id));
-    const latest = await loadClaimedNfe(admin, tenantId, nfe.id);
-    return { nfe_id: latest.id, bling_nfe_id: latest.bling_nfe_id };
-  }
-
   let prepared: Awaited<ReturnType<typeof ensureBlingPedidoForSalesOrder>>;
   try {
     prepared = await ensureBlingPedidoForSalesOrder(
@@ -204,34 +198,49 @@ export async function emitirNfeViaBling(
     .eq("id", nfe.id)
     .eq("tenant_id", tenantId);
 
+  const existingBlingId =
+    nfe.bling_nfe_id != null && Number.isFinite(Number(nfe.bling_nfe_id))
+      ? Number(nfe.bling_nfe_id)
+      : null;
+
   let blingNfeId: number;
   try {
-    let created: unknown;
-    try {
-      created = await blingPost(admin, tenantId, "/nfe", nfePayload);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      const today = new Date().toLocaleDateString("en-CA", {
-        timeZone: "America/Sao_Paulo",
-      });
-      if (
-        /data de opera/i.test(msg) &&
-        String(nfePayload.dataOperacao ?? "") !== today
-      ) {
-        created = await blingPost(admin, tenantId, "/nfe", {
-          ...nfePayload,
-          dataOperacao: today,
+    if (existingBlingId) {
+      await blingPut(
+        admin,
+        tenantId,
+        `/nfe/${existingBlingId}`,
+        nfePayload
+      );
+      blingNfeId = existingBlingId;
+    } else {
+      let created: unknown;
+      try {
+        created = await blingPost(admin, tenantId, "/nfe", nfePayload);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        const today = new Date().toLocaleDateString("en-CA", {
+          timeZone: "America/Sao_Paulo",
         });
-      } else {
-        throw e;
+        if (
+          /data de opera/i.test(msg) &&
+          String(nfePayload.dataOperacao ?? "") !== today
+        ) {
+          created = await blingPost(admin, tenantId, "/nfe", {
+            ...nfePayload,
+            dataOperacao: today,
+          });
+        } else {
+          throw e;
+        }
       }
+      const data = unwrapBlingData(created);
+      const id = Number(data?.id);
+      if (!Number.isFinite(id)) {
+        throw new Error("Bling criou a nota mas não devolveu o ID.");
+      }
+      blingNfeId = id;
     }
-    const data = unwrapBlingData(created);
-    const id = Number(data?.id);
-    if (!Number.isFinite(id)) {
-      throw new Error("Bling criou a nota mas não devolveu o ID.");
-    }
-    blingNfeId = id;
   } catch (e) {
     const msg =
       e instanceof BlingApiError

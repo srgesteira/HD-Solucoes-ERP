@@ -85,6 +85,8 @@ export function fiscalReviewToBlingNfeCreateInput(
       unit_price: it.unit_price,
       discount: it.discount,
       ncm: it.ncm,
+      cfop: it.cfop,
+      usage_type: it.usage_type,
     })),
     observacoesSource: {
       order_number: review.order_number,
@@ -138,6 +140,18 @@ function roundMoney(value: number): number {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
+/** CSOSN permitido pela SEFAZ (rej. 600) quando o destino é não contribuinte. */
+const CSOSN_NAO_CONTRIBUINTE = "102";
+
+function isConsumidorFinal(
+  items: Array<{ usage_type?: string | null }>
+): boolean {
+  return (
+    items.length > 0 &&
+    items.every((it) => !it.usage_type || it.usage_type === "consumo")
+  );
+}
+
 export function digitsOnlyDoc(value: string | null | undefined): string {
   return String(value ?? "").replace(/\D/g, "");
 }
@@ -174,6 +188,8 @@ export type BlingNfeCreateItemInput = {
   unit_price: number;
   discount?: number | null;
   ncm?: string | null;
+  cfop?: string | null;
+  usage_type?: string | null;
 };
 
 export type BlingNfeCreateBodyInput = {
@@ -210,6 +226,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     nome: string;
     tipoPessoa: "F" | "J";
     numeroDocumento: string;
+    contribuinte?: 1 | 2 | 9;
     email?: string;
     telefone?: string;
     endereco?: ReturnType<typeof parseFreeformAddressToBling>;
@@ -222,6 +239,9 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     valor: number;
     tipo: "P";
     classificacaoFiscal?: string;
+    origem?: number;
+    situacaoTributaria?: string;
+    cfop?: string;
   }>;
   desconto?: number;
   observacoes: string;
@@ -233,6 +253,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
   }
 
   const missingSku: string[] = [];
+  const consumidorFinal = isConsumidorFinal(input.items);
   const itens = input.items.map((it) => {
     const codigo = skuForBlingNfeItem({
       code: it.code,
@@ -242,6 +263,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     if (!codigo) {
       missingSku.push((it.name ?? it.description).trim() || "item sem descrição");
     }
+    const cfop = String(it.cfop ?? "").replace(/\D/g, "");
     return {
       codigo,
       descricao: (it.name ?? it.description).trim() || "—",
@@ -250,6 +272,11 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       valor: roundMoney(Number(it.unit_price ?? 0)),
       tipo: "P" as const,
       classificacaoFiscal: ncmToClassificacaoFiscal(it.ncm),
+      origem: 0,
+      ...(consumidorFinal
+        ? { situacaoTributaria: CSOSN_NAO_CONTRIBUINTE }
+        : {}),
+      ...(cfop.length === 4 ? { cfop } : {}),
     };
   });
   if (missingSku.length > 0) {
@@ -279,6 +306,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       nome: input.clientName.trim() || "Cliente",
       tipoPessoa: numeroDocumento.length === 14 ? "J" : "F",
       numeroDocumento,
+      ...(consumidorFinal ? { contribuinte: 9 as const } : {}),
       ...(email ? { email } : {}),
       ...(telefone ? { telefone } : {}),
       ...(endereco ? { endereco } : {}),
