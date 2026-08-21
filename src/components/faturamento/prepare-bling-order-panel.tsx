@@ -83,9 +83,10 @@ export function PrepareBlingOrderPanel({
       </p>
       <p className="mt-1 text-xs opacity-90">
         Espelha este pedido no Bling: cliente (CNPJ e endereço), produtos com NCM,
-        itens, parcelas, frete (CIF/FOB) e transportadora. «Emitir nota» gera a
-        NF-e <strong>a partir desse mesmo pedido</strong> no Bling — não cria uma
-        nota solta. Se a nota for rejeitada, apagamos e voltamos a gerar no pedido.
+        itens, parcelas, frete (CIF/FOB) e transportadora. «Emitir nota» cria a
+        NF-e ligada a este pedido. Se a SEFAZ rejeitar, corrigimos a mesma nota
+        (CSOSN e número) e reenviamos — o pedido Bling não é apagado. O número
+        segue a última NF-e autorizada.
       </p>
       <ul className="mt-2 space-y-0.5 text-xs">
         <li>

@@ -221,6 +221,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
   tipo: 1;
   finalidade: 1;
   dataOperacao: string;
+  consumidorFinal?: boolean;
   contato: {
     id?: number;
     nome: string;
@@ -241,6 +242,8 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     classificacaoFiscal?: string;
     origem?: number;
     situacaoTributaria?: string;
+    cst?: string;
+    simples?: { cst: string };
     cfop?: string;
   }>;
   desconto?: number;
@@ -274,7 +277,11 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       classificacaoFiscal: ncmToClassificacaoFiscal(it.ncm),
       origem: 0,
       ...(consumidorFinal
-        ? { situacaoTributaria: CSOSN_NAO_CONTRIBUINTE }
+        ? {
+            situacaoTributaria: CSOSN_NAO_CONTRIBUINTE,
+            cst: CSOSN_NAO_CONTRIBUINTE,
+            simples: { cst: CSOSN_NAO_CONTRIBUINTE },
+          }
         : {}),
       ...(cfop.length === 4 ? { cfop } : {}),
     };
@@ -299,6 +306,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     tipo: 1,
     finalidade: 1,
     dataOperacao: String(input.orderDate ?? "").slice(0, 10),
+    ...(consumidorFinal ? { consumidorFinal: true } : {}),
     contato: {
       ...(Number.isFinite(input.contactId) && input.contactId
         ? { id: Number(input.contactId) }
@@ -332,13 +340,26 @@ export function applyNaoContribuinteCsosnToNfeData(
   const itensRaw = Array.isArray(data.itens) ? data.itens : [];
   const itens = itensRaw.map((raw) => {
     if (!raw || typeof raw !== "object") return raw;
+    const item = raw as Record<string, unknown>;
+    const simples =
+      item.simples && typeof item.simples === "object"
+        ? { ...(item.simples as Record<string, unknown>) }
+        : {};
+    const icms =
+      item.icms && typeof item.icms === "object"
+        ? { ...(item.icms as Record<string, unknown>) }
+        : {};
     return {
-      ...(raw as Record<string, unknown>),
+      ...item,
       situacaoTributaria: CSOSN_NAO_CONTRIBUINTE,
+      cst: CSOSN_NAO_CONTRIBUINTE,
+      simples: { ...simples, cst: CSOSN_NAO_CONTRIBUINTE },
+      icms: { ...icms, cst: CSOSN_NAO_CONTRIBUINTE },
     };
   });
   return {
     ...data,
+    consumidorFinal: true,
     contato: {
       ...contatoRaw,
       contribuinte: 9,

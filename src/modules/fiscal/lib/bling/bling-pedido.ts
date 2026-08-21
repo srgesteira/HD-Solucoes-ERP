@@ -1,7 +1,8 @@
 /**
  * Botão «Criar e actualizar pedido no Bling»:
  * cliente (CNPJ + endereço), produtos com NCM, pedido com itens/parcelas.
- * «Emitir nota» só gera a NF-e a partir deste pedido.
+ * «Emitir nota» cria a NF-e com o sequencial da última autorizada.
+ * Rejeitada: apaga só a nota — nunca o pedido.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -13,7 +14,8 @@ import {
   patchBlingProductNcm,
   resolveBlingCatalogForSalesOrder,
 } from "@/modules/fiscal/lib/bling/bling-catalog";
-import { blingGet, blingPost, blingPut } from "@/modules/fiscal/lib/bling/bling-client";
+import { BlingApiError } from "@/modules/fiscal/lib/bling/bling-errors";
+import { blingGet, blingPatch, blingPost, blingPut } from "@/modules/fiscal/lib/bling/bling-client";
 import {
   blingNfeNaturezaOperacao,
   buildBlingNfeObservacoes,
@@ -72,6 +74,65 @@ function readBlingPedidoTotal(payload: unknown): number | null {
     return acc + q * v;
   }, 0);
   return sum > 0 ? roundMoney(sum) : null;
+}
+
+async function findPedidoIdByNumeroLoja(
+  admin: Admin,
+  tenantId: string,
+  orderNumber: string
+): Promise<number | null> {
+  const numero = String(orderNumber ?? "").trim();
+  if (!numero) return null;
+  const qs = new URLSearchParams({ limite: "100", pagina: "1" });
+  qs.append("numerosLojas[]", numero);
+  const listed = await blingGet(
+    admin,
+    tenantId,
+    `/pedidos/vendas?${qs.toString()}`
+  );
+  for (const row of unwrapBlingList(listed)) {
+    const id = Number(row.id);
+    if (Number.isFinite(id)) return id;
+  }
+  return null;
+}
+
+function isBlingNotFound(e: unknown): boolean {
+  return (
+    e instanceof BlingApiError && (e.status === 404 || e.status === 410)
+  );
+}
+
+function situacaoLabel(row: Record<string, unknown>): string {
+  return String(row.nome ?? row.descricao ?? row.name ?? "").toLowerCase();
+}
+
+async function reopenBlingPedidoEmAberto(
+  admin: Admin,
+  tenantId: string,
+  pedidoId: number
+): Promise<void> {
+  try {
+    const mods = unwrapBlingList(
+      await blingGet(admin, tenantId, "/situacoes/modulos")
+    );
+    const vendas = mods.find((row) => /venda/i.test(situacaoLabel(row)));
+    const modId = Number(vendas?.id);
+    if (!Number.isFinite(modId)) return;
+    const sits = unwrapBlingList(
+      await blingGet(admin, tenantId, `/situacoes/modulos/${modId}`)
+    );
+    const aberto = sits.find((row) => /em aberto/.test(situacaoLabel(row)));
+    const sitId = Number(aberto?.id);
+    if (!Number.isFinite(sitId)) return;
+    await blingPatch(
+      admin,
+      tenantId,
+      `/pedidos/vendas/${pedidoId}/situacoes/${sitId}`
+    );
+  } catch {
+    // O pedido permanece; a lista «Em aberto» é só o filtro do Bling.
+  }
 }
 
 function isDefaultFlag(value: unknown): boolean {
@@ -451,11 +512,38 @@ export async function ensureBlingPedidoForSalesOrder(
   let created = false;
 
   if (pedidoId && Number.isFinite(pedidoId)) {
+    let exists = false;
     try {
       await blingGet(admin, tenantId, `/pedidos/vendas/${pedidoId}`);
+      exists = true;
+    } catch (e) {
+      if (!isBlingNotFound(e)) throw e;
+      const recovered = await findPedidoIdByNumeroLoja(
+        admin,
+        tenantId,
+        so.order_number
+      );
+      if (recovered) {
+        pedidoId = recovered;
+        exists = true;
+      }
+    }
+    if (exists && pedidoId) {
       await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, payloadBase);
-    } catch {
+    } else {
       pedidoId = null;
+    }
+  }
+
+  if (!pedidoId) {
+    const recovered = await findPedidoIdByNumeroLoja(
+      admin,
+      tenantId,
+      so.order_number
+    );
+    if (recovered) {
+      pedidoId = recovered;
+      await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, payloadBase);
     }
   }
 
@@ -523,6 +611,8 @@ export async function ensureBlingPedidoForSalesOrder(
   ) {
     throw new Error(mirrorErr.message);
   }
+
+  await reopenBlingPedidoEmAberto(admin, tenantId, pedidoId);
 
   return {
     pedido_venda_id: pedidoId,
