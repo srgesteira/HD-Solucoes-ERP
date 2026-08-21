@@ -17,6 +17,7 @@ import { blingGet, blingPatch, blingPost, blingPut } from "@/modules/fiscal/lib/
 import {
   blingNfeNaturezaOperacao,
   buildBlingNfeObservacoes,
+  isConsumidorFinal,
 } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
 import {
@@ -432,12 +433,28 @@ export async function ensureBlingPedidoForSalesOrder(
   const { data: itemRows, error: itemsErr } = await db
     .from("sales_order_items")
     .select(
-      "id, product_id, description, quantity, unit, unit_price, discount, product:products!sales_order_items_product_id_fkey(id, code, technical_code, name, unit, ncm, bling_product_id)"
+      "id, product_id, description, quantity, unit, unit_price, discount, usage_type, product:products!sales_order_items_product_id_fkey(id, code, technical_code, name, unit, ncm, bling_product_id)"
     )
     .eq("sales_order_id", salesOrderId)
     .eq("tenant_id", tenantId)
     .order("line_number", { ascending: true });
   if (itemsErr) throw new Error(itemsErr.message);
+
+  if (
+    catalog.contactId &&
+    isConsumidorFinal(
+      (itemRows ?? []) as Array<{ usage_type?: string | null }>
+    )
+  ) {
+    try {
+      await blingPatch(admin, tenantId, `/contatos/${catalog.contactId}`, {
+        contribuinte: 9,
+        indicadorIe: 9,
+      });
+    } catch {
+      // O CSOSN 102 na NF-e é o que a SEFAZ valida; o contacto é só auxílio.
+    }
+  }
 
   const lineIds = (itemRows ?? []).map((raw: { id?: string }) =>
     String(raw.id ?? "")

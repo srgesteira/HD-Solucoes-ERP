@@ -228,6 +228,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     tipoPessoa: "F" | "J";
     numeroDocumento: string;
     contribuinte?: 1 | 2 | 9;
+    indicadorIe?: number;
     email?: string;
     telefone?: string;
     endereco?: ReturnType<typeof parseFreeformAddressToBling>;
@@ -314,7 +315,9 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       nome: input.clientName.trim() || "Cliente",
       tipoPessoa: numeroDocumento.length === 14 ? "J" : "F",
       numeroDocumento,
-      ...(consumidorFinal ? { contribuinte: 9 as const } : {}),
+      ...(consumidorFinal
+        ? { contribuinte: 9 as const, indicadorIe: 9 }
+        : {}),
       ...(email ? { email } : {}),
       ...(telefone ? { telefone } : {}),
       ...(endereco ? { endereco } : {}),
@@ -357,12 +360,17 @@ export function applyNaoContribuinteCsosnToNfeData(
       icms: { ...icms, cst: CSOSN_NAO_CONTRIBUINTE },
     };
   });
+  const {
+    naturezaOperacao: _natureza,
+    ...rest
+  } = data;
   return {
-    ...data,
+    ...rest,
     consumidorFinal: true,
     contato: {
       ...contatoRaw,
       contribuinte: 9,
+      indicadorIe: 9,
     },
     itens,
   };

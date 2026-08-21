@@ -142,9 +142,45 @@ function nfeBodyForPut(data: Record<string, unknown>): Record<string, unknown> {
     xml: _xml,
     linkDanfe: _danfe,
     linkXML: _linkXml,
+    naturezaOperacao: _nat,
     ...rest
   } = data;
   return rest;
+}
+
+async function listReusableBlingNfeIds(
+  admin: Admin,
+  tenantId: string,
+  salesOrderId: string,
+  contactId: number
+): Promise<number[]> {
+  const from = new Date();
+  from.setDate(from.getDate() - 14);
+  const qs = new URLSearchParams({
+    pagina: "1",
+    limite: "100",
+    tipo: "1",
+    idContato: String(contactId),
+    dataEmissaoInicial: from.toISOString().slice(0, 10),
+    dataEmissaoFinal: new Date().toISOString().slice(0, 10),
+  });
+  const listed = await blingGet(admin, tenantId, `/nfe?${qs.toString()}`);
+  const ids: number[] = [];
+  for (const row of unwrapBlingList(listed)) {
+    const id = Number(row.id);
+    if (!Number.isFinite(id)) continue;
+    const status = mapBlingSituacaoToDb(row.situacao);
+    if (status === "authorized" || status === "processing") continue;
+    ids.push(id);
+  }
+  const found = await searchBlingNfeForErpOrder(
+    admin,
+    tenantId,
+    salesOrderId,
+    contactId
+  );
+  if (found?.bling_nfe_id) ids.push(found.bling_nfe_id);
+  return [...new Set(ids)];
 }
 
 async function rewriteBlingNfeDraft(
@@ -169,6 +205,7 @@ async function rewriteBlingNfeDraft(
     existing.contato && typeof existing.contato === "object"
       ? (existing.contato as Record<string, unknown>)
       : {};
+  const consumidorFinal = isConsumidorFinal(review.items);
   const merged: Record<string, unknown> = {
     ...existing,
     ...created,
@@ -178,15 +215,16 @@ async function rewriteBlingNfeDraft(
       ...created.contato,
     },
     itens: created.itens,
-    ...(naturezaOperacaoId
-      ? { naturezaOperacao: { id: naturezaOperacaoId } }
-      : {}),
   };
+  delete merged.naturezaOperacao;
+  if (!consumidorFinal && naturezaOperacaoId) {
+    merged.naturezaOperacao = { id: naturezaOperacaoId };
+  }
   await blingPut(
     admin,
     tenantId,
     `/nfe/${blingNfeId}`,
-    applyNaoContribuinteCsosnToNfeData(merged)
+    consumidorFinal ? applyNaoContribuinteCsosnToNfeData(merged) : merged
   );
 }
 
@@ -217,6 +255,14 @@ async function upsertSequentialNfe(
       throw e;
     }
   }
+  for (const id of await listReusableBlingNfeIds(
+    admin,
+    tenantId,
+    salesOrderId,
+    contactId
+  )) {
+    candidates.add(id);
+  }
 
   for (const id of candidates) {
     const remote = await loadRemoteNfeIdentity(admin, tenantId, id);
@@ -244,16 +290,20 @@ async function upsertSequentialNfe(
   if (!review) {
     throw new Error("Pedido de venda não encontrado para montar a NF-e.");
   }
-  const body: Record<string, unknown> = applyNaoContribuinteCsosnToNfeData({
+  const consumidorFinal = isConsumidorFinal(review.items);
+  const body: Record<string, unknown> = {
     ...buildBlingNfeCreateBody(
       fiscalReviewToBlingNfeCreateInput(review, contactId)
     ),
     numero,
-    ...(naturezaOperacaoId
-      ? { naturezaOperacao: { id: naturezaOperacaoId } }
-      : {}),
-  });
-  const created = await blingPost(admin, tenantId, "/nfe", body);
+  };
+  if (!consumidorFinal && naturezaOperacaoId) {
+    body.naturezaOperacao = { id: naturezaOperacaoId };
+  }
+  const toSend = consumidorFinal
+    ? applyNaoContribuinteCsosnToNfeData(body)
+    : body;
+  const created = await blingPost(admin, tenantId, "/nfe", toSend);
   const id = Number(unwrapBlingData(created)?.id);
   if (!Number.isFinite(id)) {
     throw new Error("O Bling criou a NF-e mas não devolveu o ID.");
