@@ -28,6 +28,10 @@ import {
   deliveryAddressFromRow,
   formatDeliveryAddressOneLine,
 } from "@/modules/vendas/lib/sales/sales-order-delivery-address";
+import {
+  fretePorContaFromShipping,
+  parseBlingPedidoTransporte,
+} from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 
 type Admin = SupabaseClient<Database>;
 
@@ -159,7 +163,7 @@ export async function ensureBlingPedidoForSalesOrder(
   const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
     .select(
-      "order_number, order_date, client_name, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id"
+      "order_number, order_date, client_name, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id, quote_id, shipping_type, freight_cost, carrier_name"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -187,7 +191,29 @@ export async function ensureBlingPedidoForSalesOrder(
     delivery_state: string | null;
     delivery_zip: string | null;
     bling_pedido_venda_id: number | null;
+    quote_id: string | null;
+    shipping_type: string | null;
+    freight_cost: number | null;
+    carrier_name: string | null;
   };
+
+  let shippingType = so.shipping_type;
+  let freightCost = Number(so.freight_cost ?? 0);
+  let carrierName = so.carrier_name?.trim() || null;
+  if ((!shippingType || freightCost <= 0) && so.quote_id) {
+    const { data: quoteRow } = await db
+      .from("quotes")
+      .select("shipping_type, freight_cost")
+      .eq("id", so.quote_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const q = quoteRow as {
+      shipping_type?: string | null;
+      freight_cost?: number | null;
+    } | null;
+    if (!shippingType) shippingType = q?.shipping_type ?? null;
+    if (freightCost <= 0) freightCost = Number(q?.freight_cost ?? 0);
+  }
 
   const { data: itemRows, error: itemsErr } = await db
     .from("sales_order_items")
@@ -399,6 +425,11 @@ export async function ensureBlingPedidoForSalesOrder(
     ),
     observacoesInternas: `CFOP conferência: ${cfops.join(", ") || "—"}. Natureza ERP: ${blingNfeNaturezaOperacao(docType)}.`,
     itens,
+    transporte: {
+      fretePorConta: fretePorContaFromShipping(shippingType),
+      ...(freightCost > 0 ? { frete: roundMoney(freightCost) } : {}),
+      ...(carrierName ? { contato: { nome: carrierName } } : {}),
+    },
   };
 
   let pedidoId = so.bling_pedido_venda_id
@@ -432,6 +463,7 @@ export async function ensureBlingPedidoForSalesOrder(
 
   const fetched = await blingGet(admin, tenantId, `/pedidos/vendas/${pedidoId}`);
   const blingTotal = readBlingPedidoTotal(fetched) ?? netTotal;
+  const mirrored = parseBlingPedidoTransporte(fetched);
   const amounts = splitAmountInInstallments(blingTotal, nfeParcelas.length);
   try {
     await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, {
@@ -460,6 +492,23 @@ export async function ensureBlingPedidoForSalesOrder(
     throw new Error(
       `Pedido criado no Bling (#${pedidoId}), mas o ERP não gravou o vínculo: ${saveErr.message}`
     );
+  }
+
+  const { error: mirrorErr } = await db
+    .from("sales_orders")
+    .update({
+      shipping_type: mirrored.shipping_type ?? shippingType ?? null,
+      freight_cost: mirrored.freight_cost > 0 ? mirrored.freight_cost : freightCost,
+      carrier_name: mirrored.carrier_name ?? carrierName,
+      freight_payer: mirrored.freight_payer,
+    })
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId);
+  if (
+    mirrorErr &&
+    !/shipping_type|freight_cost|carrier_name|freight_payer/i.test(mirrorErr.message)
+  ) {
+    throw new Error(mirrorErr.message);
   }
 
   return {

@@ -28,13 +28,6 @@ export function PrepareBlingOrderPanel({
   const mapped = review.items.filter((it) => it.product_id && it.bling_product_id)
     .length;
   const withProduct = review.items.filter((it) => it.product_id).length;
-  const cfops = [
-    ...new Set(
-      review.items
-        .map((it) => it.cfop?.trim())
-        .filter((v): v is string => Boolean(v))
-    ),
-  ];
   const prepared = Boolean(review.bling_pedido_venda_id);
 
   const mutation = useMutation({
@@ -89,11 +82,10 @@ export function PrepareBlingOrderPanel({
           : "Criar e actualizar pedido no Bling"}
       </p>
       <p className="mt-1 text-xs opacity-90">
-        Este botão faz o cadastro completo no Bling: cliente (CNPJ e endereço),
-        produtos com NCM da conferência e o pedido de venda (itens, valores e
-        parcelas). O CFOP{" "}
-        {cfops.length ? `(${cfops.join(", ")}) ` : ""}
-        entra pela natureza de operação. «Emitir nota» só envia a NF-e à SEFAZ.
+        Espelha este pedido no Bling: cliente (CNPJ e endereço), produtos com NCM,
+        itens, parcelas, frete (CIF/FOB) e transportadora. «Emitir nota» gera a
+        NF-e <strong>a partir desse mesmo pedido</strong> no Bling — não cria uma
+        nota solta. Se a nota for rejeitada, apagamos e voltamos a gerar no pedido.
       </p>
       <ul className="mt-2 space-y-0.5 text-xs">
         <li>

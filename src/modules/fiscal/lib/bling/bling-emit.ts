@@ -1,10 +1,9 @@
 /**
  * Emissão de NF-e (modelo 55) via Bling.
  *
- * Rejeitada: apaga no Bling, volta ao pedido e cria de novo com o mesmo
- * número sequencial (não abre 000004 se a 000002 foi rejeitada).
- * «Emitir nota» só envia à SEFAZ depois do cadastro no Bling.
- * @see https://developer.bling.com.br/referencia
+ * O pedido ERP e o pedido Bling são o mesmo documento. «Emitir nota»
+ * gera a NF-e a partir desse pedido (`POST /pedidos/vendas/{id}/gerar-nfe`).
+ * Rejeitada: apaga a nota no Bling e volta a gerar a partir do mesmo pedido.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -28,12 +27,7 @@ import { applyBlingNfeSnapshot } from "@/modules/fiscal/lib/bling/bling-apply-st
 import { searchBlingNfeForErpOrder } from "@/modules/fiscal/lib/bling/bling-reconcile";
 import { resolveBlingCatalogForSalesOrder } from "@/modules/fiscal/lib/bling/bling-catalog";
 import { ensureBlingPedidoForSalesOrder } from "@/modules/fiscal/lib/bling/bling-pedido";
-import {
-  buildBlingNfeCreateBody,
-  fiscalReviewToBlingNfeCreateInput,
-  nfeDataOperacao,
-} from "@/modules/fiscal/lib/bling/bling-nfe-payload";
-import { getFiscalOrderReview } from "@/modules/faturamento/lib/fiscal-order-review-service";
+import { readBlingPedidoNotaFiscalId } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 
 type Admin = SupabaseClient<Database>;
 
@@ -186,57 +180,62 @@ async function discardRejectedRemotesOnOrder(
   }
 }
 
-async function postBlingNfe(
+async function generateNfeFromBlingPedido(
   admin: Admin,
   tenantId: string,
-  nfePayload: Record<string, unknown>
-): Promise<unknown> {
-  try {
-    return await blingPost(admin, tenantId, "/nfe", nfePayload);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    const today = new Date().toLocaleDateString("en-CA", {
-      timeZone: "America/Sao_Paulo",
-    });
+  pedidoVendaId: number
+): Promise<number> {
+  const pedido = await blingGet(
+    admin,
+    tenantId,
+    `/pedidos/vendas/${pedidoVendaId}`
+  );
+  const linked = readBlingPedidoNotaFiscalId(pedido);
+  if (linked) {
+    const remote = await loadRemoteNfeIdentity(admin, tenantId, linked);
     if (
-      /data de opera/i.test(msg) &&
-      String(nfePayload.dataOperacao ?? "") !== today
+      remote?.status === "authorized" ||
+      remote?.status === "processing" ||
+      remote?.status === "pending"
     ) {
-      return await blingPost(admin, tenantId, "/nfe", {
-        ...nfePayload,
-        dataOperacao: today,
-      });
+      return linked;
     }
-    throw e;
+    if (remote) {
+      await deleteBlingNfeQuietly(admin, tenantId, linked);
+    }
   }
-}
 
-async function postBlingNfeKeepingNumero(
-  admin: Admin,
-  tenantId: string,
-  nfePayload: Record<string, unknown>,
-  numero: string | number | null,
-  serie: string | number | null
-): Promise<unknown> {
-  if (numero == null) {
-    return postBlingNfe(admin, tenantId, nfePayload);
-  }
-  const withNumero: Record<string, unknown> = {
-    ...nfePayload,
-    numero,
-    serie: serie ?? 1,
-  };
   try {
-    return await postBlingNfe(admin, tenantId, withNumero);
+    const created = await blingPost(
+      admin,
+      tenantId,
+      `/pedidos/vendas/${pedidoVendaId}/gerar-nfe`,
+      {}
+    );
+    const data = unwrapBlingData(created);
+    const id = Number(data?.idNotaFiscal ?? data?.id);
+    if (Number.isFinite(id)) return id;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    if (/já exist|ja exist|utilizad|em uso/i.test(msg)) {
-      throw new Error(
-        "O número da NF-e ainda está ocupado no Bling. Apague a rejeitada no Bling e volte a emitir."
-      );
-    }
+    const again = await blingGet(
+      admin,
+      tenantId,
+      `/pedidos/vendas/${pedidoVendaId}`
+    );
+    const againId = readBlingPedidoNotaFiscalId(again);
+    if (againId) return againId;
     throw e;
   }
+
+  const after = await blingGet(
+    admin,
+    tenantId,
+    `/pedidos/vendas/${pedidoVendaId}`
+  );
+  const afterId = readBlingPedidoNotaFiscalId(after);
+  if (afterId) return afterId;
+  throw new Error(
+    "O Bling não gerou a NF-e a partir do pedido. Confirme no Bling se o pedido está completo e volte a emitir."
+  );
 }
 
 async function loadClaimedNfe(
@@ -386,43 +385,13 @@ export async function emitirNfeViaBling(
     }
   }
 
-  const review = await getFiscalOrderReview(admin, tenantId, salesOrderId);
-  if (!review) {
-    throw new Error("Pedido não encontrado para emitir a NF-e.");
-  }
-
-  const nfeBody = buildBlingNfeCreateBody(
-    fiscalReviewToBlingNfeCreateInput(
-      review,
-      prepared.contact_id,
-      nfeDataOperacao(review.order_date)
-    )
-  );
-  const nfePayload: Record<string, unknown> = {
-    ...nfeBody,
-    pedidoVendaId: prepared.pedido_venda_id,
-    ...(prepared.natureza_operacao_id
-      ? { naturezaOperacao: { id: prepared.natureza_operacao_id } }
-      : {}),
-  };
-
   const sequential = await earliestNfeNumberOnOrder(
     admin,
     tenantId,
     salesOrderId
   );
-  let numeroKeep =
+  const numeroKeep =
     blingNfeNumeroField(nfe.nfe_number) ?? sequential?.numero ?? null;
-  let serieKeep: string | number | null = sequential?.serie ?? null;
-  if (nfe.bling_nfe_id) {
-    const remote = await loadRemoteNfeIdentity(
-      admin,
-      tenantId,
-      Number(nfe.bling_nfe_id)
-    );
-    if (remote?.numero != null) numeroKeep = remote.numero;
-    if (remote?.serie != null) serieKeep = remote.serie;
-  }
 
   await discardRejectedRemotesOnOrder(admin, tenantId, salesOrderId, nfe.id);
 
@@ -440,19 +409,11 @@ export async function emitirNfeViaBling(
 
   let blingNfeId: number;
   try {
-    const created = await postBlingNfeKeepingNumero(
+    blingNfeId = await generateNfeFromBlingPedido(
       admin,
       tenantId,
-      nfePayload,
-      numeroKeep,
-      serieKeep
+      prepared.pedido_venda_id
     );
-    const data = unwrapBlingData(created);
-    const id = Number(data?.id);
-    if (!Number.isFinite(id)) {
-      throw new Error("Bling criou a nota mas não devolveu o ID.");
-    }
-    blingNfeId = id;
   } catch (e) {
     const msg =
       e instanceof BlingApiError

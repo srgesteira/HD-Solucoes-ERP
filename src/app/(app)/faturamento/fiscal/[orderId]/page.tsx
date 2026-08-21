@@ -497,7 +497,7 @@ export default function FiscalOrderReviewPage() {
                 title={
                   data.emit_blockers.length
                     ? data.emit_blockers.join(" ")
-                    : "Emitir NF-e via Bling (produto) ou NFS-e via Focus"
+                    : "Gera a NF-e no Bling a partir do pedido espelhado e envia à SEFAZ"
                 }
                 onClick={() => {
                   if (data.emit_warnings.length) {

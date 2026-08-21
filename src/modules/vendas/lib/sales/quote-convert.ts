@@ -209,6 +209,8 @@ export async function convertQuoteToSalesOrder(
       payment_days_to_first_due: daysFirst,
       payment_days_between_installments: daysBetween,
       customer_po_number: customerPo,
+      shipping_type: quote.shipping_type ?? "FOB",
+      freight_cost: Number(quote.freight_cost ?? 0),
       mrp_processed: false,
     } as never)
     .select()
