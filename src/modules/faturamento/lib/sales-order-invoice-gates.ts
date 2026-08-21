@@ -123,7 +123,13 @@ export async function validateSalesOrderCanEmitNfe(
     .select("id")
     .eq("tenant_id", tenantId)
     .eq("sales_order_id", salesOrderId)
-    .in("status", ["pending", "processing", "authorized"]);
+    .in(
+      "status",
+      so.invoice_document_type === "nfe_product" ||
+        so.invoice_document_type === "nfe_industrialization"
+        ? ["processing", "authorized"]
+        : ["pending", "processing", "authorized"]
+    );
   if (blocking?.length) {
     reasons.push("Já existe NFS-e em curso ou autorizada.");
   }

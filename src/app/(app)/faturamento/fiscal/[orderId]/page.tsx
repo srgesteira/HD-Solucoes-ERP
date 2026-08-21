@@ -489,17 +489,18 @@ export default function FiscalOrderReviewPage() {
                 Confirmar sem nota
               </Button>
             ) : null}
-            {data.can_emit && data.billing_plan !== "without_invoice" ? (
+            {data.billing_plan !== "without_invoice" ? (
               <Button
                 type="button"
                 size="sm"
-                disabled={!isAdmin || emitMutation.isPending}
+                disabled={!isAdmin || !data.can_emit || emitMutation.isPending}
                 title={
                   data.emit_blockers.length
                     ? data.emit_blockers.join(" ")
                     : "Gera a NF-e no Bling a partir do pedido espelhado e envia à SEFAZ"
                 }
                 onClick={() => {
+                  if (!data.can_emit) return;
                   if (data.emit_warnings.length) {
                     const ok = window.confirm(
                       `${data.emit_warnings.join("\n")}\n\nEmitir a nota mesmo assim?`
@@ -681,6 +682,17 @@ export default function FiscalOrderReviewPage() {
                 </div>
                 {data.nfe?.error_message ? (
                   <p className="text-xs text-red-700">{data.nfe.error_message}</p>
+                ) : null}
+                {data.emit_blockers.length > 0 &&
+                data.billing_plan !== "without_invoice" ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-950">
+                    <p className="font-medium">«Emitir nota» bloqueado</p>
+                    <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                      {data.emit_blockers.map((r) => (
+                        <li key={r}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : null}
                 {data.nfe?.pdf_url || data.nfe?.xml_url ? (
                   <div className="flex gap-3 text-xs">
