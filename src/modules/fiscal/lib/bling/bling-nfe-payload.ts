@@ -30,6 +30,68 @@ export function buildBlingNfeObservacoes(
     .join("\n");
 }
 
+function isoDateSaoPaulo(d = new Date()): string {
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
+export function nfeDataOperacao(orderDate: string | null | undefined): string {
+  const raw = String(orderDate ?? "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return isoDateSaoPaulo();
+}
+
+export function fiscalReviewToBlingNfeCreateInput(
+  review: Pick<
+    FiscalOrderReview,
+    | "id"
+    | "order_number"
+    | "customer_po_number"
+    | "delivery_address_formatted"
+    | "client_name"
+    | "client_document"
+    | "client_email"
+    | "client_phone"
+    | "order_date"
+    | "discount"
+    | "items"
+    | "payment_installments"
+    | "payment_days_to_first_due"
+    | "payment_days_between_installments"
+    | "actual_delivery"
+    | "expected_delivery"
+    | "total"
+  >,
+  contactId: number | null,
+  operationDate?: string
+): BlingNfeCreateBodyInput {
+  return {
+    salesOrderId: review.id,
+    contactId,
+    clientName: review.client_name,
+    clientDocument: review.client_document,
+    clientEmail: review.client_email,
+    clientPhone: review.client_phone,
+    orderDate: operationDate ?? nfeDataOperacao(review.order_date),
+    headerDiscount: Number(review.discount ?? 0),
+    items: review.items.map((it) => ({
+      code: it.product_code,
+      description: it.description,
+      name: it.product_name,
+      unit: it.unit,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+      discount: it.discount,
+      ncm: it.ncm,
+    })),
+    observacoesSource: {
+      order_number: review.order_number,
+      customer_po_number: review.customer_po_number,
+      delivery_address_formatted: review.delivery_address_formatted,
+    },
+    paymentSource: fiscalReviewToNfePayloadSource(review),
+  };
+}
+
 export function fiscalReviewToNfePayloadSource(
   review: Pick<
     FiscalOrderReview,

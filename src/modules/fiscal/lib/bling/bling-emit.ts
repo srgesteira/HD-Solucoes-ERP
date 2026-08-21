@@ -20,7 +20,12 @@ import { applyBlingNfeSnapshot } from "@/modules/fiscal/lib/bling/bling-apply-st
 import { searchBlingNfeForErpOrder } from "@/modules/fiscal/lib/bling/bling-reconcile";
 import { resolveBlingCatalogForSalesOrder } from "@/modules/fiscal/lib/bling/bling-catalog";
 import { ensureBlingPedidoForSalesOrder } from "@/modules/fiscal/lib/bling/bling-pedido";
-import { blingNfeNaturezaOperacao } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
+import {
+  buildBlingNfeCreateBody,
+  fiscalReviewToBlingNfeCreateInput,
+  nfeDataOperacao,
+} from "@/modules/fiscal/lib/bling/bling-nfe-payload";
+import { getFiscalOrderReview } from "@/modules/faturamento/lib/fiscal-order-review-service";
 
 type Admin = SupabaseClient<Database>;
 
@@ -169,13 +174,24 @@ export async function emitirNfeViaBling(
     );
   }
 
+  const review = await getFiscalOrderReview(admin, tenantId, salesOrderId);
+  if (!review) {
+    throw new Error("Pedido não encontrado para emitir a NF-e.");
+  }
+
+  const nfeBody = buildBlingNfeCreateBody(
+    fiscalReviewToBlingNfeCreateInput(
+      review,
+      prepared.contact_id,
+      nfeDataOperacao(review.order_date)
+    )
+  );
   const nfePayload: Record<string, unknown> = {
-    tipo: 1,
-    finalidade: 1,
+    ...nfeBody,
     pedidoVendaId: prepared.pedido_venda_id,
-    naturezaOperacao: prepared.natureza_operacao_id
-      ? { id: prepared.natureza_operacao_id }
-      : blingNfeNaturezaOperacao(docType),
+    ...(prepared.natureza_operacao_id
+      ? { naturezaOperacao: { id: prepared.natureza_operacao_id } }
+      : {}),
   };
 
   await db
@@ -190,7 +206,26 @@ export async function emitirNfeViaBling(
 
   let blingNfeId: number;
   try {
-    const created = await blingPost(admin, tenantId, "/nfe", nfePayload);
+    let created: unknown;
+    try {
+      created = await blingPost(admin, tenantId, "/nfe", nfePayload);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      const today = new Date().toLocaleDateString("en-CA", {
+        timeZone: "America/Sao_Paulo",
+      });
+      if (
+        /data de opera/i.test(msg) &&
+        String(nfePayload.dataOperacao ?? "") !== today
+      ) {
+        created = await blingPost(admin, tenantId, "/nfe", {
+          ...nfePayload,
+          dataOperacao: today,
+        });
+      } else {
+        throw e;
+      }
+    }
     const data = unwrapBlingData(created);
     const id = Number(data?.id);
     if (!Number.isFinite(id)) {
