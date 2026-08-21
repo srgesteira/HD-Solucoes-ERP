@@ -16,6 +16,7 @@ import {
   blingDelete,
   blingGet,
   blingPost,
+  blingPut,
 } from "@/modules/fiscal/lib/bling/bling-client";
 import {
   mapBlingSituacaoToDb,
@@ -28,6 +29,10 @@ import { searchBlingNfeForErpOrder } from "@/modules/fiscal/lib/bling/bling-reco
 import { resolveBlingCatalogForSalesOrder } from "@/modules/fiscal/lib/bling/bling-catalog";
 import { ensureBlingPedidoForSalesOrder } from "@/modules/fiscal/lib/bling/bling-pedido";
 import { readBlingPedidoNotaFiscalId } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
+import {
+  applyNaoContribuinteCsosnToNfeData,
+  isConsumidorFinal,
+} from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 
 type Admin = SupabaseClient<Database>;
 
@@ -236,6 +241,37 @@ async function generateNfeFromBlingPedido(
   throw new Error(
     "O Bling não gerou a NF-e a partir do pedido. Confirme no Bling se o pedido está completo e volte a emitir."
   );
+}
+
+async function alignBlingNfeCsosnIfConsumidorFinal(
+  admin: Admin,
+  tenantId: string,
+  salesOrderId: string,
+  blingNfeId: number
+): Promise<void> {
+  const db = asUntypedAdmin(admin);
+  const { data: itemRows } = await db
+    .from("sales_order_items")
+    .select("usage_type")
+    .eq("sales_order_id", salesOrderId)
+    .eq("tenant_id", tenantId);
+  const items = (itemRows ?? []) as Array<{ usage_type?: string | null }>;
+  if (!isConsumidorFinal(items)) return;
+
+  const payload = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
+  const data = unwrapBlingData(payload);
+  if (!data) return;
+  const {
+    id: _id,
+    situacao: _situacao,
+    chaveAcesso: _chave,
+    xml: _xml,
+    linkDanfe: _danfe,
+    linkXML: _linkXml,
+    ...rest
+  } = data;
+  const body = applyNaoContribuinteCsosnToNfeData(rest);
+  await blingPut(admin, tenantId, `/nfe/${blingNfeId}`, body);
 }
 
 async function loadClaimedNfe(
@@ -448,6 +484,12 @@ export async function emitirNfeViaBling(
   }
 
   try {
+    await alignBlingNfeCsosnIfConsumidorFinal(
+      admin,
+      tenantId,
+      salesOrderId,
+      blingNfeId
+    );
     await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
   } catch (e) {
     const snapshot = parseBlingNfeSnapshot(

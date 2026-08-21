@@ -141,9 +141,9 @@ function roundMoney(value: number): number {
 }
 
 /** CSOSN permitido pela SEFAZ (rej. 600) quando o destino é não contribuinte. */
-const CSOSN_NAO_CONTRIBUINTE = "102";
+export const CSOSN_NAO_CONTRIBUINTE = "102";
 
-function isConsumidorFinal(
+export function isConsumidorFinal(
   items: Array<{ usage_type?: string | null }>
 ): boolean {
   return (
@@ -318,6 +318,32 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       input.salesOrderId
     ),
     parcelas: buildBlingNfeParcelas(input.paymentSource),
+  };
+}
+
+/** Ajusta GET /nfe para PUT: CSOSN 102 + contribuinte 9 (SEFAZ 600). */
+export function applyNaoContribuinteCsosnToNfeData(
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  const contatoRaw =
+    data.contato && typeof data.contato === "object"
+      ? (data.contato as Record<string, unknown>)
+      : {};
+  const itensRaw = Array.isArray(data.itens) ? data.itens : [];
+  const itens = itensRaw.map((raw) => {
+    if (!raw || typeof raw !== "object") return raw;
+    return {
+      ...(raw as Record<string, unknown>),
+      situacaoTributaria: CSOSN_NAO_CONTRIBUINTE,
+    };
+  });
+  return {
+    ...data,
+    contato: {
+      ...contatoRaw,
+      contribuinte: 9,
+    },
+    itens,
   };
 }
 
