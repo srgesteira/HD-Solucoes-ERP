@@ -112,26 +112,37 @@ async function reopenBlingPedidoEmAberto(
   tenantId: string,
   pedidoId: number
 ): Promise<void> {
+  // 6 = «Em aberto» no Bling padrão. GET /situacoes/modulos exige um scope
+  // que o app não tem (403), por isso não listamos — tentamos o id padrão.
+  const ids = [6];
   try {
     const mods = unwrapBlingList(
       await blingGet(admin, tenantId, "/situacoes/modulos")
     );
     const vendas = mods.find((row) => /venda/i.test(situacaoLabel(row)));
     const modId = Number(vendas?.id);
-    if (!Number.isFinite(modId)) return;
-    const sits = unwrapBlingList(
-      await blingGet(admin, tenantId, `/situacoes/modulos/${modId}`)
-    );
-    const aberto = sits.find((row) => /em aberto/.test(situacaoLabel(row)));
-    const sitId = Number(aberto?.id);
-    if (!Number.isFinite(sitId)) return;
-    await blingPatch(
-      admin,
-      tenantId,
-      `/pedidos/vendas/${pedidoId}/situacoes/${sitId}`
-    );
+    if (Number.isFinite(modId)) {
+      const sits = unwrapBlingList(
+        await blingGet(admin, tenantId, `/situacoes/modulos/${modId}`)
+      );
+      const aberto = sits.find((row) => /em aberto/.test(situacaoLabel(row)));
+      const sitId = Number(aberto?.id);
+      if (Number.isFinite(sitId) && !ids.includes(sitId)) ids.unshift(sitId);
+    }
   } catch {
-    // O pedido permanece; a lista «Em aberto» é só o filtro do Bling.
+    // Sem permissão para listar situações — usa o id 6.
+  }
+  for (const sitId of ids) {
+    try {
+      await blingPatch(
+        admin,
+        tenantId,
+        `/pedidos/vendas/${pedidoId}/situacoes/${sitId}`
+      );
+      return;
+    } catch {
+      // Pedido com NF-e ligada pode recusar voltar a «Em aberto».
+    }
   }
 }
 

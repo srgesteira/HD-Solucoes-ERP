@@ -81,13 +81,29 @@ export function PrepareBlingOrderPanel({
           ? `Pedido Bling #${review.bling_pedido_venda_id} pronto para emitir`
           : "Criar e actualizar pedido no Bling"}
       </p>
-      <p className="mt-1 text-xs opacity-90">
-        Espelha este pedido no Bling: cliente (CNPJ e endereço), produtos com NCM,
-        itens, parcelas, frete (CIF/FOB) e transportadora. «Emitir nota» cria a
-        NF-e ligada a este pedido. Se a SEFAZ rejeitar, corrigimos a mesma nota
-        (CSOSN e número) e reenviamos — o pedido Bling não é apagado. O número
-        segue a última NF-e autorizada.
-      </p>
+      {prepared ? (
+        <p className="mt-1 text-xs opacity-90">
+          Abrir no Bling:{" "}
+          <a
+            className="underline"
+            href={`https://www.bling.com.br/vendas.php#edit/${review.bling_pedido_venda_id}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            vendas.php#edit/{review.bling_pedido_venda_id}
+          </a>
+          . Se a lista «Em aberto» estiver vazia, tire o filtro Situação — com
+          NF-e ligada o Bling passa o pedido para Atendido, não o apaga.
+        </p>
+      ) : (
+        <p className="mt-1 text-xs opacity-90">
+          Espelha este pedido no Bling: cliente (CNPJ e endereço), produtos com NCM,
+          itens, parcelas, frete (CIF/FOB) e transportadora. «Emitir nota» cria a
+          NF-e ligada a este pedido. Se a SEFAZ rejeitar, corrigimos a mesma nota
+          (CSOSN e número) e reenviamos — o pedido Bling não é apagado. O número
+          segue a última NF-e autorizada.
+        </p>
+      )}
       <ul className="mt-2 space-y-0.5 text-xs">
         <li>
           Produtos vinculados: {mapped}/{withProduct}
