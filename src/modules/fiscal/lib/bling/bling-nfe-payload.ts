@@ -6,6 +6,7 @@ import {
   type NfeComplementaryInfoSource,
 } from "@/modules/faturamento/lib/nfe-complementary-info";
 import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
+import { parseFreeformAddressToBling } from "@/modules/fiscal/lib/bling/bling-contact-address";
 
 export function blingNfeNaturezaOperacao(docType: InvoiceDocumentType): string {
   return docType === "nfe_industrialization"
@@ -51,6 +52,7 @@ export function fiscalReviewToBlingNfeCreateInput(
     | "client_document"
     | "client_email"
     | "client_phone"
+    | "client_address"
     | "order_date"
     | "discount"
     | "items"
@@ -71,6 +73,7 @@ export function fiscalReviewToBlingNfeCreateInput(
     clientDocument: review.client_document,
     clientEmail: review.client_email,
     clientPhone: review.client_phone,
+    clientAddress: review.client_address,
     orderDate: operationDate ?? nfeDataOperacao(review.order_date),
     headerDiscount: Number(review.discount ?? 0),
     items: review.items.map((it) => ({
@@ -180,6 +183,7 @@ export type BlingNfeCreateBodyInput = {
   clientDocument: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
+  clientAddress?: string | null;
   orderDate: string;
   headerDiscount: number;
   items: BlingNfeCreateItemInput[];
@@ -208,6 +212,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     numeroDocumento: string;
     email?: string;
     telefone?: string;
+    endereco?: ReturnType<typeof parseFreeformAddressToBling>;
   };
   itens: Array<{
     codigo: string;
@@ -261,6 +266,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
 
   const email = input.clientEmail?.trim() || undefined;
   const telefone = input.clientPhone?.trim() || undefined;
+  const endereco = parseFreeformAddressToBling(input.clientAddress ?? null);
 
   return {
     tipo: 1,
@@ -275,6 +281,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       numeroDocumento,
       ...(email ? { email } : {}),
       ...(telefone ? { telefone } : {}),
+      ...(endereco ? { endereco } : {}),
     },
     itens,
     desconto: desconto > 0 ? desconto : undefined,

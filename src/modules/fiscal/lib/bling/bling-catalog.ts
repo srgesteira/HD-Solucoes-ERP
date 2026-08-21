@@ -3,6 +3,12 @@ import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { blingGet, blingPatch, blingPost } from "@/modules/fiscal/lib/bling/bling-client";
 import { unwrapBlingData } from "@/modules/fiscal/lib/bling/bling-nfe-status";
+import {
+  blingEnderecoFromParts,
+  parseFreeformAddressToBling,
+  type BlingEnderecoPayload,
+} from "@/modules/fiscal/lib/bling/bling-contact-address";
+import { lookupCnpj } from "@/shared/utils/external/document-lookup";
 
 type Admin = SupabaseClient<Database>;
 
@@ -23,6 +29,42 @@ function firstBlingId(payload: unknown): number | null {
     return Number.isFinite(id) ? id : null;
   }
   return null;
+}
+
+async function resolveBlingEndereco(input: {
+  address: string | null;
+  document: string | null;
+}): Promise<BlingEnderecoPayload | null> {
+  const parsed = parseFreeformAddressToBling(input.address);
+  if (parsed) return parsed;
+  const doc = digitsOnly(input.document);
+  if (doc.length !== 14) return null;
+  try {
+    const lookup = await lookupCnpj(doc);
+    return blingEnderecoFromParts(lookup.address_parts);
+  } catch {
+    return null;
+  }
+}
+
+function contactPayload(input: {
+  name: string;
+  document: string | null;
+  email: string | null;
+  phone: string | null;
+  endereco: BlingEnderecoPayload | null;
+}): Record<string, unknown> {
+  const doc = digitsOnly(input.document);
+  const tipo = doc.length === 14 ? "J" : "F";
+  return {
+    nome: input.name.trim() || "Cliente",
+    tipo,
+    situacao: "A",
+    numeroDocumento: doc || undefined,
+    email: input.email?.trim() || undefined,
+    telefone: input.phone?.trim() || undefined,
+    ...(input.endereco ? { endereco: input.endereco } : {}),
+  };
 }
 
 export async function findBlingProductIdByCodigo(
@@ -68,26 +110,47 @@ export async function createBlingContact(
     address: string | null;
   }
 ): Promise<number> {
-  const doc = digitsOnly(input.document);
-  const tipo = doc.length === 14 ? "J" : "F";
-  const payload = await blingPost(admin, tenantId, "/contatos", {
-    nome: input.name.trim() || "Cliente",
-    tipo,
-    situacao: "A",
-    numeroDocumento: doc || undefined,
-    email: input.email?.trim() || undefined,
-    telefone: input.phone?.trim() || undefined,
-    fantasia: undefined,
-    endereco: input.address
-      ? { endereco: input.address.trim() }
-      : undefined,
+  const endereco = await resolveBlingEndereco({
+    address: input.address,
+    document: input.document,
   });
+  const payload = await blingPost(
+    admin,
+    tenantId,
+    "/contatos",
+    contactPayload({ ...input, endereco })
+  );
   const data = unwrapBlingData(payload);
   const id = Number(data?.id);
   if (!Number.isFinite(id)) {
     throw new Error("Bling criou o contato mas não devolveu o ID.");
   }
   return id;
+}
+
+async function patchBlingContactAddress(
+  admin: Admin,
+  tenantId: string,
+  contactId: number,
+  input: {
+    name: string;
+    document: string | null;
+    email: string | null;
+    phone: string | null;
+    address: string | null;
+  }
+): Promise<void> {
+  const endereco = await resolveBlingEndereco({
+    address: input.address,
+    document: input.document,
+  });
+  if (!endereco && !digitsOnly(input.document)) return;
+  await blingPatch(
+    admin,
+    tenantId,
+    `/contatos/${contactId}`,
+    contactPayload({ ...input, endereco })
+  );
 }
 
 export type UnmappedBlingProduct = {
@@ -176,6 +239,18 @@ export async function resolveBlingCatalogForSalesOrder(
       address: so.client_address,
     });
     contactCreated = true;
+  } else {
+    try {
+      await patchBlingContactAddress(admin, tenantId, contactId, {
+        name: so.client_name,
+        document: so.client_document,
+        email: so.client_email,
+        phone: so.client_phone,
+        address: so.client_address,
+      });
+    } catch {
+      // Contato já existe; a NF-e ainda envia o endereço no destinatário.
+    }
   }
 
   if (contactId && doc.length >= 11) {
