@@ -35,7 +35,12 @@ const NFE_REVIEW_STATUS_RANK: Record<string, number> = {
 };
 
 function pickActiveNfeForReview<
-  T extends { status: string; created_at?: string | null; provider?: string | null },
+  T extends {
+    status: string;
+    created_at?: string | null;
+    provider?: string | null;
+    nfe_number?: string | null;
+  },
 >(rows: T[]): T | null {
   const usable = rows.filter((row) => row.status !== "cancelled");
   if (usable.length === 0) return null;
@@ -45,6 +50,9 @@ function pickActiveNfeForReview<
     const ra = NFE_REVIEW_STATUS_RANK[a.status] ?? 4;
     const rb = NFE_REVIEW_STATUS_RANK[b.status] ?? 4;
     if (ra !== rb) return ra - rb;
+    const an = a.nfe_number?.trim() ? 0 : 1;
+    const bn = b.nfe_number?.trim() ? 0 : 1;
+    if (an !== bn) return an - bn;
     return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
   })[0];
 }

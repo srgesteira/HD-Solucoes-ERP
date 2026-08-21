@@ -1,7 +1,9 @@
 /**
  * Emissão de NF-e (modelo 55) via Bling.
- * A conferência prepara o pedido de venda no Bling; aqui só geramos a
- * NF-e a partir desse pedido (POST /nfe com pedidoVendaId) e enviamos à SEFAZ.
+ *
+ * Rejeitada: apaga no Bling, volta ao pedido e cria de novo com o mesmo
+ * número sequencial (não abre 000004 se a 000002 foi rejeitada).
+ * «Emitir nota» só envia à SEFAZ depois do cadastro no Bling.
  * @see https://developer.bling.com.br/referencia
  */
 
@@ -11,10 +13,16 @@ import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import type { InvoiceDocumentType } from "@/modules/core/types/sales-order-billing.types";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 import { BlingApiError } from "@/modules/fiscal/lib/bling/bling-errors";
-import { blingGet, blingPost, blingPut } from "@/modules/fiscal/lib/bling/bling-client";
 import {
+  blingDelete,
+  blingGet,
+  blingPost,
+} from "@/modules/fiscal/lib/bling/bling-client";
+import {
+  mapBlingSituacaoToDb,
   parseBlingNfeSnapshot,
   unwrapBlingData,
+  type NfeDbStatus,
 } from "@/modules/fiscal/lib/bling/bling-nfe-status";
 import { applyBlingNfeSnapshot } from "@/modules/fiscal/lib/bling/bling-apply-status";
 import { searchBlingNfeForErpOrder } from "@/modules/fiscal/lib/bling/bling-reconcile";
@@ -45,11 +53,27 @@ function blingNfeNumeroField(value: unknown): string | number | null {
   return s || null;
 }
 
-async function loadBlingNfeForUpdate(
+function nfeNumeroSortValue(value: unknown): number | null {
+  const raw =
+    typeof value === "number" && Number.isFinite(value)
+      ? String(Math.trunc(value))
+      : String(value ?? "").replace(/\D/g, "");
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+type RemoteNfeIdentity = {
+  numero: string | number | null;
+  serie: string | number | null;
+  status: NfeDbStatus;
+};
+
+async function loadRemoteNfeIdentity(
   admin: Admin,
   tenantId: string,
   blingNfeId: number
-): Promise<{ numero: string | number | null; serie: string | number | null } | null> {
+): Promise<RemoteNfeIdentity | null> {
   try {
     const payload = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
     const data = unwrapBlingData(payload);
@@ -57,6 +81,7 @@ async function loadBlingNfeForUpdate(
     return {
       numero: blingNfeNumeroField(data.numero),
       serie: blingNfeNumeroField(data.serie),
+      status: mapBlingSituacaoToDb(data.situacao),
     };
   } catch (e) {
     if (e instanceof BlingApiError && (e.status === 404 || e.status === 410)) {
@@ -66,47 +91,152 @@ async function loadBlingNfeForUpdate(
   }
 }
 
-async function findReusableBlingNfeOnOrder(
+async function deleteBlingNfeQuietly(
   admin: Admin,
   tenantId: string,
-  salesOrderId: string,
-  skipBlingId: number | null
-): Promise<{
-  localId: string;
-  blingId: number;
-  identity: { numero: string | number | null; serie: string | number | null };
-} | null> {
+  blingNfeId: number
+): Promise<void> {
+  try {
+    await blingDelete(admin, tenantId, `/nfe/${blingNfeId}`);
+  } catch (e) {
+    if (e instanceof BlingApiError && (e.status === 404 || e.status === 410)) {
+      return;
+    }
+    throw e;
+  }
+}
+
+async function earliestNfeNumberOnOrder(
+  admin: Admin,
+  tenantId: string,
+  salesOrderId: string
+): Promise<{ numero: string; serie: string | number | null } | null> {
   const db = asUntypedAdmin(admin);
   const { data } = await db
     .from("nfes")
-    .select("id, bling_nfe_id, nfe_number, created_at")
+    .select("nfe_number, bling_nfe_id")
+    .eq("tenant_id", tenantId)
+    .eq("sales_order_id", salesOrderId)
+    .eq("provider", "bling");
+  const rows = (data ?? []) as Array<{
+    nfe_number: string | null;
+    bling_nfe_id: number | null;
+  }>;
+  let best: { n: number; raw: string } | null = null;
+  for (const row of rows) {
+    const n = nfeNumeroSortValue(row.nfe_number);
+    if (n == null) continue;
+    const raw = String(row.nfe_number).trim();
+    if (!best || n < best.n) best = { n, raw };
+  }
+  if (!best) return null;
+  return { numero: best.raw, serie: null };
+}
+
+async function discardRejectedRemotesOnOrder(
+  admin: Admin,
+  tenantId: string,
+  salesOrderId: string,
+  keepLocalId: string
+): Promise<void> {
+  const db = asUntypedAdmin(admin);
+  const { data } = await db
+    .from("nfes")
+    .select("id, bling_nfe_id, status")
     .eq("tenant_id", tenantId)
     .eq("sales_order_id", salesOrderId)
     .eq("provider", "bling")
-    .neq("status", "cancelled")
-    .not("bling_nfe_id", "is", null)
-    .order("created_at", { ascending: true });
+    .not("bling_nfe_id", "is", null);
   const rows = (data ?? []) as Array<{
     id: string;
     bling_nfe_id: number | null;
-    nfe_number: string | null;
+    status: string;
   }>;
   for (const row of rows) {
+    if (row.status === "authorized") continue;
     const id = Number(row.bling_nfe_id);
-    if (!Number.isFinite(id) || id === skipBlingId) continue;
-    const identity = await loadBlingNfeForUpdate(admin, tenantId, id);
-    if (identity) {
-      return {
-        localId: row.id,
-        blingId: id,
-        identity: {
-          numero: identity.numero ?? blingNfeNumeroField(row.nfe_number),
-          serie: identity.serie,
-        },
-      };
+    if (!Number.isFinite(id)) continue;
+    const remote = await loadRemoteNfeIdentity(admin, tenantId, id);
+    if (remote?.status === "authorized" || remote?.status === "processing") {
+      continue;
     }
+    if (remote) {
+      await deleteBlingNfeQuietly(admin, tenantId, id);
+    }
+    if (row.id === keepLocalId) {
+      await db
+        .from("nfes")
+        .update({
+          bling_nfe_id: null,
+          error_message: null,
+        })
+        .eq("id", row.id)
+        .eq("tenant_id", tenantId);
+      continue;
+    }
+    await db
+      .from("nfes")
+      .update({
+        status: "cancelled",
+        error_message: "Rejeitada apagada no Bling para reemitir o mesmo número.",
+      })
+      .eq("id", row.id)
+      .eq("tenant_id", tenantId)
+      .neq("status", "authorized");
   }
-  return null;
+}
+
+async function postBlingNfe(
+  admin: Admin,
+  tenantId: string,
+  nfePayload: Record<string, unknown>
+): Promise<unknown> {
+  try {
+    return await blingPost(admin, tenantId, "/nfe", nfePayload);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    const today = new Date().toLocaleDateString("en-CA", {
+      timeZone: "America/Sao_Paulo",
+    });
+    if (
+      /data de opera/i.test(msg) &&
+      String(nfePayload.dataOperacao ?? "") !== today
+    ) {
+      return await blingPost(admin, tenantId, "/nfe", {
+        ...nfePayload,
+        dataOperacao: today,
+      });
+    }
+    throw e;
+  }
+}
+
+async function postBlingNfeKeepingNumero(
+  admin: Admin,
+  tenantId: string,
+  nfePayload: Record<string, unknown>,
+  numero: string | number | null,
+  serie: string | number | null
+): Promise<unknown> {
+  if (numero == null) {
+    return postBlingNfe(admin, tenantId, nfePayload);
+  }
+  const withNumero: Record<string, unknown> = {
+    ...nfePayload,
+    numero,
+    serie: serie ?? 1,
+  };
+  try {
+    return await postBlingNfe(admin, tenantId, withNumero);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (/já exist|ja exist|utilizad|em uso/i.test(msg)) {
+      throw new Error(
+        "O número da NF-e ainda está ocupado no Bling. Apague a rejeitada no Bling e volte a emitir."
+      );
+    }
+    throw e;
+  }
 }
 
 async function loadClaimedNfe(
@@ -207,6 +337,33 @@ export async function emitirNfeViaBling(
     throw e;
   }
 
+  if (nfe.bling_nfe_id) {
+    const remote = await loadRemoteNfeIdentity(
+      admin,
+      tenantId,
+      Number(nfe.bling_nfe_id)
+    );
+    if (remote?.status === "authorized") {
+      const payload = await blingGet(
+        admin,
+        tenantId,
+        `/nfe/${nfe.bling_nfe_id}`
+      );
+      await applyBlingNfeSnapshot(
+        admin,
+        tenantId,
+        nfe.id,
+        parseBlingNfeSnapshot(payload, Number(nfe.bling_nfe_id))
+      );
+      return { nfe_id: nfe.id, bling_nfe_id: Number(nfe.bling_nfe_id) };
+    }
+    if (remote?.status === "processing") {
+      await syncExistingBlingNfe(admin, tenantId, nfe.id, Number(nfe.bling_nfe_id));
+      const latest = await loadClaimedNfe(admin, tenantId, nfe.id);
+      return { nfe_id: latest.id, bling_nfe_id: latest.bling_nfe_id };
+    }
+  }
+
   if (nfe.external_started_at && !nfe.bling_nfe_id) {
     const found = await searchBlingNfeForErpOrder(
       admin,
@@ -214,7 +371,7 @@ export async function emitirNfeViaBling(
       salesOrderId,
       prepared.contact_id
     );
-    if (found) {
+    if (found?.status === "authorized" || found?.status === "processing") {
       await applyBlingNfeSnapshot(admin, tenantId, nfe.id, found, {
         reconcile_needed: false,
       });
@@ -224,19 +381,9 @@ export async function emitirNfeViaBling(
       const latest = await loadClaimedNfe(admin, tenantId, nfe.id);
       return { nfe_id: latest.id, bling_nfe_id: latest.bling_nfe_id };
     }
-    await db
-      .from("nfes")
-      .update({
-        status: "error",
-        reconcile_needed: true,
-        error_message:
-          "Emissão anterior pode ter sido criada no Bling sem retorno no ERP. Use «Sincronizar» / reconciliação antes de reemitir.",
-      })
-      .eq("id", nfe.id)
-      .eq("tenant_id", tenantId);
-    throw new Error(
-      "Há uma emissão Bling em estado inconsistente. Sincronize o status antes de tentar de novo."
-    );
+    if (found?.nfe_number && !nfe.nfe_number) {
+      nfe.nfe_number = found.nfe_number;
+    }
   }
 
   const review = await getFiscalOrderReview(admin, tenantId, salesOrderId);
@@ -259,117 +406,53 @@ export async function emitirNfeViaBling(
       : {}),
   };
 
+  const sequential = await earliestNfeNumberOnOrder(
+    admin,
+    tenantId,
+    salesOrderId
+  );
+  let numeroKeep =
+    blingNfeNumeroField(nfe.nfe_number) ?? sequential?.numero ?? null;
+  let serieKeep: string | number | null = sequential?.serie ?? null;
+  if (nfe.bling_nfe_id) {
+    const remote = await loadRemoteNfeIdentity(
+      admin,
+      tenantId,
+      Number(nfe.bling_nfe_id)
+    );
+    if (remote?.numero != null) numeroKeep = remote.numero;
+    if (remote?.serie != null) serieKeep = remote.serie;
+  }
+
+  await discardRejectedRemotesOnOrder(admin, tenantId, salesOrderId, nfe.id);
+
   await db
     .from("nfes")
     .update({
       status: "processing",
       external_started_at: new Date().toISOString(),
       error_message: null,
+      nfe_number:
+        numeroKeep != null ? String(numeroKeep) : nfe.nfe_number,
     })
     .eq("id", nfe.id)
     .eq("tenant_id", tenantId);
 
-  let existingBlingId =
-    nfe.bling_nfe_id != null && Number.isFinite(Number(nfe.bling_nfe_id))
-      ? Number(nfe.bling_nfe_id)
-      : null;
-
   let blingNfeId: number;
   try {
-    let putIdentity: {
-      numero: string | number | null;
-      serie: string | number | null;
-    } | null = null;
-    if (existingBlingId) {
-      putIdentity = await loadBlingNfeForUpdate(
-        admin,
-        tenantId,
-        existingBlingId
-      );
-      if (!putIdentity) {
-        await db
-          .from("nfes")
-          .update({
-            status: "cancelled",
-            error_message:
-              "Nota apagada no Bling. A emissão reutiliza a rejeitada anterior.",
-          })
-          .eq("id", nfe.id)
-          .eq("tenant_id", tenantId);
-        const reused = nfe.sales_order_id
-          ? await findReusableBlingNfeOnOrder(
-              admin,
-              tenantId,
-              nfe.sales_order_id,
-              existingBlingId
-            )
-          : null;
-        if (!reused) {
-          throw new Error(
-            "A nota rejeitada foi apagada no Bling. Não vou abrir número novo — confira a nota anterior no Bling e volte a emitir."
-          );
-        }
-        existingBlingId = reused.blingId;
-        putIdentity = reused.identity;
-        await db
-          .from("nfes")
-          .update({
-            bling_nfe_id: reused.blingId,
-            nfe_number:
-              reused.identity.numero != null
-                ? String(reused.identity.numero)
-                : nfe.nfe_number,
-            status: "processing",
-            error_message: null,
-          })
-          .eq("id", reused.localId)
-          .eq("tenant_id", tenantId);
-        nfe.id = reused.localId;
-      }
+    const created = await postBlingNfeKeepingNumero(
+      admin,
+      tenantId,
+      nfePayload,
+      numeroKeep,
+      serieKeep
+    );
+    const data = unwrapBlingData(created);
+    const id = Number(data?.id);
+    if (!Number.isFinite(id)) {
+      throw new Error("Bling criou a nota mas não devolveu o ID.");
     }
-
-    if (existingBlingId) {
-      const numero =
-        putIdentity?.numero ?? blingNfeNumeroField(nfe.nfe_number);
-      if (numero == null) {
-        throw new Error(
-          "O Bling exige o número da nota no reenvio. A rejeitada local está sem número — confira no Bling."
-        );
-      }
-      await blingPut(admin, tenantId, `/nfe/${existingBlingId}`, {
-        ...nfePayload,
-        numero,
-        ...(putIdentity?.serie != null ? { serie: putIdentity.serie } : {}),
-      });
-      blingNfeId = existingBlingId;
-    } else {
-      let created: unknown;
-      try {
-        created = await blingPost(admin, tenantId, "/nfe", nfePayload);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "";
-        const today = new Date().toLocaleDateString("en-CA", {
-          timeZone: "America/Sao_Paulo",
-        });
-        if (
-          /data de opera/i.test(msg) &&
-          String(nfePayload.dataOperacao ?? "") !== today
-        ) {
-          created = await blingPost(admin, tenantId, "/nfe", {
-            ...nfePayload,
-            dataOperacao: today,
-          });
-        } else {
-          throw e;
-        }
-      }
-      const data = unwrapBlingData(created);
-      const id = Number(data?.id);
-      if (!Number.isFinite(id)) {
-        throw new Error("Bling criou a nota mas não devolveu o ID.");
-      }
-      blingNfeId = id;
-    }
+    blingNfeId = id;
   } catch (e) {
     const msg =
       e instanceof BlingApiError
