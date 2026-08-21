@@ -118,28 +118,33 @@ body {
 .qp-box-grid dd { margin: 0; font-weight: 600; }
 table.qp-items {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   margin: 8px 0 4px;
   border: 1px solid #e2e8f0;
-  border-radius: 5px;
   font-size: 9pt;
   page-break-inside: auto;
   break-inside: auto;
 }
 table.qp-items thead { background: #1e293b; color: #fff; display: table-header-group; }
 table.qp-items tbody { display: table-row-group; }
+table.qp-items tbody.qp-item-block,
+table.qp-items tbody.qp-item-block tr,
+table.qp-items tbody.qp-item-block td {
+  page-break-inside: avoid;
+  break-inside: avoid-page;
+}
 table.qp-items thead th { padding: 5px 6px; text-align: left; font-size: 8.5pt; font-weight: 600; }
 table.qp-items thead th.num { text-align: right; }
 table.qp-items thead th.qty-col { text-align: center; width: 56px; }
 table.qp-items thead th.code-col { width: 110px; }
-table.qp-items tbody td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; page-break-inside: auto; break-inside: auto; }
-table.qp-items tbody tr { page-break-inside: auto; break-inside: auto; page-break-after: auto; }
-table.qp-items tbody tr:last-child td { border-bottom: none; }
+table.qp-items tbody td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+table.qp-items tbody:last-child tr:last-child td { border-bottom: none; }
 table.qp-items tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.qp-items tbody td.qty { text-align: center; }
 .qp-code { font-family: ui-monospace, monospace; font-size: 8.5pt; }
 .qp-product-name { font-weight: 600; }
-.qp-product-desc { margin: 3px 0 0; font-size: 8.5pt; color: #475569; orphans: 2; widows: 2; }
+.qp-product-desc { margin: 3px 0 0; font-size: 8.5pt; color: #475569; }
 .qp-totals {
   display: flex;
   justify-content: flex-end;
@@ -275,7 +280,7 @@ export function buildQuotePrintHtml(
               : null;
             const code = unwrapQuoteProductCode(line.product);
             const name = unwrapQuoteProductName(line.product);
-            return `<tr>
+            return `<tbody class="qp-item-block"><tr>
               <td class="qp-code">${escapeHtml(code)}</td>
               <td>
                 <div class="qp-product-name">${escapeHtml(name)}</div>
@@ -286,10 +291,10 @@ export function buildQuotePrintHtml(
               <td class="qty">${escapeHtml(String(Number(line.quantity)))}${line.unit?.trim() ? ` ${escapeHtml(line.unit.trim())}` : ""}</td>
               <td class="num">${escapeHtml(fmtQuoteBRL(Number(line.unit_price)))}</td>
               <td class="num"><strong>${escapeHtml(fmtQuoteBRL(Number(line.total_price)))}</strong></td>
-            </tr>`;
+            </tr></tbody>`;
           })
           .join("")
-      : `<tr><td colspan="5" style="text-align:center;padding:12px;">Sem itens neste orçamento.</td></tr>`;
+      : `<tbody><tr><td colspan="5" style="text-align:center;padding:12px;">Sem itens neste orçamento.</td></tr></tbody>`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -361,7 +366,7 @@ export function buildQuotePrintHtml(
         <th class="num">Total</th>
       </tr>
     </thead>
-    <tbody>${itemsHtml}</tbody>
+    ${itemsHtml}
   </table>
 
   <div class="qp-totals">

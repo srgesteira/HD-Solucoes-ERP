@@ -70,8 +70,14 @@ const PRINT_STYLES = `
   }
   .quote-print-document {
     box-shadow: none !important;
-    padding: 0 !important;
+    padding: 0 0 6mm !important;
     max-width: none !important;
+  }
+  .quote-print-table {
+    border-collapse: separate !important;
+    border-spacing: 0;
+    page-break-inside: auto;
+    break-inside: auto;
   }
   .quote-print-table thead {
     background: #1e293b !important;
@@ -84,27 +90,21 @@ const PRINT_STYLES = `
   .quote-print-table tbody {
     display: table-row-group;
   }
-  .quote-print-table tr,
-  .quote-print-table td,
-  .quote-print-table th {
-    page-break-inside: auto;
-    break-inside: auto;
+  .quote-print-table tbody.qp-item-block,
+  .quote-print-table tbody.qp-item-block tr,
+  .quote-print-table tbody.qp-item-block td {
+    page-break-inside: avoid !important;
+    break-inside: avoid-page !important;
   }
   .qp-table-wrap {
     overflow: visible !important;
     page-break-inside: auto;
     break-inside: auto;
   }
-  .qp-product-desc {
-    orphans: 2;
-    widows: 2;
-  }
   .quote-print-fixed-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 4px 10mm;
+    position: static;
+    margin-top: 8px;
+    padding: 4px 0 0;
     border-top: 1px solid #e2e8f0;
     background: #fff;
     font-size: 7px;
@@ -312,7 +312,8 @@ const PRINT_STYLES = `
 
 .quote-print-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.68rem;
 }
 
@@ -378,7 +379,7 @@ const PRINT_STYLES = `
   line-height: 1.1;
 }
 
-.quote-print-table tbody tr:last-child td {
+.quote-print-table tbody:last-child tr:last-child td {
   border-bottom: none;
 }
 
@@ -760,21 +761,21 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                 <th className="qp-num">Total</th>
               </tr>
             </thead>
-            <tbody>
-              {items.length > 0 ? (
-                items.map((line) => {
-                  const showProductDesc = Boolean(line.show_product_description);
-                  const productDesc = showProductDesc
-                    ? unwrapQuoteProductDescription(line.product)
-                    : null;
-                  const extraDesc = showProductDesc
-                    ? quoteItemPrintDescription(
-                        line.description,
-                        line.product
-                      )
-                    : null;
-                  return (
-                  <tr key={line.id}>
+            {items.length > 0 ? (
+              items.map((line) => {
+                const showProductDesc = Boolean(line.show_product_description);
+                const productDesc = showProductDesc
+                  ? unwrapQuoteProductDescription(line.product)
+                  : null;
+                const extraDesc = showProductDesc
+                  ? quoteItemPrintDescription(
+                      line.description,
+                      line.product
+                    )
+                  : null;
+                return (
+                <tbody key={line.id} className="qp-item-block">
+                  <tr>
                     <td className="qp-code">
                       {unwrapQuoteProductCode(line.product)}
                     </td>
@@ -829,16 +830,18 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                       {fmtQuoteBRL(Number(line.total_price))}
                     </td>
                   </tr>
-                  );
-                })
-              ) : (
+                </tbody>
+                );
+              })
+            ) : (
+              <tbody>
                 <tr>
                   <td colSpan={5} style={{ textAlign: "center", padding: "0.75rem" }}>
                     Sem itens neste orçamento.
                   </td>
                 </tr>
-              )}
-            </tbody>
+              </tbody>
+            )}
           </table>
         </section>
 

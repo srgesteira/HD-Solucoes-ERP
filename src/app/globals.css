@@ -55,7 +55,7 @@ input[type="number"] {
 
 @media print {
   @page {
-    margin: 10mm;
+    margin: 10mm 10mm 14mm 10mm;
     size: A4;
   }
 
@@ -87,11 +87,13 @@ input[type="number"] {
   }
 
   .quote-print-table {
+    border-collapse: separate !important;
+    border-spacing: 0;
     page-break-inside: auto;
     break-inside: auto;
   }
 
-  /* Linhas altas (descrição longa) DEVEM poder partir — avoid deixa a 1.ª página vazia. */
+  /* A tabela pode partir entre itens; o item (tbody) não parte a meio. */
   .quote-print-table thead {
     display: table-header-group;
   }
@@ -100,27 +102,17 @@ input[type="number"] {
     display: table-row-group;
   }
 
-  .quote-print-table tr {
-    page-break-inside: auto;
-    break-inside: auto;
-    page-break-after: auto;
-  }
-
-  .quote-print-table td,
-  .quote-print-table th {
-    page-break-inside: auto;
-    break-inside: auto;
+  .quote-print-table tbody.qp-item-block,
+  .quote-print-table tbody.qp-item-block tr,
+  .quote-print-table tbody.qp-item-block td {
+    page-break-inside: avoid !important;
+    break-inside: avoid-page !important;
   }
 
   .qp-table-wrap {
     overflow: visible !important;
     page-break-inside: auto;
     break-inside: auto;
-  }
-
-  .qp-product-desc {
-    orphans: 2;
-    widows: 2;
   }
 
   .quote-print-fixed-footer {
