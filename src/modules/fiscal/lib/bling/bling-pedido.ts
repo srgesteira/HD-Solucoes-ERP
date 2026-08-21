@@ -23,6 +23,7 @@ import {
   unwrapBlingData,
   unwrapBlingList,
 } from "@/modules/fiscal/lib/bling/bling-nfe-status";
+import { splitAmountInInstallments } from "@/modules/vendas/lib/sales/sales-flow";
 import {
   deliveryAddressFromRow,
   formatDeliveryAddressOneLine,
@@ -47,6 +48,26 @@ function roundMoney(value: number): number {
 function netUnitValor(quantity: number, lineNet: number): number {
   if (quantity <= 0) return 0;
   return Math.round((lineNet / quantity) * 1e6) / 1e6;
+}
+
+function readBlingPedidoTotal(payload: unknown): number | null {
+  const data = unwrapBlingData(payload);
+  if (!data) return null;
+  for (const key of ["total", "valor"] as const) {
+    const n = Number(data[key]);
+    if (Number.isFinite(n) && n > 0) return roundMoney(n);
+  }
+  const itens = data.itens;
+  if (!Array.isArray(itens)) return null;
+  const sum = itens.reduce((acc, raw) => {
+    if (!raw || typeof raw !== "object") return acc;
+    const it = raw as Record<string, unknown>;
+    const q = Number(it.quantidade);
+    const v = Number(it.valor);
+    if (!Number.isFinite(q) || !Number.isFinite(v)) return acc;
+    return acc + q * v;
+  }, 0);
+  return sum > 0 ? roundMoney(sum) : null;
 }
 
 function isDefaultFlag(value: unknown): boolean {
@@ -360,7 +381,7 @@ export async function ensureBlingPedidoForSalesOrder(
     so.expected_delivery ?? so.actual_delivery ?? so.order_date ?? ""
   ).slice(0, 10);
 
-  const payload = {
+  const payloadBase = {
     data: orderDate,
     dataSaida: orderDate,
     dataPrevista: dataPrevista || orderDate,
@@ -378,12 +399,6 @@ export async function ensureBlingPedidoForSalesOrder(
     ),
     observacoesInternas: `CFOP conferência: ${cfops.join(", ") || "—"}. Natureza ERP: ${blingNfeNaturezaOperacao(docType)}.`,
     itens,
-    parcelas: nfeParcelas.map((p) => ({
-      dataVencimento: p.data,
-      valor: p.valor,
-      observacoes: p.observacoes,
-      formaPagamento: { id: formaPagamentoId },
-    })),
   };
 
   let pedidoId = so.bling_pedido_venda_id
@@ -394,20 +409,42 @@ export async function ensureBlingPedidoForSalesOrder(
   if (pedidoId && Number.isFinite(pedidoId)) {
     try {
       await blingGet(admin, tenantId, `/pedidos/vendas/${pedidoId}`);
-      await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, payload);
+      await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, payloadBase);
     } catch {
       pedidoId = null;
     }
   }
 
   if (!pedidoId) {
-    const createdPayload = await blingPost(admin, tenantId, "/pedidos/vendas", payload);
+    const createdPayload = await blingPost(
+      admin,
+      tenantId,
+      "/pedidos/vendas",
+      payloadBase
+    );
     const id = Number(unwrapBlingData(createdPayload)?.id);
     if (!Number.isFinite(id)) {
       throw new Error("Bling criou o pedido mas não devolveu o ID.");
     }
     pedidoId = id;
     created = true;
+  }
+
+  const fetched = await blingGet(admin, tenantId, `/pedidos/vendas/${pedidoId}`);
+  const blingTotal = readBlingPedidoTotal(fetched) ?? netTotal;
+  const amounts = splitAmountInInstallments(blingTotal, nfeParcelas.length);
+  try {
+    await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, {
+      ...payloadBase,
+      parcelas: nfeParcelas.map((p, i) => ({
+        dataVencimento: p.data,
+        valor: amounts[i],
+        observacoes: p.observacoes,
+        formaPagamento: { id: formaPagamentoId },
+      })),
+    });
+  } catch {
+    // Pedido já gravado; o Bling gera parcelas iguais ao total se as nossas forem recusadas.
   }
 
   const { error: saveErr } = await db
