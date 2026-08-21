@@ -43,6 +43,12 @@ function roundMoney(value: number): number {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
+/** Preço unitário líquido com precisão extra — o Bling arredonda a linha. */
+function netUnitValor(quantity: number, lineNet: number): number {
+  if (quantity <= 0) return 0;
+  return Math.round((lineNet / quantity) * 1e6) / 1e6;
+}
+
 function isDefaultFlag(value: unknown): boolean {
   return value === 1 || value === "1" || value === true || value === "S";
 }
@@ -306,34 +312,34 @@ export async function ensureBlingPedidoForSalesOrder(
     resolveBlingNaturezaId(admin, tenantId, cfops, docType),
   ]);
 
-  const itens = lineInputs.map((it) => ({
+  // No Bling, `desconto` (item e cabeçalho) é percentual por omissão.
+  // Os descontos do ERP são em R$ — embutir no preço unitário e não enviar `desconto`.
+  const headerDiscount = roundMoney(Math.max(0, Number(so.discount ?? 0)));
+  const lineNets = lineInputs.map((it) => {
+    const gross = roundMoney(it.quantity * it.unit_price);
+    return roundMoney(Math.max(0, gross - Math.max(0, it.discount)));
+  });
+  let remainingHeader = headerDiscount;
+  for (let i = lineNets.length - 1; i >= 0 && remainingHeader > 0; i -= 1) {
+    const take = Math.min(lineNets[i], remainingHeader);
+    lineNets[i] = roundMoney(lineNets[i] - take);
+    remainingHeader = roundMoney(remainingHeader - take);
+  }
+  const netTotal = roundMoney(lineNets.reduce((acc, n) => acc + n, 0));
+  if (netTotal <= 0) {
+    throw new Error(
+      "O total líquido do pedido ficou zerado ou negativo depois dos descontos. Ajuste o pedido antes de preparar no Bling."
+    );
+  }
+
+  const itens = lineInputs.map((it, i) => ({
     codigo: it.codigo,
     descricao: it.name || it.description,
     unidade: it.unit || "UN",
     quantidade: it.quantity,
-    valor: roundMoney(it.unit_price),
+    valor: netUnitValor(it.quantity, lineNets[i] ?? 0),
     produto: { id: it.blingProductId as number },
   }));
-
-  // Item `desconto` no pedido Bling é percentual. Descontos do ERP são em R$ —
-  // vão só no cabeçalho (REAL), senão o total fica negativo e as parcelas não batem.
-  const itemsGross = roundMoney(
-    itens.reduce(
-      (acc, it) => acc + roundMoney(it.quantidade * it.valor),
-      0
-    )
-  );
-  const lineDiscountSum = roundMoney(
-    lineInputs.reduce((acc, it) => acc + Math.max(0, it.discount), 0)
-  );
-  const headerDiscount = roundMoney(Math.max(0, Number(so.discount ?? 0)));
-  const totalDiscount = roundMoney(lineDiscountSum + headerDiscount);
-  const netTotal = roundMoney(itemsGross - totalDiscount);
-  if (netTotal < 0) {
-    throw new Error(
-      `O desconto (R$ ${totalDiscount.toFixed(2)}) é maior que o total dos itens (R$ ${itemsGross.toFixed(2)}). Ajuste o pedido antes de preparar no Bling.`
-    );
-  }
 
   const paymentSource = {
     order_number: so.order_number,
@@ -371,9 +377,6 @@ export async function ensureBlingPedidoForSalesOrder(
       salesOrderId
     ),
     observacoesInternas: `CFOP conferência: ${cfops.join(", ") || "—"}. Natureza ERP: ${blingNfeNaturezaOperacao(docType)}.`,
-    ...(totalDiscount > 0
-      ? { desconto: { valor: totalDiscount, unidade: "REAL" as const } }
-      : {}),
     itens,
     parcelas: nfeParcelas.map((p) => ({
       dataVencimento: p.data,
