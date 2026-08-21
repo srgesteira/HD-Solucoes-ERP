@@ -39,6 +39,11 @@ import { UnmappedBlingProductsPanel } from "@/components/faturamento/unmapped-bl
 import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-billing-display";
 import { nfeStatusPill } from "@/modules/faturamento/lib/fiscal-invoicing-list-display";
 import {
+  ITEM_USAGE_TYPE_OPTIONS,
+  isItemUsageType,
+  type ItemUsageType,
+} from "@/modules/fiscal/lib/item-usage-type";
+import {
   INVOICE_DOCUMENT_TYPE_LABELS,
   INVOICE_DOCUMENT_TYPES,
   isInvoiceDocumentType,
@@ -133,6 +138,33 @@ async function postManualFiscalItem(
     error?: string;
   };
   if (!res.ok) throw new Error(json.error ?? "Erro ao gravar fiscal manual");
+  if (!json.data) throw new Error("Resposta inválida");
+  return json.data;
+}
+
+async function postItemUsageType(
+  orderId: string,
+  itemId: string,
+  usageType: ItemUsageType | null
+): Promise<FiscalOrderReview> {
+  const res = await fetch(
+    `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/review`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "usage_type",
+        item_id: itemId,
+        usage_type: usageType,
+      }),
+    }
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: FiscalOrderReview;
+    error?: string;
+  };
+  if (!res.ok) throw new Error(json.error ?? "Erro ao gravar utilização");
   if (!json.data) throw new Error("Resposta inválida");
   return json.data;
 }
@@ -264,6 +296,22 @@ export default function FiscalOrderReviewPage() {
       toast.success("Pedido enviado para Autorizadas (entrega sem nota).");
       void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
       router.push("/faturamento/fiscal?tab=nfe_authorized");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const usageTypeMutation = useMutation({
+    mutationFn: ({
+      itemId,
+      usageType,
+    }: {
+      itemId: string;
+      usageType: ItemUsageType | null;
+    }) => postItemUsageType(orderId, itemId, usageType),
+    onSuccess: () => {
+      toast.success("Utilização gravada.");
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-order-review", orderId] });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -450,7 +498,15 @@ export default function FiscalOrderReviewPage() {
                     ? data.emit_blockers.join(" ")
                     : "Emitir NF-e via Bling (produto) ou NFS-e via Focus"
                 }
-                onClick={() => emitMutation.mutate()}
+                onClick={() => {
+                  if (data.emit_warnings.length) {
+                    const ok = window.confirm(
+                      `${data.emit_warnings.join("\n")}\n\nEmitir a nota mesmo assim?`
+                    );
+                    if (!ok) return;
+                  }
+                  emitMutation.mutate();
+                }}
               >
                 {emitMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -482,6 +538,16 @@ export default function FiscalOrderReviewPage() {
         </p>
       ) : data ? (
         <div className="space-y-4">
+          {data.emit_warnings.length > 0 ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-medium">Material ainda não pronto</p>
+              <ul className="mt-1 list-disc pl-5 space-y-0.5">
+                {data.emit_warnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {data.warnings.length > 0 ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
               <p className="font-medium">Pontos a conferir</p>
@@ -491,12 +557,12 @@ export default function FiscalOrderReviewPage() {
                 ))}
               </ul>
             </div>
-          ) : (
+          ) : data.emit_warnings.length === 0 ? (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              Fiscal alinhado. Quando o PCP liberar, a emissão fica na
-              Expedição; ou confirme entrega sem nota no Faturamento.
+              Fiscal alinhado. Pode emitir a nota nesta tela. A impressão do
+              DANFE oficial fica na Expedição depois de autorizada.
             </div>
-          )}
+          ) : null}
 
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
@@ -753,17 +819,37 @@ export default function FiscalOrderReviewPage() {
                       <td className="px-2 py-2 font-mono text-xs">{it.ncm ?? "—"}</td>
                       <td className="px-2 py-2 text-xs">{it.product_nature ?? "—"}</td>
                       <td className="px-2 py-2 text-xs">
-                        {it.usage_type === "consumo"
-                          ? "Consumo"
-                          : it.usage_type === "materia_prima"
-                            ? "Matéria-prima"
-                            : it.usage_type === "revenda"
-                              ? "Revenda"
-                              : (
-                                  <span className="text-amber-700">
-                                    Não informada
-                                  </span>
-                                )}
+                        {isAdmin && !data.billing_closure ? (
+                          <select
+                            className="h-8 w-full min-w-[8.5rem] rounded-md border border-slate-300 bg-white px-1.5 text-xs"
+                            value={it.usage_type ?? ""}
+                            disabled={usageTypeMutation.isPending}
+                            onChange={(e) => {
+                              const next = isItemUsageType(e.target.value)
+                                ? e.target.value
+                                : null;
+                              usageTypeMutation.mutate({
+                                itemId: it.id,
+                                usageType: next,
+                              });
+                            }}
+                          >
+                            <option value="">Não informada</option>
+                            {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : it.usage_type === "consumo" ? (
+                          "Consumo"
+                        ) : it.usage_type === "materia_prima" ? (
+                          "Matéria-prima"
+                        ) : it.usage_type === "revenda" ? (
+                          "Revenda"
+                        ) : (
+                          <span className="text-amber-700">Não informada</span>
+                        )}
                       </td>
                       <td className="px-2 py-2 font-mono text-xs font-semibold text-emerald-900">
                         {it.cfop ?? "—"}
@@ -818,8 +904,9 @@ export default function FiscalOrderReviewPage() {
           <p className="text-xs text-slate-500">
             <strong>Reaplicar regras</strong> quando há regra cadastrada.{" "}
             <strong>Assistente IA</strong> só quando não há regra — define CFOP e
-            alíquotas (pode fazer perguntas). <strong>Editar</strong> para ajuste
-            manual. Depois «Fiscal alinhado».
+            alíquotas (pode fazer perguntas). A <strong>utilização</strong>{" "}
+            ajusta-se na coluna desta tabela. <strong>Editar</strong> para CFOP e
+            impostos. Depois «Fiscal alinhado».
           </p>
         </div>
       ) : null}

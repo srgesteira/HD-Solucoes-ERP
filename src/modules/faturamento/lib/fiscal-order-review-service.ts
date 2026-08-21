@@ -119,6 +119,7 @@ export type FiscalOrderReview = {
   } | null;
   can_emit: boolean;
   emit_blockers: string[];
+  emit_warnings: string[];
 };
 
 type RawOrderRow = {
@@ -810,6 +811,7 @@ export async function getFiscalOrderReview(
     nfe,
     can_emit: gate.ok && billingPlan !== "without_invoice",
     emit_blockers: gate.reasons,
+    emit_warnings: gate.warnings,
   };
 }
 
@@ -1027,6 +1029,52 @@ export async function saveManualFiscalItemOverride(
 
   if (stErr) throw new Error(stErr.message);
 
+  return { ok: true };
+}
+
+export async function saveSalesOrderItemUsageType(
+  admin: Admin,
+  tenantId: string,
+  salesOrderId: string,
+  itemId: string,
+  usageType: ItemUsageType | null
+): Promise<{ ok: true } | { ok: false; reasons: string[] }> {
+  const db = asUntypedAdmin(admin);
+
+  const { data: item, error: itemErr } = await admin
+    .from("sales_order_items")
+    .select("id, sales_order_id")
+    .eq("id", itemId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (itemErr) throw new Error(itemErr.message);
+  if (!item || item.sales_order_id !== salesOrderId) {
+    return { ok: false, reasons: ["Item do pedido não encontrado."] };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: order } = await (db.from("sales_orders") as any)
+    .select("id, status, billing_closure")
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (!order) return { ok: false, reasons: ["Pedido não encontrado."] };
+  if (order.billing_closure) {
+    return { ok: false, reasons: ["Pedido já finalizado no faturamento."] };
+  }
+  if (order.status === "cancelled") {
+    return { ok: false, reasons: ["Pedido cancelado."] };
+  }
+
+  const { error: updErr } = await admin
+    .from("sales_order_items")
+    .update({ usage_type: usageType })
+    .eq("id", itemId)
+    .eq("tenant_id", tenantId);
+
+  if (updErr) throw new Error(updErr.message);
   return { ok: true };
 }
 

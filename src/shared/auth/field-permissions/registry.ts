@@ -18,7 +18,7 @@ export const FIELD_ALLOWLISTS = {
     ],
   },
   sales_order_items: {
-    faturamento: [...LINE_TAX_FIELDS],
+    faturamento: [...LINE_TAX_FIELDS, "usage_type"],
     vendas: [],
   },
   purchase_order_items: {

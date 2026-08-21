@@ -37,6 +37,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     let invoice_gate: {
       can_emit: boolean;
       reasons: string[];
+      warnings: string[];
       order_number: string | null;
     } | null = null;
     let nfe: {
@@ -62,6 +63,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       invoice_gate = {
         can_emit: gate.ok,
         reasons: gate.reasons,
+        warnings: gate.warnings,
         order_number:
           so && typeof so.order_number === "string" ? so.order_number : null,
       };

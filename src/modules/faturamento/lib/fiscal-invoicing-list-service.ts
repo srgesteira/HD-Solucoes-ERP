@@ -53,6 +53,7 @@ export type FiscalInvoicingListRow = SalesOrderBase & {
   can_emit: boolean;
   can_confirm_without_invoice: boolean;
   emit_blockers: string[];
+  emit_warnings: string[];
   unmapped_bling_skus: string[];
 };
 
@@ -441,6 +442,7 @@ export async function listFiscalInvoicingOrders(
       can_emit: gate.ok,
       can_confirm_without_invoice: canConfirmWithoutInvoice,
       emit_blockers: gate.reasons,
+      emit_warnings: gate.warnings,
       unmapped_bling_skus:
         row.invoice_document_type === "nfe_product" ||
         row.invoice_document_type === "nfe_industrialization"

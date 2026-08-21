@@ -12,7 +12,9 @@ import {
   parseManualItemInput,
   reapplyFiscalRulesToSalesOrder,
   saveManualFiscalItemOverride,
+  saveSalesOrderItemUsageType,
 } from "@/modules/faturamento/lib/fiscal-order-review-service";
+import { isItemUsageType } from "@/modules/fiscal/lib/item-usage-type";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +104,31 @@ export async function POST(
         itemId,
         parsed,
         user.id
+      );
+      if (!result.ok) {
+        return apiError(result.reasons.join(" "), 400);
+      }
+      const data = await getFiscalOrderReview(admin, tenantId, orderId);
+      return apiOk({ data });
+    }
+
+    if (action === "usage_type") {
+      const itemId =
+        typeof body.item_id === "string" ? body.item_id.trim() : "";
+      if (!itemId) return apiError("item_id obrigatório.", 400);
+      const rawUsage =
+        typeof body.usage_type === "string" ? body.usage_type.trim() : "";
+      const usageType = isItemUsageType(rawUsage) ? rawUsage : null;
+      if (rawUsage && !usageType) {
+        return apiError("Utilização inválida.", 400);
+      }
+
+      const result = await saveSalesOrderItemUsageType(
+        admin,
+        tenantId,
+        orderId,
+        itemId,
+        usageType
       );
       if (!result.ok) {
         return apiError(result.reasons.join(" "), 400);

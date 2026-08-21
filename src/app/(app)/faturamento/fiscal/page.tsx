@@ -230,18 +230,27 @@ export default function FiscalInvoicingPage() {
     void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
   };
 
-  const emitNfe = useCallback(async (orderId: string) => {
-    setEmittingOrderId(orderId);
-    try {
-      await postEmitNfe(orderId);
-      toast.success("Emissão enviada. Acompanhe o status da nota nesta lista.");
-      invalidateList();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao emitir");
-    } finally {
-      setEmittingOrderId(null);
-    }
-  }, []);
+  const emitNfe = useCallback(
+    async (orderId: string, warnings: string[] = []) => {
+      if (warnings.length) {
+        const ok = window.confirm(
+          `${warnings.join("\n")}\n\nEmitir a nota mesmo assim?`
+        );
+        if (!ok) return;
+      }
+      setEmittingOrderId(orderId);
+      try {
+        await postEmitNfe(orderId);
+        toast.success("Emissão enviada. Acompanhe o status da nota nesta lista.");
+        invalidateList();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Erro ao emitir");
+      } finally {
+        setEmittingOrderId(null);
+      }
+    },
+    []
+  );
 
   const syncNfe = useCallback(async (nfeId: string) => {
     setSyncingNfeId(nfeId);
@@ -629,7 +638,9 @@ export default function FiscalInvoicingPage() {
                       : "Emitir nota"
                   }
                   disabled={emittingOrderId === row.id}
-                  onClick={() => void emitNfe(row.id)}
+                  onClick={() =>
+                    void emitNfe(row.id, row.emit_warnings ?? [])
+                  }
                 >
                   {emittingOrderId === row.id ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />

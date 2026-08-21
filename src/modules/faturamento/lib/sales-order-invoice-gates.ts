@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import {
-  isFiscalReadyForInvoice,
+  isFiscalConfigured,
   type FiscalStatus,
 } from "@/modules/fiscal/lib/fiscal-rules-types";
 
@@ -11,7 +11,11 @@ type Admin = SupabaseClient<Database>;
 export type InvoiceGateResult = {
   ok: boolean;
   reasons: string[];
+  warnings: string[];
 };
+
+export const MATERIAL_NOT_READY_EMIT_WARNING =
+  "Material ainda não foi liberado pela produção. A nota pode ser emitida mesmo assim se o cliente precisar da NF antes.";
 
 function fiscalStatusOf(raw: string | null | undefined): FiscalStatus {
   const s = raw ?? "pending";
@@ -35,6 +39,7 @@ export async function validateSalesOrderCanEmitNfe(
   salesOrderId: string
 ): Promise<InvoiceGateResult> {
   const reasons: string[] = [];
+  const warnings: string[] = [];
   const db = asUntypedAdmin(admin);
 
   const { data: soRaw, error: soErr } = await db
@@ -58,7 +63,7 @@ export async function validateSalesOrderCanEmitNfe(
     customer_po_number: string | null;
   } | null;
   if (!so) {
-    return { ok: false, reasons: ["Pedido não encontrado."] };
+    return { ok: false, reasons: ["Pedido não encontrado."], warnings: [] };
   }
 
   if (so.billing_closure) {
@@ -93,12 +98,10 @@ export async function validateSalesOrderCanEmitNfe(
 
   const fiscal = fiscalStatusOf(so.fiscal_status);
   if (!so.ready_for_invoice) {
-    reasons.push("Produção ainda não liberou o pedido para faturamento.");
+    warnings.push(MATERIAL_NOT_READY_EMIT_WARNING);
   }
-  if (!isFiscalReadyForInvoice(so.ready_for_invoice === true, fiscal)) {
-    reasons.push(
-      `Conferência fiscal pendente (estado: ${fiscal}).`
-    );
+  if (!isFiscalConfigured(fiscal)) {
+    reasons.push(`Conferência fiscal pendente (estado: ${fiscal}).`);
   }
 
   const { data: credit } = await admin
@@ -125,5 +128,5 @@ export async function validateSalesOrderCanEmitNfe(
     reasons.push("Já existe NFS-e em curso ou autorizada.");
   }
 
-  return { ok: reasons.length === 0, reasons };
+  return { ok: reasons.length === 0, reasons, warnings };
 }

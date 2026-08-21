@@ -64,6 +64,7 @@ type Detail = {
   invoice_gate?: {
     can_emit: boolean;
     reasons: string[];
+    warnings?: string[];
     order_number: string | null;
   } | null;
   nfe?: {
@@ -357,13 +358,21 @@ export default function ShipmentDetailPage() {
               disabled={busy || !gate?.can_emit || !canClickEmit}
               title={
                 gate?.can_emit
-                  ? "Emitir NFS-e (PCP liberou + fiscal conferido)"
+                  ? gate.warnings?.length
+                    ? gate.warnings.join(" ")
+                    : "Emitir nota"
                   : gate?.reasons?.length
                     ? gate.reasons.join(" ")
-                    : "Aguardando conferência fiscal + liberação PCP"
+                    : "Aguardando conferência fiscal"
               }
               onClick={() => {
                 if (!s.sales_order_id || !gate?.can_emit || !canClickEmit) return;
+                if (gate.warnings?.length) {
+                  const ok = window.confirm(
+                    `${gate.warnings.join("\n")}\n\nEmitir a nota mesmo assim?`
+                  );
+                  if (!ok) return;
+                }
                 emitMut.mutate(s.sales_order_id);
               }}
             >
@@ -473,7 +482,12 @@ export default function ShipmentDetailPage() {
                 </p>
               ) : gate?.can_emit ? (
                 <p className="text-xs text-emerald-800">
-                  Pedido pronto — «Emitir nota» habilitado neste despacho.
+                  Pedido pronto para emitir nesta tela.
+                </p>
+              ) : null}
+              {gate?.warnings?.length ? (
+                <p className="text-xs text-amber-800">
+                  {gate.warnings.join(" ")}
                 </p>
               ) : null}
               {nfe?.error_message ? (
