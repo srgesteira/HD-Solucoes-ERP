@@ -120,9 +120,9 @@ export function FiscalOrderPrintDocument({
       <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
       <article className={cn("fiscal-print-document", className)}>
         <div className="danfe-banner print:hidden">
-          Pré-visualização no estilo DANFE — não é a NF-e autorizada. Parcelas,
-          observações e entrega são os mesmos campos do POST /nfe. NCM/CFOP/CSOSN
-          da nota autorizada vêm do cadastro fiscal do produto no Bling.
+          Pré-visualização no estilo DANFE — não é a NF-e autorizada. A nota
+          oficial sai do pedido de venda já preparado no Bling (cliente,
+          produtos com NCM e natureza/CFOP).
         </div>
 
         <UnmappedBlingProductsPanel

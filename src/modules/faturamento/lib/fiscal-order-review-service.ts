@@ -120,6 +120,8 @@ export type FiscalOrderReview = {
   can_emit: boolean;
   emit_blockers: string[];
   emit_warnings: string[];
+  bling_pedido_venda_id: number | null;
+  bling_pedido_prepared_at: string | null;
 };
 
 type RawOrderRow = {
@@ -695,9 +697,9 @@ export async function getFiscalOrderReview(
     const unmapped = items.filter((it) => it.product_id && !it.bling_product_id);
     if (unmapped.length) {
       warnings.push(
-        `Produto(s) sem ID Bling: ${unmapped
+        `Produto(s) ainda sem cadastro no Bling: ${unmapped
           .map((it) => it.product_code || it.product_name || it.description)
-          .join(", ")}. Crie o cadastro base na conferência (botão «Criar no Bling»). A emissão não adivinha NCM/CFOP/CSOSN.`
+          .join(", ")}. Use «Preparar pedido no Bling» para criar cliente, produtos (com NCM) e o pedido completo.`
       );
     }
   }
@@ -724,6 +726,18 @@ export async function getFiscalOrderReview(
         provider: (nfeRow as { provider?: string | null }).provider ?? null,
       }
     : null;
+
+  const { data: blingMeta } = await db
+    .from("sales_orders")
+    .select("bling_pedido_venda_id, bling_pedido_prepared_at")
+    .eq("id", salesOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const blingPedido =
+    (blingMeta as {
+      bling_pedido_venda_id?: number | null;
+      bling_pedido_prepared_at?: string | null;
+    } | null) ?? null;
 
   const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, salesOrderId);
 
@@ -812,6 +826,14 @@ export async function getFiscalOrderReview(
     can_emit: gate.ok && billingPlan !== "without_invoice",
     emit_blockers: gate.reasons,
     emit_warnings: gate.warnings,
+    bling_pedido_venda_id:
+      blingPedido?.bling_pedido_venda_id != null
+        ? Number(blingPedido.bling_pedido_venda_id)
+        : null,
+    bling_pedido_prepared_at:
+      typeof blingPedido?.bling_pedido_prepared_at === "string"
+        ? blingPedido.bling_pedido_prepared_at
+        : null,
   };
 }
 

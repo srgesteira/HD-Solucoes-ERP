@@ -43,7 +43,7 @@ export function CreateBlingProductButton({
     onSuccess: (data) => {
       toast.success(
         data.created
-          ? `Produto ${data.codigo} criado no Bling. O contador só precisa preencher NCM/CFOP/CSOSN.`
+          ? `Produto ${data.codigo} criado no Bling com o NCM da conferência.`
           : `Produto ${data.codigo} já existia no Bling — vínculo gravado.`
       );
       void queryClient.invalidateQueries({

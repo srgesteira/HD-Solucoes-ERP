@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
-import { blingGet, blingPost } from "@/modules/fiscal/lib/bling/bling-client";
+import { blingGet, blingPatch, blingPost } from "@/modules/fiscal/lib/bling/bling-client";
 import { unwrapBlingData } from "@/modules/fiscal/lib/bling/bling-nfe-status";
 
 type Admin = SupabaseClient<Database>;
@@ -340,19 +340,25 @@ export type CreateBlingProductResult = {
 };
 
 /**
- * Cria só o cadastro base no Bling (SKU, nome, unidade).
- * Não envia tributação — NCM/CFOP/CSOSN ficam para o contador no Bling.
+ * Cria o cadastro no Bling (SKU, nome, unidade e NCM da conferência).
+ * CFOP/CSOSN continuam na natureza de operação / grupo fiscal do Bling.
  */
 export async function createBlingProduct(
   admin: Admin,
   tenantId: string,
-  input: { nome: string; codigo: string; unidade: string | null }
+  input: {
+    nome: string;
+    codigo: string;
+    unidade: string | null;
+    ncm?: string | null;
+  }
 ): Promise<number> {
   const nome = input.nome.trim();
   const codigo = input.codigo.trim();
   if (!nome) throw new Error("Nome do produto é obrigatório para criar no Bling.");
   if (!codigo) throw new Error("Código/SKU é obrigatório para criar no Bling.");
 
+  const ncm = String(input.ncm ?? "").replace(/\D/g, "");
   const payload = await blingPost(admin, tenantId, "/produtos", {
     nome,
     codigo,
@@ -360,12 +366,26 @@ export async function createBlingProduct(
     situacao: "A",
     formato: "S",
     unidade: input.unidade?.trim() || "UN",
+    ...(ncm.length >= 8 ? { tributacao: { ncm: ncm.slice(0, 8) } } : {}),
   });
   const id = Number(unwrapBlingData(payload)?.id);
   if (!Number.isFinite(id)) {
     throw new Error("Bling criou o produto mas não devolveu o ID.");
   }
   return id;
+}
+
+export async function patchBlingProductNcm(
+  admin: Admin,
+  tenantId: string,
+  blingProductId: number,
+  ncm: string | null | undefined
+): Promise<void> {
+  const digits = String(ncm ?? "").replace(/\D/g, "");
+  if (digits.length < 8 || !Number.isFinite(blingProductId)) return;
+  await blingPatch(admin, tenantId, `/produtos/${blingProductId}`, {
+    tributacao: { ncm: digits.slice(0, 8) },
+  });
 }
 
 export async function createAndLinkBlingProduct(
@@ -376,7 +396,7 @@ export async function createAndLinkBlingProduct(
   const db = asUntypedAdmin(admin);
   const { data, error } = await db
     .from("products")
-    .select("id, code, technical_code, name, unit, bling_product_id")
+    .select("id, code, technical_code, name, unit, ncm, bling_product_id")
     .eq("id", productId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -389,12 +409,15 @@ export async function createAndLinkBlingProduct(
     technical_code: string | null;
     name: string;
     unit: string | null;
+    ncm: string | null;
     bling_product_id: number | null;
   };
 
   if (product.bling_product_id) {
+    const existingId = Number(product.bling_product_id);
+    await patchBlingProductNcm(admin, tenantId, existingId, product.ncm);
     return {
-      bling_product_id: Number(product.bling_product_id),
+      bling_product_id: existingId,
       created: false,
       codigo: (product.code ?? product.technical_code ?? "").trim(),
     };
@@ -415,6 +438,7 @@ export async function createAndLinkBlingProduct(
         nome: product.name,
         codigo,
         unidade: product.unit,
+        ncm: product.ncm,
       });
       created = true;
     } catch (e) {
@@ -432,6 +456,10 @@ export async function createAndLinkBlingProduct(
     .update({ bling_product_id: blingId })
     .eq("id", product.id)
     .eq("tenant_id", tenantId);
+
+  if (!created) {
+    await patchBlingProductNcm(admin, tenantId, blingId, product.ncm);
+  }
 
   return { bling_product_id: blingId, created, codigo };
 }

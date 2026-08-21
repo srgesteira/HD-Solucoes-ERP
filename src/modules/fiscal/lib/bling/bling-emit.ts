@@ -1,8 +1,7 @@
 /**
  * Emissão de NF-e (modelo 55) via Bling.
- * Fluxo confirmado na referência v3: POST /nfe (cria rascunho) →
- * POST /nfe/{id}/enviar (autorização SEFAZ). Não é obrigatório criar
- * Pedido de Venda no Bling — o ERP permanece a fonte comercial.
+ * A conferência prepara o pedido de venda no Bling; aqui só geramos a
+ * NF-e a partir desse pedido (POST /nfe com pedidoVendaId) e enviamos à SEFAZ.
  * @see https://developer.bling.com.br/referencia
  */
 
@@ -13,22 +12,15 @@ import type { InvoiceDocumentType } from "@/modules/core/types/sales-order-billi
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 import { BlingApiError } from "@/modules/fiscal/lib/bling/bling-errors";
 import { blingGet, blingPost } from "@/modules/fiscal/lib/bling/bling-client";
-import { resolveBlingCatalogForSalesOrder } from "@/modules/fiscal/lib/bling/bling-catalog";
 import {
   parseBlingNfeSnapshot,
   unwrapBlingData,
 } from "@/modules/fiscal/lib/bling/bling-nfe-status";
 import { applyBlingNfeSnapshot } from "@/modules/fiscal/lib/bling/bling-apply-status";
 import { searchBlingNfeForErpOrder } from "@/modules/fiscal/lib/bling/bling-reconcile";
-import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
-import {
-  blingNfeNaturezaOperacao,
-  buildBlingNfeObservacoes,
-} from "@/modules/fiscal/lib/bling/bling-nfe-payload";
-import {
-  deliveryAddressFromRow,
-  formatDeliveryAddressOneLine,
-} from "@/modules/vendas/lib/sales/sales-order-delivery-address";
+import { resolveBlingCatalogForSalesOrder } from "@/modules/fiscal/lib/bling/bling-catalog";
+import { ensureBlingPedidoForSalesOrder } from "@/modules/fiscal/lib/bling/bling-pedido";
+import { blingNfeNaturezaOperacao } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 
 type Admin = SupabaseClient<Database>;
 
@@ -118,38 +110,31 @@ export async function emitirNfeViaBling(
     return { nfe_id: latest.id, bling_nfe_id: latest.bling_nfe_id };
   }
 
-  const catalog = await resolveBlingCatalogForSalesOrder(
-    admin,
-    tenantId,
-    salesOrderId
-  );
-  if (!catalog.contactId) {
+  let prepared: Awaited<ReturnType<typeof ensureBlingPedidoForSalesOrder>>;
+  try {
+    prepared = await ensureBlingPedidoForSalesOrder(
+      admin,
+      tenantId,
+      salesOrderId,
+      docType
+    );
+  } catch (e) {
+    const msg =
+      e instanceof BlingApiError
+        ? e.message
+        : e instanceof Error
+          ? e.message
+          : "Falha ao preparar o pedido no Bling.";
     await db
       .from("nfes")
       .update({
         status: "error",
-        error_message: "Não foi possível vincular o cliente no Bling (CNPJ/CPF).",
         reconcile_needed: false,
-      })
-      .eq("id", nfe.id)
-      .eq("tenant_id", tenantId);
-    throw new Error("Não foi possível vincular o cliente no Bling (CNPJ/CPF).");
-  }
-  if (catalog.unmappedProducts.length > 0) {
-    const list = catalog.unmappedProducts
-      .map((p) => p.code || p.technical_code || p.name)
-      .join(", ");
-    const msg = `Produto(s) sem correspondente no Bling: ${list}. Cadastre o SKU no Bling (com NCM/CFOP/CSOSN) e sincronize.`;
-    await db
-      .from("nfes")
-      .update({
-        status: "error",
         error_message: msg,
-        reconcile_needed: false,
       })
       .eq("id", nfe.id)
       .eq("tenant_id", tenantId);
-    throw new Error(msg);
+    throw e;
   }
 
   if (nfe.external_started_at && !nfe.bling_nfe_id) {
@@ -157,7 +142,7 @@ export async function emitirNfeViaBling(
       admin,
       tenantId,
       salesOrderId,
-      catalog.contactId
+      prepared.contact_id
     );
     if (found) {
       await applyBlingNfeSnapshot(admin, tenantId, nfe.id, found, {
@@ -184,122 +169,13 @@ export async function emitirNfeViaBling(
     );
   }
 
-  const { data: soRaw, error: soErr } = await db
-    .from("sales_orders")
-    .select(
-      "order_number, order_date, client_name, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip"
-    )
-    .eq("id", salesOrderId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-  if (soErr) throw new Error(soErr.message);
-  const so = soRaw as {
-    order_number: string;
-    order_date: string;
-    client_name: string;
-    customer_po_number: string | null;
-    discount: number | null;
-    total: number | null;
-    payment_installments: number | null;
-    payment_days_to_first_due: number | null;
-    payment_days_between_installments: number | null;
-    expected_delivery: string | null;
-    actual_delivery: string | null;
-    delivery_address_different: boolean | null;
-    delivery_street: string | null;
-    delivery_number: string | null;
-    delivery_complement: string | null;
-    delivery_neighborhood: string | null;
-    delivery_city: string | null;
-    delivery_state: string | null;
-    delivery_zip: string | null;
-  };
-
-  const { data: itemRows, error: itemsErr } = await db
-    .from("sales_order_items")
-    .select(
-      "id, product_id, description, quantity, unit, unit_price, discount, product:products!sales_order_items_product_id_fkey(id, code, name, bling_product_id)"
-    )
-    .eq("sales_order_id", salesOrderId)
-    .eq("tenant_id", tenantId)
-    .order("line_number", { ascending: true });
-  if (itemsErr) throw new Error(itemsErr.message);
-
-  const itens = (itemRows ?? []).map((raw: unknown) => {
-    const it = raw as {
-      product_id: string | null;
-      description: string;
-      quantity: number;
-      unit: string;
-      unit_price: number;
-      discount: number | null;
-      product?:
-        | {
-            id: string;
-            code: string | null;
-            name: string;
-            bling_product_id: number | null;
-          }
-        | Array<{
-            id: string;
-            code: string | null;
-            name: string;
-            bling_product_id: number | null;
-          }>
-        | null;
-    };
-    const product = Array.isArray(it.product) ? it.product[0] : it.product;
-    const blingId =
-      (product?.id ? catalog.mappedProductIds.get(product.id) : null) ??
-      (product?.bling_product_id ? Number(product.bling_product_id) : null);
-    return {
-      codigo: product?.code ?? undefined,
-      descricao: product?.name ?? it.description,
-      unidade: it.unit || "UN",
-      quantidade: Number(it.quantity ?? 0),
-      valor: Number(it.unit_price ?? 0),
-      desconto: Number(it.discount ?? 0) || undefined,
-      tipo: "P",
-      produto: blingId ? { id: blingId } : undefined,
-    };
-  });
-
-  const paymentSource = {
-    order_number: so.order_number,
-    customer_po_number: so.customer_po_number,
-    payment_installments: Number(so.payment_installments ?? 1),
-    payment_days_to_first_due: Number(so.payment_days_to_first_due ?? 30),
-    payment_days_between_installments: Number(
-      so.payment_days_between_installments ?? 0
-    ),
-    expected_delivery: so.expected_delivery,
-    actual_delivery: so.actual_delivery,
-    order_date: so.order_date,
-    total: Number(so.total ?? 0),
-  };
-
-  const observacoes = buildBlingNfeObservacoes(
-    {
-      order_number: so.order_number,
-      customer_po_number: so.customer_po_number,
-      delivery_address_formatted: formatDeliveryAddressOneLine(
-        deliveryAddressFromRow(so)
-      ),
-    },
-    salesOrderId
-  );
-
-  const payload = {
+  const nfePayload: Record<string, unknown> = {
     tipo: 1,
     finalidade: 1,
-    naturezaOperacao: blingNfeNaturezaOperacao(docType),
-    data: String(so.order_date ?? new Date().toISOString()).slice(0, 10),
-    contato: { id: catalog.contactId },
-    itens,
-    desconto: Number(so.discount ?? 0) || undefined,
-    observacoes,
-    /** Grupo fatura/duplicata da NF-e (cobrança estruturada, não infCpl). */
-    parcelas: buildBlingNfeParcelas(paymentSource),
+    pedidoVendaId: prepared.pedido_venda_id,
+    naturezaOperacao: prepared.natureza_operacao_id
+      ? { id: prepared.natureza_operacao_id }
+      : blingNfeNaturezaOperacao(docType),
   };
 
   await db
@@ -314,7 +190,7 @@ export async function emitirNfeViaBling(
 
   let blingNfeId: number;
   try {
-    const created = await blingPost(admin, tenantId, "/nfe", payload);
+    const created = await blingPost(admin, tenantId, "/nfe", nfePayload);
     const data = unwrapBlingData(created);
     const id = Number(data?.id);
     if (!Number.isFinite(id)) {
@@ -332,7 +208,8 @@ export async function emitirNfeViaBling(
       .from("nfes")
       .update({
         status: "error",
-        reconcile_needed: true,
+        reconcile_needed: false,
+        external_started_at: null,
         error_message: msg,
       })
       .eq("id", nfe.id)

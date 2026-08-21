@@ -36,6 +36,7 @@ import {
 } from "@/components/fiscal/fiscal-item-edit-modal";
 import { CreateBlingProductButton } from "@/components/faturamento/create-bling-product-button";
 import { UnmappedBlingProductsPanel } from "@/components/faturamento/unmapped-bling-products-panel";
+import { PrepareBlingOrderPanel } from "@/components/faturamento/prepare-bling-order-panel";
 import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-billing-display";
 import { nfeStatusPill } from "@/modules/faturamento/lib/fiscal-invoicing-list-display";
 import {
@@ -728,6 +729,11 @@ export default function FiscalOrderReviewPage() {
             </Card>
           </div>
 
+          <PrepareBlingOrderPanel
+            orderId={orderId}
+            review={data}
+            canPrepare={Boolean(isAdmin && !data.billing_closure)}
+          />
           <UnmappedBlingProductsPanel
             orderId={orderId}
             invoiceDocumentType={data.invoice_document_type}

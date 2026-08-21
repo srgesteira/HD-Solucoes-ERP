@@ -34,6 +34,32 @@ export function redactBlingValue(value: unknown, depth = 0): unknown {
   return value;
 }
 
+function fieldsFromBlingError(error: Record<string, unknown>): string {
+  const fields = error.fields;
+  if (!Array.isArray(fields) || fields.length === 0) return "";
+  const parts = fields.slice(0, 12).map((raw) => {
+    if (!raw || typeof raw !== "object") return String(raw);
+    const f = raw as Record<string, unknown>;
+    const el =
+      typeof f.element === "string"
+        ? f.element
+        : typeof f.namespace === "string"
+          ? f.namespace
+          : null;
+    const msg =
+      typeof f.msg === "string"
+        ? f.msg
+        : typeof f.message === "string"
+          ? f.message
+          : typeof f.description === "string"
+            ? f.description
+            : null;
+    if (el && msg) return `${el}: ${msg}`;
+    return msg || el || "";
+  });
+  return parts.filter(Boolean).join(" · ");
+}
+
 export function messageFromBlingBody(data: unknown, httpStatus: number): string {
   if (!data || typeof data !== "object") {
     return `Bling HTTP ${httpStatus}`;
@@ -49,8 +75,12 @@ export function messageFromBlingBody(data: unknown, httpStatus: number): string 
           ? e.message
           : null;
     const type = typeof e.type === "string" ? e.type : null;
-    if (desc && type) return `${type}: ${desc}`;
-    if (desc) return desc;
+    const fields = fieldsFromBlingError(e);
+    const head =
+      desc && type ? `${type}: ${desc}` : desc ? desc : type ? type : null;
+    if (head && fields) return `${head} (${fields})`;
+    if (head) return head;
+    if (fields) return fields;
   }
   if (typeof o.message === "string" && o.message.trim()) return o.message;
   if (typeof o.mensagem === "string" && o.mensagem.trim()) return o.mensagem;

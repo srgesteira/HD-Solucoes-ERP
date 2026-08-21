@@ -275,6 +275,26 @@ export async function blingPost<T = unknown>(
   return out.data;
 }
 
+export async function blingPatch<T = unknown>(
+  admin: Admin,
+  tenantId: string,
+  path: string,
+  body?: unknown
+): Promise<T> {
+  const out = await blingRequest<T>(admin, tenantId, "PATCH", path, body);
+  return out.data;
+}
+
+export async function blingPut<T = unknown>(
+  admin: Admin,
+  tenantId: string,
+  path: string,
+  body?: unknown
+): Promise<T> {
+  const out = await blingRequest<T>(admin, tenantId, "PUT", path, body);
+  return out.data;
+}
+
 export async function blingDelete<T = unknown>(
   admin: Admin,
   tenantId: string,

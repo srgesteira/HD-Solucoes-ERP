@@ -91,6 +91,24 @@ export function unwrapBlingData(payload: unknown): Record<string, unknown> | nul
   return o;
 }
 
+export function unwrapBlingList(payload: unknown): Record<string, unknown>[] {
+  if (!payload || typeof payload !== "object") return [];
+  const o = payload as Record<string, unknown>;
+  if (Array.isArray(o.data)) {
+    return o.data.filter(
+      (row): row is Record<string, unknown> =>
+        Boolean(row) && typeof row === "object" && !Array.isArray(row)
+    );
+  }
+  if (Array.isArray(payload)) {
+    return payload.filter(
+      (row): row is Record<string, unknown> =>
+        Boolean(row) && typeof row === "object" && !Array.isArray(row)
+    );
+  }
+  return [];
+}
+
 export function parseBlingNfeSnapshot(
   payload: unknown,
   fallbackId?: number | null

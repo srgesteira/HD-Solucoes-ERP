@@ -34,8 +34,8 @@ export function UnmappedBlingProductsPanel({
           : `${unmapped.length} produtos sem cadastro no Bling`}
       </p>
       <p className="mt-0.5 text-xs text-red-800/90">
-        Cria só SKU, nome e unidade. NCM/CFOP/CSOSN ficam para o contador no
-        Bling.
+        Cria SKU, nome, unidade e NCM da conferência. O pedido completo
+        (cliente + itens + CFOP) fica no botão «Preparar pedido no Bling».
       </p>
       <ul className="mt-2 space-y-2">
         {unmapped.map((it) => (

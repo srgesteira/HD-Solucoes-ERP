@@ -168,6 +168,8 @@ export async function closeSalesOrderBilling(
   }
 
   const actualDelivery = new Date().toISOString().slice(0, 10);
+  const materialReady = so.ready_for_invoice === true;
+  const markDelivered = closure === "without_invoice" || materialReady;
 
   // billing_closure: coluna pós-migração — regenerar database.ts quando possível
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -176,8 +178,9 @@ export async function closeSalesOrderBilling(
     .update({
       billing_closure: closure,
       billing_plan: closure,
-      status: "delivered",
-      actual_delivery: actualDelivery,
+      ...(markDelivered
+        ? { status: "delivered", actual_delivery: actualDelivery }
+        : {}),
     })
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
