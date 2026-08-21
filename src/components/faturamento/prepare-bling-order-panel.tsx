@@ -78,7 +78,7 @@ export function PrepareBlingOrderPanel({
     >
       <p className="font-semibold">
         {prepared
-          ? `Pedido Bling #${review.bling_pedido_venda_id} pronto para emitir`
+          ? `PV ${review.order_number} vinculado ao pedido Bling #${review.bling_pedido_venda_id}`
           : "Criar e actualizar pedido no Bling"}
       </p>
       {prepared ? (
@@ -92,8 +92,9 @@ export function PrepareBlingOrderPanel({
           >
             vendas.php#edit/{review.bling_pedido_venda_id}
           </a>
-          . Se a lista «Em aberto» estiver vazia, tire o filtro Situação — com
-          NF-e ligada o Bling passa o pedido para Atendido, não o apaga.
+          . Este PV e esse pedido Bling são o mesmo documento — não criamos
+          outro. Se aparecer um duplicado na lista, cancele o que não tem a
+          NF-e. Com nota ligada o Bling mostra Atendido, não Em aberto.
         </p>
       ) : (
         <p className="mt-1 text-xs opacity-90">

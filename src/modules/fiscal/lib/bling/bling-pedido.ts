@@ -1,8 +1,6 @@
 /**
- * Botão «Criar e actualizar pedido no Bling»:
- * cliente (CNPJ + endereço), produtos com NCM, pedido com itens/parcelas.
- * «Emitir nota» cria a NF-e com o sequencial da última autorizada.
- * Rejeitada: apaga só a nota — nunca o pedido.
+ * Um pedido ERP ↔ um pedido Bling. Nunca cria segundo se já existir
+ * (mesmo número de loja / ID gravado). A NF-e usa esse casal.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -33,6 +31,7 @@ import {
 import {
   fretePorContaFromShipping,
   parseBlingPedidoTransporte,
+  readBlingPedidoNotaFiscalId,
 } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 
 type Admin = SupabaseClient<Database>;
@@ -76,13 +75,40 @@ function readBlingPedidoTotal(payload: unknown): number | null {
   return sum > 0 ? roundMoney(sum) : null;
 }
 
-async function findPedidoIdByNumeroLoja(
+type BlingPedidoHit = {
+  id: number;
+  nfeId: number | null;
+};
+
+async function loadBlingPedidoHit(
+  admin: Admin,
+  tenantId: string,
+  pedidoId: number
+): Promise<BlingPedidoHit | null> {
+  try {
+    const payload = await blingGet(
+      admin,
+      tenantId,
+      `/pedidos/vendas/${pedidoId}`
+    );
+    const data = unwrapBlingData(payload);
+    const id = Number(data?.id ?? pedidoId);
+    if (!Number.isFinite(id)) return null;
+    return { id, nfeId: readBlingPedidoNotaFiscalId(payload) };
+  } catch (e) {
+    if (isBlingNotFound(e)) return null;
+    throw e;
+  }
+}
+
+async function listBlingPedidosByNumeroLoja(
   admin: Admin,
   tenantId: string,
   orderNumber: string
-): Promise<number | null> {
+): Promise<BlingPedidoHit[]> {
   const numero = String(orderNumber ?? "").trim();
-  if (!numero) return null;
+  if (!numero) return [];
+  const hits = new Map<number, BlingPedidoHit>();
   const qs = new URLSearchParams({ limite: "100", pagina: "1" });
   qs.append("numerosLojas[]", numero);
   const listed = await blingGet(
@@ -90,11 +116,95 @@ async function findPedidoIdByNumeroLoja(
     tenantId,
     `/pedidos/vendas?${qs.toString()}`
   );
-  for (const row of unwrapBlingList(listed)) {
-    const id = Number(row.id);
-    if (Number.isFinite(id)) return id;
+  let rows = unwrapBlingList(listed).filter(
+    (row) => String(row.numeroLoja ?? "").trim() === numero
+  );
+  if (!rows.length) {
+    const all = await blingGet(
+      admin,
+      tenantId,
+      "/pedidos/vendas?limite=100&pagina=1"
+    );
+    rows = unwrapBlingList(all).filter(
+      (row) => String(row.numeroLoja ?? "").trim() === numero
+    );
   }
-  return null;
+  for (const row of rows) {
+    const id = Number(row.id);
+    if (!Number.isFinite(id)) continue;
+    hits.set(id, {
+      id,
+      nfeId: readBlingPedidoNotaFiscalId({ data: row }),
+    });
+  }
+  return [...hits.values()];
+}
+
+function pickCanonicalBlingPedidoId(
+  hits: BlingPedidoHit[],
+  storedId: number | null
+): number | null {
+  if (!hits.length) return null;
+  if (storedId && hits.some((h) => h.id === storedId)) return storedId;
+  const withNfe = hits.filter((h) => h.nfeId);
+  if (withNfe.length) {
+    withNfe.sort((a, b) => b.id - a.id);
+    return withNfe[0].id;
+  }
+  const sorted = [...hits].sort((a, b) => b.id - a.id);
+  return sorted[0]?.id ?? null;
+}
+
+async function cancelOrphanBlingPedidos(
+  admin: Admin,
+  tenantId: string,
+  canonicalId: number,
+  hits: BlingPedidoHit[]
+): Promise<void> {
+  for (const hit of hits) {
+    if (hit.id === canonicalId) continue;
+    try {
+      await blingPatch(
+        admin,
+        tenantId,
+        `/pedidos/vendas/${hit.id}/situacoes/12`
+      );
+    } catch {
+      // Não apagamos o duplicado; no Bling cancele o pedido sem a NF-e.
+    }
+  }
+}
+
+async function resolveCanonicalBlingPedidoId(
+  admin: Admin,
+  tenantId: string,
+  orderNumber: string,
+  storedId: number | null
+): Promise<number | null> {
+  const hits: BlingPedidoHit[] = [];
+  const seen = new Set<number>();
+  if (storedId && Number.isFinite(storedId)) {
+    const stored = await loadBlingPedidoHit(admin, tenantId, storedId);
+    if (stored) {
+      hits.push(stored);
+      seen.add(stored.id);
+    }
+  }
+  for (const hit of await listBlingPedidosByNumeroLoja(
+    admin,
+    tenantId,
+    orderNumber
+  )) {
+    if (seen.has(hit.id)) continue;
+    const detail = await loadBlingPedidoHit(admin, tenantId, hit.id);
+    hits.push(detail ?? hit);
+    seen.add(hit.id);
+  }
+  const canonical = pickCanonicalBlingPedidoId(hits, storedId);
+  if (canonical) {
+    await cancelOrphanBlingPedidos(admin, tenantId, canonical, hits);
+  }
+  return canonical;
 }
 
 function isBlingNotFound(e: unknown): boolean {
@@ -517,48 +627,20 @@ export async function ensureBlingPedidoForSalesOrder(
     },
   };
 
-  let pedidoId = so.bling_pedido_venda_id
+  const storedId = so.bling_pedido_venda_id
     ? Number(so.bling_pedido_venda_id)
     : null;
+  let pedidoId = await resolveCanonicalBlingPedidoId(
+    admin,
+    tenantId,
+    so.order_number,
+    storedId && Number.isFinite(storedId) ? storedId : null
+  );
   let created = false;
 
-  if (pedidoId && Number.isFinite(pedidoId)) {
-    let exists = false;
-    try {
-      await blingGet(admin, tenantId, `/pedidos/vendas/${pedidoId}`);
-      exists = true;
-    } catch (e) {
-      if (!isBlingNotFound(e)) throw e;
-      const recovered = await findPedidoIdByNumeroLoja(
-        admin,
-        tenantId,
-        so.order_number
-      );
-      if (recovered) {
-        pedidoId = recovered;
-        exists = true;
-      }
-    }
-    if (exists && pedidoId) {
-      await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, payloadBase);
-    } else {
-      pedidoId = null;
-    }
-  }
-
-  if (!pedidoId) {
-    const recovered = await findPedidoIdByNumeroLoja(
-      admin,
-      tenantId,
-      so.order_number
-    );
-    if (recovered) {
-      pedidoId = recovered;
-      await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, payloadBase);
-    }
-  }
-
-  if (!pedidoId) {
+  if (pedidoId) {
+    await blingPut(admin, tenantId, `/pedidos/vendas/${pedidoId}`, payloadBase);
+  } else {
     const createdPayload = await blingPost(
       admin,
       tenantId,
