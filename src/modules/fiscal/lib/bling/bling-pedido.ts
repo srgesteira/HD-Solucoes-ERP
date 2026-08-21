@@ -306,6 +306,35 @@ export async function ensureBlingPedidoForSalesOrder(
     resolveBlingNaturezaId(admin, tenantId, cfops, docType),
   ]);
 
+  const itens = lineInputs.map((it) => ({
+    codigo: it.codigo,
+    descricao: it.name || it.description,
+    unidade: it.unit || "UN",
+    quantidade: it.quantity,
+    valor: roundMoney(it.unit_price),
+    produto: { id: it.blingProductId as number },
+  }));
+
+  // Item `desconto` no pedido Bling é percentual. Descontos do ERP são em R$ —
+  // vão só no cabeçalho (REAL), senão o total fica negativo e as parcelas não batem.
+  const itemsGross = roundMoney(
+    itens.reduce(
+      (acc, it) => acc + roundMoney(it.quantidade * it.valor),
+      0
+    )
+  );
+  const lineDiscountSum = roundMoney(
+    lineInputs.reduce((acc, it) => acc + Math.max(0, it.discount), 0)
+  );
+  const headerDiscount = roundMoney(Math.max(0, Number(so.discount ?? 0)));
+  const totalDiscount = roundMoney(lineDiscountSum + headerDiscount);
+  const netTotal = roundMoney(itemsGross - totalDiscount);
+  if (netTotal < 0) {
+    throw new Error(
+      `O desconto (R$ ${totalDiscount.toFixed(2)}) é maior que o total dos itens (R$ ${itemsGross.toFixed(2)}). Ajuste o pedido antes de preparar no Bling.`
+    );
+  }
+
   const paymentSource = {
     order_number: so.order_number,
     customer_po_number: so.customer_po_number,
@@ -317,24 +346,13 @@ export async function ensureBlingPedidoForSalesOrder(
     expected_delivery: so.expected_delivery,
     actual_delivery: so.actual_delivery,
     order_date: so.order_date,
-    total: Number(so.total ?? 0),
+    total: netTotal,
   };
   const nfeParcelas = buildBlingNfeParcelas(paymentSource);
   const orderDate = String(so.order_date ?? "").slice(0, 10);
   const dataPrevista = String(
     so.expected_delivery ?? so.actual_delivery ?? so.order_date ?? ""
   ).slice(0, 10);
-  const headerDiscount = roundMoney(Math.max(0, Number(so.discount ?? 0)));
-
-  const itens = lineInputs.map((it) => ({
-    codigo: it.codigo,
-    descricao: it.name || it.description,
-    unidade: it.unit || "UN",
-    quantidade: it.quantity,
-    valor: roundMoney(it.unit_price),
-    desconto: it.discount > 0 ? roundMoney(it.discount) : undefined,
-    produto: { id: it.blingProductId as number },
-  }));
 
   const payload = {
     data: orderDate,
@@ -353,8 +371,8 @@ export async function ensureBlingPedidoForSalesOrder(
       salesOrderId
     ),
     observacoesInternas: `CFOP conferência: ${cfops.join(", ") || "—"}. Natureza ERP: ${blingNfeNaturezaOperacao(docType)}.`,
-    ...(headerDiscount > 0
-      ? { desconto: { valor: headerDiscount, unidade: "REAL" } }
+    ...(totalDiscount > 0
+      ? { desconto: { valor: totalDiscount, unidade: "REAL" as const } }
       : {}),
     itens,
     parcelas: nfeParcelas.map((p) => ({
