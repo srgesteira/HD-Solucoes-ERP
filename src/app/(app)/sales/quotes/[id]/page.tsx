@@ -852,8 +852,9 @@ export default function QuoteDetailPage() {
                 <CardHeader className="pb-4">
                   <CardTitle className="text-lg">Itens do orçamento</CardTitle>
                   <p className="text-sm text-slate-500 font-normal">
-                    Quantidade, preço, desconto e markup por linha. A ordem (#)
-                    é a mesma da impressão e do PDF.
+                    Quantidade, preço, desconto e markup por linha. Em Seq.
+                    digite a posição ou use as setas — é a ordem da impressão e
+                    do PDF.
                   </p>
                 </CardHeader>
                 <CardContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -169,6 +169,12 @@ export function QuoteItemsEditor({
   onProductCacheMerge,
   sourceQuoteId,
 }: Props) {
+  /** Valor a editar na Seq. (só aplica ao blur/Enter). */
+  const [seqDraft, setSeqDraft] = useState<{
+    key: string;
+    value: string;
+  } | null>(null);
+
   const productById = useMemo(() => {
     const map = new Map<string, QuoteLineProduct>();
     for (const p of Object.values(productCache)) map.set(p.id, p);
@@ -225,13 +231,29 @@ export function QuoteItemsEditor({
     onLinesChange(reindexQuoteLines(next));
   };
 
+  /** Move a linha para a posição 1-based indicada (ex.: digitar 3). */
+  const moveLineToPosition = (fromIndex: number, rawPosition: number) => {
+    if (!Number.isFinite(rawPosition)) return;
+    const toIndex = Math.min(
+      lines.length - 1,
+      Math.max(0, Math.trunc(rawPosition) - 1)
+    );
+    if (toIndex === fromIndex) return;
+    const next = [...lines];
+    const [row] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, row);
+    onLinesChange(reindexQuoteLines(next));
+  };
+
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-        <table className="w-full text-sm min-w-[1220px]">
+        <table className="w-full text-sm min-w-[1240px]">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
-              <th className="px-2 py-2 w-14">#</th>
+              <th className="px-2 py-2 w-[4.5rem]" title="Ordem na proposta">
+                Seq.
+              </th>
               <th className="px-2 py-2 min-w-[220px]">Produto</th>
               <th className="px-2 py-2 w-32">Utilização</th>
               <th className="px-2 py-2 w-20">Qtd.</th>
@@ -261,18 +283,16 @@ export function QuoteItemsEditor({
                   key={line.key}
                   className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                 >
-                  <td className="px-2 py-2 align-top">
-                    <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-xs font-medium tabular-nums text-slate-600">
-                        {index + 1}
-                      </span>
-                      <div className="flex flex-col">
+                  <td className="px-1.5 py-2 align-top">
+                    <div className="flex items-start gap-0.5">
+                      <div className="flex flex-col gap-0.5 pt-0.5">
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           className="h-6 w-6 p-0"
                           aria-label={`Mover item ${index + 1} para cima`}
+                          title="Subir"
                           disabled={index === 0}
                           onClick={() => moveLine(index, -1)}
                         >
@@ -280,16 +300,57 @@ export function QuoteItemsEditor({
                         </Button>
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           className="h-6 w-6 p-0"
                           aria-label={`Mover item ${index + 1} para baixo`}
+                          title="Descer"
                           disabled={index === lines.length - 1}
                           onClick={() => moveLine(index, 1)}
                         >
                           <ChevronDown className="h-3.5 w-3.5" />
                         </Button>
                       </div>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={lines.length}
+                        step={1}
+                        value={
+                          seqDraft?.key === line.key
+                            ? seqDraft.value
+                            : String(index + 1)
+                        }
+                        onFocus={() =>
+                          setSeqDraft({
+                            key: line.key,
+                            value: String(index + 1),
+                          })
+                        }
+                        onChange={(e) =>
+                          setSeqDraft({
+                            key: line.key,
+                            value: e.target.value,
+                          })
+                        }
+                        onBlur={() => {
+                          const raw =
+                            seqDraft?.key === line.key
+                              ? Number(seqDraft.value)
+                              : index + 1;
+                          setSeqDraft(null);
+                          if (!Number.isFinite(raw)) return;
+                          moveLineToPosition(index, raw);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          (e.target as HTMLInputElement).blur();
+                        }}
+                        aria-label={`Sequência do item (posição actual ${index + 1})`}
+                        title="Digite a posição e Enter (ou saia do campo)"
+                        className="h-8 w-11 px-1 text-center text-sm tabular-nums"
+                      />
                     </div>
                   </td>
                   <td className="px-2 py-2 align-top min-w-[220px]">
@@ -551,9 +612,9 @@ export function QuoteItemsEditor({
           </span>
         </p>
         <p className="text-xs text-slate-500">
-          Use as setas (#) para definir a sequência da proposta. Subtotal já
-          considera descontos por item. Use também o desconto do orçamento no
-          cartão Totais.
+          Na coluna Seq.: digite o número da posição ou use ↑/↓. A ordem fica
+          igual na impressão e no PDF após gravar. Subtotal já considera
+          descontos por item.
         </p>
       </div>
     </div>
