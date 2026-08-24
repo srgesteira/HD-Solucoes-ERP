@@ -13,6 +13,7 @@ import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
 import type { QuotePrintData } from "@/modules/vendas/lib/sales/quote-display";
 import type { Tables } from "@/modules/core/types/database";
 import { sortQuoteItemsByLineNumber } from "@/modules/vendas/lib/sales/quote-items-order";
+import { nextRevisionOnSend } from "@/modules/vendas/lib/sales/quote-revision";
 
 export const dynamic = "force-dynamic";
 
@@ -129,11 +130,24 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   if (result.sent) {
-    const status = (quote as { status?: string }).status;
+    const quoteMeta = quote as {
+      status?: string;
+      send_count?: number | null;
+      revision_number?: number | null;
+    };
+    const status = quoteMeta.status;
     if (status === "draft" || status === "revision") {
+      const next = nextRevisionOnSend({
+        sendCount: quoteMeta.send_count,
+        revisionNumber: quoteMeta.revision_number,
+      });
       await admin
         .from("quotes")
-        .update({ status: "sent" })
+        .update({
+          status: "sent",
+          send_count: next.send_count,
+          revision_number: next.revision_number,
+        })
         .eq("id", id)
         .eq("tenant_id", tenantId);
     }

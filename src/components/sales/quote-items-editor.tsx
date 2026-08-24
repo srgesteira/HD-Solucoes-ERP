@@ -116,9 +116,12 @@ function applyMarkupToLine(
 }
 
 /** Índice estável para SSR/hidratação (evita `crypto.randomUUID()`). */
+let quoteLineKeySeq = 0;
+
 export function newQuoteLine(index = 0): QuoteLineDraft {
+  quoteLineKeySeq += 1;
   return {
-    key: `line-${index}`,
+    key: `line-${quoteLineKeySeq}-${index}`,
     productId: "",
     quantity: 1,
     priceMode: "markup",
@@ -135,12 +138,40 @@ export function newQuoteLine(index = 0): QuoteLineDraft {
   };
 }
 
-/** Reatribui `key` sequencial após adicionar/remover linhas. */
+/**
+ * Garante keys estáveis. Não renumerar keys no reorder — senão o React
+ * remonta as linhas e a sequência “salta”.
+ */
 export function reindexQuoteLines(lines: QuoteLineDraft[]): QuoteLineDraft[] {
-  return lines.map((line, index) => ({
-    ...line,
-    key: `line-${index}`,
-  }));
+  return lines.map((line, index) => {
+    if (line.key && line.key.trim()) return line;
+    quoteLineKeySeq += 1;
+    return { ...line, key: `line-${quoteLineKeySeq}-${index}` };
+  });
+}
+
+/** Move item para posição 1-based; os restantes deslocam-se (10→5: antigo 5 vira 6…). */
+export function moveQuoteLineToPosition(
+  lines: QuoteLineDraft[],
+  fromIndex: number,
+  rawPosition: number
+): QuoteLineDraft[] {
+  if (!Number.isFinite(rawPosition) || lines.length === 0) return lines;
+  const toIndex = Math.min(
+    lines.length - 1,
+    Math.max(0, Math.trunc(rawPosition) - 1)
+  );
+  if (
+    fromIndex < 0 ||
+    fromIndex >= lines.length ||
+    toIndex === fromIndex
+  ) {
+    return lines;
+  }
+  const next = [...lines];
+  const [row] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, row);
+  return reindexQuoteLines(next);
 }
 
 function formatBRL(n: number): string {
@@ -160,6 +191,8 @@ type Props = {
   onProductCacheMerge: (products: Record<string, QuoteLineProduct>) => void;
   /** Orçamento em edição — liga produtos criados pelo comercial. */
   sourceQuoteId?: string | null;
+  /** Só em rascunho: permite alterar a sequência. */
+  allowReorder?: boolean;
 };
 
 export function QuoteItemsEditor({
@@ -168,6 +201,7 @@ export function QuoteItemsEditor({
   productCache,
   onProductCacheMerge,
   sourceQuoteId,
+  allowReorder = true,
 }: Props) {
   /** Valor a editar na Seq. (só aplica ao blur/Enter). */
   const [seqDraft, setSeqDraft] = useState<{
@@ -223,26 +257,16 @@ export function QuoteItemsEditor({
   };
 
   const moveLine = (index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= lines.length) return;
-    const next = [...lines];
-    const [row] = next.splice(index, 1);
-    next.splice(target, 0, row);
-    onLinesChange(reindexQuoteLines(next));
+    if (!allowReorder) return;
+    onLinesChange(
+      moveQuoteLineToPosition(lines, index, index + direction + 1)
+    );
   };
 
-  /** Move a linha para a posição 1-based indicada (ex.: digitar 3). */
+  /** Move a linha para a posição 1-based; os outros deslocam-se automaticamente. */
   const moveLineToPosition = (fromIndex: number, rawPosition: number) => {
-    if (!Number.isFinite(rawPosition)) return;
-    const toIndex = Math.min(
-      lines.length - 1,
-      Math.max(0, Math.trunc(rawPosition) - 1)
-    );
-    if (toIndex === fromIndex) return;
-    const next = [...lines];
-    const [row] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, row);
-    onLinesChange(reindexQuoteLines(next));
+    if (!allowReorder) return;
+    onLinesChange(moveQuoteLineToPosition(lines, fromIndex, rawPosition));
   };
 
   return (
@@ -284,74 +308,80 @@ export function QuoteItemsEditor({
                   className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                 >
                   <td className="px-1.5 py-2 align-top">
-                    <div className="flex items-start gap-0.5">
-                      <div className="flex flex-col gap-0.5 pt-0.5">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          aria-label={`Mover item ${index + 1} para cima`}
-                          title="Subir"
-                          disabled={index === 0}
-                          onClick={() => moveLine(index, -1)}
-                        >
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          aria-label={`Mover item ${index + 1} para baixo`}
-                          title="Descer"
-                          disabled={index === lines.length - 1}
-                          onClick={() => moveLine(index, 1)}
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={lines.length}
-                        step={1}
-                        value={
-                          seqDraft?.key === line.key
-                            ? seqDraft.value
-                            : String(index + 1)
-                        }
-                        onFocus={() =>
-                          setSeqDraft({
-                            key: line.key,
-                            value: String(index + 1),
-                          })
-                        }
-                        onChange={(e) =>
-                          setSeqDraft({
-                            key: line.key,
-                            value: e.target.value,
-                          })
-                        }
-                        onBlur={() => {
-                          const raw =
+                    {allowReorder ? (
+                      <div className="flex items-start gap-0.5">
+                        <div className="flex flex-col gap-0.5 pt-0.5">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            aria-label={`Mover item ${index + 1} para cima`}
+                            title="Subir"
+                            disabled={index === 0}
+                            onClick={() => moveLine(index, -1)}
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            aria-label={`Mover item ${index + 1} para baixo`}
+                            title="Descer"
+                            disabled={index === lines.length - 1}
+                            onClick={() => moveLine(index, 1)}
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={lines.length}
+                          step={1}
+                          value={
                             seqDraft?.key === line.key
-                              ? Number(seqDraft.value)
-                              : index + 1;
-                          setSeqDraft(null);
-                          if (!Number.isFinite(raw)) return;
-                          moveLineToPosition(index, raw);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter") return;
-                          e.preventDefault();
-                          (e.target as HTMLInputElement).blur();
-                        }}
-                        aria-label={`Sequência do item (posição actual ${index + 1})`}
-                        title="Digite a posição e Enter (ou saia do campo)"
-                        className="h-8 w-11 px-1 text-center text-sm tabular-nums"
-                      />
-                    </div>
+                              ? seqDraft.value
+                              : String(index + 1)
+                          }
+                          onFocus={() =>
+                            setSeqDraft({
+                              key: line.key,
+                              value: String(index + 1),
+                            })
+                          }
+                          onChange={(e) =>
+                            setSeqDraft({
+                              key: line.key,
+                              value: e.target.value,
+                            })
+                          }
+                          onBlur={() => {
+                            const raw =
+                              seqDraft?.key === line.key
+                                ? Number(seqDraft.value)
+                                : index + 1;
+                            setSeqDraft(null);
+                            if (!Number.isFinite(raw)) return;
+                            moveLineToPosition(index, raw);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            e.preventDefault();
+                            (e.target as HTMLInputElement).blur();
+                          }}
+                          aria-label={`Sequência do item (posição actual ${index + 1})`}
+                          title="Digite a posição e Enter — os outros itens deslocam-se"
+                          className="h-8 w-11 px-1 text-center text-sm tabular-nums"
+                        />
+                      </div>
+                    ) : (
+                      <span className="inline-flex h-8 w-11 items-center justify-center text-sm font-medium tabular-nums text-slate-700">
+                        {index + 1}
+                      </span>
+                    )}
                   </td>
                   <td className="px-2 py-2 align-top min-w-[220px]">
                     <div className="space-y-1.5">
@@ -612,9 +642,9 @@ export function QuoteItemsEditor({
           </span>
         </p>
         <p className="text-xs text-slate-500">
-          Na coluna Seq.: digite o número da posição ou use ↑/↓. A ordem fica
-          igual na impressão e no PDF após gravar. Subtotal já considera
-          descontos por item.
+          {allowReorder
+            ? "Na coluna Seq.: digite a posição (ex.: item 10 → 5 desloca o antigo 5 para 6, etc.) ou use ↑/↓. Fora de rascunho a sequência fica bloqueada. Subtotal já considera descontos por item."
+            : "Sequência bloqueada (orçamento já criado/enviado). Reabra como rascunho para alterar a ordem."}
         </p>
       </div>
     </div>

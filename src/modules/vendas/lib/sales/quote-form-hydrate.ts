@@ -82,7 +82,7 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
     }
 
     lines.push({
-      key: `line-${index}`,
+      key: `line-${item.id ?? `idx-${index}`}`,
       productId: pid,
       quantity: Number(item.quantity),
       priceMode: usesMarkup ? "markup" : "manual",

@@ -9,7 +9,10 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
 import { quoteStatusAllowsContentEdit } from "@/modules/vendas/lib/sales/quote-access";
-import { quoteStatusBumpsRevisionOnContentSave } from "@/modules/vendas/lib/sales/quote-revision";
+import {
+  nextRevisionOnSend,
+  quoteStatusReopensAsDraftOnContentSave,
+} from "@/modules/vendas/lib/sales/quote-revision";
 import { QUOTE_STATUSES, type QuoteUpdate } from "@/modules/core/types/sales.types";
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
 import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
@@ -124,7 +127,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existing } = await admin
     .from("quotes")
     .select(
-      "quote_date, validity_days, status, shipping_type, revision_number, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "quote_date, validity_days, status, shipping_type, revision_number, send_count, payment_installments, payment_days_to_first_due, payment_days_between_installments"
     )
     .eq("id", id)
     .eq("tenant_id", tenantId)
@@ -391,19 +394,21 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (!n) return apiError("Número do orçamento inválido", 400);
     updateData.quote_number = n;
   }
-  const willBumpRevision =
+  const willReopenAsDraft =
     (hasContentFields || resolvedItemLines !== null) &&
-    quoteStatusBumpsRevisionOnContentSave(existing.status);
+    quoteStatusReopensAsDraftOnContentSave(existing.status);
 
-  if (willBumpRevision) {
-    updateData.revision_number = Number(existing.revision_number ?? 0) + 1;
+  if (willReopenAsDraft && b.status === undefined) {
+    updateData.status = "draft";
+    updateData.revision_notes = null;
   }
 
   if (b.status !== undefined) {
     const st = String(b.status);
     if (!QUOTE_SET.has(st)) return apiError("Status inválido", 400);
 
-    if (!isAdmin && canSales && st !== "sent") {
+    // Vendas pode marcar enviado e reabrir como rascunho; resto só admin.
+    if (!isAdmin && canSales && st !== "sent" && st !== "draft") {
       return apiError(
         "Apenas administradores podem alterar para este estado",
         403
@@ -415,6 +420,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
         "Só é possível enviar orçamentos em rascunho ou em revisão",
         400
       );
+    }
+
+    if (st === "sent") {
+      const next = nextRevisionOnSend({
+        sendCount: (existing as { send_count?: number | null }).send_count,
+        revisionNumber: existing.revision_number,
+      });
+      updateData.send_count = next.send_count;
+      updateData.revision_number = next.revision_number;
     }
 
     if (st === "revision") {

@@ -100,6 +100,7 @@ type QuoteDetail = {
   id: string;
   quote_number: string;
   revision_number?: number | null;
+  send_count?: number | null;
   status: string;
   customer_id: string | null;
   quote_date: string;
@@ -335,9 +336,14 @@ export default function QuoteDetailPage() {
     canEditQuotes &&
     quoteStatusAllowsContentEdit(q!.status);
 
-  // Estados em que iniciar uma edição deve incrementar revisão (princípio §2.4).
-  const editingTriggersRevision =
-    Boolean(q) && (q!.status === "sent" || q!.status === "approved");
+  // Enviado/aprovado/revisão: editar reabre como rascunho (revisão só no reenvio).
+  const editingReopensAsDraft =
+    Boolean(q) &&
+    (q!.status === "sent" ||
+      q!.status === "approved" ||
+      q!.status === "revision");
+
+  const sequenceEditable = Boolean(q) && q!.status === "draft";
 
   useEffect(() => {
     setEditing(false);
@@ -368,9 +374,9 @@ export default function QuoteDetailPage() {
   }, [q, editing, canContentEdit, hydrated]);
 
   const handleApplyBdiPrices = (updatedLines: QuoteLineDraft[]) => {
-    if (editingTriggersRevision) {
+    if (editingReopensAsDraft) {
       const ok = window.confirm(
-        "Aplicar preços BDI criará uma nova revisão (rev seguinte). Continuar?"
+        "Aplicar preços BDI reabre o orçamento como rascunho. A revisão só avança quando reenviar. Continuar?"
       );
       if (!ok) return;
     }
@@ -451,10 +457,13 @@ export default function QuoteDetailPage() {
     onSuccess: (updated) => {
       const rev = Number(updated.revision_number ?? 0);
       const label = formatQuoteNumberWithRevision(updated.quote_number, rev);
+      const reopened = updated.status === "draft";
       toast.success(
-        rev > 0
-          ? `Orçamento actualizado (${label}).`
-          : "Orçamento actualizado."
+        reopened
+          ? `Orçamento guardado como rascunho${rev > 0 ? ` (${label})` : ""}. Revisão só avança ao reenviar.`
+          : rev > 0
+            ? `Orçamento actualizado (${label}).`
+            : "Orçamento actualizado."
       );
       setEditing(false);
       setHydrated(false);
@@ -576,25 +585,34 @@ export default function QuoteDetailPage() {
             <Button
               type="button"
               size="sm"
-              variant={editingTriggersRevision ? "outline" : "primary"}
+              variant={editingReopensAsDraft ? "outline" : "primary"}
               className={
-                editingTriggersRevision
+                editingReopensAsDraft
                   ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
                   : undefined
               }
               disabled={busy}
               onClick={() => {
-                if (editingTriggersRevision) {
+                if (editingReopensAsDraft) {
                   const ok = window.confirm(
-                    "Editar este orçamento criará uma nova revisão (rev seguinte). Continuar?"
+                    "Editar reabre este orçamento como rascunho. Pode alterar à vontade (incluindo a sequência). A revisão (rev01…) só avança quando reenviar. Continuar?"
                   );
                   if (!ok) return;
+                  statusMutation.mutate(
+                    { status: "draft" },
+                    {
+                      onSuccess: () => {
+                        setEditing(true);
+                      },
+                    }
+                  );
+                  return;
                 }
                 setEditing(true);
               }}
             >
               <Pencil className="h-4 w-4" />
-              {editingTriggersRevision ? "Editar (cria revisão)" : "Editar"}
+              {editingReopensAsDraft ? "Editar (reabre rascunho)" : "Editar"}
             </Button>
           ) : null}
           {canContentEdit && editing ? (
@@ -787,12 +805,17 @@ export default function QuoteDetailPage() {
             </div>
           ) : null}
 
-          {editing && canContentEdit && editingTriggersRevision && hydrated ? (
+          {editing &&
+          canContentEdit &&
+          hydrated &&
+          (editingReopensAsDraft ||
+            (st === "draft" &&
+              (Number(q.send_count ?? 0) > 0 ||
+                Number(q.revision_number ?? 0) > 0))) ? (
             <Card className="border-amber-300 bg-amber-50/80 dark:border-amber-800 dark:bg-amber-950/30">
               <CardContent className="py-3 text-sm text-amber-900 dark:text-amber-100">
-                <strong>Aviso:</strong> ao guardar, será criada uma nova
-                revisão deste orçamento (o número receberá o sufixo da próxima
-                revisão).
+                <strong>Rascunho:</strong> pode alterar à vontade (incluindo a
+                sequência). A revisão (rev01…) só avança quando reenviar.
               </CardContent>
             </Card>
           ) : null}
@@ -852,9 +875,9 @@ export default function QuoteDetailPage() {
                 <CardHeader className="pb-4">
                   <CardTitle className="text-lg">Itens do orçamento</CardTitle>
                   <p className="text-sm text-slate-500 font-normal">
-                    Quantidade, preço, desconto e markup por linha. Em Seq.
-                    digite a posição ou use as setas — é a ordem da impressão e
-                    do PDF.
+                    {sequenceEditable
+                      ? "Em Seq. digite a posição (ex.: 10→5 desloca os outros) ou use as setas. Ordem = impressão/PDF."
+                      : "Sequência bloqueada fora de rascunho. Reabra como rascunho para alterar a ordem."}
                   </p>
                 </CardHeader>
                 <CardContent>
@@ -866,6 +889,7 @@ export default function QuoteDetailPage() {
                       setProductCache((prev) => ({ ...prev, ...patch }))
                     }
                     sourceQuoteId={id}
+                    allowReorder={sequenceEditable}
                   />
                 </CardContent>
               </Card>

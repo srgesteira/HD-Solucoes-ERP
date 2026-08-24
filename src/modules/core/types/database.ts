@@ -3935,6 +3935,7 @@ export type Database = {
           quote_number: string
           revision_notes: string | null
           revision_number: number
+          send_count: number
           shipping_type: string
           show_product_descriptions: boolean
           status: string
@@ -3973,6 +3974,7 @@ export type Database = {
           quote_number: string
           revision_notes?: string | null
           revision_number?: number
+          send_count?: number
           shipping_type?: string
           show_product_descriptions?: boolean
           status?: string
@@ -4011,6 +4013,7 @@ export type Database = {
           quote_number?: string
           revision_notes?: string | null
           revision_number?: number
+          send_count?: number
           shipping_type?: string
           show_product_descriptions?: boolean
           status?: string
