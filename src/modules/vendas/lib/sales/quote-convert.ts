@@ -8,6 +8,7 @@ import {
 } from "@/modules/vendas/lib/sales/sales-flow";
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
 import { applyFiscalToSalesOrderItems } from "@/modules/fiscal/lib/fiscal-rules-service";
+import { sortQuoteItemsByLineNumber } from "@/modules/vendas/lib/sales/quote-items-order";
 
 export type ConvertQuoteOptions = {
   payment_installments?: number;
@@ -129,9 +130,16 @@ export async function convertQuoteToSalesOrder(
     };
   }
 
-  const rawItems =
-    quote.items as unknown as Array<Record<string, unknown>> | null;
-  if (!rawItems?.length) {
+  const rawItems = sortQuoteItemsByLineNumber(
+    (quote.items as unknown as Array<
+      Record<string, unknown> & {
+        line_number?: number | null;
+        created_at?: string | null;
+        id?: string | null;
+      }
+    > | null) ?? []
+  );
+  if (!rawItems.length) {
     return {
       ok: false,
       message: "Orçamento não possui itens para converter",

@@ -30,6 +30,7 @@ import {
   refreshQuoteHeaderTotals,
   resolveQuoteItemsFromPayload,
 } from "@/modules/vendas/lib/sales/quote-items-resolve";
+import { sortQuoteItemsByLineNumber } from "@/modules/vendas/lib/sales/quote-items-order";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,21 @@ const QUOTE_DETAIL_SELECT = `
   created_by_user:user_profiles!quotes_created_by_fkey(id, full_name, email)
 `.trim();
 
+function withSortedQuoteItems(quote: unknown): unknown {
+  if (!quote || typeof quote !== "object") return quote;
+  const q = quote as { items?: unknown };
+  if (!Array.isArray(q.items)) return quote;
+  return {
+    ...q,
+    items: sortQuoteItemsByLineNumber(
+      q.items as Array<{
+        line_number?: number | null;
+        created_at?: string | null;
+        id?: string | null;
+      }>
+    ),
+  };
+}
 export async function GET(_request: NextRequest, { params }: Params) {
   const { id } = await params;
 
@@ -78,7 +94,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
   if (!data) return apiError("Orçamento não encontrado", 404);
 
-  return apiOk({ data });
+  return apiOk({ data: withSortedQuoteItems(data) });
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
@@ -523,7 +539,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
   if (!full) return apiError("Orçamento não encontrado", 404);
 
-  return apiOk({ data: full });
+  return apiOk({ data: withSortedQuoteItems(full) });
 }
 
 /** Actualização parcial para edição inline no cronograma (ex.: validade). */

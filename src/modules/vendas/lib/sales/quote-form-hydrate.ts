@@ -29,6 +29,9 @@ export type QuoteApiItem = {
   item_notes?: string | null;
   show_product_description?: boolean | null;
   usage_type?: string | null;
+  line_number?: number | null;
+  created_at?: string | null;
+  id?: string | null;
   product?: ApiProduct | ApiProduct[];
 };
 
@@ -39,7 +42,20 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
   const lines: QuoteLineDraft[] = [];
   const cache: Record<string, QuoteLineProduct> = {};
 
-  apiItems.forEach((item, index) => {
+  const ordered = [...apiItems].sort((a, b) => {
+    const la = Number(a.line_number);
+    const lb = Number(b.line_number);
+    const aHas = Number.isFinite(la) && la > 0;
+    const bHas = Number.isFinite(lb) && lb > 0;
+    if (aHas && bHas && la !== lb) return la - lb;
+    if (aHas !== bHas) return aHas ? -1 : 1;
+    const ca = a.created_at ?? "";
+    const cb = b.created_at ?? "";
+    if (ca !== cb) return ca < cb ? -1 : 1;
+    return 0;
+  });
+
+  ordered.forEach((item, index) => {
     const pid = item.product_id;
     const prod = Array.isArray(item.product) ? item.product[0] : item.product;
     const cost = prod?.cost_price != null ? Number(prod.cost_price) : 0;

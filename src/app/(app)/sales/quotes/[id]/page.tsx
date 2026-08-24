@@ -852,7 +852,8 @@ export default function QuoteDetailPage() {
                 <CardHeader className="pb-4">
                   <CardTitle className="text-lg">Itens do orçamento</CardTitle>
                   <p className="text-sm text-slate-500 font-normal">
-                    Quantidade, preço, desconto e markup por linha.
+                    Quantidade, preço, desconto e markup por linha. A ordem (#)
+                    é a mesma da impressão e do PDF.
                   </p>
                 </CardHeader>
                 <CardContent>
@@ -1054,11 +1055,18 @@ export default function QuoteDetailPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg">Itens</CardTitle>
+                  <p className="text-sm text-slate-500 font-normal">
+                    Sequência da proposta (impressão e PDF). Para alterar a
+                    ordem, edite o orçamento e use as setas em cada linha.
+                  </p>
                 </CardHeader>
                 <CardContent className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
-                  <table className="w-full text-sm min-w-[720px]">
+                  <table className="w-full text-sm min-w-[760px]">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
+                        <th className="px-3 py-2 text-left font-medium w-12">
+                          #
+                        </th>
                         <th className="px-3 py-2 text-left font-medium">
                           Código
                         </th>
@@ -1081,11 +1089,16 @@ export default function QuoteDetailPage() {
                     </thead>
                     <tbody>
                       {Array.isArray(q.items) && q.items.length > 0 ? (
-                        q.items.map((line) => (
+                        q.items.map((line, index) => (
                           <tr
                             key={line.id}
                             className="border-b border-slate-100 dark:border-slate-800"
                           >
+                            <td className="px-3 py-2 tabular-nums text-slate-500">
+                              {Number(line.line_number) > 0
+                                ? Number(line.line_number)
+                                : index + 1}
+                            </td>
                             <td className="px-3 py-2 font-mono text-xs text-slate-700 dark:text-slate-300">
                               {quoteLineItemCode(
                                 line.product as QuotePrintItem["product"],
@@ -1133,7 +1146,7 @@ export default function QuoteDetailPage() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={6}
+                            colSpan={7}
                             className="px-3 py-6 text-center text-slate-500"
                           >
                             Sem itens registados neste orçamento.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { NumericInput } from "@/shared/ui/numeric-input";
@@ -216,12 +216,22 @@ export function QuoteItemsEditor({
     onLinesChange(reindexQuoteLines([...lines, newQuoteLine(lines.length)]));
   };
 
+  const moveLine = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= lines.length) return;
+    const next = [...lines];
+    const [row] = next.splice(index, 1);
+    next.splice(target, 0, row);
+    onLinesChange(reindexQuoteLines(next));
+  };
+
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-        <table className="w-full text-sm min-w-[1180px]">
+        <table className="w-full text-sm min-w-[1220px]">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
+              <th className="px-2 py-2 w-14">#</th>
               <th className="px-2 py-2 min-w-[220px]">Produto</th>
               <th className="px-2 py-2 w-32">Utilização</th>
               <th className="px-2 py-2 w-20">Qtd.</th>
@@ -232,7 +242,7 @@ export function QuoteItemsEditor({
               <th className="px-2 py-2 w-24">Preço un.</th>
               <th className="px-2 py-2 w-24">Desc. (R$)</th>
               <th className="px-2 py-2 w-24 text-right">Total linha</th>
-              <th className="px-2 py-2 w-10" />
+              <th className="px-2 py-2 w-20" />
             </tr>
           </thead>
           <tbody>
@@ -251,6 +261,37 @@ export function QuoteItemsEditor({
                   key={line.key}
                   className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                 >
+                  <td className="px-2 py-2 align-top">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="text-xs font-medium tabular-nums text-slate-600">
+                        {index + 1}
+                      </span>
+                      <div className="flex flex-col">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          aria-label={`Mover item ${index + 1} para cima`}
+                          disabled={index === 0}
+                          onClick={() => moveLine(index, -1)}
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          aria-label={`Mover item ${index + 1} para baixo`}
+                          disabled={index === lines.length - 1}
+                          onClick={() => moveLine(index, 1)}
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </td>
                   <td className="px-2 py-2 align-top min-w-[220px]">
                     <div className="space-y-1.5">
                       <ProductComboboxField
@@ -510,8 +551,9 @@ export function QuoteItemsEditor({
           </span>
         </p>
         <p className="text-xs text-slate-500">
-          Subtotal já considera descontos por item. Use também o desconto do
-          orçamento no cartão Totais.
+          Use as setas (#) para definir a sequência da proposta. Subtotal já
+          considera descontos por item. Use também o desconto do orçamento no
+          cartão Totais.
         </p>
       </div>
     </div>

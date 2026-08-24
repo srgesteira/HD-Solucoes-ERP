@@ -3781,6 +3781,7 @@ export type Database = {
           discount: number
           id: string
           item_notes: string | null
+          line_number: number
           markup_percent: number | null
           product_id: string | null
           quantity: number
@@ -3800,6 +3801,7 @@ export type Database = {
           discount?: number
           id?: string
           item_notes?: string | null
+          line_number?: number
           markup_percent?: number | null
           product_id?: string | null
           quantity?: number
@@ -3819,6 +3821,7 @@ export type Database = {
           discount?: number
           id?: string
           item_notes?: string | null
+          line_number?: number
           markup_percent?: number | null
           product_id?: string | null
           quantity?: number

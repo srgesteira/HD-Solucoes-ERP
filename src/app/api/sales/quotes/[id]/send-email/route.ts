@@ -12,6 +12,7 @@ import { sendQuoteEmail } from "@/modules/vendas/lib/sales/send-quote-email";
 import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
 import type { QuotePrintData } from "@/modules/vendas/lib/sales/quote-display";
 import type { Tables } from "@/modules/core/types/database";
+import { sortQuoteItemsByLineNumber } from "@/modules/vendas/lib/sales/quote-items-order";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,22 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
   if (!quote) return apiError("Orçamento não encontrado", 404);
 
+  const quoteRow = quote as unknown as Record<string, unknown> & {
+    items?: unknown;
+  };
+  const quoteSorted = {
+    ...quoteRow,
+    items: Array.isArray(quoteRow.items)
+      ? sortQuoteItemsByLineNumber(
+          quoteRow.items as Array<{
+            line_number?: number | null;
+            created_at?: string | null;
+            id?: string | null;
+          }>
+        )
+      : quoteRow.items,
+  };
+
   const { data: company } = await admin
     .from("company_settings")
     .select("*")
@@ -100,7 +117,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   let result;
   try {
     result = await sendQuoteEmail({
-      quote: quote as unknown as QuotePrintData,
+      quote: quoteSorted as unknown as QuotePrintData,
       company: company as Tables<"company_settings"> | null,
       toOverride: toOverride.length > 0 ? toOverride : undefined,
       customMessage,

@@ -397,7 +397,7 @@ export async function insertQuoteItemsFromLines(
   lines: SaleLineInput[]
 ): Promise<{ error?: string }> {
   if (!lines.length) return {};
-  const rows = lines.map((it) => ({
+  const rows = lines.map((it, idx) => ({
     tenant_id: tenantId,
     quote_id: quoteId,
     product_id: it.product_id,
@@ -411,6 +411,7 @@ export async function insertQuoteItemsFromLines(
     unit_price: it.unit_price,
     discount: Math.max(0, Number(it.discount ?? 0) || 0),
     markup_percent: it.markup_percent ?? null,
+    line_number: idx + 1,
   }));
   const { error } = await admin.from("quote_items").insert(rows);
   if (error) return { error: error.message };
