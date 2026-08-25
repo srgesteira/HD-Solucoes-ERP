@@ -12,6 +12,13 @@ export function addLocalCalendarDays(yyyyMmDd: string, dayCount: number): string
   return format(d, "yyyy-MM-dd");
 }
 
+/** Dia da semana em português (ex.: quinta-feira) a partir de `yyyy-MM-dd`. */
+export function weekdayLongPt(yyyyMmDd: string): string {
+  const iso = String(yyyyMmDd ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
+  return parseLocalDate(iso).toLocaleDateString("pt-BR", { weekday: "long" });
+}
+
 /** Hoje (AAAA-MM-DD) no fuso de São Paulo — data de emissão da NF-e. */
 export function todayIsoSaoPaulo(d = new Date()): string {
   return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
