@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
@@ -53,6 +54,24 @@ async function findSupplierByCode(
   );
 }
 
+async function findSupplierByDocument(
+  document: string
+): Promise<SupplierOption | null> {
+  const digits = onlyDigits(document);
+  if (!digits) return null;
+  const res = await fetch(
+    `/api/purchasing/suppliers?search=${encodeURIComponent(digits)}&limit=100`,
+    { credentials: "include" }
+  );
+  if (!res.ok) return null;
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: SupplierOption[];
+  };
+  return (
+    json.data?.find((s) => onlyDigits(s.document ?? "") === digits) ?? null
+  );
+}
+
 export function SupplierQuickCreateModal({
   open,
   onOpenChange,
@@ -61,14 +80,17 @@ export function SupplierQuickCreateModal({
   const [form, setForm] = useState<SupplierFormShape>(emptySupplierForm);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     setForm(emptySupplierForm());
     setError(null);
   }, [open]);
-
-  if (!open) return null;
 
   const setField = <K extends keyof SupplierFormShape>(
     field: K,
@@ -83,7 +105,9 @@ export function SupplierQuickCreateModal({
   };
 
   const applyLookup = (data: DocumentLookupResult) => {
-    setForm((f) => applyDocumentLookupToSupplierForm(f, data, { autoCode: true }));
+    setForm((f) =>
+      applyDocumentLookupToSupplierForm(f, data, { autoCode: true })
+    );
   };
 
   const addressLine = formatSupplierAddressLine(form);
@@ -94,8 +118,7 @@ export function SupplierQuickCreateModal({
     onOpenChange(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     const code = form.code.trim();
     const name = form.name.trim();
     if (!code || !name) {
@@ -122,6 +145,18 @@ export function SupplierQuickCreateModal({
     setBusy(true);
     setError(null);
     try {
+      // Se o CNPJ/CPF já existe, selecciona em vez de falhar.
+      if (docDigits.length === 11 || docDigits.length === 14) {
+        const byDoc = await findSupplierByDocument(docDigits);
+        if (byDoc) {
+          finishWithSupplier(
+            byDoc,
+            `Fornecedor «${byDoc.name}» já cadastrado — selecionado.`
+          );
+          return;
+        }
+      }
+
       const payload = buildSupplierPayload({
         ...form,
         document: form.document.trim()
@@ -141,7 +176,9 @@ export function SupplierQuickCreateModal({
       };
 
       if (res.status === 409) {
-        const existing = await findSupplierByCode(code);
+        const existing =
+          (await findSupplierByCode(code)) ??
+          (docDigits ? await findSupplierByDocument(docDigits) : null);
         if (existing) {
           finishWithSupplier(
             existing,
@@ -158,7 +195,8 @@ export function SupplierQuickCreateModal({
       if (!res.ok) {
         throw new Error(json.error ?? "Erro ao criar fornecedor");
       }
-      if (!json.data?.id) throw new Error("Resposta inválida ao criar fornecedor");
+      if (!json.data?.id)
+        throw new Error("Resposta inválida ao criar fornecedor");
 
       const created: SupplierOption = {
         id: json.data.id,
@@ -180,7 +218,11 @@ export function SupplierQuickCreateModal({
     }
   };
 
-  return (
+  if (!open || !mounted) return null;
+
+  // Portal para fora do <form> do pedido — formulário aninhado fazia o
+  // "Criar fornecedor" gravar o PC em vez de criar o fornecedor.
+  return createPortal(
     <div
       className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 p-4"
       role="presentation"
@@ -192,6 +234,12 @@ export function SupplierQuickCreateModal({
         aria-labelledby="supplier-quick-title"
         className="relative z-10 w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-xl p-5 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            handleClose();
+          }
+        }}
       >
         <h2
           id="supplier-quick-title"
@@ -199,7 +247,7 @@ export function SupplierQuickCreateModal({
         >
           Novo fornecedor
         </h2>
-        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+        <div className="space-y-4">
           <SupplierDocumentLookup
             document={form.document}
             onDocumentChange={(v) => setField("document", v)}
@@ -218,6 +266,12 @@ export function SupplierQuickCreateModal({
                 placeholder="Razão social"
                 required
                 disabled={busy}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleSubmit();
+                  }
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -231,6 +285,12 @@ export function SupplierQuickCreateModal({
                 placeholder="Gerado na busca ou manual"
                 required
                 disabled={busy}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleSubmit();
+                  }
+                }}
               />
             </div>
             {form.legal_name.trim() ? (
@@ -282,13 +342,18 @@ export function SupplierQuickCreateModal({
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={busy}>
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleSubmit()}
+            >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Criar fornecedor
             </Button>
           </div>
-        </form>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
