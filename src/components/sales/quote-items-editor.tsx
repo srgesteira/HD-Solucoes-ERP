@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { Textarea } from "@/shared/ui/textarea";
 import {
@@ -21,6 +22,8 @@ export type QuoteLineProduct = {
   code: string | null;
   technical_code: string | null;
   name: string;
+  /** Descrição cadastral do produto (visível no orçamento). */
+  description?: string | null;
   unit: string | null;
   cost_price: number;
   product_nature?: string | null;
@@ -61,12 +64,28 @@ export function productDisplayLabel(p: QuoteLineProduct): string {
   return `${sku} — ${p.name}`;
 }
 
+export function productCodeLabel(p: QuoteLineProduct | undefined): string {
+  if (!p) return "—";
+  return p.technical_code?.trim() || p.code?.trim() || "—";
+}
+
+export function productDescriptionLabel(
+  p: QuoteLineProduct | undefined
+): string {
+  if (!p) return "—";
+  // Na proposta, a descrição comercial é o nome do produto.
+  const name = p.name?.trim();
+  if (name) return name;
+  return p.description?.trim() || "—";
+}
+
 function hitToProduct(hit: ProductSearchHit): QuoteLineProduct {
   return {
     id: hit.id,
     code: hit.code,
     technical_code: hit.technical_code,
     name: hit.name,
+    description: hit.description ?? null,
     unit: hit.unit,
     cost_price: Number(hit.cost_price ?? 0),
     product_nature: hit.product_nature ?? null,
@@ -270,72 +289,60 @@ export function QuoteItemsEditor({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-        <table className="w-full text-sm min-w-[1240px]">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
-              <th className="px-2 py-2 w-[4.5rem]" title="Ordem na proposta">
-                Seq.
-              </th>
-              <th className="px-2 py-2 min-w-[220px]">Produto</th>
-              <th className="px-2 py-2 w-32">Utilização</th>
-              <th className="px-2 py-2 w-20">Qtd.</th>
-              <th className="px-2 py-2 w-16">Un.</th>
-              <th className="px-2 py-2 w-24">Custo</th>
-              <th className="px-2 py-2 w-28">Forma</th>
-              <th className="px-2 py-2 w-24">Markup %</th>
-              <th className="px-2 py-2 w-24">Preço un.</th>
-              <th className="px-2 py-2 w-24">Desc. (R$)</th>
-              <th className="px-2 py-2 w-24 text-right">Total linha</th>
-              <th className="px-2 py-2 w-20" />
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((line, index) => {
-              const prod = line.productId
-                ? productById.get(line.productId)
-                : undefined;
-              const lineGross = lineTotalPrice(line.unitPrice, line.quantity);
-              const lineTotal = lineNetTotalPrice(
-                line.unitPrice,
-                line.quantity,
-                line.discount
-              );
-              return (
-                <tr
-                  key={line.key}
-                  className="border-b border-slate-100 last:border-0 dark:border-slate-800"
-                >
-                  <td className="px-1.5 py-2 align-top">
-                    {allowReorder ? (
-                      <div className="flex items-start gap-0.5">
-                        <div className="flex flex-col gap-0.5 pt-0.5">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            aria-label={`Mover item ${index + 1} para cima`}
-                            title="Subir"
-                            disabled={index === 0}
-                            onClick={() => moveLine(index, -1)}
-                          >
-                            <ChevronUp className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            aria-label={`Mover item ${index + 1} para baixo`}
-                            title="Descer"
-                            disabled={index === lines.length - 1}
-                            onClick={() => moveLine(index, 1)}
-                          >
-                            <ChevronDown className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
+    <div className="space-y-4 w-full min-w-0">
+      <ul className="space-y-3 w-full min-w-0">
+        {lines.map((line, index) => {
+          const prod = line.productId
+            ? productById.get(line.productId)
+            : undefined;
+          const lineGross = lineTotalPrice(line.unitPrice, line.quantity);
+          const lineTotal = lineNetTotalPrice(
+            line.unitPrice,
+            line.quantity,
+            line.discount
+          );
+          const code = productCodeLabel(prod);
+          const description = productDescriptionLabel(prod);
+
+          return (
+            <li
+              key={line.key}
+              className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4 dark:border-slate-700 dark:bg-slate-950/40"
+            >
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="flex shrink-0 items-start gap-1">
+                  {allowReorder ? (
+                    <>
+                      <div className="flex flex-col gap-0.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          aria-label={`Mover item ${index + 1} para cima`}
+                          title="Subir"
+                          disabled={index === 0}
+                          onClick={() => moveLine(index, -1)}
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          aria-label={`Mover item ${index + 1} para baixo`}
+                          title="Descer"
+                          disabled={index === lines.length - 1}
+                          onClick={() => moveLine(index, 1)}
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <div className="space-y-0.5">
+                        <Label className="text-[10px] uppercase tracking-wide text-slate-500">
+                          Seq.
+                        </Label>
                         <Input
                           type="number"
                           min={1}
@@ -374,260 +381,312 @@ export function QuoteItemsEditor({
                           }}
                           aria-label={`Sequência do item (posição actual ${index + 1})`}
                           title="Digite a posição e Enter — os outros itens deslocam-se"
-                          className="h-8 w-11 px-1 text-center text-sm tabular-nums"
+                          className="h-8 w-12 px-1 text-center text-sm tabular-nums"
                         />
                       </div>
-                    ) : (
-                      <span className="inline-flex h-8 w-11 items-center justify-center text-sm font-medium tabular-nums text-slate-700">
+                    </>
+                  ) : (
+                    <div className="space-y-0.5">
+                      <Label className="text-[10px] uppercase tracking-wide text-slate-500">
+                        Seq.
+                      </Label>
+                      <span className="inline-flex h-8 w-12 items-center justify-center rounded-md border border-slate-200 text-sm font-medium tabular-nums dark:border-slate-700">
                         {index + 1}
                       </span>
-                    )}
-                  </td>
-                  <td className="px-2 py-2 align-top min-w-[220px]">
-                    <div className="space-y-1.5">
-                      <ProductComboboxField
-                        compact
-                        value={
-                          prod
-                            ? {
-                                id: prod.id,
-                                code: prod.code,
-                                technical_code: prod.technical_code,
-                                name: prod.name,
-                                cost_price: prod.cost_price,
-                                unit: prod.unit,
-                                product_nature: prod.product_nature ?? null,
-                                prefix: prod.prefix_code
-                                  ? { code: prod.prefix_code }
-                                  : null,
-                              }
-                            : null
-                        }
-                        onChange={(hit) => {
-                          if (!hit) {
-                            updateLineAt(index, {
-                              productId: "",
-                              usageType: "",
-                              costPrice: 0,
-                              unitPrice: 0,
-                              manualPrice: 0,
-                            });
-                            return;
-                          }
-                          const { line: next, product } = lineFromProduct(
-                            hit,
-                            lines[index]
-                          );
-                          onProductCacheMerge({ [product.id]: product });
-                          updateLineAt(index, next);
-                        }}
-                        productType="finished"
-                        catalogTitle="Pesquisar produto acabado"
-                        showNewProductButton
-                        commercialQuickCreate
-                        sourceQuoteId={sourceQuoteId}
-                        placeholder="Digite código ou descrição do acabado…"
-                      />
-                      <Textarea
-                        value={line.itemNotes}
-                        onChange={(e) =>
-                          updateLineAt(index, { itemNotes: e.target.value })
-                        }
-                        rows={2}
-                        placeholder="Obs. do item…"
-                        className="resize-y min-h-[48px] text-xs"
-                      />
-                      <Textarea
-                        value={line.clientNotes}
-                        onChange={(e) =>
-                          updateLineAt(index, { clientNotes: e.target.value })
-                        }
-                        rows={2}
-                        placeholder="Obs. para o cliente (impressão)…"
-                        className="resize-y min-h-[48px] text-xs"
-                      />
-                      {prod ? (
-                        <label
-                          htmlFor={`quote-show-desc-${index}`}
-                          className="flex items-start gap-2 cursor-pointer"
-                        >
-                          <input
-                            id={`quote-show-desc-${index}`}
-                            type="checkbox"
-                            className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
-                            checked={line.showProductDescription}
-                            onChange={(e) =>
-                              updateLineAt(index, {
-                                showProductDescription: e.target.checked,
-                              })
-                            }
-                          />
-                          <span className="text-[11px] leading-snug text-slate-600">
-                            Incluir descrição do produto na impressão
-                          </span>
-                        </label>
-                      ) : null}
                     </div>
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <select
-                      className={SELECT_CLASS}
-                      value={line.usageType}
-                      onChange={(e) =>
-                        updateLineAt(index, {
-                          usageType: isItemUsageType(e.target.value)
-                            ? e.target.value
-                            : "",
-                        })
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">
+                      Pesquisar produto
+                    </Label>
+                    <ProductComboboxField
+                      value={
+                        prod
+                          ? {
+                              id: prod.id,
+                              code: prod.code,
+                              technical_code: prod.technical_code,
+                              name: prod.name,
+                              description: prod.description ?? null,
+                              cost_price: prod.cost_price,
+                              unit: prod.unit,
+                              product_nature: prod.product_nature ?? null,
+                              prefix: prod.prefix_code
+                                ? { code: prod.prefix_code }
+                                : null,
+                            }
+                          : null
                       }
-                      disabled={!line.productId}
-                    >
-                      <option value="">—</option>
-                      {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <NumericInput
-                      value={Number.isFinite(line.quantity) ? line.quantity : 0}
-                      onChange={(quantity) =>
-                        updateLineAt(index, { quantity })
-                      }
-                      maxDecimals={4}
-                      className="h-8 text-sm"
-                      placeholder="0"
-                    />
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <Input
-                      value={line.unit}
-                      onChange={(e) =>
-                        updateLineAt(index, { unit: e.target.value })
-                      }
-                      className="h-8 text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-2 align-top text-right tabular-nums text-slate-700 text-xs">
-                    {prod ? formatBRL(line.costPrice) : "—"}
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <select
-                      className={SELECT_CLASS}
-                      value={line.priceMode}
-                      onChange={(e) => {
-                        const mode = e.target.value as QuoteLinePriceMode;
-                        if (mode === "markup") {
-                          updateLineAt(index, { priceMode: "markup" });
-                        } else {
-                          const manual =
-                            line.manualPrice > 0
-                              ? line.manualPrice
-                              : line.unitPrice > 0
-                                ? line.unitPrice
-                                : unitPriceFromCostAndMarkup(
-                                    line.costPrice,
-                                    line.markupPercent
-                                  );
+                      onChange={(hit) => {
+                        if (!hit) {
                           updateLineAt(index, {
-                            priceMode: "manual",
-                            manualPrice: manual,
-                            unitPrice: manual,
+                            productId: "",
+                            usageType: "",
+                            costPrice: 0,
+                            unitPrice: 0,
+                            manualPrice: 0,
                           });
+                          return;
                         }
-                      }}
-                      disabled={!line.productId}
-                    >
-                      <option value="markup">Markup</option>
-                      <option value="manual">Preço fixo</option>
-                    </select>
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    {line.priceMode === "markup" ? (
-                      <NumericInput
-                        value={line.markupPercent}
-                        onChange={(markup) =>
-                          updateLineAt(index, { markupPercent: markup })
-                        }
-                        maxDecimals={2}
-                        disabled={!line.productId}
-                        className="h-8 text-sm"
-                      />
-                    ) : (
-                      <span className="inline-flex h-8 items-center text-xs text-slate-400">
-                        —
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    {line.priceMode === "manual" ? (
-                      <NumericInput
-                        value={
-                          Number.isFinite(line.manualPrice)
-                            ? line.manualPrice
-                            : 0
-                        }
-                        onChange={(manualPrice) =>
-                          updateLineAt(index, { manualPrice })
-                        }
-                        maxDecimals={2}
-                        disabled={!line.productId}
-                        className="h-8 text-sm"
-                      />
-                    ) : (
-                      <span className="inline-flex h-8 w-full items-center justify-end text-xs tabular-nums text-slate-700">
-                        {formatBRL(line.unitPrice)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <NumericInput
-                      value={Number.isFinite(line.discount) ? line.discount : 0}
-                      onChange={(discount) => {
-                        const next = Math.max(
-                          0,
-                          Math.min(Number(discount) || 0, lineGross)
+                        const { line: next, product } = lineFromProduct(
+                          hit,
+                          lines[index]
                         );
-                        updateLineAt(index, { discount: next });
+                        onProductCacheMerge({ [product.id]: product });
+                        updateLineAt(index, next);
                       }}
+                      productType="finished"
+                      catalogTitle="Pesquisar produto acabado"
+                      showNewProductButton
+                      commercialQuickCreate
+                      sourceQuoteId={sourceQuoteId}
+                      placeholder="Digite código ou descrição do acabado…"
+                    />
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs text-slate-600">Código</Label>
+                      <Input
+                        readOnly
+                        value={prod ? code : ""}
+                        placeholder="—"
+                        className="h-9 bg-slate-50 font-mono text-sm dark:bg-slate-900/60"
+                        title={code}
+                      />
+                    </div>
+                    <div className="space-y-1 min-w-0 sm:col-span-1">
+                      <Label className="text-xs text-slate-600">
+                        Descrição
+                      </Label>
+                      <Input
+                        readOnly
+                        value={prod ? description : ""}
+                        placeholder="—"
+                        className="h-9 bg-slate-50 text-sm dark:bg-slate-900/60"
+                        title={description}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-red-600 hover:text-red-700"
+                  aria-label={`Remover item ${index + 1}`}
+                  onClick={() =>
+                    onLinesChange(
+                      lines.length <= 1
+                        ? lines
+                        : reindexQuoteLines(
+                            lines.filter((_, i) => i !== index)
+                          )
+                    )
+                  }
+                  disabled={lines.length <= 1}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-9">
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Utilização</Label>
+                  <select
+                    className={SELECT_CLASS}
+                    value={line.usageType}
+                    onChange={(e) =>
+                      updateLineAt(index, {
+                        usageType: isItemUsageType(e.target.value)
+                          ? e.target.value
+                          : "",
+                      })
+                    }
+                    disabled={!line.productId}
+                  >
+                    <option value="">—</option>
+                    {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Qtd.</Label>
+                  <NumericInput
+                    value={Number.isFinite(line.quantity) ? line.quantity : 0}
+                    onChange={(quantity) =>
+                      updateLineAt(index, { quantity })
+                    }
+                    maxDecimals={4}
+                    className="h-8 text-sm"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Un.</Label>
+                  <Input
+                    value={line.unit}
+                    onChange={(e) =>
+                      updateLineAt(index, { unit: e.target.value })
+                    }
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Custo</Label>
+                  <div className="flex h-8 items-center text-sm tabular-nums text-slate-700">
+                    {prod ? formatBRL(line.costPrice) : "—"}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Forma</Label>
+                  <select
+                    className={SELECT_CLASS}
+                    value={line.priceMode}
+                    onChange={(e) => {
+                      const mode = e.target.value as QuoteLinePriceMode;
+                      if (mode === "markup") {
+                        updateLineAt(index, { priceMode: "markup" });
+                      } else {
+                        const manual =
+                          line.manualPrice > 0
+                            ? line.manualPrice
+                            : line.unitPrice > 0
+                              ? line.unitPrice
+                              : unitPriceFromCostAndMarkup(
+                                  line.costPrice,
+                                  line.markupPercent
+                                );
+                        updateLineAt(index, {
+                          priceMode: "manual",
+                          manualPrice: manual,
+                          unitPrice: manual,
+                        });
+                      }
+                    }}
+                    disabled={!line.productId}
+                  >
+                    <option value="markup">Markup</option>
+                    <option value="manual">Preço fixo</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Markup %</Label>
+                  {line.priceMode === "markup" ? (
+                    <NumericInput
+                      value={line.markupPercent}
+                      onChange={(markup) =>
+                        updateLineAt(index, { markupPercent: markup })
+                      }
                       maxDecimals={2}
                       disabled={!line.productId}
                       className="h-8 text-sm"
-                      title="Desconto da linha em R$"
                     />
-                  </td>
-                  <td className="px-2 py-2 align-top text-right tabular-nums font-medium text-slate-900 text-xs">
-                    {formatBRL(lineTotal)}
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700"
-                      aria-label={`Remover item ${index + 1}`}
-                      onClick={() =>
-                        onLinesChange(
-                          lines.length <= 1
-                            ? lines
-                            : reindexQuoteLines(
-                                lines.filter((_, i) => i !== index)
-                              )
-                        )
+                  ) : (
+                    <span className="inline-flex h-8 items-center text-xs text-slate-400">
+                      —
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Preço un.</Label>
+                  {line.priceMode === "manual" ? (
+                    <NumericInput
+                      value={
+                        Number.isFinite(line.manualPrice)
+                          ? line.manualPrice
+                          : 0
                       }
-                      disabled={lines.length <= 1}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                      onChange={(manualPrice) =>
+                        updateLineAt(index, { manualPrice })
+                      }
+                      maxDecimals={2}
+                      disabled={!line.productId}
+                      className="h-8 text-sm"
+                    />
+                  ) : (
+                    <span className="inline-flex h-8 items-center text-sm tabular-nums text-slate-700">
+                      {formatBRL(line.unitPrice)}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Desc. (R$)</Label>
+                  <NumericInput
+                    value={Number.isFinite(line.discount) ? line.discount : 0}
+                    onChange={(discount) => {
+                      const next = Math.max(
+                        0,
+                        Math.min(Number(discount) || 0, lineGross)
+                      );
+                      updateLineAt(index, { discount: next });
+                    }}
+                    maxDecimals={2}
+                    disabled={!line.productId}
+                    className="h-8 text-sm"
+                    title="Desconto da linha em R$"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Total linha</Label>
+                  <div className="flex h-8 items-center text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                    {formatBRL(lineTotal)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <Textarea
+                  value={line.itemNotes}
+                  onChange={(e) =>
+                    updateLineAt(index, { itemNotes: e.target.value })
+                  }
+                  rows={2}
+                  placeholder="Obs. do item…"
+                  className="resize-y min-h-[48px] text-xs"
+                />
+                <Textarea
+                  value={line.clientNotes}
+                  onChange={(e) =>
+                    updateLineAt(index, { clientNotes: e.target.value })
+                  }
+                  rows={2}
+                  placeholder="Obs. para o cliente (impressão)…"
+                  className="resize-y min-h-[48px] text-xs"
+                />
+              </div>
+              {prod ? (
+                <label
+                  htmlFor={`quote-show-desc-${index}`}
+                  className="mt-2 flex items-start gap-2 cursor-pointer"
+                >
+                  <input
+                    id={`quote-show-desc-${index}`}
+                    type="checkbox"
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
+                    checked={line.showProductDescription}
+                    onChange={(e) =>
+                      updateLineAt(index, {
+                        showProductDescription: e.target.checked,
+                      })
+                    }
+                  />
+                  <span className="text-[11px] leading-snug text-slate-600">
+                    Incluir descrição do produto na impressão
+                  </span>
+                </label>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
 
       <Button type="button" variant="outline" size="sm" onClick={addEmptyLine}>
         <Plus className="h-4 w-4" />
@@ -643,7 +702,7 @@ export function QuoteItemsEditor({
         </p>
         <p className="text-xs text-slate-500">
           {allowReorder
-            ? "Na coluna Seq.: digite a posição (ex.: item 10 → 5 desloca o antigo 5 para 6, etc.) ou use ↑/↓. Fora de rascunho a sequência fica bloqueada. Subtotal já considera descontos por item."
+            ? "Em Seq.: digite a posição (ex.: item 10 → 5 desloca o antigo 5 para 6) ou use ↑/↓. Fora de rascunho a sequência fica bloqueada."
             : "Sequência bloqueada (orçamento já criado/enviado). Reabra como rascunho para alterar a ordem."}
         </p>
       </div>

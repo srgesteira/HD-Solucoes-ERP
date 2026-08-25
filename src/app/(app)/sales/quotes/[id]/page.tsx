@@ -871,16 +871,16 @@ export default function QuoteDetailPage() {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="min-w-0 overflow-hidden">
                 <CardHeader className="pb-4">
                   <CardTitle className="text-lg">Itens do orçamento</CardTitle>
                   <p className="text-sm text-slate-500 font-normal">
                     {sequenceEditable
-                      ? "Em Seq. digite a posição (ex.: 10→5 desloca os outros) ou use as setas. Ordem = impressão/PDF."
+                      ? "Código e descrição ficam visíveis por item. Em Seq. digite a posição ou use as setas."
                       : "Sequência bloqueada fora de rascunho. Reabra como rascunho para alterar a ordem."}
                   </p>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="min-w-0">
                   <QuoteItemsEditor
                     lines={lines}
                     onLinesChange={setLines}
@@ -1085,101 +1085,86 @@ export default function QuoteDetailPage() {
                     ordem, edite o orçamento e use as setas em cada linha.
                   </p>
                 </CardHeader>
-                <CardContent className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
-                  <table className="w-full text-sm min-w-[760px]">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
-                        <th className="px-3 py-2 text-left font-medium w-12">
-                          #
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium">
-                          Código
-                        </th>
-                        <th className="px-3 py-2 text-left font-medium">
-                          Produto
-                        </th>
-                        <th className="px-3 py-2 text-right font-medium">
-                          Quantidade
-                        </th>
-                        <th className="px-3 py-2 text-right font-medium">
-                          Preço unitário
-                        </th>
-                        <th className="px-3 py-2 text-right font-medium">
-                          Desc.
-                        </th>
-                        <th className="px-3 py-2 text-right font-medium">
-                          Total
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Array.isArray(q.items) && q.items.length > 0 ? (
-                        q.items.map((line, index) => (
-                          <tr
-                            key={line.id}
-                            className="border-b border-slate-100 dark:border-slate-800"
-                          >
-                            <td className="px-3 py-2 tabular-nums text-slate-500">
-                              {Number(line.line_number) > 0
-                                ? Number(line.line_number)
-                                : index + 1}
-                            </td>
-                            <td className="px-3 py-2 font-mono text-xs text-slate-700 dark:text-slate-300">
-                              {quoteLineItemCode(
-                                line.product as QuotePrintItem["product"],
-                                line.description
-                              )}
-                            </td>
-                            <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
-                              {quoteLineItemName(
-                                line.product as QuotePrintItem["product"],
-                                line.description
-                              )}
-                              {line.client_notes?.trim() ? (
-                                <p className="text-xs text-slate-500 mt-1 font-normal whitespace-pre-wrap">
-                                  Obs. cliente: {line.client_notes.trim()}
-                                </p>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                              {Number(line.quantity)}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                              <span className="font-medium">
+                <CardContent className="min-w-0 space-y-2">
+                  {Array.isArray(q.items) && q.items.length > 0 ? (
+                    q.items.map((line, index) => {
+                      const code = quoteLineItemCode(
+                        line.product as QuotePrintItem["product"],
+                        line.description
+                      );
+                      const name = quoteLineItemName(
+                        line.product as QuotePrintItem["product"],
+                        line.description
+                      );
+                      const seq =
+                        Number(line.line_number) > 0
+                          ? Number(line.line_number)
+                          : index + 1;
+                      return (
+                        <div
+                          key={line.id}
+                          className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"
+                        >
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <span className="text-xs font-semibold tabular-nums text-slate-500">
+                              #{seq}
+                            </span>
+                            <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
+                              {code}
+                            </span>
+                            <span className="min-w-0 flex-1 font-medium text-slate-900 dark:text-slate-100">
+                              {name}
+                            </span>
+                            <span className="tabular-nums text-sm font-semibold">
+                              {fmtBRL(Number(line.total_price))}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+                            <span>
+                              Qtd.{" "}
+                              <span className="tabular-nums font-medium text-slate-900 dark:text-slate-100">
+                                {Number(line.quantity)}
+                              </span>
+                            </span>
+                            <span>
+                              Preço un.{" "}
+                              <span className="tabular-nums font-medium text-slate-900 dark:text-slate-100">
                                 {fmtBRL(Number(line.unit_price))}
                               </span>
                               {line.markup_percent != null ? (
-                                <span className="block text-xs text-slate-500 font-normal">
+                                <span className="text-xs text-slate-500">
+                                  {" "}
                                   ({Number(line.markup_percent)}% markup)
                                 </span>
                               ) : (
-                                <span className="block text-xs text-slate-500 font-normal">
+                                <span className="text-xs text-slate-500">
+                                  {" "}
                                   (preço manual)
                                 </span>
                               )}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-slate-600">
-                              {Number(line.discount ?? 0) > 0
-                                ? fmtBRL(Number(line.discount))
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums font-medium">
-                              {fmtBRL(Number(line.total_price))}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={7}
-                            className="px-3 py-6 text-center text-slate-500"
-                          >
-                            Sem itens registados neste orçamento.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                            </span>
+                            {Number(line.discount ?? 0) > 0 ? (
+                              <span>
+                                Desc.{" "}
+                                <span className="tabular-nums">
+                                  {fmtBRL(Number(line.discount))}
+                                </span>
+                              </span>
+                            ) : null}
+                          </div>
+                          {line.client_notes?.trim() ? (
+                            <p className="mt-1 text-xs text-slate-500 whitespace-pre-wrap">
+                              Obs. cliente: {line.client_notes.trim()}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="py-6 text-center text-sm text-slate-500">
+                      Sem itens registados neste orçamento.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
 

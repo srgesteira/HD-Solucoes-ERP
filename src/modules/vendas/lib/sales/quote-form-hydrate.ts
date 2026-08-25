@@ -10,6 +10,7 @@ import { isItemUsageType } from "@/modules/fiscal/lib/item-usage-type";
 type ApiProduct = {
   id: string;
   name?: string | null;
+  description?: string | null;
   cost_price?: number | null;
   unit?: string | null;
   technical_code?: string | null;
@@ -72,6 +73,7 @@ export function itemsToLinesAndCache(apiItems: QuoteApiItem[]): {
       cache[pid] = {
         id: prod.id,
         name: prod.name ?? "—",
+        description: prod.description ?? null,
         cost_price: cost,
         unit: prod.unit ?? null,
         technical_code: prod.technical_code ?? null,
