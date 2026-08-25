@@ -466,9 +466,10 @@ export function PurchaseOrderItemsEditor({
                           onChange={(unitPrice) =>
                             updateLineAt(index, { unitPrice }, "both")
                           }
-                          maxDecimals={2}
+                          maxDecimals={3}
                           disabled={disabled}
                           className="h-8 text-sm"
+                          title="Preço unitário (até 3 casas — milheiro)"
                         />
                       </td>
                       <td className="px-2 py-2 align-top">
