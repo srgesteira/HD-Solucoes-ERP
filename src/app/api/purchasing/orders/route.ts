@@ -22,6 +22,7 @@ import {
 } from "@/shared/contracts/sales-order.schema";
 import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
 import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
+import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
 
 export const dynamic = "force-dynamic";
 
@@ -385,5 +386,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return apiOk({ data: detail ?? { id: orderId } }, 201);
+  return apiOk(
+    { data: sortOrderDetailItems(detail ?? { id: orderId }) },
+    201
+  );
+}
+
+function sortOrderDetailItems<T>(detail: T): T {
+  if (!detail || typeof detail !== "object") return detail;
+  const row = detail as Record<string, unknown>;
+  const items = row.items;
+  if (Array.isArray(items)) {
+    row.items = sortPurchaseOrderItemsByLineNumber(
+      items as Parameters<typeof sortPurchaseOrderItemsByLineNumber>[0]
+    );
+  }
+  return detail;
 }

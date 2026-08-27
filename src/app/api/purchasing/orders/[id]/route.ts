@@ -29,6 +29,7 @@ import {
   ensurePayablesSyncedForPurchaseOrder,
   purchaseOrderRowToPayablesInput,
 } from "@/modules/compras/lib/purchasing/purchase-payables";
+import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,18 @@ const ORDER_DETAIL_SELECT =
   requested_by_user:user_profiles!purchase_orders_requested_by_fkey(*),
   approved_by_user:user_profiles!purchase_orders_approved_by_fkey(*)
 `.trim();
+
+function sortOrderDetailItems<T>(detail: T): T {
+  if (!detail || typeof detail !== "object") return detail;
+  const row = detail as Record<string, unknown>;
+  const items = row.items;
+  if (Array.isArray(items)) {
+    row.items = sortPurchaseOrderItemsByLineNumber(
+      items as Parameters<typeof sortPurchaseOrderItemsByLineNumber>[0]
+    );
+  }
+  return detail;
+}
 
 const PO_STATUSES = new Set([
   "draft",
@@ -88,7 +101,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
   if (!data) return apiError("Pedido não encontrado", 404);
 
-  return apiOk({ data });
+  const row = data as unknown as Record<string, unknown>;
+  sortOrderDetailItems(row);
+
+  return apiOk({ data: row });
 }
 
 /** Atualização rápida do prazo de entrega (cronograma de compras). */
@@ -587,7 +603,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         .eq("tenant_id", tenantId)
         .maybeSingle();
       return apiOk({
-        data: detail ?? data,
+        data: sortOrderDetailItems(detail ?? data),
         receive,
         payables: {
           effectivated: true,
@@ -620,7 +636,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 
   return apiOk({
-    data: detail ?? data,
+    data: sortOrderDetailItems(detail ?? data),
     payables: { ...payablesResult, reconcile: payablesReconcile },
   });
 }

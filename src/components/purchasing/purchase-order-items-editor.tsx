@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { Textarea } from "@/shared/ui/textarea";
 import { ProductComboboxField } from "@/components/products/product-combobox-field";
@@ -83,6 +84,20 @@ export function productCode(p: PurchaseLineProduct | undefined): string {
   return p.technical_code?.trim() || p.code?.trim() || "—";
 }
 
+export function productDescriptionLabel(
+  p: PurchaseLineProduct | undefined
+): string {
+  if (!p) return "—";
+  const name = p.name?.trim();
+  if (name) return name;
+  return p.description?.trim() || "—";
+}
+
+const SELECT_CLASS =
+  "h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs dark:bg-slate-950 dark:border-slate-600";
+
+let purchaseLineKeySeq = 0;
+
 function hitToProduct(hit: ProductSearchHit): PurchaseLineProduct {
   return {
     id: hit.id,
@@ -123,8 +138,9 @@ function lineFromProduct(
 }
 
 export function newPurchaseLine(index = 0): PurchaseOrderLineDraft {
+  purchaseLineKeySeq += 1;
   return {
-    key: `line-${index}`,
+    key: `line-${purchaseLineKeySeq}-${index}`,
     productId: "",
     description: "",
     itemNotes: "",
@@ -142,10 +158,39 @@ export function newPurchaseLine(index = 0): PurchaseOrderLineDraft {
   };
 }
 
+/** Garante keys estáveis — não renumerar no reorder. */
 export function reindexPurchaseLines(
   lines: PurchaseOrderLineDraft[]
 ): PurchaseOrderLineDraft[] {
-  return lines.map((line, index) => ({ ...line, key: `line-${index}` }));
+  return lines.map((line, index) => {
+    if (line.key && line.key.trim()) return line;
+    purchaseLineKeySeq += 1;
+    return { ...line, key: `line-${purchaseLineKeySeq}-${index}` };
+  });
+}
+
+/** Move item para posição 1-based; os restantes deslocam-se. */
+export function movePurchaseLineToPosition(
+  lines: PurchaseOrderLineDraft[],
+  fromIndex: number,
+  rawPosition: number
+): PurchaseOrderLineDraft[] {
+  if (!Number.isFinite(rawPosition) || lines.length === 0) return lines;
+  const toIndex = Math.min(
+    lines.length - 1,
+    Math.max(0, Math.trunc(rawPosition) - 1)
+  );
+  if (
+    fromIndex < 0 ||
+    fromIndex >= lines.length ||
+    toIndex === fromIndex
+  ) {
+    return lines;
+  }
+  const next = [...lines];
+  const [row] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, row);
+  return reindexPurchaseLines(next);
 }
 
 function withRecalcTaxes(
@@ -205,6 +250,8 @@ type Props = {
    * `quote` — solicitação de orçamento (sem valores).
    */
   variant?: "order" | "quote";
+  /** Só em rascunho: permite alterar a sequência. */
+  allowReorder?: boolean;
 };
 
 export function PurchaseOrderItemsEditor({
@@ -214,8 +261,14 @@ export function PurchaseOrderItemsEditor({
   onProductCacheMerge,
   disabled = false,
   variant = "order",
+  allowReorder = false,
 }: Props) {
   const isQuote = variant === "quote";
+
+  const [seqDraft, setSeqDraft] = useState<{
+    key: string;
+    value: string;
+  } | null>(null);
 
   const productById = useMemo(() => {
     const map = new Map<string, PurchaseLineProduct>();
@@ -266,311 +319,458 @@ export function PurchaseOrderItemsEditor({
     );
   };
 
+  const moveLine = (index: number, direction: -1 | 1) => {
+    if (!allowReorder || disabled) return;
+    onLinesChange(
+      movePurchaseLineToPosition(lines, index, index + direction + 1)
+    );
+  };
+
+  const moveLineToPosition = (fromIndex: number, rawPosition: number) => {
+    if (!allowReorder || disabled) return;
+    onLinesChange(movePurchaseLineToPosition(lines, fromIndex, rawPosition));
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
-        <table
-          className={
-            isQuote ? "w-full text-sm min-w-[720px]" : "w-full text-sm min-w-[1180px]"
-          }
-        >
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/50">
-              <th className="px-2 py-2 min-w-[220px]">Produto</th>
-              <th className="px-2 py-2 w-32">Utilização</th>
-              <th className="px-2 py-2 w-20">Qtd.</th>
-              <th className="px-2 py-2 w-16">Un.</th>
-              {!isQuote ? (
-                <>
-                  <th className="px-2 py-2 w-24">Preço un.</th>
-                  <th className="px-2 py-2 w-24">Desc. (R$)</th>
-                  <th className="px-2 py-2 w-20">% ICMS</th>
-                  <th className="px-2 py-2 w-24">ICMS (R$)</th>
-                  <th className="px-2 py-2 w-20">% IPI</th>
-                  <th className="px-2 py-2 w-24">IPI (R$)</th>
-                  <th className="px-2 py-2 w-28">Base cálculo</th>
-                  <th className="px-2 py-2 w-24 text-right">Total linha</th>
-                </>
-              ) : null}
-              <th className="px-2 py-2 w-10" />
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((line, index) => {
-              const prod = line.productId
-                ? productById.get(line.productId)
-                : undefined;
-              const lineSub = lineNetSubtotal(
-                line.quantity,
-                line.unitPrice,
-                line.discount
-              );
-              const lineTotal = lineDisplayTotal(
-                line.quantity,
-                line.unitPrice,
-                line.ipiValue,
-                line.discount
-              );
-              const unitLocked = Boolean(line.productId);
-              return (
-                <tr
-                  key={line.key}
-                  className="border-b border-slate-100 last:border-0 dark:border-slate-800"
-                >
-                  <td className="px-2 py-2 align-top min-w-[220px]">
-                    <div className="space-y-1.5">
-                      <ProductComboboxField
-                        compact
-                        value={
-                          prod
-                            ? {
-                                id: prod.id,
-                                code: prod.code,
-                                technical_code: prod.technical_code,
-                                name: prod.name,
-                                description: prod.description ?? null,
-                                cost_price: 0,
-                                unit: prod.unit,
-                                product_nature: prod.product_nature ?? null,
-                                prefix: prod.prefix_code
-                                  ? { code: prod.prefix_code }
-                                  : null,
-                              }
-                            : null
-                        }
-                        onChange={(hit) => {
-                          if (!hit) {
-                            updateLineAt(index, {
-                              productId: "",
-                              description: "",
-                              usageType: "",
-                            });
-                            return;
-                          }
-                          const { line: next, product } = lineFromProduct(
-                            hit,
-                            lines[index]
-                          );
-                          onProductCacheMerge({ [product.id]: product });
-                          updateLineAt(index, next);
-                        }}
-                        productType="all"
-                        disabled={disabled}
-                        catalogTitle="Pesquisar produto"
-                      />
-                      <Input
-                        value={line.description}
-                        onChange={(e) =>
-                          updateLineAt(index, { description: e.target.value })
-                        }
-                        disabled={disabled}
-                        className="h-8 text-sm"
-                        placeholder="Nome do item…"
-                      />
-                      <Textarea
-                        value={line.itemNotes}
-                        onChange={(e) =>
-                          updateLineAt(index, { itemNotes: e.target.value })
-                        }
-                        disabled={disabled}
-                        rows={2}
-                        placeholder="Obs. do item…"
-                        className="resize-y min-h-[48px] text-xs"
-                        title="Texto impresso no pedido de compra sob o produto"
-                      />
-                      {isQuote && prod ? (
-                        <label
-                          htmlFor={`poi-show-desc-${index}`}
-                          className="flex items-start gap-2 cursor-pointer"
+    <div className="space-y-4 w-full min-w-0">
+      <ul className="space-y-3 w-full min-w-0">
+        {lines.map((line, index) => {
+          const prod = line.productId
+            ? productById.get(line.productId)
+            : undefined;
+          const lineSub = lineNetSubtotal(
+            line.quantity,
+            line.unitPrice,
+            line.discount
+          );
+          const lineTotal = lineDisplayTotal(
+            line.quantity,
+            line.unitPrice,
+            line.ipiValue,
+            line.discount
+          );
+          const unitLocked = Boolean(line.productId);
+          const code = productCode(prod);
+          const productDesc = productDescriptionLabel(prod);
+
+          return (
+            <li
+              key={line.key}
+              className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4 dark:border-slate-700 dark:bg-slate-950/40"
+            >
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="flex shrink-0 items-start gap-1">
+                  {allowReorder && !disabled ? (
+                    <>
+                      <div className="flex flex-col gap-0.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          aria-label={`Mover item ${index + 1} para cima`}
+                          title="Subir"
+                          disabled={index === 0}
+                          onClick={() => moveLine(index, -1)}
                         >
-                          <input
-                            id={`poi-show-desc-${index}`}
-                            type="checkbox"
-                            className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
-                            checked={Boolean(line.showProductDescription)}
-                            disabled={disabled}
-                            onChange={(e) =>
-                              updateLineAt(index, {
-                                showProductDescription: e.target.checked,
-                              })
-                            }
-                          />
-                          <span className="text-[11px] leading-snug text-slate-600">
-                            Incluir descrição do produto na impressão
-                          </span>
-                        </label>
-                      ) : null}
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          aria-label={`Mover item ${index + 1} para baixo`}
+                          title="Descer"
+                          disabled={index === lines.length - 1}
+                          onClick={() => moveLine(index, 1)}
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <div className="space-y-0.5">
+                        <Label className="text-[10px] uppercase tracking-wide text-slate-500">
+                          Seq.
+                        </Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={lines.length}
+                          step={1}
+                          value={
+                            seqDraft?.key === line.key
+                              ? seqDraft.value
+                              : String(index + 1)
+                          }
+                          onFocus={() =>
+                            setSeqDraft({
+                              key: line.key,
+                              value: String(index + 1),
+                            })
+                          }
+                          onChange={(e) =>
+                            setSeqDraft({
+                              key: line.key,
+                              value: e.target.value,
+                            })
+                          }
+                          onBlur={() => {
+                            const raw =
+                              seqDraft?.key === line.key
+                                ? Number(seqDraft.value)
+                                : index + 1;
+                            setSeqDraft(null);
+                            if (!Number.isFinite(raw)) return;
+                            moveLineToPosition(index, raw);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            e.preventDefault();
+                            (e.target as HTMLInputElement).blur();
+                          }}
+                          aria-label={`Sequência do item (posição actual ${index + 1})`}
+                          title="Digite a posição e Enter — os outros itens deslocam-se"
+                          className="h-8 w-12 px-1 text-center text-sm tabular-nums"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-0.5">
+                      <Label className="text-[10px] uppercase tracking-wide text-slate-500">
+                        Seq.
+                      </Label>
+                      <span className="inline-flex h-8 w-12 items-center justify-center rounded-md border border-slate-200 text-sm font-medium tabular-nums dark:border-slate-700">
+                        {index + 1}
+                      </span>
                     </div>
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <select
-                      className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs dark:bg-slate-950 dark:border-slate-600"
-                      value={line.usageType ?? ""}
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">
+                      Pesquisar produto
+                    </Label>
+                    <ProductComboboxField
+                      compact
+                      value={
+                        prod
+                          ? {
+                              id: prod.id,
+                              code: prod.code,
+                              technical_code: prod.technical_code,
+                              name: prod.name,
+                              description: prod.description ?? null,
+                              cost_price: 0,
+                              unit: prod.unit,
+                              product_nature: prod.product_nature ?? null,
+                              prefix: prod.prefix_code
+                                ? { code: prod.prefix_code }
+                                : null,
+                            }
+                          : null
+                      }
+                      onChange={(hit) => {
+                        if (!hit) {
+                          updateLineAt(index, {
+                            productId: "",
+                            description: "",
+                            usageType: "",
+                          });
+                          return;
+                        }
+                        const { line: next, product } = lineFromProduct(
+                          hit,
+                          lines[index]
+                        );
+                        onProductCacheMerge({ [product.id]: product });
+                        updateLineAt(index, next);
+                      }}
+                      productType="all"
+                      disabled={disabled}
+                      catalogTitle="Pesquisar produto"
+                    />
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs text-slate-600">Código</Label>
+                      <Input
+                        readOnly
+                        value={prod ? code : ""}
+                        placeholder="—"
+                        className="h-9 bg-slate-50 font-mono text-sm dark:bg-slate-900/60"
+                        title={code}
+                      />
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs text-slate-600">
+                        Descrição
+                      </Label>
+                      <Input
+                        readOnly
+                        value={prod ? productDesc : ""}
+                        placeholder="—"
+                        className="h-9 bg-slate-50 text-sm dark:bg-slate-900/60"
+                        title={productDesc}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">
+                      Texto no pedido
+                    </Label>
+                    <Input
+                      value={line.description}
                       onChange={(e) =>
-                        updateLineAt(index, {
-                          usageType: isItemUsageType(e.target.value)
-                            ? e.target.value
-                            : "",
-                        })
+                        updateLineAt(index, { description: e.target.value })
                       }
                       disabled={disabled}
+                      className="h-9 text-sm"
+                      placeholder="Nome do item…"
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-red-600 hover:text-red-700"
+                  aria-label={`Remover item ${index + 1}`}
+                  onClick={() => removeLineAt(index)}
+                  disabled={disabled || lines.length <= 1}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div
+                className={
+                  isQuote
+                    ? "mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3"
+                    : "mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-10"
+                }
+              >
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Utilização</Label>
+                  <select
+                    className={SELECT_CLASS}
+                    value={line.usageType ?? ""}
+                    onChange={(e) =>
+                      updateLineAt(index, {
+                        usageType: isItemUsageType(e.target.value)
+                          ? e.target.value
+                          : "",
+                      })
+                    }
+                    disabled={disabled}
+                  >
+                    <option value="">—</option>
+                    {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Qtd.</Label>
+                  <NumericInput
+                    value={line.quantity}
+                    onChange={(quantity) =>
+                      updateLineAt(
+                        index,
+                        { quantity },
+                        isQuote ? "none" : "both"
+                      )
+                    }
+                    maxDecimals={4}
+                    disabled={disabled}
+                    className="h-8 text-sm"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Un.</Label>
+                  {unitLocked ? (
+                    <span
+                      className="inline-flex h-8 w-full items-center rounded-md border border-slate-200 bg-slate-50 px-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40"
+                      title="Unidade definida no cadastro do produto"
                     >
-                      <option value="">—</option>
-                      {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    <NumericInput
-                      value={line.quantity}
-                      onChange={(quantity) =>
-                        updateLineAt(
-                          index,
-                          { quantity },
-                          isQuote ? "none" : "both"
-                        )
+                      {line.unit || "UN"}
+                    </span>
+                  ) : (
+                    <Input
+                      value={line.unit}
+                      onChange={(e) =>
+                        updateLineAt(index, { unit: e.target.value })
                       }
-                      maxDecimals={4}
                       disabled={disabled}
                       className="h-8 text-sm"
-                      placeholder="0"
                     />
-                  </td>
-                  <td className="px-2 py-2 align-top">
-                    {unitLocked ? (
-                      <span
-                        className="inline-flex h-8 w-full items-center rounded-md border border-slate-200 bg-slate-50 px-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40"
-                        title="Unidade definida no cadastro do produto"
-                      >
-                        {line.unit || "UN"}
-                      </span>
-                    ) : (
-                      <Input
-                        value={line.unit}
-                        onChange={(e) =>
-                          updateLineAt(index, { unit: e.target.value })
+                  )}
+                </div>
+                {!isQuote ? (
+                  <>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">Preço un.</Label>
+                      <NumericInput
+                        value={line.unitPrice}
+                        onChange={(unitPrice) =>
+                          updateLineAt(index, { unitPrice }, "both")
                         }
+                        maxDecimals={3}
                         disabled={disabled}
                         className="h-8 text-sm"
+                        title="Preço unitário (até 3 casas — milheiro)"
                       />
-                    )}
-                  </td>
-                  {!isQuote ? (
-                    <>
-                      <td className="px-2 py-2 align-top">
-                        <NumericInput
-                          value={line.unitPrice}
-                          onChange={(unitPrice) =>
-                            updateLineAt(index, { unitPrice }, "both")
-                          }
-                          maxDecimals={3}
-                          disabled={disabled}
-                          className="h-8 text-sm"
-                          title="Preço unitário (até 3 casas — milheiro)"
-                        />
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <NumericInput
-                          value={line.discount}
-                          onChange={(discount) => {
-                            const gross = lineSubtotal(
-                              line.quantity,
-                              line.unitPrice
-                            );
-                            const next = Math.max(
-                              0,
-                              Math.min(Number(discount) || 0, gross)
-                            );
-                            updateLineAt(index, { discount: next }, "both");
-                          }}
-                          maxDecimals={2}
-                          disabled={disabled}
-                          className="h-8 text-sm"
-                          title="Desconto da linha em R$"
-                        />
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <NumericInput
-                          value={line.icmsRate}
-                          onChange={(icmsRate) =>
-                            updateLineAt(index, { icmsRate }, "icms")
-                          }
-                          maxDecimals={2}
-                          disabled={disabled || taxReadonlyOnOrder || taxesLocked}
-                          readOnly={taxReadonlyOnOrder || taxesLocked}
-                          className="h-8 text-sm"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <NumericInput
-                          value={line.icmsValue}
-                          onChange={(icmsValue) =>
-                            updateLineAt(index, { icmsValue }, "none")
-                          }
-                          maxDecimals={2}
-                          disabled={disabled || taxReadonlyOnOrder || taxesLocked}
-                          readOnly={taxReadonlyOnOrder || taxesLocked}
-                          className="h-8 text-sm"
-                        />
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <NumericInput
-                          value={line.ipiRate}
-                          onChange={(ipiRate) =>
-                            updateLineAt(index, { ipiRate }, "ipi")
-                          }
-                          maxDecimals={2}
-                          disabled={disabled || taxReadonlyOnOrder || taxesLocked}
-                          readOnly={taxReadonlyOnOrder || taxesLocked}
-                          className="h-8 text-sm"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <NumericInput
-                          value={line.ipiValue}
-                          onChange={(ipiValue) =>
-                            updateLineAt(index, { ipiValue }, "none")
-                          }
-                          maxDecimals={2}
-                          disabled={disabled || taxReadonlyOnOrder || taxesLocked}
-                          readOnly={taxReadonlyOnOrder || taxesLocked}
-                          className="h-8 text-sm"
-                        />
-                      </td>
-                      <td className="px-2 py-2 align-top text-right tabular-nums text-slate-700 text-xs">
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">Desc. (R$)</Label>
+                      <NumericInput
+                        value={line.discount}
+                        onChange={(discount) => {
+                          const gross = lineSubtotal(
+                            line.quantity,
+                            line.unitPrice
+                          );
+                          const next = Math.max(
+                            0,
+                            Math.min(Number(discount) || 0, gross)
+                          );
+                          updateLineAt(index, { discount: next }, "both");
+                        }}
+                        maxDecimals={2}
+                        disabled={disabled}
+                        className="h-8 text-sm"
+                        title="Desconto da linha em R$"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">% ICMS</Label>
+                      <NumericInput
+                        value={line.icmsRate}
+                        onChange={(icmsRate) =>
+                          updateLineAt(index, { icmsRate }, "icms")
+                        }
+                        maxDecimals={2}
+                        disabled={
+                          disabled || taxReadonlyOnOrder || taxesLocked
+                        }
+                        readOnly={taxReadonlyOnOrder || taxesLocked}
+                        className="h-8 text-sm"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">ICMS (R$)</Label>
+                      <NumericInput
+                        value={line.icmsValue}
+                        onChange={(icmsValue) =>
+                          updateLineAt(index, { icmsValue }, "none")
+                        }
+                        maxDecimals={2}
+                        disabled={
+                          disabled || taxReadonlyOnOrder || taxesLocked
+                        }
+                        readOnly={taxReadonlyOnOrder || taxesLocked}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">% IPI</Label>
+                      <NumericInput
+                        value={line.ipiRate}
+                        onChange={(ipiRate) =>
+                          updateLineAt(index, { ipiRate }, "ipi")
+                        }
+                        maxDecimals={2}
+                        disabled={
+                          disabled || taxReadonlyOnOrder || taxesLocked
+                        }
+                        readOnly={taxReadonlyOnOrder || taxesLocked}
+                        className="h-8 text-sm"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">IPI (R$)</Label>
+                      <NumericInput
+                        value={line.ipiValue}
+                        onChange={(ipiValue) =>
+                          updateLineAt(index, { ipiValue }, "none")
+                        }
+                        maxDecimals={2}
+                        disabled={
+                          disabled || taxReadonlyOnOrder || taxesLocked
+                        }
+                        readOnly={taxReadonlyOnOrder || taxesLocked}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">
+                        Base cálculo
+                      </Label>
+                      <div className="flex h-8 items-center text-xs tabular-nums text-slate-700">
                         {formatBRL(
                           line.taxBase || roundMoney(lineSub + line.ipiValue)
                         )}
-                      </td>
-                      <td className="px-2 py-2 align-top text-right tabular-nums font-medium text-slate-900 text-xs">
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-slate-600">
+                        Total linha
+                      </Label>
+                      <div className="flex h-8 items-center text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                         {formatBRL(lineTotal)}
-                      </td>
-                    </>
-                  ) : null}
-                  <td className="px-2 py-2 align-top">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700"
-                      aria-label={`Remover item ${index + 1}`}
-                      onClick={() => removeLineAt(index)}
-                      disabled={disabled || lines.length <= 1}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+
+              <div className="mt-3 space-y-2">
+                <Textarea
+                  value={line.itemNotes}
+                  onChange={(e) =>
+                    updateLineAt(index, { itemNotes: e.target.value })
+                  }
+                  disabled={disabled}
+                  rows={2}
+                  placeholder="Obs. do item…"
+                  className="resize-y min-h-[48px] text-xs"
+                  title="Texto impresso no pedido de compra sob o produto"
+                />
+                {isQuote && prod ? (
+                  <label
+                    htmlFor={`poi-show-desc-${index}`}
+                    className="flex items-start gap-2 cursor-pointer"
+                  >
+                    <input
+                      id={`poi-show-desc-${index}`}
+                      type="checkbox"
+                      className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
+                      checked={Boolean(line.showProductDescription)}
+                      disabled={disabled}
+                      onChange={(e) =>
+                        updateLineAt(index, {
+                          showProductDescription: e.target.checked,
+                        })
+                      }
+                    />
+                    <span className="text-[11px] leading-snug text-slate-600">
+                      Incluir descrição do produto na impressão
+                    </span>
+                  </label>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
 
       <Button
         type="button"

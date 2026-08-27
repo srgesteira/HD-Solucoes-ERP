@@ -7,6 +7,7 @@ import type {
   PurchaseOrderPrintSupplier,
 } from "@/modules/compras/lib/purchasing/purchase-order-display";
 import { computePurchaseOrderTotal, num } from "@/modules/compras/lib/purchasing/purchase-order-totals";
+import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
 
 type Admin = SupabaseClient<Database>;
 
@@ -41,7 +42,8 @@ function mapSupplier(raw: Record<string, unknown> | null): PurchaseOrderPrintSup
 function mapItems(
   rawItems: Record<string, unknown>[] | null | undefined
 ): PurchaseOrderPrintItem[] {
-  return (rawItems ?? []).map((row) => {
+  const sorted = sortPurchaseOrderItemsByLineNumber(rawItems ?? []);
+  return sorted.map((row) => {
     const product = Array.isArray(row.product)
       ? (row.product[0] as Record<string, unknown> | undefined)
       : (row.product as Record<string, unknown> | undefined);

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { computePurchaseOrderTotal, num } from "@/modules/compras/lib/purchasing/purchase-order-totals";
+import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
 import { fmtPoBRL, fmtPoDate } from "@/modules/compras/lib/purchasing/purchase-order-display";
 
 type Admin = SupabaseClient<Database>;
@@ -15,6 +16,8 @@ const ORDER_EXPORT_SELECT = `
     unit,
     unit_price,
     total_price,
+    line_number,
+    created_at,
     product:products!purchase_order_items_product_id_fkey(code, technical_code, name)
   )
 `.trim();
@@ -120,21 +123,49 @@ export async function fetchPurchaseOrderForExport(
     : row.supplier;
 
   const rawItems = row.items ?? [];
-  const items = (Array.isArray(rawItems) ? rawItems : []).map((row) => {
-    const product = Array.isArray(row.product) ? row.product[0] : row.product;
+  type ExportItemRow = {
+    line_number?: number | null;
+    created_at?: string | null;
+    id?: string | null;
+    description?: string | null;
+    quantity?: number | null;
+    unit?: string | null;
+    unit_price?: number | null;
+    total_price?: number | null;
+    product?:
+      | {
+          code?: string | null;
+          technical_code?: string | null;
+          name?: string | null;
+        }
+      | Array<{
+          code?: string | null;
+          technical_code?: string | null;
+          name?: string | null;
+        }>
+      | null;
+  };
+  const sorted = sortPurchaseOrderItemsByLineNumber(
+    (Array.isArray(rawItems) ? rawItems : []) as ExportItemRow[]
+  );
+  const items = sorted.map((itemRow) => {
+    const product = Array.isArray(itemRow.product)
+      ? itemRow.product[0]
+      : itemRow.product;
     const code = product?.technical_code?.trim() || product?.code?.trim();
-    const name = product?.name?.trim() || row.description?.trim() || "—";
+    const name =
+      product?.name?.trim() || itemRow.description?.trim() || "—";
     const description = code ? `${code} — ${name}` : name;
-    const qty = Number(row.quantity ?? 0);
-    const unitPrice = Number(row.unit_price ?? 0);
+    const qty = Number(itemRow.quantity ?? 0);
+    const unitPrice = Number(itemRow.unit_price ?? 0);
     const totalPrice =
-      row.total_price != null
-        ? Number(row.total_price)
+      itemRow.total_price != null
+        ? Number(itemRow.total_price)
         : Math.round(qty * unitPrice * 100) / 100;
     return {
       description,
       quantity: qty,
-      unit: row.unit ?? "UN",
+      unit: itemRow.unit?.trim() || "UN",
       unit_price: unitPrice,
       total_price: totalPrice,
     };

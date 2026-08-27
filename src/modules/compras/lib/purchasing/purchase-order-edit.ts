@@ -262,7 +262,8 @@ export async function syncPurchaseOrderItems(
     }
   }
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const discount = roundMoney(Math.max(0, Number(line.discount ?? 0)));
     const total_price = lineNetSubtotal(
       line.quantity,
@@ -285,6 +286,7 @@ export async function syncPurchaseOrderItems(
       tax_base: line.tax_base,
       usage_type: line.usage_type ?? null,
       item_notes: line.item_notes ?? null,
+      line_number: i + 1,
     };
 
     if (line.id && existingById.has(line.id)) {

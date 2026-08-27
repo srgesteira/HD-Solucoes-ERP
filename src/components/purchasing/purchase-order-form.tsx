@@ -27,6 +27,7 @@ import {
 } from "@/components/purchasing/purchase-order-items-editor";
 import { purchaseOrderPaymentUpdateSchema } from "@/shared/contracts/purchase-order.schema";
 import { canEditPurchaseOrderItems } from "@/modules/compras/lib/purchasing/purchase-order-edit";
+import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
 import { aggregatePurchaseLineTaxes } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import { computePurchaseOrderTotal } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 import { fmtBRL } from "@/shared/utils/format-brl";
@@ -71,6 +72,8 @@ export type PurchaseOrderFormData = {
     tax_base?: number;
     usage_type?: string | null;
     item_notes?: string | null;
+    line_number?: number | null;
+    created_at?: string | null;
     product?:
       | {
           id: string;
@@ -132,7 +135,9 @@ export function itemsToPurchaseLines(items: OrderItemRow[]): {
   const cache: Record<string, PurchaseLineProduct> = {};
   const lines: PurchaseOrderLineDraft[] = [];
 
-  items.forEach((item, index) => {
+  const ordered = sortPurchaseOrderItemsByLineNumber(items);
+
+  ordered.forEach((item, index) => {
     const prod = unwrapProduct(item.product);
     const pid = item.product_id ?? prod?.id ?? "";
 
@@ -147,7 +152,7 @@ export function itemsToPurchaseLines(items: OrderItemRow[]): {
     }
 
     lines.push({
-      key: `line-${index}`,
+      key: `line-${item.id ?? `idx-${index}`}`,
       id: item.id,
       productId: pid,
       description: item.description?.trim() || prod?.name || "",
@@ -683,6 +688,7 @@ export function PurchaseOrderForm({
               setProductCache((prev) => ({ ...prev, ...patch }))
             }
             disabled={!canEditItems}
+            allowReorder={!isEdit || order?.status === "draft"}
           />
         </CardContent>
       </Card>

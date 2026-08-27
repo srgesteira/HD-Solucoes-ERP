@@ -3226,6 +3226,7 @@ export type Database = {
           ipi_value: number
           is_suggestion: boolean
           item_notes: string | null
+          line_number: number
           need_date: string | null
           product_id: string | null
           production_item_id: string | null
@@ -3263,6 +3264,7 @@ export type Database = {
           ipi_value?: number
           is_suggestion?: boolean
           item_notes?: string | null
+          line_number?: number
           need_date?: string | null
           product_id?: string | null
           production_item_id?: string | null
@@ -3300,6 +3302,7 @@ export type Database = {
           ipi_value?: number
           is_suggestion?: boolean
           item_notes?: string | null
+          line_number?: number
           need_date?: string | null
           product_id?: string | null
           production_item_id?: string | null
