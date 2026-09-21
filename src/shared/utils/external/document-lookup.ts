@@ -25,6 +25,7 @@ export type DocumentLookupResult = {
   phone: string | null;
   address: string | null;
   address_parts: DocumentAddressParts | null;
+  state_registration?: string | null;
 };
 
 function joinAddress(parts: (string | null | undefined)[]): string | null {
@@ -232,6 +233,57 @@ export async function lookupCnpj(cnpjDigits: string): Promise<DocumentLookupResu
   }
 
   throw new Error("CNPJ não encontrado ou serviço indisponível. Tente mais tarde.");
+}
+
+type CnpjWsInscricao = {
+  inscricao_estadual?: string;
+  ativo?: boolean;
+  estado?: { sigla?: string };
+};
+
+/**
+ * IE ativa no cadastro estadual (CNPJws). Sem isto a SEFAZ recusa
+ * PJ com IE no CCC enviada como não contribuinte (rej. 232).
+ */
+export async function lookupInscricaoEstadualAtiva(
+  cnpjDigits: string,
+  uf?: string | null
+): Promise<string | null> {
+  const cnpj = onlyDigits(cnpjDigits);
+  if (cnpj.length !== 14) return null;
+  try {
+    const res = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as {
+      estabelecimento?: {
+        estado?: { sigla?: string };
+        inscricoes_estaduais?: CnpjWsInscricao[];
+      };
+      inscricoes_estaduais?: CnpjWsInscricao[];
+    };
+    const list = [
+      ...(j.estabelecimento?.inscricoes_estaduais ?? []),
+      ...(j.inscricoes_estaduais ?? []),
+    ];
+    const want = (uf ?? j.estabelecimento?.estado?.sigla ?? "")
+      .trim()
+      .toUpperCase()
+      .slice(0, 2);
+    const active = list.filter(
+      (row) => row.ativo !== false && onlyDigits(row.inscricao_estadual ?? "").length >= 8
+    );
+    const sameUf = want
+      ? active.find((row) => (row.estado?.sigla ?? "").toUpperCase() === want)
+      : undefined;
+    const pick = sameUf ?? active[0];
+    const ie = onlyDigits(pick?.inscricao_estadual ?? "");
+    return ie.length >= 8 ? ie : null;
+  } catch {
+    return null;
+  }
 }
 
 type BrasilApiCpf = {

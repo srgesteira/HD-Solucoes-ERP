@@ -111,6 +111,7 @@ async function resolveDestNaoContribuinte(
   nfeContato: Record<string, unknown> | null | undefined,
   erpIe: string | null | undefined
 ): Promise<boolean> {
+  if (!isNaoContribuinteIe(erpIe)) return false;
   const nfeInd = Number(
     nfeContato?.indicadorIe ?? nfeContato?.contribuinte ?? NaN
   );
@@ -128,7 +129,7 @@ async function resolveDestNaoContribuinte(
   } catch {
     // Cadastro Bling indisponível — cai na IE do ERP.
   }
-  return isNaoContribuinteIe(erpIe);
+  return true;
 }
 
 type RemoteNfeIdentity = {

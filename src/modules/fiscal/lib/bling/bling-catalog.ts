@@ -10,7 +10,7 @@ import {
   toBlingContatoEndereco,
   type BlingEnderecoPayload,
 } from "@/modules/fiscal/lib/bling/bling-contact-address";
-import { lookupCnpj } from "@/shared/utils/external/document-lookup";
+import { lookupCnpj, lookupInscricaoEstadualAtiva } from "@/shared/utils/external/document-lookup";
 
 type Admin = SupabaseClient<Database>;
 
@@ -123,17 +123,29 @@ export async function loadCustomerStateRegistration(
   const db = asUntypedAdmin(admin);
   const { data } = await db
     .from("customers")
-    .select("document, state_registration")
+    .select("id, document, state_registration")
     .eq("tenant_id", tenantId)
     .not("document", "is", null);
   const match = (
     (data ?? []) as Array<{
+      id: string;
       document: string | null;
       state_registration: string | null;
     }>
   ).find((c) => digitsOnly(c.document) === doc);
-  const ie = match?.state_registration?.trim() || "";
-  return ie || null;
+  const stored = match?.state_registration?.trim() || "";
+  if (stored) return stored;
+  if (doc.length !== 14) return null;
+  const found = await lookupInscricaoEstadualAtiva(doc);
+  if (!found) return null;
+  if (match?.id) {
+    await db
+      .from("customers")
+      .update({ state_registration: found })
+      .eq("id", match.id)
+      .eq("tenant_id", tenantId);
+  }
+  return found;
 }
 
 export async function findBlingProductIdByCodigo(
