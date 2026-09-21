@@ -33,15 +33,19 @@ import {
 } from "@/modules/fiscal/lib/bling/bling-nfe-status";
 import { applyBlingNfeSnapshot } from "@/modules/fiscal/lib/bling/bling-apply-status";
 import { searchBlingNfeForErpOrder } from "@/modules/fiscal/lib/bling/bling-reconcile";
-import { resolveBlingCatalogForSalesOrder } from "@/modules/fiscal/lib/bling/bling-catalog";
+import { resolveBlingCatalogForSalesOrder, resolveBlingEndereco } from "@/modules/fiscal/lib/bling/bling-catalog";
 import { ensureBlingPedidoForSalesOrder } from "@/modules/fiscal/lib/bling/bling-pedido";
 import { readBlingPedidoNotaFiscalId } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
+import {
+  nfeEnderecoFromBlingContact,
+  type BlingEnderecoPayload,
+} from "@/modules/fiscal/lib/bling/bling-contact-address";
+import type { FiscalOrderReview } from "@/modules/faturamento/lib/fiscal-order-review-service";
 import {
   applyFiscalDestinoToNfeData,
   applyNaoContribuinteCsosnToNfeData,
   buildBlingNfeCreateBody,
   fiscalReviewToBlingNfeCreateInput,
-  isConsumidorFinal,
   isNaoContribuinteIe,
 } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 
@@ -71,6 +75,30 @@ function nfeNumeroSortValue(value: unknown): number | null {
   if (!raw) return null;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+async function resolveNfeDestEndereco(
+  admin: Admin,
+  tenantId: string,
+  review: Pick<FiscalOrderReview, "client_address" | "client_document">,
+  contactId: number
+): Promise<BlingEnderecoPayload> {
+  const fromLookup = await resolveBlingEndereco({
+    address: review.client_address,
+    document: review.client_document,
+  });
+  if (fromLookup) return fromLookup;
+  try {
+    const payload = await blingGet(admin, tenantId, `/contatos/${contactId}`);
+    const data = unwrapBlingData(payload);
+    const fromContact = data ? nfeEnderecoFromBlingContact(data) : null;
+    if (fromContact) return fromContact;
+  } catch {
+    // Continua para o erro abaixo.
+  }
+  throw new Error(
+    "Cliente sem endereço completo (logradouro, cidade, UF e CEP) para a NF-e. A SEFAZ recusa destinatário sem endereço."
+  );
 }
 
 type RemoteNfeIdentity = {
@@ -248,13 +276,16 @@ async function rewriteBlingNfeDraft(
   }
   const payload = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
   const existing = nfeBodyForPut(unwrapBlingData(payload) ?? {});
-  const created = buildBlingNfeCreateBody(
-    fiscalReviewToBlingNfeCreateInput(review, contactId)
+  const endereco = await resolveNfeDestEndereco(
+    admin,
+    tenantId,
+    review,
+    contactId
   );
-  const contatoExisting =
-    existing.contato && typeof existing.contato === "object"
-      ? (existing.contato as Record<string, unknown>)
-      : {};
+  const created = buildBlingNfeCreateBody({
+    ...fiscalReviewToBlingNfeCreateInput(review, contactId),
+    endereco,
+  });
   const naoContribuinte = isNaoContribuinteIe(review.client_state_registration);
   const merged: Record<string, unknown> = {
     ...created,
@@ -262,8 +293,8 @@ async function rewriteBlingNfeDraft(
     ...(existing.serie != null ? { serie: existing.serie } : {}),
     ...(existing.loja != null ? { loja: existing.loja } : {}),
     contato: {
-      ...contatoExisting,
       ...created.contato,
+      id: contactId,
     },
     itens: created.itens,
   };
@@ -349,10 +380,17 @@ async function upsertSequentialNfe(
     throw new Error("Pedido de venda não encontrado para montar a NF-e.");
   }
   const naoContribuinte = isNaoContribuinteIe(review.client_state_registration);
+  const endereco = await resolveNfeDestEndereco(
+    admin,
+    tenantId,
+    review,
+    contactId
+  );
   const bodyBase: Record<string, unknown> = {
-    ...buildBlingNfeCreateBody(
-      fiscalReviewToBlingNfeCreateInput(review, contactId)
-    ),
+    ...buildBlingNfeCreateBody({
+      ...fiscalReviewToBlingNfeCreateInput(review, contactId),
+      endereco,
+    }),
   };
   if (!naoContribuinte && naturezaOperacaoId) {
     bodyBase.naturezaOperacao = { id: naturezaOperacaoId };
@@ -397,21 +435,49 @@ async function upsertSequentialNfe(
   return id;
 }
 
-async function alignBlingNfeCsosnIfConsumidorFinal(
+async function alignBlingNfeDestinoBeforeEnviar(
   admin: Admin,
   tenantId: string,
   salesOrderId: string,
+  contactId: number,
   blingNfeId: number
 ): Promise<void> {
   const review = await getFiscalReviewForBlingNfe(admin, tenantId, salesOrderId);
   if (!review) return;
-  if (!isConsumidorFinal(review.items)) return;
-  if (!isNaoContribuinteIe(review.client_state_registration)) return;
-
+  const endereco = await resolveNfeDestEndereco(
+    admin,
+    tenantId,
+    review,
+    contactId
+  );
   const payload = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
   const data = unwrapBlingData(payload);
   if (!data) return;
-  const body = applyNaoContribuinteCsosnToNfeData(nfeBodyForPut(data));
+  const created = buildBlingNfeCreateBody({
+    ...fiscalReviewToBlingNfeCreateInput(review, contactId),
+    endereco,
+  });
+  const naoContribuinte = isNaoContribuinteIe(review.client_state_registration);
+  let body: Record<string, unknown> = {
+    ...nfeBodyForPut(data),
+    observacoes: created.observacoes,
+    itens: created.itens,
+    parcelas: created.parcelas,
+    contato: {
+      ...created.contato,
+      id: contactId,
+      endereco,
+    },
+  };
+  body = applyFiscalDestinoToNfeData(body, review.client_state_registration);
+  if (naoContribuinte) {
+    body = applyNaoContribuinteCsosnToNfeData(body);
+  }
+  const contato =
+    body.contato && typeof body.contato === "object"
+      ? (body.contato as Record<string, unknown>)
+      : {};
+  body.contato = { ...contato, endereco };
   await blingPut(admin, tenantId, `/nfe/${blingNfeId}`, body);
 }
 
@@ -642,10 +708,11 @@ export async function emitirNfeViaBling(
   }
 
   try {
-    await alignBlingNfeCsosnIfConsumidorFinal(
+    await alignBlingNfeDestinoBeforeEnviar(
       admin,
       tenantId,
       emitOrderId,
+      prepared.contact_id,
       blingNfeId
     );
     const sent = await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);

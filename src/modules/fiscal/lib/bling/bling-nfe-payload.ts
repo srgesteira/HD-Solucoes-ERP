@@ -303,6 +303,7 @@ export type BlingNfeCreateBodyInput = {
   freightCost?: number | null;
   carrierName?: string | null;
   optanteSimplesNacional?: boolean;
+  endereco?: ReturnType<typeof parseFreeformAddressToBling> | null;
 };
 
 /**
@@ -408,7 +409,13 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
 
   const email = input.clientEmail?.trim() || undefined;
   const telefone = input.clientPhone?.trim() || undefined;
-  const endereco = parseFreeformAddressToBling(input.clientAddress ?? null);
+  const endereco =
+    input.endereco ?? parseFreeformAddressToBling(input.clientAddress ?? null);
+  if (!endereco) {
+    throw new Error(
+      "Cliente sem endereço completo (logradouro, cidade, UF e CEP) para a NF-e. A SEFAZ recusa destinatário sem enderDest."
+    );
+  }
 
   return {
     tipo: 1,
@@ -432,7 +439,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
           }),
       ...(email ? { email } : {}),
       ...(telefone ? { telefone } : {}),
-      ...(endereco && !input.contactId ? { endereco } : {}),
+      endereco,
     },
     itens,
     desconto: desconto > 0 ? desconto : undefined,

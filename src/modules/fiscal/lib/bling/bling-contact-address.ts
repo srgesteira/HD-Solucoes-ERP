@@ -166,6 +166,34 @@ export function readEnderecoFromBlingContact(data: Record<string, unknown>): {
   uf: string;
   endereco: string;
 } | null {
+  const full = nfeEnderecoFromBlingContact(data);
+  if (!full) {
+    const end = data.endereco;
+    if (!end || typeof end !== "object") return null;
+    const root = end as Record<string, unknown>;
+    const geral =
+      root.geral && typeof root.geral === "object"
+        ? (root.geral as Record<string, unknown>)
+        : root;
+    const cep = cepDigits(String(geral.cep ?? ""));
+    const municipio = municipioNome(geral.municipio);
+    const uf = trimPart(String(geral.uf ?? "")).toUpperCase();
+    const endereco = trimPart(String(geral.endereco ?? ""));
+    if (!cep && !municipio && !endereco) return null;
+    return { cep, municipio, uf, endereco };
+  }
+  return {
+    cep: full.cep,
+    municipio: full.municipio,
+    uf: full.uf,
+    endereco: full.endereco,
+  };
+}
+
+/** Endereço plano do POST /nfe (`contato.endereco`). */
+export function nfeEnderecoFromBlingContact(
+  data: Record<string, unknown>
+): BlingEnderecoPayload | null {
   const end = data.endereco;
   if (!end || typeof end !== "object") return null;
   const root = end as Record<string, unknown>;
@@ -175,8 +203,20 @@ export function readEnderecoFromBlingContact(data: Record<string, unknown>): {
       : root;
   const cep = cepDigits(String(geral.cep ?? ""));
   const municipio = municipioNome(geral.municipio);
-  const uf = trimPart(String(geral.uf ?? "")).toUpperCase();
+  const uf = trimPart(String(geral.uf ?? "")).toUpperCase().slice(0, 2);
   const endereco = trimPart(String(geral.endereco ?? ""));
-  if (!cep && !municipio && !endereco) return null;
-  return { cep, municipio, uf, endereco };
+  if (!endereco || !municipio || !UF_SET.has(uf) || cep.length !== 8) {
+    return null;
+  }
+  const complemento = trimPart(String(geral.complemento ?? ""));
+  return {
+    endereco,
+    numero: trimPart(String(geral.numero ?? "")) || "S/N",
+    ...(complemento ? { complemento } : {}),
+    bairro: trimPart(String(geral.bairro ?? "")) || "Centro",
+    municipio,
+    uf,
+    cep,
+    pais: "BR",
+  };
 }

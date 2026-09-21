@@ -33,7 +33,7 @@ function firstBlingId(payload: unknown): number | null {
   return null;
 }
 
-async function resolveBlingEndereco(input: {
+export async function resolveBlingEndereco(input: {
   address: string | null;
   document: string | null;
 }): Promise<BlingEnderecoPayload | null> {
