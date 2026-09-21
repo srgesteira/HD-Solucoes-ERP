@@ -265,6 +265,57 @@ export async function blingGet<T = unknown>(
   return out.data;
 }
 
+/**
+ * GET de URL absoluta (ex.: `data.xml` da NF-e) devolvendo o corpo cru.
+ * O `xml` do Bling passou a ser um link autenticado — sem Bearer vem HTML.
+ */
+export async function blingFetchText(
+  admin: Admin,
+  tenantId: string,
+  url: string
+): Promise<string> {
+  const doFetch = async (accessToken: string) => {
+    await throttle(tenantId);
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/xml, text/xml, application/json, */*",
+        "enable-jwt": "1",
+      },
+      redirect: "follow",
+    });
+    const text = await res.text();
+    return { res, text };
+  };
+
+  let token = await getValidAccessToken(admin, tenantId);
+  let { res, text } = await doFetch(token);
+
+  if (res.status === 401) {
+    const creds = await loadCredentials(admin, tenantId);
+    if (creds) {
+      await refreshAccessToken(admin, tenantId, creds.refresh_token);
+      token = await getValidAccessToken(admin, tenantId);
+      ({ res, text } = await doFetch(token));
+    }
+  }
+
+  if (res.status === 429) {
+    await new Promise((r) => setTimeout(r, 1100));
+    token = await getValidAccessToken(admin, tenantId);
+    ({ res, text } = await doFetch(token));
+  }
+
+  if (res.status < 200 || res.status >= 300) {
+    throw new BlingApiError(
+      `Falha ao obter XML Bling (${res.status}).`,
+      res.status
+    );
+  }
+  return text;
+}
+
 export async function blingPost<T = unknown>(
   admin: Admin,
   tenantId: string,

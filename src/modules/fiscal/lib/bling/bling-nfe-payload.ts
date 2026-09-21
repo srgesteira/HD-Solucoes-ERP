@@ -83,6 +83,7 @@ export function fiscalReviewToBlingNfeCreateInput(
     | "freight_cost"
     | "carrier_name"
     | "nfe_group"
+    | "tax_regime"
   >,
   contactId: number | null,
   operationDate?: string
@@ -90,6 +91,7 @@ export function fiscalReviewToBlingNfeCreateInput(
   return {
     salesOrderId: review.id,
     contactId,
+    optanteSimplesNacional: review.tax_regime === "simples_nacional",
     clientName: review.client_name,
     clientDocument: review.client_document,
     clientIe: review.client_state_registration,
@@ -209,6 +211,8 @@ export function computeBlingNfeValorNota(input: {
 
 /** CSOSN permitido pela SEFAZ (rej. 600) quando o destino é não contribuinte. */
 export const CSOSN_NAO_CONTRIBUINTE = "102";
+/** Simples com permissão de crédito — destinatário contribuinte (industrialização/revenda). */
+export const CSOSN_COM_CREDITO = "101";
 
 export function inscricaoEstadualDigits(
   value: string | null | undefined
@@ -298,6 +302,7 @@ export type BlingNfeCreateBodyInput = {
   shippingType?: string | null;
   freightCost?: number | null;
   carrierName?: string | null;
+  optanteSimplesNacional?: boolean;
 };
 
 /**
@@ -312,6 +317,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
   finalidade: 1;
   dataOperacao: string;
   consumidorFinal?: boolean;
+  optanteSimplesNacional?: boolean;
     contato: {
       id?: number;
       nome: string;
@@ -352,6 +358,13 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
   const consumidorFinal = isConsumidorFinal(input.items);
   const ie = inscricaoEstadualDigits(input.clientIe);
   const naoContribuinte = isNaoContribuinteIe(ie);
+  const isSimples = input.optanteSimplesNacional === true;
+  const csosn =
+    isSimples || naoContribuinte
+      ? naoContribuinte || consumidorFinal
+        ? CSOSN_NAO_CONTRIBUINTE
+        : CSOSN_COM_CREDITO
+      : null;
   const itens = input.items.map((it) => {
     const codigo = skuForBlingNfeItem({
       code: it.code,
@@ -371,11 +384,11 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       tipo: "P" as const,
       classificacaoFiscal: ncmToClassificacaoFiscal(it.ncm),
       origem: 0,
-      ...(naoContribuinte
+      ...(csosn
         ? {
-            situacaoTributaria: CSOSN_NAO_CONTRIBUINTE,
-            cst: CSOSN_NAO_CONTRIBUINTE,
-            simples: { cst: CSOSN_NAO_CONTRIBUINTE },
+            situacaoTributaria: csosn,
+            cst: csosn,
+            simples: { cst: csosn },
           }
         : {}),
       ...(cfop.length === 4 ? { cfop } : {}),
@@ -402,6 +415,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     finalidade: 1,
     dataOperacao: String(input.orderDate ?? "").slice(0, 10),
     ...(consumidorFinal && naoContribuinte ? { consumidorFinal: true } : {}),
+    ...(isSimples ? { optanteSimplesNacional: true } : {}),
     contato: {
       ...(Number.isFinite(input.contactId) && input.contactId
         ? { id: Number(input.contactId) }

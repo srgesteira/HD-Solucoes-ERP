@@ -20,6 +20,7 @@ import {
   blingGet,
   blingPost,
   blingPut,
+  blingFetchText,
 } from "@/modules/fiscal/lib/bling/bling-client";
 import {
   BLING_NFE_SITUACAO,
@@ -105,12 +106,15 @@ function formatNfeNumero(n: number): string {
 }
 
 async function snapshotFromBling(
+  admin: Admin,
+  tenantId: string,
   payload: unknown,
   blingNfeId: number
 ) {
   return enrichRejectedSnapshot(
     parseBlingNfeSnapshot(payload, blingNfeId),
-    payload
+    payload,
+    (url) => blingFetchText(admin, tenantId, url)
   );
 }
 
@@ -435,12 +439,12 @@ async function syncExistingBlingNfe(
   blingNfeId: number
 ): Promise<void> {
   const payload = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
-  let snapshot = await snapshotFromBling(payload, blingNfeId);
+  let snapshot = await snapshotFromBling(admin, tenantId, payload, blingNfeId);
   if (snapshot.status === "pending" || snapshot.status === "processing") {
     try {
       await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
       const again = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
-      snapshot = await snapshotFromBling(again, blingNfeId);
+      snapshot = await snapshotFromBling(admin, tenantId, again, blingNfeId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Falha ao enviar NF-e à SEFAZ.";
       await applyBlingNfeSnapshot(admin, tenantId, nfeId, snapshot, {
@@ -645,7 +649,7 @@ export async function emitirNfeViaBling(
       blingNfeId
     );
     const sent = await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
-    let snapshot = await snapshotFromBling(sent, blingNfeId);
+    let snapshot = await snapshotFromBling(admin, tenantId, sent, blingNfeId);
     for (let i = 0; i < 3; i++) {
       if (snapshot.status === "authorized") break;
       const motivo = snapshot.error_message ?? "";
@@ -658,7 +662,7 @@ export async function emitirNfeViaBling(
       }
       await new Promise((r) => setTimeout(r, 900));
       const again = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
-      snapshot = await snapshotFromBling(again, blingNfeId);
+      snapshot = await snapshotFromBling(admin, tenantId, again, blingNfeId);
     }
     const rejected =
       snapshot.status === "rejected" || snapshot.status === "error";
@@ -677,6 +681,8 @@ export async function emitirNfeViaBling(
     return { nfe_id: nfe.id, bling_nfe_id: blingNfeId };
   } catch (e) {
     const snapshot = await snapshotFromBling(
+      admin,
+      tenantId,
       await blingGet(admin, tenantId, `/nfe/${blingNfeId}`).catch(() => ({
         data: { id: blingNfeId },
       })),
