@@ -39,7 +39,7 @@ export function formatPedidoHdComplementarLine(input: {
   const po = input.customer_po_number?.trim();
   const pv = input.order_number.trim();
   return po
-    ? `Pedido HD ${pv} — PC cliente ${po}`
+    ? `Pedido HD ${pv} - PC cliente ${po}`
     : `Pedido HD ${pv}`;
 }
 

@@ -76,6 +76,51 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
+function looksLikeComplementaryInfo(text: string): boolean {
+  return /Pedido HD|HD-ERP:|infCpl/i.test(text);
+}
+
+function firstMessage(values: unknown[]): string | null {
+  for (const v of values) {
+    if (typeof v === "string" && v.trim() && !looksLikeComplementaryInfo(v)) {
+      return v.trim();
+    }
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const o = v as Record<string, unknown>;
+      const nested = firstMessage([
+        o.motivo,
+        o.mensagem,
+        o.descricao,
+        o.message,
+        o.xMotivo,
+        o.mensagemSefaz,
+      ]);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+function extractBlingNfeRejeicao(data: Record<string, unknown>): string | null {
+  const fromArrays = Array.isArray(data.erros)
+    ? firstMessage(data.erros)
+    : null;
+  return firstMessage([
+    data.motivo,
+    data.mensagem,
+    data.motivoStatus,
+    data.situacaoDescricao,
+    data.descricaoSituacao,
+    data.mensagemSefaz,
+    data.xMotivo,
+    data.sefaz,
+    data.retorno,
+    data.retornoSefaz,
+    data.autorizacao,
+    fromArrays,
+  ]);
+}
+
 function num(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -138,10 +183,7 @@ export function parseBlingNfeSnapshot(
       : str(numero);
 
   const status = mapBlingSituacaoToDb(situacao);
-  const rejeicao =
-    str(data.motivo) ??
-    str(data.mensagem) ??
-    str(data.observacoes);
+  const rejeicao = extractBlingNfeRejeicao(data);
 
   return {
     bling_nfe_id: id,

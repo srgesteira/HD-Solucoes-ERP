@@ -149,6 +149,13 @@ function nfeBodyForPut(data: Record<string, unknown>): Record<string, unknown> {
     linkDanfe: _danfe,
     linkXML: _linkXml,
     naturezaOperacao: _nat,
+    protocolo: _protocolo,
+    totais: _totais,
+    valorNota: _valorNota,
+    valorTotal: _valorTotal,
+    total: _total,
+    icmsTot: _icmsTot,
+    impostos: _impostos,
     ...rest
   } = data;
   return rest;
@@ -595,12 +602,19 @@ export async function emitirNfeViaBling(
       error_message: msg,
       reconcile_needed: snapshot.status !== "authorized",
     });
+    if (group) await attachNfeToGroup(admin, tenantId, group.id, nfe.id);
     throw e;
   }
 
   const after = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
   const snapshot = parseBlingNfeSnapshot(after, blingNfeId);
-  await applyBlingNfeSnapshot(admin, tenantId, nfe.id, snapshot);
+  await applyBlingNfeSnapshot(admin, tenantId, nfe.id, snapshot, {
+    error_message:
+      snapshot.status === "rejected" || snapshot.status === "error"
+        ? snapshot.error_message ??
+          "Rejeitada pela SEFAZ. Abra o XML ou o Bling para ver o código."
+        : snapshot.error_message,
+  });
   if (group) {
     await attachNfeToGroup(admin, tenantId, group.id, nfe.id);
   }

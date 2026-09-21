@@ -36,7 +36,7 @@ export function formatPedidoHdComplementarLine(input: {
   const po = input.customer_po_number?.trim();
   const pv = input.order_number.trim();
   return po
-    ? `Pedido HD ${pv} — PC cliente ${po}`
+    ? `Pedido HD ${pv} - PC cliente ${po}`
     : `Pedido HD ${pv}`;
 }
 
@@ -393,13 +393,13 @@ function prefixItemWithOrder(
 ): FiscalOrderReview["items"] {
   const pv = review.order_number.trim();
   return review.items.map((it) => {
-    const baseName = (it.product_name ?? it.description).trim() || "—";
-    if (baseName.startsWith(`${pv} `) || baseName.startsWith(`${pv}—`)) {
+    const baseName = (it.product_name ?? it.description).trim() || "-";
+    if (baseName.startsWith(`${pv} `) || baseName.startsWith(`${pv}-`)) {
       return it;
     }
     return {
       ...it,
-      product_name: `${pv} — ${baseName}`,
+      product_name: `${pv} - ${baseName}`,
     };
   });
 }

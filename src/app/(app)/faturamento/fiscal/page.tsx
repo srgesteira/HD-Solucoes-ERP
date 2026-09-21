@@ -619,6 +619,14 @@ export default function FiscalInvoicingPage() {
               >
                 {row.nfe_number ? `${pill.label} · ${row.nfe_number}` : pill.label}
               </span>
+              {row.nfe_error ? (
+                <span
+                  className="line-clamp-3 text-[10px] leading-snug text-red-800"
+                  title={row.nfe_error}
+                >
+                  {row.nfe_error}
+                </span>
+              ) : null}
               {row.nfe_pdf_url || row.nfe_xml_url ? (
                 <span className="flex gap-1 text-[10px]">
                   {row.nfe_pdf_url ? (
@@ -909,7 +917,10 @@ export default function FiscalInvoicingPage() {
                 </Button>
               ) : null}
               {row.nfe_id &&
-              (row.nfe_status === "pending" || row.nfe_status === "processing") ? (
+              (row.nfe_status === "pending" ||
+                row.nfe_status === "processing" ||
+                row.nfe_status === "rejected" ||
+                row.nfe_status === "error") ? (
                 <Button
                   type="button"
                   size="sm"

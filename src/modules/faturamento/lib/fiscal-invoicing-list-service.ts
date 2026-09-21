@@ -378,21 +378,30 @@ export async function listFiscalInvoicingOrders(
         .in("status", ["error", "rejected"])
         .not("sales_order_id", "is", null);
       if (nfeErr) throw new Error(nfeErr.message);
-      const ids = [
+      const rejectedOrderIds = [
         ...new Set(
           (nfeRows ?? [])
             .map((r) => r.sales_order_id)
             .filter((id): id is string => Boolean(id))
         ),
       ];
-      if (!ids.length) {
+      const groups = await loadNfeGroupsForSalesOrders(
+        admin,
+        tenantId,
+        rejectedOrderIds
+      );
+      const ids = new Set(rejectedOrderIds);
+      for (const g of groups.values()) {
+        for (const m of g.members) ids.add(m.id);
+      }
+      if (!ids.size) {
         return {
           data: [],
           pagination: { page, limit, total: 0 },
           tab,
         };
       }
-      query = query.in("id", ids);
+      query = query.in("id", [...ids]);
       break;
     }
     default:
@@ -414,6 +423,38 @@ export async function listFiscalInvoicingOrders(
     loadUnmappedBlingSkusByOrder(admin, tenantId, orderIds),
     loadNfeGroupsForSalesOrders(admin, tenantId, orderIds),
   ]);
+
+  const nfeById = new Map(
+    [...nfesByOrder.values()].map((n) => [n.id, n] as const)
+  );
+  const missingGroupNfeIds = [
+    ...new Set(
+      [...groupsByOrder.values()]
+        .map((g) => g.nfe_id)
+        .filter(
+          (id): id is string => typeof id === "string" && !nfeById.has(id)
+        )
+    ),
+  ];
+  if (missingGroupNfeIds.length) {
+    const dbNfe = asUntypedAdmin(admin);
+    const { data: groupNfes, error: groupNfeErr } = await dbNfe
+      .from("nfes")
+      .select(
+        "id, status, nfe_number, pdf_url, xml_url, error_message, provider, updated_at"
+      )
+      .eq("tenant_id", tenantId)
+      .in("id", missingGroupNfeIds);
+    if (groupNfeErr) throw new Error(groupNfeErr.message);
+    for (const row of (groupNfes ?? []) as NfeSummary[]) {
+      nfeById.set(row.id, row);
+    }
+  }
+  for (const [orderId, group] of groupsByOrder) {
+    if (!group.nfe_id) continue;
+    const shared = nfeById.get(group.nfe_id);
+    if (shared) nfesByOrder.set(orderId, shared);
+  }
 
   const enriched: FiscalInvoicingListRow[] = [];
 
