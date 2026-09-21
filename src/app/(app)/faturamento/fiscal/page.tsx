@@ -7,11 +7,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink,
   FileText,
+  Layers,
   Loader2,
   PackageCheck,
   RefreshCw,
   Send,
   Sparkles,
+  Ungroup,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -54,6 +56,7 @@ import {
   FISCAL_INVOICING_LIST_TABS,
   type FiscalInvoicingListTab,
 } from "@/modules/faturamento/lib/fiscal-invoicing-list-tabs";
+import { digitsOnlyDoc } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 
 type ApiResponse = {
   data: FiscalInvoicingListRow[];
@@ -197,9 +200,11 @@ export default function FiscalInvoicingPage() {
   const [aiDescription, setAiDescription] = useState("");
   const [aiQuestions, setAiQuestions] = useState<string[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
     setPage(1);
+    setSelectedIds([]);
   }, [search, tab]);
 
   const queryFilters = useMemo(
@@ -250,6 +255,92 @@ export default function FiscalInvoicingPage() {
           : "Não havia pedidos a reabrir."
       );
       setTab("fiscal_pending");
+      invalidateList();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const rows = data?.data ?? [];
+  const selectedRows = rows.filter((r) => selectedIds.includes(r.id));
+  const groupHint = useMemo(() => {
+    if (selectedRows.length < 2) {
+      return "Seleccione 2 ou mais pedidos do mesmo cliente para uma nota só.";
+    }
+    const docs = new Set(
+      selectedRows
+        .map((r) => digitsOnlyDoc(r.client_document))
+        .filter((d) => d.length >= 11)
+    );
+    if (docs.size !== 1) {
+      return "Só é possível agrupar pedidos do mesmo cliente (mesmo CNPJ/CPF).";
+    }
+    const types = new Set(
+      selectedRows.map((r) => r.invoice_document_type).filter(Boolean)
+    );
+    if (types.size !== 1) {
+      return "Todos precisam do mesmo tipo de nota (NF-e produto ou industrialização).";
+    }
+    const t = [...types][0];
+    if (t !== "nfe_product" && t !== "nfe_industrialization") {
+      return "Agrupar só vale para NF-e de produto ou industrialização.";
+    }
+    if (selectedRows.some((r) => r.billing_closure || r.nfe_group_id)) {
+      return "Há pedido já faturado ou já agrupado. Desagrupe primeiro.";
+    }
+    return null;
+  }, [selectedRows]);
+
+  const sharedGroupId =
+    selectedRows.length > 0 &&
+    selectedRows.every(
+      (r) => r.nfe_group_id && r.nfe_group_id === selectedRows[0].nfe_group_id
+    )
+      ? selectedRows[0].nfe_group_id
+      : null;
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  const groupMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await fetch("/api/faturamento/fiscal/group", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sales_order_ids: ids }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { members?: Array<{ order_number: string }> };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao agrupar");
+      return json.data;
+    },
+    onSuccess: (group) => {
+      const nums = (group?.members ?? []).map((m) => m.order_number).join(", ");
+      toast.success(
+        `Pedidos agrupados numa nota: ${nums}. Na emissão, cada PV sai nas informações da NF.`
+      );
+      setSelectedIds([]);
+      invalidateList();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const ungroupMutation = useMutation({
+    mutationFn: async (groupId: string) => {
+      const res = await fetch(
+        `/api/faturamento/fiscal/group?groupId=${encodeURIComponent(groupId)}`,
+        { method: "DELETE", credentials: "include" }
+      );
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao desagrupar");
+    },
+    onSuccess: () => {
+      toast.success("Pedidos desagrupados.");
       invalidateList();
     },
     onError: (err: Error) => toast.error(err.message),
@@ -354,19 +445,54 @@ export default function FiscalInvoicingPage() {
   const tableColumns = useMemo((): SortableTableColumn<FiscalInvoicingListRow>[] => {
     return [
       {
+        key: "select",
+        label: "",
+        type: "text",
+        width: "w-[3%]",
+        sortable: false,
+        truncate: false,
+        render: (row) => {
+          const selectable =
+            !row.billing_closure && row.billing_plan !== "without_invoice";
+          return (
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-emerald-700"
+              checked={selectedIds.includes(row.id)}
+              disabled={!selectable}
+              onChange={() => toggleSelected(row.id)}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Seleccionar ${row.order_number}`}
+            />
+          );
+        },
+      },
+      {
         key: "order_number",
         label: "Nº pedido",
         type: "text",
-        width: "w-[9%]",
+        width: "w-[11%]",
         accessor: (row) => row.order_number,
+        truncate: false,
         render: (row) => (
-          <Link
-            href={`/faturamento/fiscal/${row.id}`}
-            className={cn(CRONOGRAMA_TOKENS.cellLink, "font-medium")}
-            title="Abrir revisão fiscal do pedido"
-          >
-            {row.order_number}
-          </Link>
+          <div className="flex flex-col gap-0.5">
+            <Link
+              href={`/faturamento/fiscal/${row.id}`}
+              className={cn(CRONOGRAMA_TOKENS.cellLink, "font-medium")}
+              title="Abrir revisão fiscal do pedido"
+            >
+              {row.order_number}
+            </Link>
+            {row.nfe_group_orders?.length > 1 ? (
+              <span
+                className="inline-flex max-w-full items-center gap-0.5 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-900 ring-1 ring-inset ring-sky-200"
+                title={`Nota agrupada: ${row.nfe_group_orders.map((o) => o.order_number).join(", ")}`}
+              >
+                <Layers className="h-3 w-3 shrink-0" />
+                {row.nfe_group_orders.map((o) => o.order_number).join(" + ")}
+              </span>
+            ) : null}
+          </div>
         ),
       },
       {
@@ -555,7 +681,7 @@ export default function FiscalInvoicingPage() {
         },
       },
     ];
-  }, []);
+  }, [selectedIds]);
 
   const emptyMessage = `Nenhum pedido em «${FISCAL_INVOICING_LIST_TAB_LABELS[tab]}»${
     search ? " para esta busca." : "."
@@ -564,11 +690,63 @@ export default function FiscalInvoicingPage() {
   const listPanel = (
     <CronogramaPanel
       search={
-        <CronogramaSearch
-          value={searchInput}
-          onChange={setSearchInput}
-          placeholder="Buscar nº pedido, cliente ou produto…"
-        />
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <CronogramaSearch
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder="Buscar nº pedido, cliente ou produto…"
+              className="flex-1"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                disabled={
+                  selectedIds.length < 2 ||
+                  groupHint != null ||
+                  groupMutation.isPending
+                }
+                title={
+                  groupHint ??
+                  "Emitir uma NF-e só, com o número de cada pedido na nota"
+                }
+                onClick={() => groupMutation.mutate(selectedIds)}
+              >
+                {groupMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Layers className="h-4 w-4" />
+                )}
+                Agrupar numa nota
+                {selectedIds.length > 0 ? ` (${selectedIds.length})` : ""}
+              </Button>
+              {sharedGroupId ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={ungroupMutation.isPending}
+                  onClick={() => ungroupMutation.mutate(sharedGroupId)}
+                >
+                  {ungroupMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Ungroup className="h-4 w-4" />
+                  )}
+                  Desagrupar
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <p className="text-xs text-slate-500">
+            {groupHint ??
+              (selectedIds.length >= 2
+                ? "Pagamento e frete da nota seguem o pedido principal; cada PV sai nas informações complementares e no nome dos itens."
+                : "Seleccione pedidos do mesmo cliente para emitir uma nota só.")}
+          </p>
+        </div>
       }
       error={
         error ? (
@@ -594,24 +772,43 @@ export default function FiscalInvoicingPage() {
         isLoading={isLoading}
         emptyMessage={emptyMessage}
         rowClassName={(row) =>
-          row.ready_for_invoice &&
-          !row.billing_closure &&
-          !(
-            row.fiscal_status === "rules_applied" ||
-            row.fiscal_status === "manual_override" ||
-            row.fiscal_status === "approved"
+          cn(
+            selectedIds.includes(row.id) && "bg-sky-50/80",
+            row.ready_for_invoice &&
+              !row.billing_closure &&
+              !(
+                row.fiscal_status === "rules_applied" ||
+                row.fiscal_status === "manual_override" ||
+                row.fiscal_status === "approved"
+              )
+              ? "animate-pulse bg-amber-50/80"
+              : tab === "ready" &&
+                  (row.can_emit || row.billing_plan === "without_invoice")
+                ? "animate-pulse bg-emerald-50/60 dark:bg-emerald-950/20"
+                : ""
           )
-            ? "animate-pulse bg-amber-50/80"
-            : tab === "ready" &&
-                (row.can_emit || row.billing_plan === "without_invoice")
-              ? "animate-pulse bg-emerald-50/60 dark:bg-emerald-950/20"
-              : ""
         }
         actionsColumn={{
           label: "Acções",
           width: "w-[10rem]",
           render: (row) => (
             <div className="flex flex-wrap items-center gap-1">
+              {row.nfe_group_id &&
+              !row.billing_closure &&
+              row.nfe_status !== "authorized" &&
+              row.nfe_status !== "processing" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  title="Desagrupar pedidos desta nota"
+                  disabled={ungroupMutation.isPending}
+                  onClick={() => ungroupMutation.mutate(row.nfe_group_id!)}
+                >
+                  <Ungroup className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
               {isAdmin &&
               tab === "fiscal_pending" &&
               row.billing_plan !== "without_invoice" &&
@@ -664,7 +861,17 @@ export default function FiscalInvoicingPage() {
                   }
                   disabled={emittingOrderId === row.id}
                   onClick={() =>
-                    void emitNfe(row.id, row.emit_warnings ?? [])
+                    void emitNfe(
+                      row.id,
+                      [
+                        ...(row.nfe_group_orders.length > 1
+                          ? [
+                              `Uma nota só para: ${row.nfe_group_orders.map((o) => o.order_number).join(", ")}.`,
+                            ]
+                          : []),
+                        ...(row.emit_warnings ?? []),
+                      ]
+                    )
                   }
                 >
                   {emittingOrderId === row.id ? (

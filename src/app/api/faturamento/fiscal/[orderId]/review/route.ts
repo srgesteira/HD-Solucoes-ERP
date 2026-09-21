@@ -15,11 +15,15 @@ import {
   saveSalesOrderItemUsageType,
 } from "@/modules/faturamento/lib/fiscal-order-review-service";
 import { isItemUsageType } from "@/modules/fiscal/lib/item-usage-type";
+import {
+  attachNfeGroupToReview,
+  getFiscalReviewForBlingNfe,
+} from "@/modules/faturamento/lib/nfe-invoice-group";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ orderId: string }> }
 ) {
   const { orderId } = await context.params;
@@ -34,10 +38,17 @@ export async function GET(
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   const admin = createSupabaseAdminClient();
+  const nfePayload =
+    request.nextUrl.searchParams.get("nfe_payload") === "1";
 
   try {
-    const data = await getFiscalOrderReview(admin, tenantId, orderId);
-    if (!data) return apiError("Pedido não encontrado", 404);
+    const raw = nfePayload
+      ? await getFiscalReviewForBlingNfe(admin, tenantId, orderId)
+      : await getFiscalOrderReview(admin, tenantId, orderId);
+    if (!raw) return apiError("Pedido não encontrado", 404);
+    const data = nfePayload
+      ? raw
+      : await attachNfeGroupToReview(admin, tenantId, raw);
     return apiOk({ data });
   } catch (e) {
     return apiError(

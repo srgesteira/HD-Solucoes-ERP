@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   ExternalLink,
+  Layers,
   Loader2,
   Mail,
   PackageCheck,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  Ungroup,
 } from "lucide-react";
 import { toast } from "sonner";
 import { FiscalStatusBadge } from "@/components/fiscal/fiscal-status-badge";
@@ -376,6 +378,25 @@ export default function FiscalOrderReviewPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const ungroupMutation = useMutation({
+    mutationFn: async (groupId: string) => {
+      const res = await fetch(
+        `/api/faturamento/fiscal/group?groupId=${encodeURIComponent(groupId)}`,
+        { method: "DELETE", credentials: "include" }
+      );
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao desagrupar");
+    },
+    onSuccess: () => {
+      toast.success("Pedidos desagrupados.");
+      void queryClient.invalidateQueries({
+        queryKey: ["fiscal-order-review", orderId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const sendNfeEmailMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(
@@ -626,9 +647,16 @@ export default function FiscalOrderReviewPage() {
                 }
                 onClick={() => {
                   if (!data.can_emit) return;
-                  if (data.emit_warnings.length) {
+                  const grouped = data.nfe_group?.members ?? [];
+                  const msgs = [...data.emit_warnings];
+                  if (grouped.length > 1) {
+                    msgs.unshift(
+                      `Uma nota só para: ${grouped.map((m) => m.order_number).join(", ")}. Cada PV sai nas informações complementares e no nome dos itens.`
+                    );
+                  }
+                  if (msgs.length) {
                     const ok = window.confirm(
-                      `${data.emit_warnings.join("\n")}\n\nEmitir a nota mesmo assim?`
+                      `${msgs.join("\n")}\n\nEmitir a nota?`
                     );
                     if (!ok) return;
                   }
@@ -665,6 +693,61 @@ export default function FiscalOrderReviewPage() {
         </p>
       ) : data ? (
         <div className="space-y-4">
+          {data.nfe_group && data.nfe_group.members.length > 1 ? (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+              <p className="font-medium flex items-center gap-2">
+                <Layers className="h-4 w-4 shrink-0" />
+                Nota agrupada — uma NF-e para vários pedidos
+              </p>
+              <p className="mt-1">
+                A conferência continua pedido a pedido. Na emissão, sai uma nota
+                só: cada PV e o PC do cliente entram nas informações
+                complementares; os itens saem como «PV — produto».
+              </p>
+              <ul className="mt-2 space-y-1">
+                {data.nfe_group.members.map((m) => (
+                  <li key={m.id}>
+                    <Link
+                      href={`/faturamento/fiscal/${m.id}`}
+                      className="font-mono font-medium text-sky-800 hover:underline"
+                    >
+                      {m.order_number}
+                    </Link>
+                    {m.customer_po_number
+                      ? ` · PC ${m.customer_po_number}`
+                      : ""}
+                    {m.id === data.nfe_group?.primary_sales_order_id
+                      ? " · principal (pagamento/frete da nota)"
+                      : ""}
+                    {m.id === orderId ? " · este pedido" : ""}
+                    {` · ${fmtBRL(m.total)}`}
+                  </li>
+                ))}
+              </ul>
+              {!data.billing_closure &&
+              data.nfe?.status !== "authorized" &&
+              data.nfe?.status !== "processing" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  disabled={!isAdmin || ungroupMutation.isPending}
+                  onClick={() => {
+                    if (!data.nfe_group) return;
+                    ungroupMutation.mutate(data.nfe_group.id);
+                  }}
+                >
+                  {ungroupMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Ungroup className="h-4 w-4" />
+                  )}
+                  Desagrupar
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {data.emit_warnings.length > 0 ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
               <p className="font-medium">Material ainda não pronto</p>

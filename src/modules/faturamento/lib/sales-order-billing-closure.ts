@@ -9,6 +9,7 @@ import {
 } from "@/modules/vendas/lib/sales/sales-receivables";
 import { notifyCustomerNfeAuthorized } from "@/modules/fiscal/lib/bling/send-nfe-status-email";
 import { todayIsoSaoPaulo } from "@/shared/utils/date";
+import { loadNfeGroupForSalesOrder } from "@/modules/faturamento/lib/nfe-invoice-group";
 
 type Admin = SupabaseClient<Database>;
 
@@ -260,18 +261,25 @@ export async function maybeCloseSalesOrderOnNfeAuthorized(
 
   await notifyCustomerNfeAuthorized(admin, tenantId, nfeId);
 
-  const result = await closeSalesOrderBilling(
+  const group = await loadNfeGroupForSalesOrder(
     admin,
     tenantId,
-    nfe.sales_order_id,
-    "nfe",
-    { skipEmitGate: true }
+    nfe.sales_order_id
   );
-  if (!result.ok) {
-    console.warn(
-      "[billing-closure] NF-e autorizada mas pedido não fechou:",
-      nfe.sales_order_id,
-      result.reasons
-    );
+  const orderIds = group?.members.length
+    ? group.members.map((m) => m.id)
+    : [nfe.sales_order_id];
+
+  for (const orderId of orderIds) {
+    const result = await closeSalesOrderBilling(admin, tenantId, orderId, "nfe", {
+      skipEmitGate: true,
+    });
+    if (!result.ok) {
+      console.warn(
+        "[billing-closure] NF-e autorizada mas pedido não fechou:",
+        orderId,
+        result.reasons
+      );
+    }
   }
 }

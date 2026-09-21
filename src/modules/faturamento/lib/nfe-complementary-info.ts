@@ -32,24 +32,50 @@ export function formatNfePaymentDueDates(
     .join(" · ");
 }
 
+export function formatPedidoHdComplementarLine(input: {
+  order_number: string;
+  customer_po_number: string | null;
+}): string {
+  const po = input.customer_po_number?.trim();
+  const pv = input.order_number.trim();
+  return po
+    ? `Pedido HD ${pv} — PC cliente ${po}`
+    : `Pedido HD ${pv}`;
+}
+
 /**
  * Informações complementares (texto livre / infCpl).
  * Pedido HD + PC do cliente; endereço de entrega só se diferente
  * (a API Bling v3 POST /nfe não tem grupo estruturado `entrega`).
+ * Vários PVs na mesma nota: uma linha por pedido.
  */
 export function buildNfeComplementaryInfoLines(
   source: Pick<
     NfeComplementaryInfoSource,
     "order_number" | "customer_po_number" | "delivery_address_formatted"
-  >
+  > & {
+    grouped_orders?: Array<{
+      order_number: string;
+      customer_po_number: string | null;
+    }> | null;
+  }
 ): string[] {
-  const po = source.customer_po_number?.trim();
+  const grouped = (source.grouped_orders ?? []).filter((o) =>
+    o.order_number?.trim()
+  );
+  const orderLines =
+    grouped.length > 1
+      ? grouped.map((o) => formatPedidoHdComplementarLine(o))
+      : [
+          formatPedidoHdComplementarLine({
+            order_number: source.order_number,
+            customer_po_number: source.customer_po_number,
+          }),
+        ];
   const delivery = source.delivery_address_formatted?.trim();
-  return [
-    `Pedido HD ${source.order_number.trim()}`,
-    po ? `Pedido de compra do cliente: ${po}` : null,
-    delivery ? `Entrega: ${delivery}` : null,
-  ].filter((line): line is string => Boolean(line));
+  return [...orderLines, delivery ? `Entrega: ${delivery}` : null].filter(
+    (line): line is string => Boolean(line)
+  );
 }
 
 /** Texto enviado ao Bling em `observacoes`. */
@@ -57,7 +83,12 @@ export function buildNfeComplementaryInfo(
   source: Pick<
     NfeComplementaryInfoSource,
     "order_number" | "customer_po_number" | "delivery_address_formatted"
-  >
+  > & {
+    grouped_orders?: Array<{
+      order_number: string;
+      customer_po_number: string | null;
+    }> | null;
+  }
 ): string {
   return buildNfeComplementaryInfoLines(source).join("\n");
 }

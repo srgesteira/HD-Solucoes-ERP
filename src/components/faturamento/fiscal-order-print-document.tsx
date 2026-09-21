@@ -124,6 +124,16 @@ export function FiscalOrderPrintDocument({
           Pré-visualização no estilo DANFE — não é a NF-e autorizada. A nota
           oficial sai do pedido de venda já preparado no Bling (cliente,
           produtos com NCM e natureza/CFOP).
+          {review.nfe_group && review.nfe_group.members.length > 1 ? (
+            <>
+              {" "}
+              Nota agrupada:{" "}
+              {review.nfe_group.members
+                .map((m) => m.order_number)
+                .join(", ")}
+              . Cada PV sai nas informações complementares e no nome dos itens.
+            </>
+          ) : null}
         </div>
 
         <UnmappedBlingProductsPanel

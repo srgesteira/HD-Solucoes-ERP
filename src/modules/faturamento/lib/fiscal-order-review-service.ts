@@ -160,6 +160,19 @@ export type FiscalOrderReview = {
   freight_cost: number;
   carrier_name: string | null;
   freight_payer: string | null;
+  nfe_group: {
+    id: string;
+    primary_sales_order_id: string;
+    nfe_id: string | null;
+    members: Array<{
+      id: string;
+      order_number: string;
+      customer_po_number: string | null;
+      client_name: string;
+      total: number;
+      sort_order: number;
+    }>;
+  } | null;
 };
 
 type RawOrderRow = {
@@ -937,6 +950,7 @@ export async function getFiscalOrderReview(
       typeof blingPedido?.bling_pedido_prepared_at === "string"
         ? blingPedido.bling_pedido_prepared_at
         : null,
+    nfe_group: null,
   };
 }
 

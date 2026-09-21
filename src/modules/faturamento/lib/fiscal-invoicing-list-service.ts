@@ -8,6 +8,7 @@ import {
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 import { isWithoutInvoicePlanned } from "@/modules/faturamento/lib/sales-order-billing-display";
 import { isFiscalConfigured } from "@/modules/fiscal/lib/fiscal-rules-types";
+import { loadNfeGroupsForSalesOrders } from "@/modules/faturamento/lib/nfe-invoice-group";
 import {
   FISCAL_INVOICING_ORDER_STATUSES,
   type FiscalInvoicingListTab,
@@ -19,6 +20,7 @@ type SalesOrderBase = {
   id: string;
   order_number: string;
   client_name: string;
+  client_document: string | null;
   order_date: string;
   total: number;
   status: string;
@@ -55,6 +57,8 @@ export type FiscalInvoicingListRow = SalesOrderBase & {
   emit_blockers: string[];
   emit_warnings: string[];
   unmapped_bling_skus: string[];
+  nfe_group_id: string | null;
+  nfe_group_orders: Array<{ id: string; order_number: string }>;
 };
 
 export type FiscalInvoicingListResult = {
@@ -292,7 +296,7 @@ export async function listFiscalInvoicingOrders(
   let query = db
     .from("sales_orders")
     .select(
-      "id, order_number, client_name, order_date, total, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan, invoice_document_type",
+      "id, order_number, client_name, client_document, order_date, total, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan, invoice_document_type",
       { count: "exact" }
     )
     .eq("tenant_id", tenantId)
@@ -403,10 +407,12 @@ export async function listFiscalInvoicingOrders(
 
   const baseRows = (data ?? []) as unknown as SalesOrderBase[];
   const orderIds = baseRows.map((r) => r.id);
-  const [nfesByOrder, creditByOrder, unmappedByOrder] = await Promise.all([
+  const [nfesByOrder, creditByOrder, unmappedByOrder, groupsByOrder] =
+    await Promise.all([
     loadLatestNfesByOrder(admin, tenantId, orderIds),
     loadCreditStatusByOrder(admin, tenantId, orderIds),
     loadUnmappedBlingSkusByOrder(admin, tenantId, orderIds),
+    loadNfeGroupsForSalesOrders(admin, tenantId, orderIds),
   ]);
 
   const enriched: FiscalInvoicingListRow[] = [];
@@ -426,12 +432,13 @@ export async function listFiscalInvoicingOrders(
       credit !== "rejected" &&
       !nfe?.status;
 
+    const group = groupsByOrder.get(row.id) ?? null;
     const item: FiscalInvoicingListRow = {
       ...row,
       total: Number(row.total ?? 0),
       ready_for_invoice: row.ready_for_invoice === true,
       credit_status: credit,
-      nfe_id: nfe?.id ?? null,
+      nfe_id: nfe?.id ?? group?.nfe_id ?? null,
       nfe_status: nfe?.status ?? null,
       nfe_number: nfe?.nfe_number ?? null,
       nfe_pdf_url: nfe?.pdf_url ?? null,
@@ -448,6 +455,13 @@ export async function listFiscalInvoicingOrders(
         row.invoice_document_type === "nfe_industrialization"
           ? unmappedByOrder.get(row.id) ?? []
           : [],
+      nfe_group_id: group?.id ?? null,
+      nfe_group_orders: group
+        ? group.members.map((m) => ({
+            id: m.id,
+            order_number: m.order_number,
+          }))
+        : [],
     };
 
     if (

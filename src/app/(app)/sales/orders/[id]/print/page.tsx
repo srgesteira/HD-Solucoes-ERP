@@ -28,7 +28,7 @@ async function fetchOrder(id: string): Promise<SalesOrderPrintData> {
 
 async function fetchFiscalReview(id: string): Promise<FiscalOrderReview> {
   const res = await fetch(
-    `/api/faturamento/fiscal/${encodeURIComponent(id)}/review`,
+    `/api/faturamento/fiscal/${encodeURIComponent(id)}/review?nfe_payload=1`,
     { credentials: "include", cache: "no-store" }
   );
   const json = (await res.json().catch(() => ({}))) as {
@@ -65,7 +65,7 @@ export default function SalesOrderPrintPage() {
   });
 
   const fiscalQuery = useQuery({
-    queryKey: ["fiscal-order-print", id],
+    queryKey: ["fiscal-order-print", id, "nfe_payload"],
     queryFn: () => fetchFiscalReview(id),
     enabled: Boolean(id) && fromFiscal,
   });

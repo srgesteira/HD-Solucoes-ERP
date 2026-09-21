@@ -9,7 +9,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import type { InvoiceDocumentType } from "@/modules/core/types/sales-order-billing.types";
-import { getFiscalOrderReview } from "@/modules/faturamento/lib/fiscal-order-review-service";
+import {
+  getFiscalReviewForBlingNfe,
+  loadNfeGroupForSalesOrder,
+  attachNfeToGroup,
+} from "@/modules/faturamento/lib/nfe-invoice-group";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
 import { BlingApiError } from "@/modules/fiscal/lib/bling/bling-errors";
 import {
@@ -194,7 +198,7 @@ async function rewriteBlingNfeDraft(
   naturezaOperacaoId: number | null,
   numero: string
 ): Promise<void> {
-  const review = await getFiscalOrderReview(admin, tenantId, salesOrderId);
+  const review = await getFiscalReviewForBlingNfe(admin, tenantId, salesOrderId);
   if (!review) {
     throw new Error("Pedido de venda não encontrado para montar a NF-e.");
   }
@@ -288,7 +292,7 @@ async function upsertSequentialNfe(
     }
   }
 
-  const review = await getFiscalOrderReview(admin, tenantId, salesOrderId);
+  const review = await getFiscalReviewForBlingNfe(admin, tenantId, salesOrderId);
   if (!review) {
     throw new Error("Pedido de venda não encontrado para montar a NF-e.");
   }
@@ -333,7 +337,7 @@ async function alignBlingNfeCsosnIfConsumidorFinal(
   salesOrderId: string,
   blingNfeId: number
 ): Promise<void> {
-  const review = await getFiscalOrderReview(admin, tenantId, salesOrderId);
+  const review = await getFiscalReviewForBlingNfe(admin, tenantId, salesOrderId);
   if (!review) return;
   if (!isConsumidorFinal(review.items)) return;
   if (!isNaoContribuinteIe(review.client_state_registration)) return;
@@ -392,18 +396,39 @@ export async function emitirNfeViaBling(
   salesOrderId: string,
   docType: InvoiceDocumentType
 ): Promise<{ nfe_id: string; bling_nfe_id: number | null }> {
-  const gate = await validateSalesOrderCanEmitNfe(admin, tenantId, salesOrderId);
-  if (!gate.ok) {
-    throw new Error(gate.reasons.join(" "));
+  const group = await loadNfeGroupForSalesOrder(admin, tenantId, salesOrderId);
+  const emitOrderId = group?.primary_sales_order_id ?? salesOrderId;
+  if (group && group.members.length > 1) {
+    for (const member of group.members) {
+      const memberGate = await validateSalesOrderCanEmitNfe(
+        admin,
+        tenantId,
+        member.id
+      );
+      if (!memberGate.ok) {
+        throw new Error(
+          `${member.order_number}: ${memberGate.reasons.join(" ")}`
+        );
+      }
+    }
+  } else {
+    const gate = await validateSalesOrderCanEmitNfe(
+      admin,
+      tenantId,
+      emitOrderId
+    );
+    if (!gate.ok) {
+      throw new Error(gate.reasons.join(" "));
+    }
   }
 
   const db = asUntypedAdmin(admin);
-  const idempotencyKey = `bling-nfe:${salesOrderId}`;
+  const idempotencyKey = `bling-nfe:${emitOrderId}`;
   const { data: claimed, error: claimErr } = await db.rpc(
     "fn_bling_claim_nfe_emit",
     {
       p_tenant_id: tenantId,
-      p_sales_order_id: salesOrderId,
+      p_sales_order_id: emitOrderId,
       p_idempotency_key: idempotencyKey,
     }
   );
@@ -413,6 +438,7 @@ export async function emitirNfeViaBling(
   if (!nfe?.id) throw new Error("Não foi possível abrir o registo local da NF-e.");
 
   if (nfe.status === "authorized" && nfe.bling_nfe_id) {
+    if (group) await attachNfeToGroup(admin, tenantId, group.id, nfe.id);
     return { nfe_id: nfe.id, bling_nfe_id: nfe.bling_nfe_id };
   }
 
@@ -448,7 +474,7 @@ export async function emitirNfeViaBling(
     prepared = await ensureBlingPedidoForSalesOrder(
       admin,
       tenantId,
-      salesOrderId,
+      emitOrderId,
       docType
     );
   } catch (e) {
@@ -474,7 +500,7 @@ export async function emitirNfeViaBling(
     const found = await searchBlingNfeForErpOrder(
       admin,
       tenantId,
-      salesOrderId,
+      emitOrderId,
       prepared.contact_id
     );
     if (found?.status === "authorized" || found?.status === "processing") {
@@ -509,7 +535,7 @@ export async function emitirNfeViaBling(
     blingNfeId = await upsertSequentialNfe(
       admin,
       tenantId,
-      salesOrderId,
+      emitOrderId,
       prepared.pedido_venda_id,
       prepared.contact_id,
       prepared.natureza_operacao_id,
@@ -553,7 +579,7 @@ export async function emitirNfeViaBling(
     await alignBlingNfeCsosnIfConsumidorFinal(
       admin,
       tenantId,
-      salesOrderId,
+      emitOrderId,
       blingNfeId
     );
     await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
@@ -575,6 +601,9 @@ export async function emitirNfeViaBling(
   const after = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
   const snapshot = parseBlingNfeSnapshot(after, blingNfeId);
   await applyBlingNfeSnapshot(admin, tenantId, nfe.id, snapshot);
+  if (group) {
+    await attachNfeToGroup(admin, tenantId, group.id, nfe.id);
+  }
   return { nfe_id: nfe.id, bling_nfe_id: blingNfeId };
 }
 

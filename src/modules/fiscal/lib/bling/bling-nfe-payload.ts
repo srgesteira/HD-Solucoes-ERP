@@ -24,10 +24,23 @@ export function buildBlingNfeObservacoes(
   source: Pick<
     NfeComplementaryInfoSource,
     "order_number" | "customer_po_number" | "delivery_address_formatted"
-  >,
+  > & {
+    grouped_orders?: Array<{
+      id?: string;
+      order_number: string;
+      customer_po_number: string | null;
+    }> | null;
+  },
   salesOrderId: string
 ): string {
-  return [buildNfeComplementaryInfo(source), blingNfeErpMarker(salesOrderId)]
+  const grouped = source.grouped_orders ?? [];
+  const markers =
+    grouped.length > 1
+      ? grouped
+          .map((o) => (o.id ? blingNfeErpMarker(o.id) : null))
+          .filter((m): m is string => Boolean(m))
+      : [blingNfeErpMarker(salesOrderId)];
+  return [buildNfeComplementaryInfo(source), ...markers]
     .filter(Boolean)
     .join("\n");
 }
@@ -69,6 +82,7 @@ export function fiscalReviewToBlingNfeCreateInput(
     | "shipping_type"
     | "freight_cost"
     | "carrier_name"
+    | "nfe_group"
   >,
   contactId: number | null,
   operationDate?: string
@@ -100,6 +114,11 @@ export function fiscalReviewToBlingNfeCreateInput(
       order_number: review.order_number,
       customer_po_number: review.customer_po_number,
       delivery_address_formatted: review.delivery_address_formatted,
+      grouped_orders: review.nfe_group?.members.map((m) => ({
+        id: m.id,
+        order_number: m.order_number,
+        customer_po_number: m.customer_po_number,
+      })),
     },
     paymentSource: fiscalReviewToNfePayloadSource(review),
     shippingType: review.shipping_type,
@@ -123,8 +142,16 @@ export function fiscalReviewToNfePayloadSource(
     | "expected_delivery"
     | "order_date"
     | "total"
+    | "nfe_group"
   >
-): NfeComplementaryInfoSource & { total: number } {
+): NfeComplementaryInfoSource & {
+  total: number;
+  grouped_orders?: Array<{
+    id: string;
+    order_number: string;
+    customer_po_number: string | null;
+  }>;
+} {
   return {
     order_number: review.order_number,
     customer_po_number: review.customer_po_number,
@@ -139,6 +166,11 @@ export function fiscalReviewToNfePayloadSource(
     expected_delivery: review.expected_delivery,
     order_date: review.order_date,
     total: Number(review.total ?? 0),
+    grouped_orders: review.nfe_group?.members.map((m) => ({
+      id: m.id,
+      order_number: m.order_number,
+      customer_po_number: m.customer_po_number,
+    })),
   };
 }
 
@@ -235,7 +267,13 @@ export type BlingNfeCreateBodyInput = {
   observacoesSource: Pick<
     NfeComplementaryInfoSource,
     "order_number" | "customer_po_number" | "delivery_address_formatted"
-  >;
+  > & {
+    grouped_orders?: Array<{
+      id?: string;
+      order_number: string;
+      customer_po_number: string | null;
+    }> | null;
+  };
   paymentSource: NfeComplementaryInfoSource & { total: number };
   shippingType?: string | null;
   freightCost?: number | null;
