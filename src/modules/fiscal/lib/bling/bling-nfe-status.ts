@@ -76,6 +76,24 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
+function xMotivoFromXml(xml: string): string | null {
+  const pairs = [
+    ...xml.matchAll(
+      /<cStat>\s*(\d+)\s*<\/cStat>[\s\S]{0,400}?<xMotivo>\s*([^<]+)\s*<\/xMotivo>/gi
+    ),
+  ];
+  for (const m of pairs) {
+    const code = m[1];
+    const reason = m[2]?.replace(/\s+/g, " ").trim();
+    if (!reason) continue;
+    if (code === "100" || code === "150") continue;
+    return `${code} - ${reason}`;
+  }
+  const only = xml.match(/<xMotivo>\s*([^<]+)\s*<\/xMotivo>/i);
+  const reason = only?.[1]?.replace(/\s+/g, " ").trim();
+  return reason || null;
+}
+
 function looksLikeComplementaryInfo(text: string): boolean {
   return /Pedido HD|HD-ERP:|infCpl/i.test(text);
 }
@@ -165,11 +183,18 @@ export function parseBlingNfeSnapshot(
     str(data.chaveAcesso) ??
     str(data.chave) ??
     str(data.chave_acesso);
-  const xml =
-    str(data.xml) ??
+  const xmlLink =
     str(data.linkXML) ??
     str(data.linkXml) ??
     str(data.xmlUrl);
+  const xmlRaw = str(data.xml);
+  const xmlUrl =
+    xmlLink ??
+    (xmlRaw && /^https?:\/\//i.test(xmlRaw) ? xmlRaw : null);
+  const xmlBody =
+    xmlRaw && xmlRaw.includes("<") && !/^https?:\/\//i.test(xmlRaw)
+      ? xmlRaw
+      : null;
   const pdf =
     str(data.linkDanfe) ??
     str(data.linkDANFE) ??
@@ -183,7 +208,9 @@ export function parseBlingNfeSnapshot(
       : str(numero);
 
   const status = mapBlingSituacaoToDb(situacao);
-  const rejeicao = extractBlingNfeRejeicao(data);
+  const rejeicao =
+    extractBlingNfeRejeicao(data) ??
+    (xmlBody ? xMotivoFromXml(xmlBody) : null);
 
   return {
     bling_nfe_id: id,
@@ -191,7 +218,7 @@ export function parseBlingNfeSnapshot(
     status,
     nfe_number: nfeNumber,
     nfe_key: chave,
-    xml_url: xml,
+    xml_url: xmlUrl,
     pdf_url: pdf,
     error_message:
       status === "rejected" || status === "error"

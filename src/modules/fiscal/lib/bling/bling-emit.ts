@@ -183,7 +183,15 @@ async function listReusableBlingNfeIds(
     const id = Number(row.id);
     if (!Number.isFinite(id)) continue;
     const status = mapBlingSituacaoToDb(row.situacao);
-    if (status === "authorized" || status === "processing") continue;
+    if (
+      status === "authorized" ||
+      status === "processing" ||
+      status === "rejected" ||
+      status === "error" ||
+      status === "cancelled"
+    ) {
+      continue;
+    }
     ids.push(id);
   }
   const found = await searchBlingNfeForErpOrder(
@@ -220,9 +228,10 @@ async function rewriteBlingNfeDraft(
       : {};
   const naoContribuinte = isNaoContribuinteIe(review.client_state_registration);
   const merged: Record<string, unknown> = {
-    ...existing,
     ...created,
     numero,
+    ...(existing.serie != null ? { serie: existing.serie } : {}),
+    ...(existing.loja != null ? { loja: existing.loja } : {}),
     contato: {
       ...contatoExisting,
       ...created.contato,
@@ -283,6 +292,13 @@ async function upsertSequentialNfe(
     if (remote.status === "authorized" || remote.status === "processing") {
       return id;
     }
+    if (
+      remote.status === "rejected" ||
+      remote.status === "error" ||
+      remote.status === "cancelled"
+    ) {
+      continue;
+    }
     try {
       await rewriteBlingNfeDraft(
         admin,
@@ -322,19 +338,15 @@ async function upsertSequentialNfe(
   if (!Number.isFinite(id)) {
     throw new Error("O Bling criou a NF-e mas não devolveu o ID.");
   }
-  try {
-    await rewriteBlingNfeDraft(
-      admin,
-      tenantId,
-      salesOrderId,
-      id,
-      contactId,
-      naturezaOperacaoId,
-      numero
-    );
-  } catch {
-    // Nota criada; o PUT do número/CSOSN corre no align seguinte.
-  }
+  await rewriteBlingNfeDraft(
+    admin,
+    tenantId,
+    salesOrderId,
+    id,
+    contactId,
+    naturezaOperacaoId,
+    numero
+  );
   return id;
 }
 
@@ -589,7 +601,28 @@ export async function emitirNfeViaBling(
       emitOrderId,
       blingNfeId
     );
-    await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
+    const sent = await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
+    const fromSend = parseBlingNfeSnapshot(sent, blingNfeId);
+    const after = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
+    const snapshot = parseBlingNfeSnapshot(after, blingNfeId);
+    const rejected =
+      snapshot.status === "rejected" || snapshot.status === "error";
+    await applyBlingNfeSnapshot(admin, tenantId, nfe.id, snapshot, {
+      error_message: rejected
+        ? snapshot.error_message ??
+          fromSend.error_message ??
+          "Rejeitada pela SEFAZ. Abra o XML ou o Bling para ver o código."
+        : snapshot.error_message,
+    });
+    if (group) await attachNfeToGroup(admin, tenantId, group.id, nfe.id);
+    if (rejected) {
+      throw new Error(
+        snapshot.error_message ??
+          fromSend.error_message ??
+          "NF-e rejeitada pela SEFAZ."
+      );
+    }
+    return { nfe_id: nfe.id, bling_nfe_id: blingNfeId };
   } catch (e) {
     const snapshot = parseBlingNfeSnapshot(
       await blingGet(admin, tenantId, `/nfe/${blingNfeId}`).catch(() => ({
@@ -599,26 +632,12 @@ export async function emitirNfeViaBling(
     );
     const msg = e instanceof Error ? e.message : "Falha ao enviar NF-e à SEFAZ.";
     await applyBlingNfeSnapshot(admin, tenantId, nfe.id, snapshot, {
-      error_message: msg,
+      error_message: snapshot.error_message ?? msg,
       reconcile_needed: snapshot.status !== "authorized",
     });
     if (group) await attachNfeToGroup(admin, tenantId, group.id, nfe.id);
     throw e;
   }
-
-  const after = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
-  const snapshot = parseBlingNfeSnapshot(after, blingNfeId);
-  await applyBlingNfeSnapshot(admin, tenantId, nfe.id, snapshot, {
-    error_message:
-      snapshot.status === "rejected" || snapshot.status === "error"
-        ? snapshot.error_message ??
-          "Rejeitada pela SEFAZ. Abra o XML ou o Bling para ver o código."
-        : snapshot.error_message,
-  });
-  if (group) {
-    await attachNfeToGroup(admin, tenantId, group.id, nfe.id);
-  }
-  return { nfe_id: nfe.id, bling_nfe_id: blingNfeId };
 }
 
 export async function consultarNfeViaBling(

@@ -44,7 +44,7 @@ export function buildBlingNfeParcelas(
       n === 1
         ? terms
         : i === 0
-          ? `Parcela 1/${n} — ${terms}`
+          ? `Parcela 1/${n} - ${terms}`
           : `Parcela ${i + 1}/${n}`;
     return {
       data: dates[i] ?? fallbackDate,
