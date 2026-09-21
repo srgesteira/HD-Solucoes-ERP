@@ -645,24 +645,33 @@ export async function emitirNfeViaBling(
       blingNfeId
     );
     const sent = await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
-    const fromSend = await snapshotFromBling(sent, blingNfeId);
-    const after = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
-    const snapshot = await snapshotFromBling(after, blingNfeId);
+    let snapshot = await snapshotFromBling(sent, blingNfeId);
+    for (let i = 0; i < 3; i++) {
+      if (snapshot.status === "authorized") break;
+      const motivo = snapshot.error_message ?? "";
+      if (
+        snapshot.status === "rejected" &&
+        motivo &&
+        !motivo.startsWith("NF-e rejeitada pela SEFAZ.")
+      ) {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 900));
+      const again = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
+      snapshot = await snapshotFromBling(again, blingNfeId);
+    }
     const rejected =
       snapshot.status === "rejected" || snapshot.status === "error";
     await applyBlingNfeSnapshot(admin, tenantId, nfe.id, snapshot, {
       error_message: rejected
         ? snapshot.error_message ??
-          fromSend.error_message ??
           "Rejeitada pela SEFAZ. Abra o XML ou o Bling para ver o código."
         : snapshot.error_message,
     });
     if (group) await attachNfeToGroup(admin, tenantId, group.id, nfe.id);
     if (rejected) {
       throw new Error(
-        snapshot.error_message ??
-          fromSend.error_message ??
-          "NF-e rejeitada pela SEFAZ."
+        snapshot.error_message ?? "NF-e rejeitada pela SEFAZ."
       );
     }
     return { nfe_id: nfe.id, bling_nfe_id: blingNfeId };

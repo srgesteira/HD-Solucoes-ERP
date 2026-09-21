@@ -261,6 +261,25 @@ export function parseBlingNfeSnapshot(
   };
 }
 
+export function summarizeBlingNfeForError(
+  data: Record<string, unknown>
+): string {
+  const keys = Object.keys(data).slice(0, 30).join(", ");
+  const bits: string[] = [];
+  if (data.situacao != null) bits.push(`situacao=${String(data.situacao)}`);
+  if (keys) bits.push(`campos=${keys}`);
+  for (const [k, v] of Object.entries(data)) {
+    if (k === "xml" || k === "observacoes" || k === "itens" || k === "parcelas") {
+      continue;
+    }
+    if (typeof v === "string" && v.trim() && v.length < 280) {
+      bits.push(`${k}: ${v.trim()}`);
+    }
+    if (bits.length >= 10) break;
+  }
+  return bits.join(" | ");
+}
+
 export async function enrichRejectedSnapshot(
   snapshot: BlingNfeSnapshot,
   payload?: unknown
@@ -272,7 +291,16 @@ export async function enrichRejectedSnapshot(
   const fromPayload = payload ? findRejeicaoDeep(payload) : null;
   if (fromPayload) return { ...snapshot, error_message: fromPayload };
   const url = snapshot.xml_url;
-  if (!url || !/^https?:\/\//i.test(url)) return snapshot;
+  if (!url || !/^https?:\/\//i.test(url)) {
+    const data = unwrapBlingData(payload);
+    const summary = data ? summarizeBlingNfeForError(data) : "";
+    return {
+      ...snapshot,
+      error_message: summary
+        ? `NF-e rejeitada pela SEFAZ. ${summary}`
+        : snapshot.error_message,
+    };
+  }
   try {
     const res = await fetch(url, {
       headers: { Accept: "application/xml,text/xml,*/*" },
@@ -283,5 +311,12 @@ export async function enrichRejectedSnapshot(
   } catch {
     // XML público pode exigir sessão Bling.
   }
-  return snapshot;
+  const data = unwrapBlingData(payload);
+  const summary = data ? summarizeBlingNfeForError(data) : "";
+  return {
+    ...snapshot,
+    error_message: summary
+      ? `NF-e rejeitada pela SEFAZ. ${summary}`
+      : snapshot.error_message,
+  };
 }

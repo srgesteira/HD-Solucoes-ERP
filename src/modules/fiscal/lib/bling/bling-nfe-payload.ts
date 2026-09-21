@@ -418,7 +418,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
           }),
       ...(email ? { email } : {}),
       ...(telefone ? { telefone } : {}),
-      ...(endereco ? { endereco } : {}),
+      ...(endereco && !input.contactId ? { endereco } : {}),
     },
     itens,
     desconto: desconto > 0 ? desconto : undefined,
