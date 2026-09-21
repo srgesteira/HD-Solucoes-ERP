@@ -25,6 +25,7 @@ import {
   BLING_NFE_SITUACAO,
   mapBlingSituacaoToDb,
   parseBlingNfeSnapshot,
+  enrichRejectedSnapshot,
   unwrapBlingData,
   unwrapBlingList,
   type NfeDbStatus,
@@ -101,6 +102,16 @@ async function loadRemoteNfeIdentity(
 
 function formatNfeNumero(n: number): string {
   return String(Math.trunc(n)).padStart(6, "0");
+}
+
+async function snapshotFromBling(
+  payload: unknown,
+  blingNfeId: number
+) {
+  return enrichRejectedSnapshot(
+    parseBlingNfeSnapshot(payload, blingNfeId),
+    payload
+  );
 }
 
 function isBlingDuplicateNumeroError(err: unknown): boolean {
@@ -424,12 +435,12 @@ async function syncExistingBlingNfe(
   blingNfeId: number
 ): Promise<void> {
   const payload = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
-  let snapshot = parseBlingNfeSnapshot(payload, blingNfeId);
+  let snapshot = await snapshotFromBling(payload, blingNfeId);
   if (snapshot.status === "pending" || snapshot.status === "processing") {
     try {
       await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
       const again = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
-      snapshot = parseBlingNfeSnapshot(again, blingNfeId);
+      snapshot = await snapshotFromBling(again, blingNfeId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Falha ao enviar NF-e à SEFAZ.";
       await applyBlingNfeSnapshot(admin, tenantId, nfeId, snapshot, {
@@ -634,9 +645,9 @@ export async function emitirNfeViaBling(
       blingNfeId
     );
     const sent = await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
-    const fromSend = parseBlingNfeSnapshot(sent, blingNfeId);
+    const fromSend = await snapshotFromBling(sent, blingNfeId);
     const after = await blingGet(admin, tenantId, `/nfe/${blingNfeId}`);
-    const snapshot = parseBlingNfeSnapshot(after, blingNfeId);
+    const snapshot = await snapshotFromBling(after, blingNfeId);
     const rejected =
       snapshot.status === "rejected" || snapshot.status === "error";
     await applyBlingNfeSnapshot(admin, tenantId, nfe.id, snapshot, {
@@ -656,7 +667,7 @@ export async function emitirNfeViaBling(
     }
     return { nfe_id: nfe.id, bling_nfe_id: blingNfeId };
   } catch (e) {
-    const snapshot = parseBlingNfeSnapshot(
+    const snapshot = await snapshotFromBling(
       await blingGet(admin, tenantId, `/nfe/${blingNfeId}`).catch(() => ({
         data: { id: blingNfeId },
       })),

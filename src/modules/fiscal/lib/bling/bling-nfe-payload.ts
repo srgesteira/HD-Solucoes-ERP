@@ -187,6 +187,26 @@ function roundMoney(value: number): number {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
+export function computeBlingNfeValorNota(input: {
+  items: BlingNfeCreateItemInput[];
+  headerDiscount: number;
+  freightCost?: number | null;
+}): number {
+  const vProd = roundMoney(
+    input.items.reduce(
+      (s, it) =>
+        s + roundMoney(Number(it.quantity ?? 0) * Number(it.unit_price ?? 0)),
+      0
+    )
+  );
+  const lineDisc = roundMoney(
+    input.items.reduce((s, it) => s + Math.max(0, Number(it.discount ?? 0)), 0)
+  );
+  const header = roundMoney(Math.max(0, Number(input.headerDiscount ?? 0)));
+  const freight = roundMoney(Math.max(0, Number(input.freightCost ?? 0)));
+  return roundMoney(vProd - lineDisc - header + freight);
+}
+
 /** CSOSN permitido pela SEFAZ (rej. 600) quando o destino é não contribuinte. */
 export const CSOSN_NAO_CONTRIBUINTE = "102";
 
@@ -344,7 +364,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     const cfop = String(it.cfop ?? "").replace(/\D/g, "");
     return {
       codigo,
-      descricao: (it.name ?? it.description).trim() || "—",
+      descricao: ((it.name ?? it.description).trim() || "-").slice(0, 120),
       unidade: it.unit?.trim() || "UN",
       quantidade: Number(it.quantity ?? 0),
       valor: roundMoney(Number(it.unit_price ?? 0)),
@@ -381,7 +401,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     tipo: 1,
     finalidade: 1,
     dataOperacao: String(input.orderDate ?? "").slice(0, 10),
-    ...(consumidorFinal ? { consumidorFinal: true } : {}),
+    ...(consumidorFinal && naoContribuinte ? { consumidorFinal: true } : {}),
     contato: {
       ...(Number.isFinite(input.contactId) && input.contactId
         ? { id: Number(input.contactId) }
@@ -406,7 +426,10 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       input.observacoesSource,
       input.salesOrderId
     ),
-    parcelas: buildBlingNfeParcelas(input.paymentSource),
+    parcelas: buildBlingNfeParcelas({
+      ...input.paymentSource,
+      total: computeBlingNfeValorNota(input),
+    }),
     transporte: buildBlingTransportePayload({
       shippingType: input.shippingType,
       freightCost: input.freightCost,

@@ -119,24 +119,58 @@ function firstMessage(values: unknown[]): string | null {
   return null;
 }
 
+function findRejeicaoDeep(value: unknown, depth = 0): string | null {
+  if (depth > 6 || value == null) return null;
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text || looksLikeComplementaryInfo(text)) return null;
+    if (text.includes("<cStat") || text.includes("<xMotivo")) {
+      return xMotivoFromXml(text);
+    }
+    if (
+      text.length < 400 &&
+      /rejei[cç][aã]o|\bSEFAZ\b|\bcStat\b|\bxMotivo\b/i.test(text)
+    ) {
+      return text.replace(/\s+/g, " ");
+    }
+    return null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findRejeicaoDeep(item, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value === "object") {
+    for (const item of Object.values(value as Record<string, unknown>)) {
+      const found = findRejeicaoDeep(item, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 function extractBlingNfeRejeicao(data: Record<string, unknown>): string | null {
   const fromArrays = Array.isArray(data.erros)
     ? firstMessage(data.erros)
     : null;
-  return firstMessage([
-    data.motivo,
-    data.mensagem,
-    data.motivoStatus,
-    data.situacaoDescricao,
-    data.descricaoSituacao,
-    data.mensagemSefaz,
-    data.xMotivo,
-    data.sefaz,
-    data.retorno,
-    data.retornoSefaz,
-    data.autorizacao,
-    fromArrays,
-  ]);
+  return (
+    firstMessage([
+      data.motivo,
+      data.mensagem,
+      data.motivoStatus,
+      data.situacaoDescricao,
+      data.descricaoSituacao,
+      data.mensagemSefaz,
+      data.xMotivo,
+      data.sefaz,
+      data.retorno,
+      data.retornoSefaz,
+      data.autorizacao,
+      fromArrays,
+    ]) ?? findRejeicaoDeep(data)
+  );
 }
 
 function num(v: unknown): number | null {
@@ -225,4 +259,29 @@ export function parseBlingNfeSnapshot(
         ? rejeicao
         : null,
   };
+}
+
+export async function enrichRejectedSnapshot(
+  snapshot: BlingNfeSnapshot,
+  payload?: unknown
+): Promise<BlingNfeSnapshot> {
+  if (snapshot.status !== "rejected" && snapshot.status !== "error") {
+    return snapshot;
+  }
+  if (snapshot.error_message) return snapshot;
+  const fromPayload = payload ? findRejeicaoDeep(payload) : null;
+  if (fromPayload) return { ...snapshot, error_message: fromPayload };
+  const url = snapshot.xml_url;
+  if (!url || !/^https?:\/\//i.test(url)) return snapshot;
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/xml,text/xml,*/*" },
+    });
+    const text = await res.text();
+    const motivo = xMotivoFromXml(text) ?? findRejeicaoDeep(text);
+    if (motivo) return { ...snapshot, error_message: motivo };
+  } catch {
+    // XML público pode exigir sessão Bling.
+  }
+  return snapshot;
 }
