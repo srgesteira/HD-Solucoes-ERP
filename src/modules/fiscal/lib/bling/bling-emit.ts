@@ -103,15 +103,26 @@ function formatNfeNumero(n: number): string {
   return String(Math.trunc(n)).padStart(6, "0");
 }
 
-async function lastAuthorizedNfeNumero(
+function isBlingDuplicateNumeroError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /já existe uma nota com este número|numerac[aã]o da nota/i.test(msg);
+}
+
+async function lastUsedBlingNfeNumero(
   admin: Admin,
   tenantId: string
 ): Promise<number> {
   let max = 0;
   const situacoes = [
+    BLING_NFE_SITUACAO.PENDENTE,
+    BLING_NFE_SITUACAO.CANCELADA,
+    BLING_NFE_SITUACAO.AGUARDANDO_RECIBO,
+    BLING_NFE_SITUACAO.REJEITADA,
     BLING_NFE_SITUACAO.AUTORIZADA,
     BLING_NFE_SITUACAO.EMITIDA_DANFE,
     BLING_NFE_SITUACAO.REGISTRADA,
+    BLING_NFE_SITUACAO.DENEGADA,
+    9, 10, 11,
   ];
   for (const situacao of situacoes) {
     const qs = new URLSearchParams({
@@ -120,10 +131,14 @@ async function lastAuthorizedNfeNumero(
       limite: "100",
       pagina: "1",
     });
-    const listed = await blingGet(admin, tenantId, `/nfe?${qs.toString()}`);
-    for (const row of unwrapBlingList(listed)) {
-      const n = nfeNumeroSortValue(row.numero);
-      if (n != null && n > max) max = n;
+    try {
+      const listed = await blingGet(admin, tenantId, `/nfe?${qs.toString()}`);
+      for (const row of unwrapBlingList(listed)) {
+        const n = nfeNumeroSortValue(row.numero);
+        if (n != null && n > max) max = n;
+      }
+    } catch {
+      // Situação não suportada neste ambiente Bling.
     }
   }
   const db = asUntypedAdmin(admin);
@@ -131,8 +146,7 @@ async function lastAuthorizedNfeNumero(
     .from("nfes")
     .select("nfe_number")
     .eq("tenant_id", tenantId)
-    .eq("provider", "bling")
-    .eq("status", "authorized");
+    .eq("provider", "bling");
   for (const row of (data ?? []) as Array<{ nfe_number: string | null }>) {
     const n = nfeNumeroSortValue(row.nfe_number);
     if (n != null && n > max) max = n;
@@ -320,24 +334,42 @@ async function upsertSequentialNfe(
     throw new Error("Pedido de venda não encontrado para montar a NF-e.");
   }
   const naoContribuinte = isNaoContribuinteIe(review.client_state_registration);
-  const body: Record<string, unknown> = {
+  const bodyBase: Record<string, unknown> = {
     ...buildBlingNfeCreateBody(
       fiscalReviewToBlingNfeCreateInput(review, contactId)
     ),
-    numero,
   };
   if (!naoContribuinte && naturezaOperacaoId) {
-    body.naturezaOperacao = { id: naturezaOperacaoId };
+    bodyBase.naturezaOperacao = { id: naturezaOperacaoId };
   }
-  const toSend = applyFiscalDestinoToNfeData(
-    body,
-    review.client_state_registration
-  );
-  const created = await blingPost(admin, tenantId, "/nfe", toSend);
-  const id = Number(unwrapBlingData(created)?.id);
+
+  let numeroToUse = numero;
+  let created: unknown = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      const toSend = applyFiscalDestinoToNfeData(
+        { ...bodyBase, numero: numeroToUse },
+        review.client_state_registration
+      );
+      created = await blingPost(admin, tenantId, "/nfe", toSend);
+      break;
+    } catch (e) {
+      if (!isBlingDuplicateNumeroError(e) || attempt === 7) throw e;
+      const current = nfeNumeroSortValue(numeroToUse) ?? 0;
+      numeroToUse = formatNfeNumero(current + 1);
+    }
+  }
+  const createdData = unwrapBlingData(created);
+  const id = Number(createdData?.id);
   if (!Number.isFinite(id)) {
     throw new Error("O Bling criou a NF-e mas não devolveu o ID.");
   }
+  const assignedNum =
+    nfeNumeroSortValue(createdData?.numero) ??
+    nfeNumeroSortValue(numeroToUse);
+  const assigned = formatNfeNumero(
+    assignedNum && assignedNum > 0 ? assignedNum : 1
+  );
   await rewriteBlingNfeDraft(
     admin,
     tenantId,
@@ -345,7 +377,7 @@ async function upsertSequentialNfe(
     id,
     contactId,
     naturezaOperacaoId,
-    numero
+    assigned
   );
   return id;
 }
@@ -535,7 +567,7 @@ export async function emitirNfeViaBling(
   }
 
   const nextNumero = formatNfeNumero(
-    (await lastAuthorizedNfeNumero(admin, tenantId)) + 1
+    (await lastUsedBlingNfeNumero(admin, tenantId)) + 1
   );
 
   await db
