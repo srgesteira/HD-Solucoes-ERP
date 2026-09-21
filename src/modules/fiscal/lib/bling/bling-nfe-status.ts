@@ -122,12 +122,13 @@ export function diagnoseNfeXml(xml: string): string | null {
   const csosn = [
     ...xml.matchAll(/<CSOSN>\s*(\d+)\s*<\/CSOSN>/gi),
   ].map((m) => m[1]);
+  const tot = xml.match(/<ICMSTot>[\s\S]*?<\/ICMSTot>/i)?.[0] ?? "";
   const nNF = xmlTag(xml, "nNF");
   const serie = xmlTag(xml, "serie");
-  const vNF = xmlTag(xml, "vNF");
-  const vProd = xmlTag(xml, "vProd");
-  const vDesc = xmlTag(xml, "vDesc");
-  const vFrete = xmlTag(xml, "vFrete");
+  const vNF = xmlTag(tot || xml, "vNF");
+  const vProd = tot ? xmlTag(tot, "vProd") : xmlTag(xml, "vProd");
+  const vDesc = tot ? xmlTag(tot, "vDesc") : xmlTag(xml, "vDesc");
+  const vFrete = tot ? xmlTag(tot, "vFrete") : xmlTag(xml, "vFrete");
   const indIEDest = xmlTag(xml, "indIEDest");
   const destIE = xml.match(/<dest>[\s\S]*?<IE>([^<]*)<\/IE>/i)?.[1]?.trim();
   const cMunDest = xml
@@ -137,6 +138,9 @@ export function diagnoseNfeXml(xml: string): string | null {
   const natOp = xmlTag(xml, "natOp");
   if (crt === "1" && csosn.length === 0) {
     bits.push("provável 590: CST no Simples (falta CSOSN)");
+  }
+  if (indIEDest === "9" && csosn.includes("101")) {
+    bits.push("provável 600: CSOSN 101 com não contribuinte");
   }
   if (nNF) bits.push(`nNF=${nNF}`);
   if (serie) bits.push(`serie=${serie}`);

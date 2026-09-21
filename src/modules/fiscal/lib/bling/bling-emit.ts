@@ -34,7 +34,10 @@ import {
 import { applyBlingNfeSnapshot } from "@/modules/fiscal/lib/bling/bling-apply-status";
 import { searchBlingNfeForErpOrder } from "@/modules/fiscal/lib/bling/bling-reconcile";
 import { resolveBlingCatalogForSalesOrder, resolveBlingEndereco } from "@/modules/fiscal/lib/bling/bling-catalog";
-import { ensureBlingPedidoForSalesOrder } from "@/modules/fiscal/lib/bling/bling-pedido";
+import {
+  ensureBlingPedidoForSalesOrder,
+  resolveBlingNaturezaIdForNaoContribuinte,
+} from "@/modules/fiscal/lib/bling/bling-pedido";
 import { readBlingPedidoNotaFiscalId } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 import {
   nfeEnderecoFromBlingContact,
@@ -99,6 +102,33 @@ async function resolveNfeDestEndereco(
   throw new Error(
     "Cliente sem endereço completo (logradouro, cidade, UF e CEP) para a NF-e. A SEFAZ recusa destinatário sem endereço."
   );
+}
+
+async function resolveDestNaoContribuinte(
+  admin: Admin,
+  tenantId: string,
+  contactId: number,
+  nfeContato: Record<string, unknown> | null | undefined,
+  erpIe: string | null | undefined
+): Promise<boolean> {
+  const nfeInd = Number(
+    nfeContato?.indicadorIe ?? nfeContato?.contribuinte ?? NaN
+  );
+  if (nfeInd === 9) return true;
+  if (nfeInd === 1 || nfeInd === 2) return false;
+  try {
+    const data = unwrapBlingData(
+      await blingGet(admin, tenantId, `/contatos/${contactId}`)
+    );
+    const contactInd = Number(
+      data?.indicadorIe ?? data?.contribuinte ?? NaN
+    );
+    if (contactInd === 9) return true;
+    if (contactInd === 1 || contactInd === 2) return false;
+  } catch {
+    // Cadastro Bling indisponível — cai na IE do ERP.
+  }
+  return isNaoContribuinteIe(erpIe);
 }
 
 type RemoteNfeIdentity = {
@@ -286,7 +316,17 @@ async function rewriteBlingNfeDraft(
     ...fiscalReviewToBlingNfeCreateInput(review, contactId),
     endereco,
   });
-  const naoContribuinte = isNaoContribuinteIe(review.client_state_registration);
+  const existingContato =
+    existing.contato && typeof existing.contato === "object"
+      ? (existing.contato as Record<string, unknown>)
+      : null;
+  const naoContribuinte = await resolveDestNaoContribuinte(
+    admin,
+    tenantId,
+    contactId,
+    existingContato,
+    review.client_state_registration
+  );
   const merged: Record<string, unknown> = {
     ...created,
     numero,
@@ -299,14 +339,28 @@ async function rewriteBlingNfeDraft(
     itens: created.itens,
   };
   delete merged.naturezaOperacao;
-  if (!naoContribuinte && naturezaOperacaoId) {
+  if (naoContribuinte) {
+    const nat102 = await resolveBlingNaturezaIdForNaoContribuinte(
+      admin,
+      tenantId
+    );
+    if (nat102) merged.naturezaOperacao = { id: nat102 };
+    Object.assign(
+      merged,
+      applyNaoContribuinteCsosnToNfeData(merged)
+    );
+    if (nat102) merged.naturezaOperacao = { id: nat102 };
+  } else if (naturezaOperacaoId) {
     merged.naturezaOperacao = { id: naturezaOperacaoId };
   }
   await blingPut(
     admin,
     tenantId,
     `/nfe/${blingNfeId}`,
-    applyFiscalDestinoToNfeData(merged, review.client_state_registration)
+    applyFiscalDestinoToNfeData(
+      merged,
+      naoContribuinte ? "" : review.client_state_registration
+    )
   );
 }
 
@@ -392,7 +446,13 @@ async function upsertSequentialNfe(
       endereco,
     }),
   };
-  if (!naoContribuinte && naturezaOperacaoId) {
+  if (naoContribuinte) {
+    const nat102 = await resolveBlingNaturezaIdForNaoContribuinte(
+      admin,
+      tenantId
+    );
+    if (nat102) bodyBase.naturezaOperacao = { id: nat102 };
+  } else if (naturezaOperacaoId) {
     bodyBase.naturezaOperacao = { id: naturezaOperacaoId };
   }
 
@@ -457,7 +517,17 @@ async function alignBlingNfeDestinoBeforeEnviar(
     ...fiscalReviewToBlingNfeCreateInput(review, contactId),
     endereco,
   });
-  const naoContribuinte = isNaoContribuinteIe(review.client_state_registration);
+  const getContato =
+    data.contato && typeof data.contato === "object"
+      ? (data.contato as Record<string, unknown>)
+      : created.contato;
+  const naoContribuinte = await resolveDestNaoContribuinte(
+    admin,
+    tenantId,
+    contactId,
+    getContato,
+    review.client_state_registration
+  );
   let body: Record<string, unknown> = {
     ...nfeBodyForPut(data),
     observacoes: created.observacoes,
@@ -469,9 +539,17 @@ async function alignBlingNfeDestinoBeforeEnviar(
       endereco,
     },
   };
-  body = applyFiscalDestinoToNfeData(body, review.client_state_registration);
+  body = applyFiscalDestinoToNfeData(
+    body,
+    naoContribuinte ? "" : review.client_state_registration
+  );
   if (naoContribuinte) {
     body = applyNaoContribuinteCsosnToNfeData(body);
+    const nat102 = await resolveBlingNaturezaIdForNaoContribuinte(
+      admin,
+      tenantId
+    );
+    if (nat102) body.naturezaOperacao = { id: nat102 };
   }
   const contato =
     body.contato && typeof body.contato === "object"

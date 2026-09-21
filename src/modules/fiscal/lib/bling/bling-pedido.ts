@@ -349,6 +349,55 @@ async function resolveBlingNaturezaId(
   return scored[0]?.score ? scored[0].id : scored[0]?.id ?? null;
 }
 
+/**
+ * Natureza com CSOSN 102 — obrigatória quando o dest é não contribuinte
+ * (SEFAZ 600 se a natureza padrão aplicar 101).
+ */
+export async function resolveBlingNaturezaIdForNaoContribuinte(
+  admin: Admin,
+  tenantId: string
+): Promise<number | null> {
+  const payload = await blingGet(
+    admin,
+    tenantId,
+    "/naturezas-operacoes?limite=100"
+  );
+  const rows = unwrapBlingList(payload);
+  const candidates = rows.filter((row) => {
+    const desc = String(row.descricao ?? row.nome ?? "");
+    return (
+      /102|n[aã]o\s*contrib|consumidor|isento/i.test(desc) ||
+      isDefaultFlag(row.padrao)
+    );
+  });
+  const toInspect = (candidates.length ? candidates : rows).slice(0, 12);
+  const scored: Array<{ id: number; score: number }> = [];
+  for (const row of toInspect) {
+    const id = Number(row.id);
+    if (!Number.isFinite(id)) continue;
+    let detail: Record<string, unknown> = row;
+    try {
+      const full = unwrapBlingData(
+        await blingGet(admin, tenantId, `/naturezas-operacoes/${id}`)
+      );
+      if (full) detail = full;
+    } catch {
+      // Usa só a linha da listagem.
+    }
+    const desc = String(detail.descricao ?? detail.nome ?? row.descricao ?? "");
+    const blob = JSON.stringify(detail);
+    let score = 0;
+    if (/\b102\b/.test(blob) || /CSOSN"?\s*[:=]\s*"?102/i.test(blob)) score += 80;
+    if (/102/.test(desc)) score += 50;
+    if (/n[aã]o\s*contrib|consumidor final|isento/i.test(desc)) score += 40;
+    if (/\b101\b/.test(blob) && score < 80) score -= 25;
+    if (/101/.test(desc) && !/102/.test(desc)) score -= 20;
+    scored.push({ id, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.score && scored[0].score > 0 ? scored[0].id : null;
+}
+
 export async function ensureBlingPedidoForSalesOrder(
   admin: Admin,
   tenantId: string,

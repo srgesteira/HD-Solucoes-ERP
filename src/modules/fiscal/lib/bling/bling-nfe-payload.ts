@@ -484,7 +484,21 @@ export function applyNaoContribuinteCsosnToNfeData(
       situacaoTributaria: CSOSN_NAO_CONTRIBUINTE,
       cst: CSOSN_NAO_CONTRIBUINTE,
       simples: { ...simples, cst: CSOSN_NAO_CONTRIBUINTE },
-      icms: { ...icms, cst: CSOSN_NAO_CONTRIBUINTE },
+      icms: {
+        ...icms,
+        situacaoTributaria: CSOSN_NAO_CONTRIBUINTE,
+        cst: CSOSN_NAO_CONTRIBUINTE,
+        origem: icms.origem ?? 0,
+      },
+      impostos: {
+        ...(item.impostos && typeof item.impostos === "object"
+          ? (item.impostos as Record<string, unknown>)
+          : {}),
+        icms: {
+          situacaoTributaria: CSOSN_NAO_CONTRIBUINTE,
+          origem: 0,
+        },
+      },
     };
   });
   const {

@@ -106,7 +106,7 @@ function contactPayload(input: {
     telefone: input.phone?.trim() || undefined,
     ...(ie.length >= 8
       ? { ie, contribuinte: 1, indicadorIe: 1 }
-      : {}),
+      : { contribuinte: 9, indicadorIe: 9 }),
     ...(input.endereco
       ? { endereco: toBlingContatoEndereco(input.endereco) }
       : {}),
