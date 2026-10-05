@@ -20,6 +20,7 @@ import {
   coerceSalesOrderInt,
   parsePaymentDaysBetween,
 } from "@/shared/contracts/sales-order.schema";
+import { installmentAmountsFromBody } from "@/shared/utils/payment-installment-amounts";
 import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
 import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
@@ -225,6 +226,8 @@ export async function POST(request: NextRequest) {
     b.payment_days_between_installments !== undefined
       ? parsePaymentDaysBetween(b.payment_days_between_installments)
       : 0;
+  const amountsParsed = installmentAmountsFromBody(b, payment_installments);
+  if (!amountsParsed.ok) return apiError(amountsParsed.message, 400);
 
   const admin = createSupabaseAdminClient();
 
@@ -308,6 +311,8 @@ export async function POST(request: NextRequest) {
       payment_installments,
       payment_days_to_first_due,
       payment_days_between_installments,
+      payment_installment_amounts:
+        amountsParsed.payment_installment_amounts ?? [],
       subtotal: 0,
       total: 0,
     })

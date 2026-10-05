@@ -65,6 +65,7 @@ export type SalesOrderFormData = {
   payment_days_between_installments: number;
   payment_due_mode?: string | null;
   payment_fixed_due_dates?: string[] | null;
+  payment_installment_amounts?: number[] | null;
   subtotal: number;
   discount: number;
   tax: number;
@@ -300,6 +301,9 @@ export function SalesOrderForm({
   const [paymentDueMode, setPaymentDueMode] =
     useState<PaymentDueMode>("from_emission");
   const [paymentFixedDates, setPaymentFixedDates] = useState<string[]>([]);
+  const [paymentInstallmentAmounts, setPaymentInstallmentAmounts] = useState<
+    number[]
+  >([]);
   const [notes, setNotes] = useState("");
   const [customerPoNumber, setCustomerPoNumber] = useState("");
   const [deliveryAddress, setDeliveryAddress] =
@@ -387,6 +391,11 @@ export function SalesOrderForm({
       setPaymentDaysBetween(pdb > 0 ? String(pdb) : "");
       setPaymentDueMode(parsePaymentDueMode(order.payment_due_mode));
       setPaymentFixedDates(order.payment_fixed_due_dates ?? []);
+      setPaymentInstallmentAmounts(
+        Array.isArray(order.payment_installment_amounts)
+          ? order.payment_installment_amounts.map((v) => Number(v))
+          : []
+      );
       setNotes(order.notes ?? "");
       setCustomerPoNumber(order.customer_po_number ?? "");
       setDeliveryAddress(deliveryAddressFromRow(order));
@@ -499,6 +508,7 @@ export function SalesOrderForm({
         commercial.data.payment_days_between_installments,
       payment_due_mode: paymentDueMode,
       payment_fixed_due_dates: paymentFixedDates,
+      payment_installment_amounts: paymentInstallmentAmounts,
       ...deliveryAddressFromRow(deliveryAddress),
     };
 
@@ -760,6 +770,9 @@ export function SalesOrderForm({
                 onPaymentDaysFirstChange={setPaymentDaysFirst}
                 paymentDaysBetween={paymentDaysBetween}
                 onPaymentDaysBetweenChange={setPaymentDaysBetween}
+                installmentAmounts={paymentInstallmentAmounts}
+                onInstallmentAmountsChange={setPaymentInstallmentAmounts}
+                documentTotal={previewTotal}
               />
             ) : (
               <p className="text-sm text-slate-500">

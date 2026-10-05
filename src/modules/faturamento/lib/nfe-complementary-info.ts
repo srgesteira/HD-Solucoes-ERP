@@ -14,6 +14,7 @@ export type NfeComplementaryInfoSource = {
   payment_days_between_installments: number;
   payment_due_mode?: string | null;
   payment_fixed_due_dates?: string[] | null;
+  payment_installment_amounts?: number[] | null;
   actual_delivery: string | null;
   expected_delivery: string | null;
   order_date: string;

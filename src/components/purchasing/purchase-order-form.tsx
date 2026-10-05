@@ -55,6 +55,7 @@ export type PurchaseOrderFormData = {
   payment_installments?: number;
   payment_days_to_first_due?: number;
   payment_days_between_installments?: number;
+  payment_installment_amounts?: number[] | null;
   items?: Array<{
     id: string;
     product_id: string | null;
@@ -260,6 +261,9 @@ export function PurchaseOrderForm({
   const [paymentInstallments, setPaymentInstallments] = useState("1");
   const [paymentDaysFirst, setPaymentDaysFirst] = useState("30");
   const [paymentDaysBetween, setPaymentDaysBetween] = useState("");
+  const [paymentInstallmentAmounts, setPaymentInstallmentAmounts] = useState<
+    number[]
+  >([]);
   const [lines, setLines] = useState<PurchaseOrderLineDraft[]>(() => [
     newPurchaseLine(0),
   ]);
@@ -331,6 +335,11 @@ export function PurchaseOrderForm({
     setPaymentDaysFirst(String(o.payment_days_to_first_due ?? 30));
     const pdb = o.payment_days_between_installments ?? 0;
     setPaymentDaysBetween(pdb > 0 ? String(pdb) : "");
+    setPaymentInstallmentAmounts(
+      Array.isArray(o.payment_installment_amounts)
+        ? o.payment_installment_amounts.map((v) => Number(v))
+        : []
+    );
 
     const apiItems = Array.isArray(o.items) ? o.items : [];
     const { lines: loadedLines, cache } = itemsToPurchaseLines(apiItems);
@@ -462,6 +471,7 @@ export function PurchaseOrderForm({
         paymentParsed.data.payment_days_to_first_due;
       body.payment_days_between_installments =
         paymentParsed.data.payment_days_between_installments;
+      body.payment_installment_amounts = paymentInstallmentAmounts;
       body.freight_cost = freightCost;
       body.insurance_cost = insuranceCost;
       body.other_costs = otherCosts;
@@ -476,6 +486,7 @@ export function PurchaseOrderForm({
         paymentParsed.data.payment_days_to_first_due;
       body.payment_days_between_installments =
         paymentParsed.data.payment_days_between_installments;
+      body.payment_installment_amounts = paymentInstallmentAmounts;
     }
 
     return body;
@@ -665,6 +676,9 @@ export function PurchaseOrderForm({
             onPaymentDaysFirstChange={setPaymentDaysFirst}
             paymentDaysBetween={paymentDaysBetween}
             onPaymentDaysBetweenChange={setPaymentDaysBetween}
+            installmentAmounts={paymentInstallmentAmounts}
+            onInstallmentAmountsChange={setPaymentInstallmentAmounts}
+            documentTotal={previewTotal}
             disabled={paymentFieldsDisabled}
             baseDateIso={orderDate}
             baseDateLabel="data do pedido"

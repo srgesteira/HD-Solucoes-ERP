@@ -11,6 +11,12 @@ import {
 import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
 import { recalculateSalesOrderHeaderTotals } from "@/modules/vendas/lib/sales/sales-order-totals";
 import { resolvePaymentDueDates } from "@/shared/utils/payment-due";
+import {
+  resolveInstallmentAmounts,
+  splitAmountInInstallments,
+} from "@/shared/utils/payment-installment-amounts";
+
+export { splitAmountInInstallments };
 
 export type AdminClient = SupabaseClient<Database>;
 
@@ -53,19 +59,6 @@ export function defaultExpectedDeliveryForOrder(
   return addDaysToISODate(base, fallbackDays);
 }
 
-/** Reparte total em N parcelas (centavos) sem erro de soma. */
-export function splitAmountInInstallments(total: number, n: number): number[] {
-  if (n <= 1) return [Math.round(total * 100) / 100];
-  const cents = Math.round(total * 100);
-  const baseCents = Math.floor(cents / n);
-  const remainder = cents - baseCents * n;
-  const parts: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const extra = i < remainder ? 1 : 0;
-    parts.push((baseCents + extra) / 100);
-  }
-  return parts;
-}
 
 export async function nextQuoteNumber(
   admin: AdminClient,
@@ -455,6 +448,7 @@ export async function generateReceivablesForSalesOrder(
     payment_days_between_installments: number;
     payment_due_mode?: string | null;
     payment_fixed_due_dates?: string[] | null;
+    payment_installment_amounts?: number[] | null;
   },
   options?: { provisional?: boolean }
 ): Promise<{ error?: string }> {
@@ -470,7 +464,11 @@ export async function generateReceivablesForSalesOrder(
   if ((count ?? 0) > 0) return {};
 
   const n = Math.max(1, Math.min(999, order.payment_installments));
-  const amounts = splitAmountInInstallments(order.total, n);
+  const amounts = resolveInstallmentAmounts(
+    order.total,
+    n,
+    order.payment_installment_amounts
+  );
   const baseDate = paymentScheduleBaseDate({
     actual_delivery: order.actual_delivery,
     expected_delivery: order.expected_delivery,

@@ -165,6 +165,7 @@ export function bodyWantsSalesOrderContentEdit(
     "payment_days_between_installments",
     "payment_due_mode",
     "payment_fixed_due_dates",
+    "payment_installment_amounts",
     "items",
     "order_date",
     "order_number",

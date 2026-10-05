@@ -27,7 +27,7 @@ import {
   unwrapBlingData,
   unwrapBlingList,
 } from "@/modules/fiscal/lib/bling/bling-nfe-status";
-import { splitAmountInInstallments } from "@/modules/vendas/lib/sales/sales-flow";
+import { resolveInstallmentAmounts } from "@/shared/utils/payment-installment-amounts";
 import {
   deliveryAddressFromRow,
   formatDeliveryAddressOneLine,
@@ -417,7 +417,7 @@ export async function ensureBlingPedidoForSalesOrder(
   const { data: soRaw, error: soErr } = await db
     .from("sales_orders")
     .select(
-      "order_number, order_date, client_name, client_document, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id, quote_id"
+      "order_number, order_date, client_name, client_document, customer_po_number, discount, total, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts, expected_delivery, actual_delivery, delivery_address_different, delivery_street, delivery_number, delivery_complement, delivery_neighborhood, delivery_city, delivery_state, delivery_zip, bling_pedido_venda_id, quote_id"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -437,6 +437,7 @@ export async function ensureBlingPedidoForSalesOrder(
     payment_days_between_installments: number | null;
     payment_due_mode: string | null;
     payment_fixed_due_dates: string[] | null;
+    payment_installment_amounts: number[] | null;
     expected_delivery: string | null;
     actual_delivery: string | null;
     delivery_address_different: boolean | null;
@@ -698,6 +699,9 @@ export async function ensureBlingPedidoForSalesOrder(
     payment_fixed_due_dates: Array.isArray(so.payment_fixed_due_dates)
       ? so.payment_fixed_due_dates
       : [],
+    payment_installment_amounts: Array.isArray(so.payment_installment_amounts)
+      ? so.payment_installment_amounts.map((v) => Number(v))
+      : [],
     expected_delivery: so.expected_delivery,
     actual_delivery: so.actual_delivery,
     order_date: so.order_date,
@@ -775,7 +779,13 @@ export async function ensureBlingPedidoForSalesOrder(
   const fetched = await blingGet(admin, tenantId, `/pedidos/vendas/${pedidoId}`);
   const blingTotal = readBlingPedidoTotal(fetched) ?? netTotal;
   const mirrored = parseBlingPedidoTransporte(fetched);
-  const amounts = splitAmountInInstallments(blingTotal, nfeParcelas.length);
+  const amounts = resolveInstallmentAmounts(
+    blingTotal,
+    nfeParcelas.length,
+    Array.isArray(so.payment_installment_amounts)
+      ? so.payment_installment_amounts.map((v) => Number(v))
+      : []
+  );
   if (!lockedByNfe) {
     const wroteParcelas = await putBlingPedidoUnlessLocked(
       admin,

@@ -45,6 +45,9 @@ export interface QuoteCommercialFormProps {
   onPaymentDueModeChange: (mode: PaymentDueMode) => void;
   paymentFixedDates: string[];
   onPaymentFixedDatesChange: (dates: string[]) => void;
+  paymentInstallmentAmounts: number[];
+  onPaymentInstallmentAmountsChange: (amounts: number[]) => void;
+  documentTotal?: number | null;
   deliveryBusinessDays: string;
   onDeliveryBusinessDaysChange: (value: string) => void;
   shippingType: string;
@@ -171,6 +174,9 @@ export function QuoteCommercialFields({
   onPaymentDueModeChange,
   paymentFixedDates,
   onPaymentFixedDatesChange,
+  paymentInstallmentAmounts,
+  onPaymentInstallmentAmountsChange,
+  documentTotal,
   deliveryBusinessDays,
   onDeliveryBusinessDaysChange,
   shippingType,
@@ -209,6 +215,9 @@ export function QuoteCommercialFields({
           onPaymentDaysFirstChange={onPaymentDaysFirstChange}
           paymentDaysBetween={paymentDaysBetween}
           onPaymentDaysBetweenChange={onPaymentDaysBetweenChange}
+          installmentAmounts={paymentInstallmentAmounts}
+          onInstallmentAmountsChange={onPaymentInstallmentAmountsChange}
+          documentTotal={documentTotal}
         />
       </div>
 

@@ -15,6 +15,7 @@ import {
   parsePaymentDaysBetween,
 } from "@/shared/contracts/sales-order.schema";
 import { paymentDueFieldsFromBody } from "@/shared/utils/payment-due";
+import { installmentAmountsFromBody } from "@/shared/utils/payment-installment-amounts";
 import {
   assertUpdateAllowedWhenProductionStarted,
   bodyWantsSalesOrderContentEdit,
@@ -164,7 +165,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     b.payment_days_to_first_due !== undefined ||
     b.payment_days_between_installments !== undefined ||
     b.payment_due_mode !== undefined ||
-    b.payment_fixed_due_dates !== undefined;
+    b.payment_fixed_due_dates !== undefined ||
+    b.payment_installment_amounts !== undefined;
 
   const wantsPcp = b.pcp_deadline !== undefined;
   const wantsProductionLink = b.production_order_id !== undefined;
@@ -415,6 +417,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
     if (dueParsed.payment_fixed_due_dates !== undefined) {
       updateData.payment_fixed_due_dates = dueParsed.payment_fixed_due_dates;
+    }
+    const amountsParsed = installmentAmountsFromBody(
+      b,
+      Number(nextInstallments)
+    );
+    if (!amountsParsed.ok) return apiError(amountsParsed.message, 400);
+    if (amountsParsed.payment_installment_amounts !== undefined) {
+      updateData.payment_installment_amounts =
+        amountsParsed.payment_installment_amounts;
     }
   }
 
@@ -733,6 +744,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
         payment_fixed_due_dates: Array.isArray(detailRow.payment_fixed_due_dates)
           ? (detailRow.payment_fixed_due_dates as string[])
           : null,
+        payment_installment_amounts: Array.isArray(
+          detailRow.payment_installment_amounts
+        )
+          ? (detailRow.payment_installment_amounts as number[]).map((v) =>
+              Number(v)
+            )
+          : null,
       }),
       {
         total: updateData.total !== undefined || itemsReplaced,
@@ -744,6 +762,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         payment_due_mode: updateData.payment_due_mode !== undefined,
         payment_fixed_due_dates:
           updateData.payment_fixed_due_dates !== undefined,
+        payment_installment_amounts:
+          updateData.payment_installment_amounts !== undefined,
         order_date: updateData.order_date !== undefined,
         expected_delivery: updateData.expected_delivery !== undefined,
         actual_delivery: updateData.actual_delivery !== undefined,

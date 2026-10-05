@@ -737,6 +737,9 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                       payment_days_to_first_due: quote.payment_days_to_first_due,
                       payment_days_between_installments:
                         quote.payment_days_between_installments,
+                      payment_installment_amounts:
+                        quote.payment_installment_amounts,
+                      total: quote.total,
                     })}
                   </dd>
                 </div>

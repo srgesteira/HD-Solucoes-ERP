@@ -113,6 +113,7 @@ type QuoteDetail = {
   payment_days_between_installments: number | null;
   payment_due_mode?: string | null;
   payment_fixed_due_dates?: string[] | null;
+  payment_installment_amounts?: number[] | null;
   delivery_deadline: string | null;
   shipping_type: string | null;
   freight_cost?: number | null;
@@ -321,6 +322,9 @@ export default function QuoteDetailPage() {
   const [paymentDueMode, setPaymentDueMode] =
     useState<PaymentDueMode>("from_emission");
   const [paymentFixedDates, setPaymentFixedDates] = useState<string[]>([]);
+  const [paymentInstallmentAmounts, setPaymentInstallmentAmounts] = useState<
+    number[]
+  >([]);
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
@@ -361,6 +365,11 @@ export default function QuoteDetailPage() {
     setPaymentDaysBetween(String(q.payment_days_between_installments ?? 30));
     setPaymentDueMode(parsePaymentDueMode(q.payment_due_mode));
     setPaymentFixedDates(q.payment_fixed_due_dates ?? []);
+    setPaymentInstallmentAmounts(
+      Array.isArray(q.payment_installment_amounts)
+        ? q.payment_installment_amounts.map((v) => Number(v))
+        : []
+    );
     setDeliveryBusinessDays(inferDeliveryBusinessDaysFromQuote(q));
     setShippingType(q.shipping_type ?? "FOB");
     setFreightCost(Number(q.freight_cost ?? 0));
@@ -443,6 +452,7 @@ export default function QuoteDetailPage() {
             : parseInt(paymentDaysBetween, 10) || 0,
         payment_due_mode: paymentDueMode,
         payment_fixed_due_dates: paymentFixedDates,
+        payment_installment_amounts: paymentInstallmentAmounts,
         delivery_business_days:
           deliveryDaysParsed != null && Number.isFinite(deliveryDaysParsed)
             ? deliveryDaysParsed
@@ -860,6 +870,11 @@ export default function QuoteDetailPage() {
                     onPaymentDueModeChange={setPaymentDueMode}
                     paymentFixedDates={paymentFixedDates}
                     onPaymentFixedDatesChange={setPaymentFixedDates}
+                    paymentInstallmentAmounts={paymentInstallmentAmounts}
+                    onPaymentInstallmentAmountsChange={
+                      setPaymentInstallmentAmounts
+                    }
+                    documentTotal={quoteTotals.total}
                     deliveryBusinessDays={deliveryBusinessDays}
                     onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
                     shippingType={shippingType}
@@ -1046,6 +1061,10 @@ export default function QuoteDetailPage() {
                         payment_days_between_installments={
                           q.payment_days_between_installments
                         }
+                        payment_installment_amounts={
+                          q.payment_installment_amounts
+                        }
+                        total={q.total}
                       />
                     </div>
                     <div>

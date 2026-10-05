@@ -5,11 +5,16 @@ import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { coerceSalesOrderInt } from "@/shared/contracts/sales-order.schema";
 import { paymentDueFieldsFromBody } from "@/shared/utils/payment-due";
+import { installmentAmountsFromBody } from "@/shared/utils/payment-installment-amounts";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import {
   parseShippingType,
 } from "@/modules/vendas/lib/sales/quote-validity";
 import { freightPayerFromShippingType } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
+import {
+  ensureReceivablesSyncedForSalesOrder,
+  salesOrderRowToReceivablesInput,
+} from "@/modules/vendas/lib/sales/sales-receivables";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +55,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existing, error: loadErr } = await db
     .from("sales_orders")
     .select(
-      "id, billing_closure, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, shipping_type"
+      "id, billing_closure, order_number, order_date, expected_delivery, actual_delivery, total, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts, shipping_type"
     )
     .eq("id", orderId)
     .eq("tenant_id", tenantId)
@@ -58,9 +63,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (loadErr) return apiError(loadErr.message, 500);
   const row = existing as {
     billing_closure: string | null;
+    order_number: string;
+    order_date: string;
+    expected_delivery: string | null;
+    actual_delivery: string | null;
+    total: number | null;
+    client_name: string;
+    client_document: string | null;
     payment_installments: number;
     payment_days_to_first_due: number;
     payment_days_between_installments: number;
+    payment_due_mode?: string | null;
+    payment_fixed_due_dates?: string[] | null;
+    payment_installment_amounts?: number[] | null;
     shipping_type?: string | null;
   } | null;
   if (!row) return apiError("Pedido não encontrado", 404);
@@ -94,6 +109,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
   if (dueParsed.payment_fixed_due_dates !== undefined) {
     update.payment_fixed_due_dates = dueParsed.payment_fixed_due_dates;
+  }
+  const amountsParsed = installmentAmountsFromBody(body, nextN);
+  if (!amountsParsed.ok) return apiError(amountsParsed.message, 400);
+  if (amountsParsed.payment_installment_amounts !== undefined) {
+    update.payment_installment_amounts =
+      amountsParsed.payment_installment_amounts;
   }
 
   if (body.shipping_type !== undefined) {
@@ -137,6 +158,61 @@ export async function PUT(request: NextRequest, { params }: Params) {
     .eq("id", orderId)
     .eq("tenant_id", tenantId);
   if (updErr) return apiError(updErr.message, 500);
+
+  try {
+    await ensureReceivablesSyncedForSalesOrder(
+      admin,
+      tenantId,
+      salesOrderRowToReceivablesInput({
+        id: orderId,
+        order_number: row.order_number,
+        order_date: row.order_date,
+        expected_delivery: row.expected_delivery,
+        actual_delivery: row.actual_delivery,
+        total: Number(row.total ?? 0),
+        client_name: row.client_name,
+        client_document: row.client_document,
+        payment_installments: Number(
+          update.payment_installments ?? row.payment_installments ?? 1
+        ),
+        payment_days_to_first_due: Number(
+          update.payment_days_to_first_due ?? row.payment_days_to_first_due ?? 0
+        ),
+        payment_days_between_installments: Number(
+          update.payment_days_between_installments ??
+            row.payment_days_between_installments ??
+            0
+        ),
+        payment_due_mode: String(
+          update.payment_due_mode ?? row.payment_due_mode ?? "from_emission"
+        ),
+        payment_fixed_due_dates: Array.isArray(update.payment_fixed_due_dates)
+          ? (update.payment_fixed_due_dates as string[])
+          : (row.payment_fixed_due_dates ?? []),
+        payment_installment_amounts: Array.isArray(
+          update.payment_installment_amounts
+        )
+          ? (update.payment_installment_amounts as number[])
+          : (row.payment_installment_amounts ?? []),
+      }),
+      {
+        payment_installments: update.payment_installments !== undefined,
+        payment_days_to_first_due:
+          update.payment_days_to_first_due !== undefined,
+        payment_days_between_installments:
+          update.payment_days_between_installments !== undefined,
+        payment_due_mode: update.payment_due_mode !== undefined,
+        payment_fixed_due_dates: update.payment_fixed_due_dates !== undefined,
+        payment_installment_amounts:
+          update.payment_installment_amounts !== undefined,
+      }
+    );
+  } catch (recvErr) {
+    console.warn(
+      "[fiscal-payment] Falha ao sincronizar contas a receber:",
+      recvErr instanceof Error ? recvErr.message : recvErr
+    );
+  }
 
   return apiOk({ ok: true });
 }

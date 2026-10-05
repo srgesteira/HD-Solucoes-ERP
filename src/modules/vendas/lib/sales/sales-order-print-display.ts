@@ -46,6 +46,7 @@ export type SalesOrderPrintData = {
   payment_installments: number;
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
+  payment_installment_amounts?: number[] | null;
   subtotal: number;
   discount: number;
   tax: number;
@@ -82,6 +83,8 @@ export function soPaymentTermsText(order: SalesOrderPrintData): string {
     payment_installments: order.payment_installments,
     payment_days_to_first_due: order.payment_days_to_first_due,
     payment_days_between_installments: order.payment_days_between_installments,
+    payment_installment_amounts: order.payment_installment_amounts,
+    total: order.total,
   });
 }
 

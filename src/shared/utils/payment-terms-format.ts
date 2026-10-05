@@ -1,4 +1,9 @@
 import { addLocalCalendarDays } from "@/shared/utils/date";
+import { formatBrl } from "@/shared/utils/format-brl";
+import {
+  resolveInstallmentAmounts,
+  storedInstallmentAmounts,
+} from "@/shared/utils/payment-installment-amounts";
 
 export const PAYMENT_TERM_LABELS = {
   installments: "N.º de parcelas",
@@ -10,6 +15,8 @@ export type PaymentTermsValues = {
   payment_installments?: number | null;
   payment_days_to_first_due?: number | null;
   payment_days_between_installments?: number | null;
+  payment_installment_amounts?: number[] | null;
+  total?: number | null;
 };
 
 /** 0 dias na 1.ª parcela = pagamento à vista (na emissão / entrega). */
@@ -53,22 +60,39 @@ export function formatPaymentTermsSummary(order: PaymentTermsValues): string {
   const n = order.payment_installments ?? 1;
   const d1 = order.payment_days_to_first_due ?? 30;
   const between = order.payment_days_between_installments ?? 0;
+  const total = Number(order.total ?? 0);
+  const custom = storedInstallmentAmounts(order.payment_installment_amounts);
+  const amounts =
+    total > 0 && custom.length === n
+      ? resolveInstallmentAmounts(total, n, custom)
+      : custom.length === n
+        ? custom
+        : [];
+  const valuesLabel =
+    amounts.length === n
+      ? amounts.map((v) => formatBrl(v)).join(" + ")
+      : "";
 
   if (n === 1) {
     if (isFirstInstallmentAtSight(d1)) {
-      return "Pagamento à vista.";
+      return valuesLabel
+        ? `Pagamento à vista (${valuesLabel}).`
+        : "Pagamento à vista.";
     }
-    return `Pagamento em parcela única (${d1} dias após emissão).`;
+    return valuesLabel
+      ? `Pagamento em parcela única (${d1} dias após emissão): ${valuesLabel}.`
+      : `Pagamento em parcela única (${d1} dias após emissão).`;
   }
 
   const firstLabel = isFirstInstallmentAtSight(d1)
     ? "1.ª parcela à vista"
     : `vencimento da 1.ª em ${d1} dias`;
 
+  const valuesPart = valuesLabel ? ` (${valuesLabel})` : "";
   if (between > 0) {
-    return `${n} parcelas — ${firstLabel}, intervalo de ${between} dias entre parcelas.`;
+    return `${n} parcelas${valuesPart} — ${firstLabel}, intervalo de ${between} dias entre parcelas.`;
   }
-  return `${n} parcelas — ${firstLabel}.`;
+  return `${n} parcelas${valuesPart} — ${firstLabel}.`;
 }
 
 export function resolvePaymentTermsDisplayText(

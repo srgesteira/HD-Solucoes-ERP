@@ -139,6 +139,7 @@ export type FiscalOrderReview = {
   payment_days_between_installments: number;
   payment_due_mode: string;
   payment_fixed_due_dates: string[];
+  payment_installment_amounts: number[];
   items: FiscalOrderReviewItem[];
   warnings: string[];
   nfe: {
@@ -205,6 +206,7 @@ type RawOrderRow = {
   payment_days_between_installments: number | null;
   payment_due_mode?: string | null;
   payment_fixed_due_dates?: string[] | null;
+  payment_installment_amounts?: number[] | null;
   shipping_type?: string | null;
   freight_cost?: number | null;
   carrier_name?: string | null;
@@ -524,6 +526,7 @@ export async function getFiscalOrderReview(
       payment_days_between_installments,
       payment_due_mode,
       payment_fixed_due_dates,
+      payment_installment_amounts,
       shipping_type,
       freight_cost,
       carrier_name,
@@ -925,6 +928,9 @@ export async function getFiscalOrderReview(
       order.payment_due_mode === "fixed_dates" ? "fixed_dates" : "from_emission",
     payment_fixed_due_dates: Array.isArray(order.payment_fixed_due_dates)
       ? order.payment_fixed_due_dates.map((d) => String(d).slice(0, 10))
+      : [],
+    payment_installment_amounts: Array.isArray(order.payment_installment_amounts)
+      ? order.payment_installment_amounts.map((v) => Number(v))
       : [],
     shipping_type: shippingType,
     freight_cost: Number.isFinite(freightCost) ? freightCost : 0,

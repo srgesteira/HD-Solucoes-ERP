@@ -17,6 +17,7 @@ import { QUOTE_STATUSES, type QuoteUpdate } from "@/modules/core/types/sales.typ
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
 import { parsePaymentTermsFromText } from "@/modules/vendas/lib/sales/parse-payment-terms";
 import { paymentDueFieldsFromBody } from "@/shared/utils/payment-due";
+import { installmentAmountsFromBody } from "@/shared/utils/payment-installment-amounts";
 import { formatPaymentTermsSummary } from "@/shared/utils/payment-terms-format";
 import { resolveQuoteDeliveryFromBody } from "@/modules/vendas/lib/sales/quote-delivery";
 import {
@@ -155,6 +156,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     b.payment_days_between_installments !== undefined ||
     b.payment_due_mode !== undefined ||
     b.payment_fixed_due_dates !== undefined ||
+    b.payment_installment_amounts !== undefined ||
     b.shipping_type !== undefined ||
     b.freight_cost !== undefined ||
     b.notes !== undefined ||
@@ -325,11 +327,18 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (dueParsed.payment_fixed_due_dates !== undefined) {
       updateData.payment_fixed_due_dates = dueParsed.payment_fixed_due_dates;
     }
+    const amountsParsed = installmentAmountsFromBody(b, nextN);
+    if (!amountsParsed.ok) return apiError(amountsParsed.message, 400);
+    if (amountsParsed.payment_installment_amounts !== undefined) {
+      updateData.payment_installment_amounts =
+        amountsParsed.payment_installment_amounts;
+    }
   }
   if (
     (b.payment_installments !== undefined ||
       b.payment_days_to_first_due !== undefined ||
-      b.payment_days_between_installments !== undefined) &&
+      b.payment_days_between_installments !== undefined ||
+      b.payment_installment_amounts !== undefined) &&
     b.payment_terms === undefined
   ) {
     updateData.payment_terms = formatPaymentTermsSummary({
@@ -343,6 +352,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
         updateData.payment_days_between_installments ??
         existing.payment_days_between_installments ??
         0,
+      payment_installment_amounts:
+        updateData.payment_installment_amounts ??
+        (existing as { payment_installment_amounts?: number[] })
+          .payment_installment_amounts ??
+        [],
     });
   }
   if (b.shipping_type !== undefined) {

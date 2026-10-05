@@ -60,6 +60,7 @@ export type PurchaseOrderPrintData = {
   payment_installments?: number;
   payment_days_to_first_due?: number;
   payment_days_between_installments?: number;
+  payment_installment_amounts?: number[] | null;
   supplier?: PurchaseOrderPrintSupplier | null;
   items?: PurchaseOrderPrintItem[] | null;
 };

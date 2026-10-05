@@ -37,7 +37,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
   const { data: existing, error: fetchErr } = await admin
     .from("purchase_orders")
     .select(
-      "id, status, po_number, order_date, expected_delivery, actual_delivery, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "id, status, po_number, order_date, expected_delivery, actual_delivery, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_installment_amounts"
     )
     .eq("id", id)
     .eq("tenant_id", tenantId)

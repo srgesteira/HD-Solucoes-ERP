@@ -3483,6 +3483,7 @@ export type Database = {
           payment_days_between_installments: number
           payment_days_to_first_due: number
           payment_installments: number
+          payment_installment_amounts: number[]
           purchase_quote_request_id: string | null
           po_number: string
           requested_by: string | null
@@ -3521,6 +3522,7 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          payment_installment_amounts?: number[]
           purchase_quote_request_id?: string | null
           po_number: string
           requested_by?: string | null
@@ -3559,6 +3561,7 @@ export type Database = {
           payment_days_between_installments?: number
           payment_days_to_first_due?: number
           payment_installments?: number
+          payment_installment_amounts?: number[]
           purchase_quote_request_id?: string | null
           po_number?: string
           requested_by?: string | null
@@ -3933,6 +3936,7 @@ export type Database = {
           payment_installments: number
           payment_due_mode: string
           payment_fixed_due_dates: string[]
+          payment_installment_amounts: number[]
           payment_terms: string | null
           quote_date: string
           quote_number: string
@@ -3972,6 +3976,7 @@ export type Database = {
           payment_installments?: number
           payment_due_mode?: string
           payment_fixed_due_dates?: string[]
+          payment_installment_amounts?: number[]
           payment_terms?: string | null
           quote_date?: string
           quote_number: string
@@ -4011,6 +4016,7 @@ export type Database = {
           payment_installments?: number
           payment_due_mode?: string
           payment_fixed_due_dates?: string[]
+          payment_installment_amounts?: number[]
           payment_terms?: string | null
           quote_date?: string
           quote_number?: string
@@ -4648,6 +4654,7 @@ export type Database = {
           payment_installments: number
           payment_due_mode: string
           payment_fixed_due_dates: string[]
+          payment_installment_amounts: number[]
           pcp_deadline: string | null
           pcp_reply_comercial_observation: string | null
           pcp_reply_comercial_observation_at: string | null
@@ -4706,6 +4713,7 @@ export type Database = {
           payment_installments?: number
           payment_due_mode?: string
           payment_fixed_due_dates?: string[]
+          payment_installment_amounts?: number[]
           pcp_deadline?: string | null
           pcp_reply_comercial_observation?: string | null
           pcp_reply_comercial_observation_at?: string | null
@@ -4764,6 +4772,7 @@ export type Database = {
           payment_installments?: number
           payment_due_mode?: string
           payment_fixed_due_dates?: string[]
+          payment_installment_amounts?: number[]
           pcp_deadline?: string | null
           pcp_reply_comercial_observation?: string | null
           pcp_reply_comercial_observation_at?: string | null

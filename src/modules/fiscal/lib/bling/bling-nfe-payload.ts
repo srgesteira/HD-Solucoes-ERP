@@ -76,6 +76,7 @@ export function fiscalReviewToBlingNfeCreateInput(
     | "payment_days_between_installments"
     | "payment_due_mode"
     | "payment_fixed_due_dates"
+    | "payment_installment_amounts"
     | "actual_delivery"
     | "expected_delivery"
     | "total"
@@ -140,6 +141,7 @@ export function fiscalReviewToNfePayloadSource(
     | "payment_days_between_installments"
     | "payment_due_mode"
     | "payment_fixed_due_dates"
+    | "payment_installment_amounts"
     | "actual_delivery"
     | "expected_delivery"
     | "order_date"
@@ -164,6 +166,7 @@ export function fiscalReviewToNfePayloadSource(
       review.payment_days_between_installments,
     payment_due_mode: review.payment_due_mode,
     payment_fixed_due_dates: review.payment_fixed_due_dates,
+    payment_installment_amounts: review.payment_installment_amounts,
     actual_delivery: review.actual_delivery,
     expected_delivery: review.expected_delivery,
     order_date: review.order_date,

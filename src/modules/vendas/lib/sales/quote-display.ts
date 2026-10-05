@@ -107,6 +107,7 @@ export type QuotePrintData = {
   payment_installments?: number | null;
   payment_days_to_first_due?: number | null;
   payment_days_between_installments?: number | null;
+  payment_installment_amounts?: number[] | null;
   delivery_deadline: string | null;
   shipping_type: string | null;
   freight_cost?: number | null;

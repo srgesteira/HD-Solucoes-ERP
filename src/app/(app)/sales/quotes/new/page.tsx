@@ -98,6 +98,9 @@ export default function NewQuotePage() {
   const [paymentDueMode, setPaymentDueMode] =
     useState<PaymentDueMode>("from_emission");
   const [paymentFixedDates, setPaymentFixedDates] = useState<string[]>([]);
+  const [paymentInstallmentAmounts, setPaymentInstallmentAmounts] = useState<
+    number[]
+  >([]);
   const [deliveryBusinessDays, setDeliveryBusinessDays] = useState("");
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
@@ -231,6 +234,7 @@ export default function NewQuotePage() {
           : parseInt(paymentDaysBetween, 10) || 0,
       payment_due_mode: paymentDueMode,
       payment_fixed_due_dates: paymentFixedDates,
+      payment_installment_amounts: paymentInstallmentAmounts,
       delivery_business_days:
         deliveryDaysParsed != null && Number.isFinite(deliveryDaysParsed)
           ? deliveryDaysParsed
@@ -333,6 +337,9 @@ export default function NewQuotePage() {
               onPaymentDueModeChange={setPaymentDueMode}
               paymentFixedDates={paymentFixedDates}
               onPaymentFixedDatesChange={setPaymentFixedDates}
+              paymentInstallmentAmounts={paymentInstallmentAmounts}
+              onPaymentInstallmentAmountsChange={setPaymentInstallmentAmounts}
+              documentTotal={quoteTotals.total}
               deliveryBusinessDays={deliveryBusinessDays}
               onDeliveryBusinessDaysChange={setDeliveryBusinessDays}
               shippingType={shippingType}

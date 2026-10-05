@@ -3,13 +3,22 @@
 import { useMemo } from "react";
 import { BrDateInput } from "@/shared/ui/br-date-input";
 import { IntegerInput } from "@/shared/ui/integer-input";
+import { NumericInput } from "@/shared/ui/numeric-input";
 import { Label } from "@/shared/ui/label";
 import { formatShortDate, todayIsoSaoPaulo } from "@/shared/utils/date";
+import { fmtBRL } from "@/shared/utils/format-brl";
 import {
   parsePaymentDueMode,
   prefillFixedDueDates,
   type PaymentDueMode,
 } from "@/shared/utils/payment-due";
+import {
+  applyInstallmentAmountEdit,
+  applyInstallmentPercentEdit,
+  amountsAreEqualSplit,
+  resolveInstallmentAmounts,
+  roundInstallmentMoney,
+} from "@/shared/utils/payment-installment-amounts";
 import {
   buildInstallmentDueDates,
   PAYMENT_TERM_LABELS,
@@ -40,6 +49,14 @@ type Props = {
   onDueModeChange?: (mode: PaymentDueMode) => void;
   fixedDueDates?: string[];
   onFixedDueDatesChange?: (dates: string[]) => void;
+  /** Total do documento — permite editar R$ e % de cada parcela. */
+  documentTotal?: number | null;
+  /**
+   * Valores livres. `[]` = divisão igual.
+   * Alterar um valor (excepto a última) fecha o total na última parcela.
+   */
+  installmentAmounts?: number[];
+  onInstallmentAmountsChange?: (amounts: number[]) => void;
 };
 
 export function PaymentTermsFields({
@@ -59,9 +76,36 @@ export function PaymentTermsFields({
   onDueModeChange,
   fixedDueDates = [],
   onFixedDueDatesChange,
+  documentTotal,
+  installmentAmounts = [],
+  onInstallmentAmountsChange,
 }: Props) {
   const mode = parsePaymentDueMode(dueMode);
   const nInstallments = Math.max(1, parseInt(paymentInstallments, 10) || 1);
+  const total = roundInstallmentMoney(Math.max(0, Number(documentTotal) || 0));
+  const canEditAmounts =
+    Boolean(onInstallmentAmountsChange) && total > 0 && nInstallments >= 1;
+
+  const displayedAmounts = useMemo(
+    () =>
+      resolveInstallmentAmounts(
+        total,
+        nInstallments,
+        installmentAmounts.length === nInstallments ? installmentAmounts : null
+      ),
+    [total, nInstallments, installmentAmounts]
+  );
+
+  const isCustomAmounts =
+    canEditAmounts &&
+    !amountsAreEqualSplit(installmentAmounts, total, nInstallments) &&
+    installmentAmounts.length === nInstallments;
+
+  const amountsSum = roundInstallmentMoney(
+    displayedAmounts.reduce((a, b) => a + b, 0)
+  );
+  const lastNegative = displayedAmounts.some((v) => v < 0);
+  const amountsMismatch = Math.abs(amountsSum - total) > 0.02;
 
   const duePreview = useMemo(() => {
     if (showDueMode && mode === "fixed_dates") {
@@ -102,6 +146,15 @@ export function PaymentTermsFields({
       next.push(duePreview[next.length] ?? todayIsoSaoPaulo());
     }
     return next;
+  };
+
+  const emitAmounts = (next: number[]) => {
+    if (amountsAreEqualSplit(next, total, next.length)) {
+      onInstallmentAmountsChange?.([]);
+    } else {
+      onInstallmentAmountsChange?.(next);
+    }
+    onBlur?.();
   };
 
   return (
@@ -156,10 +209,12 @@ export function PaymentTermsFields({
             onValueChange={(n) => {
               const next = n > 0 ? String(n) : "";
               onPaymentInstallmentsChange(next);
+              const count = Math.max(1, n);
               if (showDueMode && mode === "fixed_dates") {
-                onFixedDueDatesChange?.(
-                  resizeFixedDates(Math.max(1, n), fixedDueDates)
-                );
+                onFixedDueDatesChange?.(resizeFixedDates(count, fixedDueDates));
+              }
+              if (onInstallmentAmountsChange && installmentAmounts.length > 0) {
+                onInstallmentAmountsChange([]);
               }
             }}
             disabled={disabled}
@@ -237,7 +292,7 @@ export function PaymentTermsFields({
             ))}
           </div>
         </div>
-      ) : duePreview.length > 0 ? (
+      ) : duePreview.length > 0 && !canEditAmounts ? (
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
           <p className="text-xs font-medium text-slate-800 mb-1.5">
             {showDueMode
@@ -263,11 +318,125 @@ export function PaymentTermsFields({
             ))}
           </ul>
         </div>
-      ) : baseDateIso || showDueMode ? null : (
+      ) : baseDateIso || showDueMode || canEditAmounts ? null : (
         <p className="text-[11px] text-amber-800">
           Informe a {baseDateLabel} para ver as datas de vencimento.
         </p>
       )}
+
+      {canEditAmounts ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 space-y-2.5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-medium text-slate-800">
+                Valores das parcelas
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {showDueMode
+                  ? "Duplicata se a nota for emitida hoje. "
+                  : `Datas a partir da ${baseDateLabel}. `}
+                Ajuste R$ ou % (ex.: 30% de sinal). A última parcela fecha o
+                total.
+              </p>
+            </div>
+            {isCustomAmounts && !disabled ? (
+              <button
+                type="button"
+                className="text-[11px] font-medium text-brand-800 hover:underline"
+                onClick={() => {
+                  onInstallmentAmountsChange?.([]);
+                  onBlur?.();
+                }}
+              >
+                Repartir igual
+              </button>
+            ) : null}
+          </div>
+          <ul className="space-y-2">
+            {displayedAmounts.map((value, i) => {
+              const iso = duePreview[i];
+              const pct =
+                total > 0 ? roundInstallmentMoney((value / total) * 100) : 0;
+              return (
+                <li
+                  key={`${idPrefix}-amt-${i}`}
+                  className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_7.5rem_5.5rem] gap-2 items-end"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-slate-500 mb-1">
+                      Parcela {i + 1}/{nInstallments}
+                      {iso ? (
+                        <span className="tabular-nums text-slate-800">
+                          {" "}
+                          · {formatShortDate(iso)}
+                        </span>
+                      ) : null}
+                    </p>
+                    <NumericInput
+                      id={`${idPrefix}-amt-${i}`}
+                      value={value}
+                      maxDecimals={2}
+                      disabled={disabled}
+                      aria-label={`Valor da parcela ${i + 1}`}
+                      onChange={(next) =>
+                        emitAmounts(
+                          applyInstallmentAmountEdit(
+                            displayedAmounts,
+                            i,
+                            next,
+                            total
+                          )
+                        )
+                      }
+                      onBlur={onBlur}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor={`${idPrefix}-pct-${i}`}
+                      className="text-[11px] text-slate-500"
+                    >
+                      % do total
+                    </Label>
+                    <NumericInput
+                      id={`${idPrefix}-pct-${i}`}
+                      value={pct}
+                      maxDecimals={2}
+                      disabled={disabled}
+                      aria-label={`Percentagem da parcela ${i + 1}`}
+                      onChange={(next) =>
+                        emitAmounts(
+                          applyInstallmentPercentEdit(
+                            displayedAmounts,
+                            i,
+                            next,
+                            total
+                          )
+                        )
+                      }
+                      onBlur={onBlur}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p
+            className={`text-[11px] tabular-nums ${
+              lastNegative || amountsMismatch
+                ? "text-red-700"
+                : "text-slate-600"
+            }`}
+          >
+            Soma {fmtBRL(amountsSum)} · total {fmtBRL(total)}
+            {lastNegative
+              ? " — a soma das primeiras parcelas excede o total."
+              : amountsMismatch
+                ? " — ajuste para fechar o total."
+                : null}
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

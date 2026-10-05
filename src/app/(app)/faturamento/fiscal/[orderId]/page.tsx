@@ -29,10 +29,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { PaymentTermsFields } from "@/components/shared/payment-terms-fields";
 import {
   parsePaymentDueMode,
-  resolvePaymentDueDates,
   type PaymentDueMode,
 } from "@/shared/utils/payment-due";
-import { formatShortDate, todayIsoSaoPaulo } from "@/shared/utils/date";
+import { formatShortDate } from "@/shared/utils/date";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { NumericInput } from "@/shared/ui/numeric-input";
@@ -264,6 +263,7 @@ export default function FiscalOrderReviewPage() {
   const [payDaysBetween, setPayDaysBetween] = useState("");
   const [payDueMode, setPayDueMode] = useState<PaymentDueMode>("from_emission");
   const [payFixedDates, setPayFixedDates] = useState<string[]>([]);
+  const [payAmounts, setPayAmounts] = useState<number[]>([]);
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
   const [carrierName, setCarrierName] = useState("");
@@ -284,6 +284,11 @@ export default function FiscalOrderReviewPage() {
     setPayDaysBetween(pdb > 0 ? String(pdb) : "");
     setPayDueMode(parsePaymentDueMode(data.payment_due_mode));
     setPayFixedDates(data.payment_fixed_due_dates ?? []);
+    setPayAmounts(
+      Array.isArray(data.payment_installment_amounts)
+        ? data.payment_installment_amounts.map((v) => Number(v))
+        : []
+    );
     setShippingType(data.shipping_type ?? "FOB");
     setFreightCost(Number(data.freight_cost ?? 0));
     setCarrierName(data.carrier_name ?? "");
@@ -439,6 +444,7 @@ export default function FiscalOrderReviewPage() {
               parseInt(payDaysBetween, 10) || 0,
             payment_due_mode: payDueMode,
             payment_fixed_due_dates: payFixedDates,
+            payment_installment_amounts: payAmounts,
             shipping_type: shippingType,
             freight_cost: freightCost,
             carrier_name: carrierName,
@@ -506,33 +512,6 @@ export default function FiscalOrderReviewPage() {
     }
     return { label: "Sem NF-e", className: "bg-slate-100 text-slate-700" };
   }, [data]);
-
-  const installmentPreview = useMemo(() => {
-    const n = parseInt(payInstallments, 10) || 1;
-    const dates = resolvePaymentDueDates(
-      {
-        payment_due_mode: payDueMode,
-        payment_fixed_due_dates: payFixedDates,
-        payment_installments: n,
-        payment_days_to_first_due: parseInt(payDaysFirst, 10) || 0,
-        payment_days_between_installments: parseInt(payDaysBetween, 10) || 0,
-      },
-      todayIsoSaoPaulo()
-    );
-    const total = Number(data?.total ?? 0);
-    const share = n > 0 ? Math.round((total / n) * 100) / 100 : total;
-    return dates.map((d, i) => ({
-      date: d,
-      value: i === n - 1 ? Math.round((total - share * (n - 1)) * 100) / 100 : share,
-    }));
-  }, [
-    data?.total,
-    payInstallments,
-    payDueMode,
-    payFixedDates,
-    payDaysFirst,
-    payDaysBetween,
-  ]);
 
   if (!canFaturamento) {
     return (
@@ -1066,18 +1045,11 @@ export default function FiscalOrderReviewPage() {
                   onPaymentDaysFirstChange={setPayDaysFirst}
                   paymentDaysBetween={payDaysBetween}
                   onPaymentDaysBetweenChange={setPayDaysBetween}
+                  installmentAmounts={payAmounts}
+                  onInstallmentAmountsChange={setPayAmounts}
+                  documentTotal={data.total}
                   disabled={!isAdmin || Boolean(data.billing_closure)}
                 />
-                {installmentPreview.length > 0 ? (
-                  <ul className="text-xs text-slate-600 space-y-0.5">
-                    {installmentPreview.map((p, i) => (
-                      <li key={`${p.date}-${i}`}>
-                        Parcela {i + 1}/{installmentPreview.length}:{" "}
-                        {formatShortDate(p.date)} · {fmtBRL(p.value)}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
               </div>
 
               {isAdmin && !data.billing_closure ? (

@@ -22,6 +22,7 @@ import {
   coerceSalesOrderInt,
   parsePaymentDaysBetween,
 } from "@/shared/contracts/sales-order.schema";
+import { installmentAmountsFromBody } from "@/shared/utils/payment-installment-amounts";
 import { checkPurchaseOrderExpectedDeliveryVsProduction } from "@/modules/compras/lib/purchasing/purchase-schedule-conflicts";
 import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
 import {
@@ -206,7 +207,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existingOrder, error: existingErr } = await admin
     .from("purchase_orders")
     .select(
-      "id, status, po_number, order_date, expected_delivery, actual_delivery, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "id, status, po_number, order_date, expected_delivery, actual_delivery, supplier_id, is_suggestion, subtotal, discount, tax, total_icms, total_ipi, total_tax_base, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_installment_amounts"
     )
     .eq("id", id)
     .eq("tenant_id", tenantId)
@@ -315,6 +316,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
     updateData.payment_days_between_installments = parsePaymentDaysBetween(
       b.payment_days_between_installments
     );
+  }
+  {
+    const nextN = Number(
+      updateData.payment_installments ??
+        existingOrder?.payment_installments ??
+        1
+    );
+    const amountsParsed = installmentAmountsFromBody(b, nextN);
+    if (!amountsParsed.ok) return apiError(amountsParsed.message, 400);
+    if (amountsParsed.payment_installment_amounts !== undefined) {
+      updateData.payment_installment_amounts =
+        amountsParsed.payment_installment_amounts;
+    }
   }
 
   const parseMoney = (v: unknown, _label: string): number | null => {
@@ -570,6 +584,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
       updateData.payment_days_to_first_due !== undefined,
     payment_days_between_installments:
       updateData.payment_days_between_installments !== undefined,
+    payment_installment_amounts:
+      updateData.payment_installment_amounts !== undefined,
     order_date: updateData.order_date !== undefined,
     expected_delivery: updateData.expected_delivery !== undefined,
     supplier_id: updateData.supplier_id !== undefined,

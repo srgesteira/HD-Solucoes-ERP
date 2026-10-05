@@ -1,4 +1,4 @@
-import { splitAmountInInstallments } from "@/modules/vendas/lib/sales/sales-flow";
+import { resolveInstallmentAmounts } from "@/shared/utils/payment-installment-amounts";
 import type { NfeComplementaryInfoSource } from "@/modules/faturamento/lib/nfe-complementary-info";
 import { todayIsoSaoPaulo } from "@/shared/utils/date";
 import {
@@ -23,7 +23,11 @@ export function buildBlingNfeParcelas(
 ): BlingNfeParcela[] {
   const n = Math.max(1, Math.min(999, Math.floor(source.payment_installments) || 1));
   const total = Math.max(0, Number(source.total ?? 0));
-  const amounts = splitAmountInInstallments(total, n);
+  const amounts = resolveInstallmentAmounts(
+    total,
+    n,
+    source.payment_installment_amounts
+  );
   const emission = todayIsoSaoPaulo();
   const dates = resolvePaymentDueDates(source, emission);
   const mode = parsePaymentDueMode(source.payment_due_mode);

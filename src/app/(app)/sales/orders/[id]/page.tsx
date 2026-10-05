@@ -105,6 +105,7 @@ type SalesOrderDetail = {
   payment_days_between_installments: number;
   payment_due_mode?: string | null;
   payment_fixed_due_dates?: string[] | null;
+  payment_installment_amounts?: number[] | null;
   subtotal: number;
   discount: number;
   tax: number;
@@ -484,6 +485,8 @@ export default function SalesOrderDetailPage() {
   const [paymentFixedDatesDraft, setPaymentFixedDatesDraft] = useState<
     string[]
   >([]);
+  const [paymentInstallmentAmountsDraft, setPaymentInstallmentAmountsDraft] =
+    useState<number[]>([]);
   const [discountDraft, setDiscountDraft] = useState(0);
   const [discountSaving, setDiscountSaving] = useState(false);
 
@@ -502,6 +505,11 @@ export default function SalesOrderDetailPage() {
     );
     setPaymentDueModeDraft(parsePaymentDueMode(row.payment_due_mode));
     setPaymentFixedDatesDraft(row.payment_fixed_due_dates ?? []);
+    setPaymentInstallmentAmountsDraft(
+      Array.isArray(row.payment_installment_amounts)
+        ? row.payment_installment_amounts.map((v) => Number(v))
+        : []
+    );
     setDiscountDraft(Number(row.discount ?? 0));
   }, [orderQuery.data]);
 
@@ -1103,6 +1111,11 @@ export default function SalesOrderDetailPage() {
                     onPaymentDaysFirstChange={setPaymentDaysFirstDraft}
                     paymentDaysBetween={paymentDaysBetweenDraft}
                     onPaymentDaysBetweenChange={setPaymentDaysBetweenDraft}
+                    installmentAmounts={paymentInstallmentAmountsDraft}
+                    onInstallmentAmountsChange={
+                      setPaymentInstallmentAmountsDraft
+                    }
+                    documentTotal={q.total}
                     onBlur={async () => {
                       if (!id || !q) return;
                       const pi = parseInt(paymentInstallmentsDraft, 10);
@@ -1126,6 +1139,8 @@ export default function SalesOrderDetailPage() {
                           payment_days_between_installments: pdb,
                           payment_due_mode: paymentDueModeDraft,
                           payment_fixed_due_dates: paymentFixedDatesDraft,
+                          payment_installment_amounts:
+                            paymentInstallmentAmountsDraft,
                         });
                         await queryClient.invalidateQueries({
                           queryKey: ["sales-order", id],
@@ -1145,6 +1160,10 @@ export default function SalesOrderDetailPage() {
                     payment_days_between_installments={
                       q.payment_days_between_installments
                     }
+                    payment_installment_amounts={
+                      q.payment_installment_amounts
+                    }
+                    total={q.total}
                   />
                 )}
               </div>

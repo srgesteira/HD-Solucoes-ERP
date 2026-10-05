@@ -13,10 +13,13 @@ export const purchaseOrderPaymentUpdateSchema = z.object({
     (v) => coerceSalesOrderInt(v, 30),
     z.number().int().min(0, "Dias da 1.ª parcela inválidos")
   ),
-  payment_days_between_installments: z.preprocess(
-    (v) => parsePaymentDaysBetween(v),
-    z.number().int().min(0, "Dias entre parcelas inválidos")
-  ),
+    payment_days_between_installments: z.preprocess(
+      (v) => parsePaymentDaysBetween(v),
+      z.number().int().min(0, "Dias entre parcelas inválidos")
+    ),
+    payment_installment_amounts: z
+      .array(z.union([z.number(), z.string()]))
+      .optional(),
 });
 
 export type PurchaseOrderPaymentUpdateInput = z.infer<
@@ -95,6 +98,9 @@ export const purchaseOrderUpsertBodySchema = z
     payment_installments: z.coerce.number().int().min(1).optional(),
     payment_days_to_first_due: z.coerce.number().int().min(0).optional(),
     payment_days_between_installments: z.coerce.number().int().min(0).optional(),
+    payment_installment_amounts: z
+      .array(z.union([z.number(), z.string()]))
+      .optional(),
     items: purchaseOrderItemsPayloadSchema.optional(),
   })
   .passthrough();

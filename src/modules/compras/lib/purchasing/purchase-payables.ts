@@ -2,8 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import {
   addDaysToISODate,
-  splitAmountInInstallments,
 } from "@/modules/vendas/lib/sales/sales-flow";
+import { resolveInstallmentAmounts } from "@/shared/utils/payment-installment-amounts";
 import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
 import {
   computePurchaseOrderTotal,
@@ -22,6 +22,7 @@ export type PurchaseOrderForPayables = PurchaseOrderExtraCosts & {
   payment_installments: number;
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
+  payment_installment_amounts?: number[] | null;
   is_suggestion?: boolean | null;
 };
 
@@ -35,6 +36,7 @@ type PurchaseOrderPayableRow = {
   payment_installments?: number | null;
   payment_days_to_first_due?: number | null;
   payment_days_between_installments?: number | null;
+  payment_installment_amounts?: number[] | null;
   subtotal?: number | null;
   discount?: number | null;
   tax?: number | null;
@@ -59,6 +61,9 @@ export function purchaseOrderRowToPayablesInput(
     payment_days_to_first_due: row.payment_days_to_first_due ?? 30,
     payment_days_between_installments:
       row.payment_days_between_installments ?? 0,
+    payment_installment_amounts: Array.isArray(row.payment_installment_amounts)
+      ? row.payment_installment_amounts.map((v) => Number(v))
+      : [],
     subtotal: row.subtotal,
     discount: row.discount,
     tax: row.tax,
@@ -119,7 +124,10 @@ export function buildPurchaseOrderPayableTargets(order: PurchaseOrderForPayables
 } {
   const total = purchaseOrderPayableTotal(order);
   const n = Math.max(1, Math.min(999, order.payment_installments ?? 1));
-  const amounts = total > 0 ? splitAmountInInstallments(total, n) : [];
+  const amounts =
+    total > 0
+      ? resolveInstallmentAmounts(total, n, order.payment_installment_amounts)
+      : [];
   // Espelha vendas: actual_delivery → expected_delivery → order_date
   const baseDate = paymentScheduleBaseDate({
     actual_delivery: order.actual_delivery,
@@ -479,6 +487,7 @@ export async function ensurePayablesSyncedForPurchaseOrder(
     payment_installments?: boolean;
     payment_days_to_first_due?: boolean;
     payment_days_between_installments?: boolean;
+    payment_installment_amounts?: boolean;
     order_date?: boolean;
     expected_delivery?: boolean;
     actual_delivery?: boolean;
@@ -490,6 +499,7 @@ export async function ensurePayablesSyncedForPurchaseOrder(
     changedFields.payment_installments ||
     changedFields.payment_days_to_first_due ||
     changedFields.payment_days_between_installments ||
+    changedFields.payment_installment_amounts ||
     changedFields.order_date ||
     changedFields.expected_delivery ||
     changedFields.actual_delivery ||
@@ -618,7 +628,7 @@ export async function listPayablesRecalcDryRun(
   const { data: orders, error: poErr } = await admin
     .from("purchase_orders")
     .select(
-      "id, po_number, order_date, expected_delivery, actual_delivery, supplier_id, subtotal, discount, tax, total_ipi, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments, is_suggestion"
+      "id, po_number, order_date, expected_delivery, actual_delivery, supplier_id, subtotal, discount, tax, total_ipi, freight_cost, insurance_cost, other_costs, total_tax_non_creditable, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_installment_amounts, is_suggestion"
     )
     .eq("tenant_id", tenantId)
     .in("id", poIds);
@@ -635,7 +645,10 @@ export async function listPayablesRecalcDryRun(
     const input = purchaseOrderRowToPayablesInput(po);
     const total = purchaseOrderPayableTotal(input);
     const n = Math.max(1, Math.min(999, input.payment_installments ?? 1));
-    targetByPo.set(po.id, splitAmountInInstallments(total, n));
+    targetByPo.set(
+      po.id,
+      resolveInstallmentAmounts(total, n, input.payment_installment_amounts)
+    );
   }
 
   for (const row of payables) {

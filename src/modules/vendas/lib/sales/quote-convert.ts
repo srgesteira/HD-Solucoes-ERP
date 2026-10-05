@@ -226,6 +226,13 @@ export async function convertQuoteToSalesOrder(
       )
         ? (quote as { payment_fixed_due_dates: string[] }).payment_fixed_due_dates
         : [],
+      payment_installment_amounts: Array.isArray(
+        (quote as { payment_installment_amounts?: number[] })
+          .payment_installment_amounts
+      )
+        ? (quote as { payment_installment_amounts: number[] })
+            .payment_installment_amounts
+        : [],
       customer_po_number: customerPo,
       shipping_type: quote.shipping_type ?? "FOB",
       freight_cost: Number(quote.freight_cost ?? 0),
@@ -286,6 +293,9 @@ export async function convertQuoteToSalesOrder(
       payment_due_mode: (fresh as { payment_due_mode?: string }).payment_due_mode,
       payment_fixed_due_dates: (fresh as { payment_fixed_due_dates?: string[] })
         .payment_fixed_due_dates,
+      payment_installment_amounts: (fresh as {
+        payment_installment_amounts?: number[] | null;
+      }).payment_installment_amounts,
     },
     { provisional: true }
   );
