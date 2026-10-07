@@ -195,7 +195,11 @@ function roundMoney(value: number): number {
 }
 
 export function computeBlingNfeValorNota(input: {
-  items: BlingNfeCreateItemInput[];
+  items: Array<{
+    quantity: number;
+    unit_price: number;
+    discount?: number | null;
+  }>;
   headerDiscount: number;
   freightCost?: number | null;
 }): number {
@@ -562,6 +566,7 @@ export function buildBlingNfePayloadView(review: FiscalOrderReview): {
   naturezaOperacao: string;
   data: string;
   desconto?: number;
+  valorNota: number;
   observacoes: string;
   parcelas: ReturnType<typeof buildBlingNfeParcelas>;
   transporte: ReturnType<typeof buildBlingTransportePayload>;
@@ -574,14 +579,24 @@ export function buildBlingNfePayloadView(review: FiscalOrderReview): {
     ? review.invoice_document_type
     : "nfe_product";
   const desconto = Number(review.discount ?? 0);
+  const valorNota = computeBlingNfeValorNota({
+    items: review.items.map((it) => ({
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+      discount: it.discount,
+    })),
+    headerDiscount: desconto,
+    freightCost: review.freight_cost,
+  });
   return {
     tipo: 1,
     finalidade: 1,
     naturezaOperacao: blingNfeNaturezaOperacao(docType),
     data: String(review.order_date ?? "").slice(0, 10),
     desconto: desconto > 0 ? desconto : undefined,
+    valorNota,
     observacoes: buildBlingNfeObservacoes(source, review.id),
-    parcelas: buildBlingNfeParcelas(source),
+    parcelas: buildBlingNfeParcelas({ ...source, total: valorNota }),
     transporte: buildBlingTransportePayload({
       shippingType: review.shipping_type,
       freightCost: review.freight_cost,

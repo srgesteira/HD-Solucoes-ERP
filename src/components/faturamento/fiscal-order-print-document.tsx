@@ -374,7 +374,7 @@ export function FiscalOrderPrintDocument({
               </td>
               <td colSpan={2}>
                 <span className="lbl">Valor total da nota</span>
-                <div className="val right">{fmtBRL(review.total)}</div>
+                <div className="val right">{fmtBRL(payload.valorNota)}</div>
               </td>
             </tr>
           </tbody>
