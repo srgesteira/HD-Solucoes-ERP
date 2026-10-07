@@ -10,7 +10,10 @@ import {
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
 import { isInvoiceDocumentType } from "@/modules/core/types/sales-order-billing.types";
-import { INVOICE_DOCUMENT_TYPE_LABELS } from "@/modules/core/types/sales-order-billing.types";
+import {
+  INVOICE_DOCUMENT_TYPE_LABELS,
+  isBlingNfeInvoiceType,
+} from "@/modules/core/types/sales-order-billing.types";
 import { buildBlingNfePayloadView } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 import { fretePorContaLabel } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 import { CreateBlingProductButton } from "@/components/faturamento/create-bling-product-button";
@@ -87,7 +90,7 @@ function invoiceTypeLabel(raw: string | null): string {
 }
 
 function isBlingProductNfe(type: string | null): boolean {
-  return type === "nfe_product" || type === "nfe_industrialization";
+  return isBlingNfeInvoiceType(type);
 }
 
 type Props = {
@@ -289,7 +292,12 @@ export function FiscalOrderPrintDocument({
               </td>
             </tr>
             <tr>
-              {payload.parcelas.length ? (
+              {review.invoice_document_type === "nfe_remessa" ? (
+                <td colSpan={4}>
+                  <span className="lbl">Cobrança</span>
+                  <div className="val">Sem cobrança — simples remessa</div>
+                </td>
+              ) : payload.parcelas.length ? (
                 payload.parcelas.map((p, i) => (
                   <td key={`${p.data}-${i}`}>
                     <span className="lbl">

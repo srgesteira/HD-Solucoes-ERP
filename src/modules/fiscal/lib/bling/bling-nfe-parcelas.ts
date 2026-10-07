@@ -16,23 +16,32 @@ export type BlingNfeParcela = {
   data: string;
   valor: number;
   observacoes?: string;
+  formaPagamento?: { id: number };
 };
 
 export function buildBlingNfeParcelas(
-  source: NfeComplementaryInfoSource & { total: number }
+  source: NfeComplementaryInfoSource & {
+    total: number;
+    semCobranca?: boolean;
+    formaPagamentoId?: number | null;
+  }
 ): BlingNfeParcela[] {
-  const n = Math.max(1, Math.min(999, Math.floor(source.payment_installments) || 1));
+  const semCobranca = source.semCobranca === true;
+  const n = semCobranca
+    ? 1
+    : Math.max(1, Math.min(999, Math.floor(source.payment_installments) || 1));
   const total = Math.max(0, Number(source.total ?? 0));
   const amounts = resolveInstallmentAmounts(
     total,
     n,
-    source.payment_installment_amounts
+    semCobranca ? null : source.payment_installment_amounts
   );
   const emission = todayIsoSaoPaulo();
   const dates = resolvePaymentDueDates(source, emission);
   const mode = parsePaymentDueMode(source.payment_due_mode);
-  const terms =
-    mode === "fixed_dates"
+  const terms = semCobranca
+    ? "Sem cobrança — simples remessa"
+    : mode === "fixed_dates"
       ? "Vencimentos conforme datas acordadas com o cliente."
       : formatPaymentTermsSummary({
           payment_installments: source.payment_installments,
@@ -42,18 +51,24 @@ export function buildBlingNfeParcelas(
         });
   const fallbackDate =
     dates[0] ?? source.order_date.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+  const formaId = Number(source.formaPagamentoId);
+  const formaPagamento =
+    Number.isFinite(formaId) && formaId > 0 ? { id: formaId } : undefined;
 
   return amounts.map((valor, i) => {
     const label =
-      n === 1
+      semCobranca
         ? terms
-        : i === 0
-          ? `Parcela 1/${n} - ${terms}`
-          : `Parcela ${i + 1}/${n}`;
+        : n === 1
+          ? terms
+          : i === 0
+            ? `Parcela 1/${n} - ${terms}`
+            : `Parcela ${i + 1}/${n}`;
     return {
       data: dates[i] ?? fallbackDate,
       valor,
       observacoes: label,
+      ...(formaPagamento ? { formaPagamento } : {}),
     };
   });
 }

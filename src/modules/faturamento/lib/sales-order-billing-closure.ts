@@ -191,50 +191,55 @@ export async function closeSalesOrderBilling(
   if (updErr) throw new Error(updErr.message);
 
   try {
-    const { data: fresh } = await admin
+    const { data: fresh } = await asUntypedAdmin(admin)
       .from("sales_orders")
       .select(
-        "id, order_number, order_date, expected_delivery, actual_delivery, total, freight_cost, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts"
+        "id, order_number, order_date, expected_delivery, actual_delivery, total, freight_cost, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts, invoice_document_type"
       )
       .eq("id", salesOrderId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
 
     if (fresh) {
-      await syncReceivablesForSalesOrder(
-        admin,
-        tenantId,
-        salesOrderRowToReceivablesInput({
-          id: fresh.id,
-          order_number: fresh.order_number,
-          order_date: fresh.order_date,
-          expected_delivery: fresh.expected_delivery,
-          actual_delivery: fresh.actual_delivery ?? actualDelivery,
-          total: fresh.total,
-          client_name: fresh.client_name,
-          client_document: fresh.client_document,
-          payment_installments: fresh.payment_installments,
-          payment_days_to_first_due: fresh.payment_days_to_first_due,
-          payment_days_between_installments:
-            fresh.payment_days_between_installments,
-          payment_due_mode: (
-            fresh as { payment_due_mode?: string | null }
-          ).payment_due_mode,
-          payment_fixed_due_dates: (
-            fresh as { payment_fixed_due_dates?: string[] | null }
-          ).payment_fixed_due_dates,
-          payment_installment_amounts: (
-            fresh as { payment_installment_amounts?: number[] | null }
-          ).payment_installment_amounts,
-          freight_cost: (fresh as { freight_cost?: number | null }).freight_cost,
-          payment_base_date: todayIsoSaoPaulo(),
-        })
-      );
-      await confirmProvisionalReceivablesForSalesOrder(
-        admin,
-        tenantId,
-        salesOrderId
-      );
+      const docType = (fresh as { invoice_document_type?: string | null })
+        .invoice_document_type;
+      if (docType !== "nfe_remessa") {
+        await syncReceivablesForSalesOrder(
+          admin,
+          tenantId,
+          salesOrderRowToReceivablesInput({
+            id: fresh.id,
+            order_number: fresh.order_number,
+            order_date: fresh.order_date,
+            expected_delivery: fresh.expected_delivery,
+            actual_delivery: fresh.actual_delivery ?? actualDelivery,
+            total: fresh.total,
+            client_name: fresh.client_name,
+            client_document: fresh.client_document,
+            payment_installments: fresh.payment_installments,
+            payment_days_to_first_due: fresh.payment_days_to_first_due,
+            payment_days_between_installments:
+              fresh.payment_days_between_installments,
+            payment_due_mode: (
+              fresh as { payment_due_mode?: string | null }
+            ).payment_due_mode,
+            payment_fixed_due_dates: (
+              fresh as { payment_fixed_due_dates?: string[] | null }
+            ).payment_fixed_due_dates,
+            payment_installment_amounts: (
+              fresh as { payment_installment_amounts?: number[] | null }
+            ).payment_installment_amounts,
+            freight_cost: (fresh as { freight_cost?: number | null }).freight_cost,
+            invoice_document_type: docType,
+            payment_base_date: todayIsoSaoPaulo(),
+          })
+        );
+        await confirmProvisionalReceivablesForSalesOrder(
+          admin,
+          tenantId,
+          salesOrderId
+        );
+      }
     }
   } catch (recvErr) {
     console.warn(

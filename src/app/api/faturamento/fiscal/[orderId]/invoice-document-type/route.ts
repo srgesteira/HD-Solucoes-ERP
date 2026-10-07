@@ -41,7 +41,7 @@ export async function POST(
   const docType = body.invoice_document_type?.trim() ?? "";
   if (!isInvoiceDocumentType(docType)) {
     return apiError(
-      "invoice_document_type deve ser nfse, nfe_product ou nfe_industrialization.",
+      "invoice_document_type deve ser nfse, nfe_product, nfe_industrialization ou nfe_remessa.",
       400
     );
   }

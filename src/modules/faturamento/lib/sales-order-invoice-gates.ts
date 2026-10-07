@@ -5,6 +5,7 @@ import {
   isFiscalConfigured,
   type FiscalStatus,
 } from "@/modules/fiscal/lib/fiscal-rules-types";
+import { isBlingNfeInvoiceType } from "@/modules/core/types/sales-order-billing.types";
 
 type Admin = SupabaseClient<Database>;
 
@@ -74,7 +75,7 @@ export async function validateSalesOrderCanEmitNfe(
     reasons.push("Pedido marcado para entrega sem NF-e.");
   } else if (!so.invoice_document_type) {
     reasons.push(
-      "Tipo de nota não definido no Fiscal (NFS-e, NF-e produto ou industrialização)."
+      "Tipo de nota não definido no Fiscal (NFS-e, NF-e produto, industrialização ou simples remessa)."
     );
   }
 
@@ -125,8 +126,7 @@ export async function validateSalesOrderCanEmitNfe(
     .eq("sales_order_id", salesOrderId)
     .in(
       "status",
-      so.invoice_document_type === "nfe_product" ||
-        so.invoice_document_type === "nfe_industrialization"
+      isBlingNfeInvoiceType(so.invoice_document_type)
         ? ["processing", "authorized"]
         : ["pending", "processing", "authorized"]
     );

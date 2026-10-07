@@ -3,7 +3,10 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
-import { isInvoiceDocumentType } from "@/modules/core/types/sales-order-billing.types";
+import {
+  isBlingNfeInvoiceType,
+  isInvoiceDocumentType,
+} from "@/modules/core/types/sales-order-billing.types";
 import { BlingApiError } from "@/modules/fiscal/lib/bling/bling-errors";
 import { ensureBlingPedidoForSalesOrder } from "@/modules/fiscal/lib/bling/bling-pedido";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
@@ -34,9 +37,9 @@ export async function POST(
 
   const docType = (so as { invoice_document_type?: string | null })
     .invoice_document_type;
-  if (!isInvoiceDocumentType(docType) || (docType !== "nfe_product" && docType !== "nfe_industrialization")) {
+  if (!isInvoiceDocumentType(docType) || !isBlingNfeInvoiceType(docType)) {
     return apiError(
-      "Só é possível preparar pedido no Bling para NF-e produto ou industrialização.",
+      "Só é possível preparar pedido no Bling para NF-e produto, industrialização ou simples remessa.",
       400
     );
   }

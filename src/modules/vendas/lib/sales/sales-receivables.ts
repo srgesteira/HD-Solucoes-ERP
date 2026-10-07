@@ -26,6 +26,7 @@ export type SalesOrderForReceivables = {
   payment_due_mode?: string | null;
   payment_fixed_due_dates?: string[] | null;
   payment_installment_amounts?: number[] | null;
+  invoice_document_type?: string | null;
 };
 
 export type SyncReceivablesResult = {
@@ -178,6 +179,7 @@ export function salesOrderRowToReceivablesInput(row: {
   payment_fixed_due_dates?: string[] | null;
   payment_installment_amounts?: number[] | null;
   freight_cost?: number | null;
+  invoice_document_type?: string | null;
   /** Se definido, usa como data de emissão da NF (não a entrega). */
   payment_base_date?: string | null;
 }): SalesOrderForReceivables {
@@ -204,6 +206,7 @@ export function salesOrderRowToReceivablesInput(row: {
     payment_installment_amounts: Array.isArray(row.payment_installment_amounts)
       ? row.payment_installment_amounts.map((v) => Number(v))
       : [],
+    invoice_document_type: row.invoice_document_type ?? null,
   };
 }
 
@@ -226,6 +229,7 @@ export async function ensureReceivablesSyncedForSalesOrder(
     actual_delivery?: boolean;
   }
 ): Promise<SyncReceivablesResult | undefined> {
+  if (order.invoice_document_type === "nfe_remessa") return undefined;
   const shouldSync =
     changedFields.total ||
     changedFields.payment_installments ||

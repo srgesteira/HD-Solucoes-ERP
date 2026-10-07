@@ -57,6 +57,7 @@ import {
   type FiscalInvoicingListTab,
 } from "@/modules/faturamento/lib/fiscal-invoicing-list-tabs";
 import { digitsOnlyDoc } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
+import { isBlingNfeInvoiceType } from "@/modules/core/types/sales-order-billing.types";
 
 type ApiResponse = {
   data: FiscalInvoicingListRow[];
@@ -278,11 +279,11 @@ export default function FiscalInvoicingPage() {
       selectedRows.map((r) => r.invoice_document_type).filter(Boolean)
     );
     if (types.size !== 1) {
-      return "Todos precisam do mesmo tipo de nota (NF-e produto ou industrialização).";
+      return "Todos precisam do mesmo tipo de nota (NF-e produto, industrialização ou simples remessa).";
     }
     const t = [...types][0];
-    if (t !== "nfe_product" && t !== "nfe_industrialization") {
-      return "Agrupar só vale para NF-e de produto ou industrialização.";
+    if (!isBlingNfeInvoiceType(t)) {
+      return "Agrupar só vale para NF-e de produto, industrialização ou simples remessa.";
     }
     if (selectedRows.some((r) => r.billing_closure || r.nfe_group_id)) {
       return "Há pedido já faturado ou já agrupado. Desagrupe primeiro.";
@@ -560,10 +561,7 @@ export default function FiscalInvoicingPage() {
         width: "w-[12%]",
         accessor: (row) => (row.unmapped_bling_skus ?? []).join(", "),
         render: (row) => {
-          if (
-            row.invoice_document_type !== "nfe_product" &&
-            row.invoice_document_type !== "nfe_industrialization"
-          ) {
+          if (!isBlingNfeInvoiceType(row.invoice_document_type)) {
             return <span className="text-slate-400">—</span>;
           }
           if (!row.unmapped_bling_skus?.length) {

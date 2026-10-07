@@ -4,6 +4,7 @@ import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import type { FiscalOrderReview } from "@/modules/faturamento/lib/fiscal-order-review-service";
 import { getFiscalOrderReview } from "@/modules/faturamento/lib/fiscal-order-review-service";
 import { digitsOnlyDoc } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
+import { isBlingNfeInvoiceType } from "@/modules/core/types/sales-order-billing.types";
 
 type Admin = SupabaseClient<Database>;
 
@@ -231,14 +232,15 @@ export async function createNfeInvoiceGroup(
   if (types.size !== 1) {
     return {
       ok: false,
-      message: "Todos os pedidos precisam do mesmo tipo de nota (NF-e produto ou industrialização).",
+      message: "Todos os pedidos precisam do mesmo tipo de nota (NF-e produto, industrialização ou simples remessa).",
     };
   }
   const docType = [...types][0];
-  if (docType !== "nfe_product" && docType !== "nfe_industrialization") {
+  if (!isBlingNfeInvoiceType(docType)) {
     return {
       ok: false,
-      message: "Agrupar numa nota só vale para NF-e de produto ou industrialização.",
+      message:
+        "Agrupar numa nota só vale para NF-e de produto, industrialização ou simples remessa.",
     };
   }
 

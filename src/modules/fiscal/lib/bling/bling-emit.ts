@@ -49,8 +49,11 @@ import {
   applyNaoContribuinteCsosnToNfeData,
   buildBlingNfeCreateBody,
   fiscalReviewToBlingNfeCreateInput,
+  fiscalReviewToNfePayloadSource,
   isNaoContribuinteIe,
+  readBlingNfeValorNota,
 } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
+import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
 
 type Admin = SupabaseClient<Database>;
 
@@ -299,7 +302,8 @@ async function rewriteBlingNfeDraft(
   blingNfeId: number,
   contactId: number,
   naturezaOperacaoId: number | null,
-  numero: string
+  numero: string,
+  formaPagamentoId: number
 ): Promise<void> {
   const review = await getFiscalReviewForBlingNfe(admin, tenantId, salesOrderId);
   if (!review) {
@@ -316,6 +320,7 @@ async function rewriteBlingNfeDraft(
   const created = buildBlingNfeCreateBody({
     ...fiscalReviewToBlingNfeCreateInput(review, contactId),
     endereco,
+    formaPagamentoId,
   });
   const existingContato =
     existing.contato && typeof existing.contato === "object"
@@ -373,7 +378,8 @@ async function upsertSequentialNfe(
   contactId: number,
   naturezaOperacaoId: number | null,
   numero: string,
-  existingBlingNfeId: number | null
+  existingBlingNfeId: number | null,
+  formaPagamentoId: number
 ): Promise<number> {
   const candidates = new Set<number>();
   if (existingBlingNfeId && Number.isFinite(existingBlingNfeId)) {
@@ -422,7 +428,8 @@ async function upsertSequentialNfe(
         id,
         contactId,
         naturezaOperacaoId,
-        numero
+        numero,
+        formaPagamentoId
       );
       return id;
     } catch {
@@ -445,6 +452,7 @@ async function upsertSequentialNfe(
     ...buildBlingNfeCreateBody({
       ...fiscalReviewToBlingNfeCreateInput(review, contactId),
       endereco,
+      formaPagamentoId,
     }),
   };
   if (naoContribuinte) {
@@ -491,7 +499,8 @@ async function upsertSequentialNfe(
     id,
     contactId,
     naturezaOperacaoId,
-    assigned
+    assigned,
+    formaPagamentoId
   );
   return id;
 }
@@ -501,7 +510,8 @@ async function alignBlingNfeDestinoBeforeEnviar(
   tenantId: string,
   salesOrderId: string,
   contactId: number,
-  blingNfeId: number
+  blingNfeId: number,
+  formaPagamentoId: number
 ): Promise<void> {
   const review = await getFiscalReviewForBlingNfe(admin, tenantId, salesOrderId);
   if (!review) return;
@@ -517,6 +527,7 @@ async function alignBlingNfeDestinoBeforeEnviar(
   const created = buildBlingNfeCreateBody({
     ...fiscalReviewToBlingNfeCreateInput(review, contactId),
     endereco,
+    formaPagamentoId,
   });
   const getContato =
     data.contato && typeof data.contato === "object"
@@ -534,6 +545,8 @@ async function alignBlingNfeDestinoBeforeEnviar(
     observacoes: created.observacoes,
     itens: created.itens,
     parcelas: created.parcelas,
+    transporte: created.transporte,
+    desconto: created.desconto,
     contato: {
       ...created.contato,
       id: contactId,
@@ -558,6 +571,28 @@ async function alignBlingNfeDestinoBeforeEnviar(
       : {};
   body.contato = { ...contato, endereco };
   await blingPut(admin, tenantId, `/nfe/${blingNfeId}`, body);
+
+  const after = unwrapBlingData(
+    await blingGet(admin, tenantId, `/nfe/${blingNfeId}`)
+  );
+  const remoteTotal = readBlingNfeValorNota(after);
+  const sentTotal = created.parcelas.reduce((s, p) => s + Number(p.valor), 0);
+  if (
+    remoteTotal != null &&
+    Math.abs(remoteTotal - sentTotal) > 0.02
+  ) {
+    const parcelas = buildBlingNfeParcelas({
+      ...fiscalReviewToNfePayloadSource(review),
+      total: remoteTotal,
+      semCobranca: review.invoice_document_type === "nfe_remessa",
+      formaPagamentoId,
+    });
+    await blingPut(admin, tenantId, `/nfe/${blingNfeId}`, {
+      ...nfeBodyForPut(after ?? {}),
+      ...body,
+      parcelas,
+    });
+  }
 }
 
 async function loadClaimedNfe(
@@ -751,7 +786,8 @@ export async function emitirNfeViaBling(
       prepared.contact_id,
       prepared.natureza_operacao_id,
       nextNumero,
-      nfe.bling_nfe_id ? Number(nfe.bling_nfe_id) : null
+      nfe.bling_nfe_id ? Number(nfe.bling_nfe_id) : null,
+      prepared.forma_pagamento_id
     );
   } catch (e) {
     const msg =
@@ -792,7 +828,8 @@ export async function emitirNfeViaBling(
       tenantId,
       emitOrderId,
       prepared.contact_id,
-      blingNfeId
+      blingNfeId,
+      prepared.forma_pagamento_id
     );
     const sent = await blingPost(admin, tenantId, `/nfe/${blingNfeId}/enviar`);
     let snapshot = await snapshotFromBling(admin, tenantId, sent, blingNfeId);

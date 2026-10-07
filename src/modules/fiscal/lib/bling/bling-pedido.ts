@@ -44,6 +44,7 @@ export type BlingPedidoPrepareResult = {
   pedido_venda_id: number;
   contact_id: number;
   natureza_operacao_id: number | null;
+  forma_pagamento_id: number;
   products_created: number;
   products_linked: number;
   created: boolean;
@@ -283,36 +284,50 @@ function isDefaultFlag(value: unknown): boolean {
   return value === 1 || value === "1" || value === true || value === "S";
 }
 
-async function resolveBlingFormaPagamentoId(
+export async function resolveBlingFormaPagamentoId(
   admin: Admin,
-  tenantId: string
+  tenantId: string,
+  opts?: { semCobranca?: boolean }
 ): Promise<number> {
   const payload = await blingGet(admin, tenantId, "/formas-pagamentos?limite=100");
   const rows = unwrapBlingList(payload);
   if (!rows.length) {
     throw new Error(
-      "Não há formas de pagamento no Bling. Cadastre uma (ex.: Boleto ou A prazo) em Cadastros → Formas de pagamento."
+      "Não há formas de pagamento no Bling. Cadastre uma (ex.: Boleto, A prazo ou Sem pagamento) em Cadastros → Formas de pagamento."
     );
   }
+  const semCobranca = opts?.semCobranca === true;
   const scored = rows
     .map((row) => {
       const id = Number(row.id);
       const desc = String(row.descricao ?? "").toLowerCase();
       const tipo = Number(row.tipoPagamento);
       let score = 0;
+      if (semCobranca) {
+        if (tipo === 90) score += 120;
+        if (/sem pagamento|sem cobran[cç]a|gratuit|bonifica/.test(desc)) {
+          score += 80;
+        }
+        return { id, score };
+      }
       if (isDefaultFlag(row.padrao)) score += 50;
       if (/boleto/.test(desc)) score += 30;
       if (/duplicata|a prazo|parcel/.test(desc)) score += 24;
       if (tipo === 15) score += 20;
       if (tipo === 14) score += 16;
       if (tipo === 17) score += 10;
+      if (tipo === 90) score -= 40;
       return { id, score };
     })
     .filter((row) => Number.isFinite(row.id));
   scored.sort((a, b) => b.score - a.score);
   const id = scored[0]?.id;
-  if (!id) {
-    throw new Error("Não foi possível escolher uma forma de pagamento no Bling.");
+  if (!id || (semCobranca && (scored[0]?.score ?? 0) <= 0)) {
+    throw new Error(
+      semCobranca
+        ? "Cadastre no Bling uma forma de pagamento «Sem pagamento» (tipo 90) para simples remessa."
+        : "Não foi possível escolher uma forma de pagamento no Bling."
+    );
   }
   return id;
 }
@@ -331,7 +346,11 @@ async function resolveBlingNaturezaId(
   const rows = unwrapBlingList(payload);
   if (!rows.length) return null;
   const needle =
-    docType === "nfe_industrialization" ? /industrial/i : /venda/i;
+    docType === "nfe_industrialization"
+      ? /industrial/i
+      : docType === "nfe_remessa"
+        ? /remessa/i
+        : /venda/i;
   const scored = rows
     .map((row) => {
       const id = Number(row.id);
@@ -654,7 +673,9 @@ export async function ensureBlingPedidoForSalesOrder(
     ),
   ];
   const [formaPagamentoId, naturezaId] = await Promise.all([
-    resolveBlingFormaPagamentoId(admin, tenantId),
+    resolveBlingFormaPagamentoId(admin, tenantId, {
+      semCobranca: docType === "nfe_remessa",
+    }),
     resolveBlingNaturezaId(admin, tenantId, cfops, docType),
   ]);
 
@@ -706,6 +727,8 @@ export async function ensureBlingPedidoForSalesOrder(
     actual_delivery: so.actual_delivery,
     order_date: so.order_date,
     total: roundMoney(netTotal + Math.max(0, freightCost)),
+    semCobranca: docType === "nfe_remessa",
+    formaPagamentoId,
   };
   const nfeParcelas = buildBlingNfeParcelas(paymentSource);
   const orderDate = String(so.order_date ?? "").slice(0, 10);
@@ -849,6 +872,7 @@ export async function ensureBlingPedidoForSalesOrder(
     pedido_venda_id: pedidoId,
     contact_id: catalog.contactId,
     natureza_operacao_id: naturezaId,
+    forma_pagamento_id: formaPagamentoId,
     products_created: productsCreated,
     products_linked: productsLinked,
     created,

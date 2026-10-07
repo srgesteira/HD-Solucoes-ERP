@@ -9,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { maybeCloseSalesOrderOnNfeAuthorized } from "@/modules/faturamento/lib/sales-order-billing-closure";
 import type { Database } from "@/modules/core/types/database";
 import {
+  isBlingNfeInvoiceType,
   isInvoiceDocumentType,
   type InvoiceDocumentType,
 } from "@/modules/core/types/sales-order-billing.types";
@@ -546,7 +547,7 @@ export async function emitirNFe(
   }
   const docType: InvoiceDocumentType = docTypeRaw;
 
-  if (docType === "nfe_product" || docType === "nfe_industrialization") {
+  if (isBlingNfeInvoiceType(docType)) {
     const out = await emitirNfeViaBling(admin, tenantId, salesOrderId, docType);
     return {
       nfe_id: out.nfe_id,

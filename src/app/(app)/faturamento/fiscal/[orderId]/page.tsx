@@ -60,6 +60,7 @@ import {
 import {
   INVOICE_DOCUMENT_TYPE_LABELS,
   INVOICE_DOCUMENT_TYPES,
+  isBlingNfeInvoiceType,
   isInvoiceDocumentType,
   type InvoiceDocumentType,
 } from "@/modules/core/types/sales-order-billing.types";
@@ -831,7 +832,15 @@ export default function FiscalOrderReviewPage() {
                 </div>
                 <div>
                   <span className="text-slate-500">Operação</span>
-                  <p>Venda</p>
+                  <p>
+                    {data.invoice_document_type === "nfe_remessa"
+                      ? "Simples remessa"
+                      : data.invoice_document_type === "nfe_industrialization"
+                        ? "Industrialização"
+                        : data.invoice_document_type === "nfse"
+                          ? "Serviço"
+                          : "Venda"}
+                  </p>
                 </div>
                 {data.billing_plan !== "without_invoice" ? (
                   <div className="space-y-1 pt-1 border-t border-slate-100">
@@ -1049,30 +1058,40 @@ export default function FiscalOrderReviewPage() {
                 <p className="text-sm font-medium text-slate-800">
                   Condições de pagamento (duplicata)
                 </p>
-                <p className="text-sm text-slate-600">
-                  O prazo em dias conta a partir da{" "}
-                  <strong>emissão da NF-e</strong>, não do prazo de entrega. Se o
-                  cliente combinou uma data específica, escolha «Datas específicas
-                  de pagamento».
-                </p>
-                <PaymentTermsFields
-                  idPrefix="fiscal-pay"
-                  showDueMode
-                  dueMode={payDueMode}
-                  onDueModeChange={setPayDueMode}
-                  fixedDueDates={payFixedDates}
-                  onFixedDueDatesChange={setPayFixedDates}
-                  paymentInstallments={payInstallments}
-                  onPaymentInstallmentsChange={setPayInstallments}
-                  paymentDaysFirst={payDaysFirst}
-                  onPaymentDaysFirstChange={setPayDaysFirst}
-                  paymentDaysBetween={payDaysBetween}
-                  onPaymentDaysBetweenChange={setPayDaysBetween}
-                  installmentAmounts={payAmounts}
-                  onInstallmentAmountsChange={setPayAmounts}
-                  documentTotal={noteTotal}
-                  disabled={!isAdmin || Boolean(data.billing_closure)}
-                />
+                {data.invoice_document_type === "nfe_remessa" ? (
+                  <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    Simples remessa — <strong>sem cobrança</strong>. A NF-e vai
+                    com forma de pagamento «Sem pagamento» e não gera contas a
+                    receber.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm text-slate-600">
+                      O prazo em dias conta a partir da{" "}
+                      <strong>emissão da NF-e</strong>, não do prazo de entrega. Se o
+                      cliente combinou uma data específica, escolha «Datas específicas
+                      de pagamento».
+                    </p>
+                    <PaymentTermsFields
+                      idPrefix="fiscal-pay"
+                      showDueMode
+                      dueMode={payDueMode}
+                      onDueModeChange={setPayDueMode}
+                      fixedDueDates={payFixedDates}
+                      onFixedDueDatesChange={setPayFixedDates}
+                      paymentInstallments={payInstallments}
+                      onPaymentInstallmentsChange={setPayInstallments}
+                      paymentDaysFirst={payDaysFirst}
+                      onPaymentDaysFirstChange={setPayDaysFirst}
+                      paymentDaysBetween={payDaysBetween}
+                      onPaymentDaysBetweenChange={setPayDaysBetween}
+                      installmentAmounts={payAmounts}
+                      onInstallmentAmountsChange={setPayAmounts}
+                      documentTotal={noteTotal}
+                      disabled={!isAdmin || Boolean(data.billing_closure)}
+                    />
+                  </>
+                )}
               </div>
 
               {isAdmin && !data.billing_closure ? (
@@ -1164,8 +1183,7 @@ export default function FiscalOrderReviewPage() {
                           <div className="text-[10px] text-amber-700">Sem produto</div>
                         ) : null}
                         {it.product_id && !it.bling_product_id &&
-                        (data.invoice_document_type === "nfe_product" ||
-                          data.invoice_document_type === "nfe_industrialization") ? (
+                        isBlingNfeInvoiceType(data.invoice_document_type) ? (
                           <div className="mt-1 space-y-1">
                             <div className="text-[10px] text-red-700">
                               Sem produto correspondente no Bling

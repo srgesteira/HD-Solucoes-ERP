@@ -11,9 +11,9 @@ import { parseFreeformAddressToBling } from "@/modules/fiscal/lib/bling/bling-co
 import { buildBlingTransportePayload } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 
 export function blingNfeNaturezaOperacao(docType: InvoiceDocumentType): string {
-  return docType === "nfe_industrialization"
-    ? "Industrialização"
-    : "Venda de mercadorias";
+  if (docType === "nfe_industrialization") return "Industrialização";
+  if (docType === "nfe_remessa") return "Simples remessa";
+  return "Venda de mercadorias";
 }
 
 export function blingNfeErpMarker(salesOrderId: string): string {
@@ -86,6 +86,7 @@ export function fiscalReviewToBlingNfeCreateInput(
     | "carrier_name"
     | "nfe_group"
     | "tax_regime"
+    | "invoice_document_type"
   >,
   contactId: number | null,
   operationDate?: string
@@ -128,6 +129,7 @@ export function fiscalReviewToBlingNfeCreateInput(
     shippingType: review.shipping_type,
     freightCost: review.freight_cost,
     carrierName: review.carrier_name,
+    semCobranca: review.invoice_document_type === "nfe_remessa",
   };
 }
 
@@ -194,6 +196,45 @@ function roundMoney(value: number): number {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
+/** Total que o Bling usa na validação das parcelas (GET /nfe). */
+export function readBlingNfeValorNota(
+  data: Record<string, unknown> | null | undefined
+): number | null {
+  if (!data) return null;
+  for (const key of ["valorNota", "valorTotal", "total"] as const) {
+    const n = Number(data[key]);
+    if (Number.isFinite(n) && n > 0) return roundMoney(n);
+  }
+  const totais =
+    data.totais && typeof data.totais === "object"
+      ? (data.totais as Record<string, unknown>)
+      : null;
+  if (totais) {
+    for (const key of ["valorNota", "vNF", "total"] as const) {
+      const n = Number(totais[key]);
+      if (Number.isFinite(n) && n > 0) return roundMoney(n);
+    }
+  }
+  const itens = Array.isArray(data.itens) ? data.itens : [];
+  let vProd = 0;
+  for (const raw of itens) {
+    if (!raw || typeof raw !== "object") continue;
+    const it = raw as Record<string, unknown>;
+    const q = Number(it.quantidade);
+    const v = Number(it.valor);
+    if (!Number.isFinite(q) || !Number.isFinite(v)) continue;
+    vProd += q * v;
+  }
+  const desconto = Math.max(0, Number(data.desconto ?? 0) || 0);
+  const transporte =
+    data.transporte && typeof data.transporte === "object"
+      ? (data.transporte as Record<string, unknown>)
+      : null;
+  const frete = Math.max(0, Number(transporte?.frete ?? 0) || 0);
+  const inferred = roundMoney(vProd - desconto + frete);
+  return inferred > 0 ? inferred : null;
+}
+
 export function computeBlingNfeValorNota(input: {
   items: Array<{
     quantity: number;
@@ -204,11 +245,11 @@ export function computeBlingNfeValorNota(input: {
   freightCost?: number | null;
 }): number {
   const vProd = roundMoney(
-    input.items.reduce(
-      (s, it) =>
-        s + roundMoney(Number(it.quantity ?? 0) * Number(it.unit_price ?? 0)),
-      0
-    )
+    input.items.reduce((s, it) => {
+      const qty = Number(it.quantity ?? 0);
+      const unit = roundMoney(Number(it.unit_price ?? 0));
+      return s + roundMoney(qty * unit);
+    }, 0)
   );
   const lineDisc = roundMoney(
     input.items.reduce((s, it) => s + Math.max(0, Number(it.discount ?? 0)), 0)
@@ -313,6 +354,8 @@ export type BlingNfeCreateBodyInput = {
   carrierName?: string | null;
   optanteSimplesNacional?: boolean;
   endereco?: ReturnType<typeof parseFreeformAddressToBling> | null;
+  formaPagamentoId?: number | null;
+  semCobranca?: boolean;
 };
 
 /**
@@ -459,6 +502,8 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
     parcelas: buildBlingNfeParcelas({
       ...input.paymentSource,
       total: computeBlingNfeValorNota(input),
+      semCobranca: input.semCobranca === true,
+      formaPagamentoId: input.formaPagamentoId,
     }),
     transporte: buildBlingTransportePayload({
       shippingType: input.shippingType,
@@ -596,7 +641,11 @@ export function buildBlingNfePayloadView(review: FiscalOrderReview): {
     desconto: desconto > 0 ? desconto : undefined,
     valorNota,
     observacoes: buildBlingNfeObservacoes(source, review.id),
-    parcelas: buildBlingNfeParcelas({ ...source, total: valorNota }),
+    parcelas: buildBlingNfeParcelas({
+      ...source,
+      total: valorNota,
+      semCobranca: docType === "nfe_remessa",
+    }),
     transporte: buildBlingTransportePayload({
       shippingType: review.shipping_type,
       freightCost: review.freight_cost,

@@ -451,9 +451,11 @@ export async function generateReceivablesForSalesOrder(
     payment_fixed_due_dates?: string[] | null;
     payment_installment_amounts?: number[] | null;
     freight_cost?: number | null;
+    invoice_document_type?: string | null;
   },
   options?: { provisional?: boolean }
 ): Promise<{ error?: string }> {
+  if (order.invoice_document_type === "nfe_remessa") return {};
   const total = paymentTotalWithFreight(order.total, order.freight_cost);
   if (total <= 0) return {};
 

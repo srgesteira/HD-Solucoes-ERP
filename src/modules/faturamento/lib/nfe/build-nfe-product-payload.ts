@@ -47,9 +47,9 @@ export type NfeProductPayloadInput = {
 };
 
 function naturezaOperacao(doc: Exclude<InvoiceDocumentType, "nfse">): string {
-  return doc === "nfe_industrialization"
-    ? "Industrialização por encomenda"
-    : "Venda de mercadoria";
+  if (doc === "nfe_industrialization") return "Industrialização por encomenda";
+  if (doc === "nfe_remessa") return "Simples remessa";
+  return "Venda de mercadoria";
 }
 
 function defaultCfop(
@@ -58,6 +58,9 @@ function defaultCfop(
 ): string {
   if (doc === "nfe_industrialization") {
     return sameState ? "5124" : "6124";
+  }
+  if (doc === "nfe_remessa") {
+    return sameState ? "5949" : "6949";
   }
   return sameState ? "5102" : "6102";
 }

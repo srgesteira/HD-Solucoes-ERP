@@ -9,6 +9,7 @@ import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-or
 import { isWithoutInvoicePlanned } from "@/modules/faturamento/lib/sales-order-billing-display";
 import { isFiscalConfigured } from "@/modules/fiscal/lib/fiscal-rules-types";
 import { loadNfeGroupsForSalesOrders } from "@/modules/faturamento/lib/nfe-invoice-group";
+import { isBlingNfeInvoiceType } from "@/modules/core/types/sales-order-billing.types";
 import {
   FISCAL_INVOICING_ORDER_STATUSES,
   type FiscalInvoicingListTab,
@@ -491,9 +492,7 @@ export async function listFiscalInvoicingOrders(
       can_confirm_without_invoice: canConfirmWithoutInvoice,
       emit_blockers: gate.reasons,
       emit_warnings: gate.warnings,
-      unmapped_bling_skus:
-        row.invoice_document_type === "nfe_product" ||
-        row.invoice_document_type === "nfe_industrialization"
+      unmapped_bling_skus: isBlingNfeInvoiceType(row.invoice_document_type)
           ? unmappedByOrder.get(row.id) ?? []
           : [],
       nfe_group_id: group?.id ?? null,

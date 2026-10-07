@@ -55,7 +55,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existing, error: loadErr } = await db
     .from("sales_orders")
     .select(
-      "id, billing_closure, order_number, order_date, expected_delivery, actual_delivery, total, freight_cost, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts, shipping_type"
+      "id, billing_closure, order_number, order_date, expected_delivery, actual_delivery, total, freight_cost, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts, shipping_type, invoice_document_type"
     )
     .eq("id", orderId)
     .eq("tenant_id", tenantId)
@@ -78,6 +78,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     payment_fixed_due_dates?: string[] | null;
     payment_installment_amounts?: number[] | null;
     shipping_type?: string | null;
+    invoice_document_type?: string | null;
   } | null;
   if (!row) return apiError("Pedido não encontrado", 404);
   if (row.billing_closure) {
@@ -199,6 +200,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         )
           ? (update.payment_installment_amounts as number[])
           : (row.payment_installment_amounts ?? []),
+        invoice_document_type: row.invoice_document_type ?? null,
       }),
       {
         payment_installments: update.payment_installments !== undefined,

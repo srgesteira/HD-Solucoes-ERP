@@ -24,6 +24,7 @@ import {
   type ItemUsageType,
 } from "@/modules/fiscal/lib/item-usage-type";
 import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-order-invoice-gates";
+import { isBlingNfeInvoiceType } from "@/modules/core/types/sales-order-billing.types";
 import { loadCustomerStateRegistration } from "@/modules/fiscal/lib/bling/bling-catalog";
 
 type Admin = SupabaseClient<Database>;
@@ -756,11 +757,10 @@ export async function getFiscalOrderReview(
       : null;
   if (billingPlan !== "without_invoice" && !invoiceDocType) {
     warnings.push(
-      "Defina o tipo de nota (NFS-e, NF-e produto ou industrialização) antes de emitir."
+      "Defina o tipo de nota (NFS-e, NF-e produto, industrialização ou simples remessa) antes de emitir."
     );
   }
-  const isBlingDoc =
-    invoiceDocType === "nfe_product" || invoiceDocType === "nfe_industrialization";
+  const isBlingDoc = isBlingNfeInvoiceType(invoiceDocType);
   if (isBlingDoc) {
     const unmapped = items.filter((it) => it.product_id && !it.bling_product_id);
     if (unmapped.length) {

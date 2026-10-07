@@ -1,12 +1,10 @@
 import type { FiscalOrderReviewItem } from "@/modules/faturamento/lib/fiscal-order-review-service";
+import { isBlingNfeInvoiceType } from "@/modules/core/types/sales-order-billing.types";
 
 export function isBlingProductInvoiceType(
   invoiceDocumentType: string | null | undefined
 ): boolean {
-  return (
-    invoiceDocumentType === "nfe_product" ||
-    invoiceDocumentType === "nfe_industrialization"
-  );
+  return isBlingNfeInvoiceType(invoiceDocumentType);
 }
 
 /** Um registo por produto (várias linhas do mesmo SKU não repetem o botão). */
