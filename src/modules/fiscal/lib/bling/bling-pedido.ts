@@ -293,7 +293,7 @@ export async function resolveBlingFormaPagamentoId(
   const rows = unwrapBlingList(payload);
   if (!rows.length) {
     throw new Error(
-      "Não há formas de pagamento no Bling. Cadastre uma (ex.: Boleto, A prazo ou Sem pagamento) em Cadastros → Formas de pagamento."
+      "Não há formas de pagamento no Bling. Cadastre uma (ex.: Boleto ou A prazo) em Cadastros → Formas de pagamento."
     );
   }
   const semCobranca = opts?.semCobranca === true;
@@ -303,31 +303,27 @@ export async function resolveBlingFormaPagamentoId(
       const desc = String(row.descricao ?? "").toLowerCase();
       const tipo = Number(row.tipoPagamento);
       let score = 0;
-      if (semCobranca) {
-        if (tipo === 90) score += 120;
-        if (/sem pagamento|sem cobran[cç]a|gratuit|bonifica/.test(desc)) {
-          score += 80;
-        }
-        return { id, score };
-      }
       if (isDefaultFlag(row.padrao)) score += 50;
       if (/boleto/.test(desc)) score += 30;
       if (/duplicata|a prazo|parcel/.test(desc)) score += 24;
       if (tipo === 15) score += 20;
       if (tipo === 14) score += 16;
       if (tipo === 17) score += 10;
-      if (tipo === 90) score -= 40;
+      if (semCobranca) {
+        if (tipo === 90) score += 80;
+        if (/sem pagamento|sem cobran[cç]a|gratuit|bonifica/.test(desc)) {
+          score += 60;
+        }
+      } else if (tipo === 90) {
+        score -= 40;
+      }
       return { id, score };
     })
     .filter((row) => Number.isFinite(row.id));
   scored.sort((a, b) => b.score - a.score);
   const id = scored[0]?.id;
-  if (!id || (semCobranca && (scored[0]?.score ?? 0) <= 0)) {
-    throw new Error(
-      semCobranca
-        ? "Cadastre no Bling uma forma de pagamento «Sem pagamento» (tipo 90) para simples remessa."
-        : "Não foi possível escolher uma forma de pagamento no Bling."
-    );
+  if (!id) {
+    throw new Error("Não foi possível escolher uma forma de pagamento no Bling.");
   }
   return id;
 }
