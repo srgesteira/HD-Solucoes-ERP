@@ -18,6 +18,88 @@ export function digitsOnly(value: string | null | undefined): string {
   return String(value ?? "").replace(/\D/g, "");
 }
 
+/** Telefone aceite pelo Bling: DDD + número (10 ou 11 dígitos). */
+export function toBlingTelefone(
+  raw: string | null | undefined
+): string | undefined {
+  let d = digitsOnly(raw);
+  if (d.startsWith("55") && (d.length === 12 || d.length === 13)) {
+    d = d.slice(2);
+  }
+  if (d.length === 10 || d.length === 11) return d;
+  return undefined;
+}
+
+async function resolveBlingContactPhone(input: {
+  admin: Admin;
+  tenantId: string;
+  document: string | null;
+  phone: string | null;
+  contactId?: number | null;
+}): Promise<string> {
+  const fromOrder = toBlingTelefone(input.phone);
+  if (fromOrder) return fromOrder;
+
+  const db = asUntypedAdmin(input.admin);
+  const doc = digitsOnly(input.document);
+  if (doc.length >= 11) {
+    const { data: customers } = await db
+      .from("customers")
+      .select("phone, document")
+      .eq("tenant_id", input.tenantId)
+      .not("document", "is", null);
+    const match = (
+      (customers ?? []) as Array<{
+        phone: string | null;
+        document: string | null;
+      }>
+    ).find((c) => digitsOnly(c.document) === doc);
+    const fromCustomer = toBlingTelefone(match?.phone);
+    if (fromCustomer) return fromCustomer;
+  }
+
+  if (doc.length === 14) {
+    try {
+      const lookup = await lookupCnpj(doc);
+      const fromCnpj = toBlingTelefone(lookup.phone);
+      if (fromCnpj) return fromCnpj;
+    } catch {
+      // Sem telefone na Receita — tenta as outras fontes.
+    }
+  }
+
+  if (input.contactId) {
+    try {
+      const payload = await blingGet(
+        input.admin,
+        input.tenantId,
+        `/contatos/${input.contactId}`
+      );
+      const data = unwrapBlingData(payload);
+      const fromBling = toBlingTelefone(
+        String(data?.telefone ?? data?.celular ?? "")
+      );
+      if (fromBling) return fromBling;
+    } catch {
+      // Contacto novo ou GET falhou.
+    }
+  }
+
+  const { data: company } = await db
+    .from("company_settings")
+    .select("phone")
+    .eq("tenant_id", input.tenantId)
+    .maybeSingle();
+  const fromCompany = toBlingTelefone(
+    (company as { phone?: string | null } | null)?.phone
+  );
+  if (fromCompany) return fromCompany;
+
+  throw new Error(
+    "O Bling exige telefone no cadastro do cliente. Preencha o telefone no cliente (ERP) e tente de novo."
+  );
+}
+
 function firstBlingId(payload: unknown): number | null {
   if (!payload || typeof payload !== "object") return null;
   const root = payload as Record<string, unknown>;
@@ -103,7 +185,7 @@ function contactPayload(input: {
     situacao: "A",
     numeroDocumento: doc || undefined,
     email: input.email?.trim() || undefined,
-    telefone: input.phone?.trim() || undefined,
+    telefone: toBlingTelefone(input.phone),
     ...(ie.length >= 8
       ? { ie, contribuinte: 1, indicadorIe: 1 }
       : { contribuinte: 9, indicadorIe: 9 }),
@@ -193,11 +275,17 @@ export async function createBlingContact(
   }
 ): Promise<number> {
   const endereco = await requireBlingEndereco(input);
+  const phone = await resolveBlingContactPhone({
+    admin,
+    tenantId,
+    document: input.document,
+    phone: input.phone,
+  });
   const payload = await blingPost(
     admin,
     tenantId,
     "/contatos",
-    contactPayload({ ...input, endereco })
+    contactPayload({ ...input, phone, endereco })
   );
   const data = unwrapBlingData(payload);
   const id = Number(data?.id);
@@ -255,7 +343,14 @@ async function upsertBlingContactAddress(
   }
 ): Promise<void> {
   const endereco = await requireBlingEndereco(input);
-  const body = contactPayload({ ...input, endereco });
+  const phone = await resolveBlingContactPhone({
+    admin,
+    tenantId,
+    document: input.document,
+    phone: input.phone,
+    contactId,
+  });
+  const body = contactPayload({ ...input, phone, endereco });
   try {
     await blingPut(admin, tenantId, `/contatos/${contactId}`, body);
   } catch {

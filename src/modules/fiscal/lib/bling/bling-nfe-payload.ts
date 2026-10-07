@@ -9,6 +9,7 @@ import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parc
 import { paymentTotalWithFreight } from "@/shared/utils/payment-installment-amounts";
 import { parseFreeformAddressToBling } from "@/modules/fiscal/lib/bling/bling-contact-address";
 import { buildBlingTransportePayload } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
+import { toBlingTelefone } from "@/modules/fiscal/lib/bling/bling-catalog";
 
 export function blingNfeNaturezaOperacao(docType: InvoiceDocumentType): string {
   if (docType === "nfe_industrialization") return "Industrialização";
@@ -460,7 +461,7 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
   const desconto = roundMoney(lineDiscount + header);
 
   const email = input.clientEmail?.trim() || undefined;
-  const telefone = input.clientPhone?.trim() || undefined;
+  const telefone = toBlingTelefone(input.clientPhone);
   const endereco =
     input.endereco ?? parseFreeformAddressToBling(input.clientAddress ?? null);
   if (!endereco) {
