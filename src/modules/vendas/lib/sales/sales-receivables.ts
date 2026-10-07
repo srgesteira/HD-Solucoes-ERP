@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
-import { resolveInstallmentAmounts } from "@/shared/utils/payment-installment-amounts";
+import {
+  paymentTotalWithFreight,
+  resolveInstallmentAmounts,
+} from "@/shared/utils/payment-installment-amounts";
 import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-delivery-schedule";
 import { resolvePaymentDueDates } from "@/shared/utils/payment-due";
 
@@ -174,6 +177,7 @@ export function salesOrderRowToReceivablesInput(row: {
   payment_due_mode?: string | null;
   payment_fixed_due_dates?: string[] | null;
   payment_installment_amounts?: number[] | null;
+  freight_cost?: number | null;
   /** Se definido, usa como data de emissão da NF (não a entrega). */
   payment_base_date?: string | null;
 }): SalesOrderForReceivables {
@@ -188,7 +192,7 @@ export function salesOrderRowToReceivablesInput(row: {
         expected_delivery: row.expected_delivery,
         order_date: row.order_date,
       }),
-    total: Number(row.total ?? 0),
+    total: paymentTotalWithFreight(Number(row.total ?? 0), row.freight_cost),
     client_name: row.client_name,
     client_document: row.client_document,
     payment_installments: row.payment_installments ?? 1,
@@ -216,6 +220,7 @@ export async function ensureReceivablesSyncedForSalesOrder(
     payment_due_mode?: boolean;
     payment_fixed_due_dates?: boolean;
     payment_installment_amounts?: boolean;
+    freight_cost?: boolean;
     order_date?: boolean;
     expected_delivery?: boolean;
     actual_delivery?: boolean;
@@ -229,6 +234,7 @@ export async function ensureReceivablesSyncedForSalesOrder(
     changedFields.payment_due_mode ||
     changedFields.payment_fixed_due_dates ||
     changedFields.payment_installment_amounts ||
+    changedFields.freight_cost ||
     changedFields.order_date ||
     changedFields.expected_delivery ||
     changedFields.actual_delivery;
@@ -289,7 +295,7 @@ export async function effectivateSalesOrderReceivables(
   const { data: so, error } = await admin
     .from("sales_orders")
     .select(
-      "id, order_number, order_date, expected_delivery, actual_delivery, total, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts"
+      "id, order_number, order_date, expected_delivery, actual_delivery, total, freight_cost, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)

@@ -414,7 +414,7 @@ export async function splitSalesOrder(
   const { data: origFresh } = await admin
     .from("sales_orders")
     .select(
-      "id, order_number, order_date, expected_delivery, actual_delivery, total, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "id, order_number, order_date, expected_delivery, actual_delivery, total, freight_cost, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -432,7 +432,7 @@ export async function splitSalesOrder(
   const { data: newFresh, error: newFreshErr } = await admin
     .from("sales_orders")
     .select(
-      "id, order_number, order_date, expected_delivery, actual_delivery, total, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments"
+      "id, order_number, order_date, expected_delivery, actual_delivery, total, freight_cost, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments"
     )
     .eq("id", created.id)
     .eq("tenant_id", tenantId)
@@ -453,6 +453,7 @@ export async function splitSalesOrder(
       expected_delivery: newFresh.expected_delivery,
       actual_delivery: newFresh.actual_delivery,
       total: newFresh.total,
+      freight_cost: (newFresh as { freight_cost?: number | null }).freight_cost,
       client_name: newFresh.client_name,
       client_document: newFresh.client_document,
       payment_installments: newFresh.payment_installments,

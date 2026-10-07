@@ -296,6 +296,7 @@ export async function convertQuoteToSalesOrder(
       payment_installment_amounts: (fresh as {
         payment_installment_amounts?: number[] | null;
       }).payment_installment_amounts,
+      freight_cost: Number((fresh as { freight_cost?: number | null }).freight_cost ?? 0),
     },
     { provisional: true }
   );

@@ -64,6 +64,11 @@ import {
   type InvoiceDocumentType,
 } from "@/modules/core/types/sales-order-billing.types";
 import { fmtBRL } from "@/shared/utils/format-brl";
+import {
+  amountsAreEqualSplit,
+  paymentTotalWithFreight,
+  resolveInstallmentAmounts,
+} from "@/shared/utils/payment-installment-amounts";
 import { cn } from "@/shared/utils/cn";
 
 function fmtPct(value: number | null | undefined): string {
@@ -444,7 +449,15 @@ export default function FiscalOrderReviewPage() {
               parseInt(payDaysBetween, 10) || 0,
             payment_due_mode: payDueMode,
             payment_fixed_due_dates: payFixedDates,
-            payment_installment_amounts: payAmounts,
+            payment_installment_amounts: (() => {
+              const n = parseInt(payInstallments, 10) || 1;
+              const total = paymentTotalWithFreight(
+                Number(data?.total ?? 0),
+                freightCost
+              );
+              const resolved = resolveInstallmentAmounts(total, n, payAmounts);
+              return amountsAreEqualSplit(resolved, total, n) ? [] : resolved;
+            })(),
             shipping_type: shippingType,
             freight_cost: freightCost,
             carrier_name: carrierName,
@@ -512,6 +525,11 @@ export default function FiscalOrderReviewPage() {
     }
     return { label: "Sem NF-e", className: "bg-slate-100 text-slate-700" };
   }, [data]);
+
+  const noteTotal = useMemo(
+    () => paymentTotalWithFreight(Number(data?.total ?? 0), freightCost),
+    [data?.total, freightCost]
+  );
 
   if (!canFaturamento) {
     return (
@@ -934,8 +952,13 @@ export default function FiscalOrderReviewPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-2">
                   <div>
-                    <span className="text-slate-500">Total</span>
-                    <p className="font-semibold">{fmtBRL(data.total)}</p>
+                    <span className="text-slate-500">Total da nota</span>
+                    <p className="font-semibold">{fmtBRL(noteTotal)}</p>
+                    {freightCost > 0 ? (
+                      <p className="text-[11px] text-slate-500">
+                        Itens {fmtBRL(data.total)} + frete {fmtBRL(freightCost)}
+                      </p>
+                    ) : null}
                   </div>
                   <div>
                     <span className="text-slate-500">Base / ICMS / IPI</span>
@@ -1047,7 +1070,7 @@ export default function FiscalOrderReviewPage() {
                   onPaymentDaysBetweenChange={setPayDaysBetween}
                   installmentAmounts={payAmounts}
                   onInstallmentAmountsChange={setPayAmounts}
-                  documentTotal={data.total}
+                  documentTotal={noteTotal}
                   disabled={!isAdmin || Boolean(data.billing_closure)}
                 />
               </div>

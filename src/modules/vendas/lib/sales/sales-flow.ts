@@ -12,6 +12,7 @@ import { paymentScheduleBaseDate } from "@/modules/vendas/lib/sales/sales-order-
 import { recalculateSalesOrderHeaderTotals } from "@/modules/vendas/lib/sales/sales-order-totals";
 import { resolvePaymentDueDates } from "@/shared/utils/payment-due";
 import {
+  paymentTotalWithFreight,
   resolveInstallmentAmounts,
   splitAmountInInstallments,
 } from "@/shared/utils/payment-installment-amounts";
@@ -449,10 +450,12 @@ export async function generateReceivablesForSalesOrder(
     payment_due_mode?: string | null;
     payment_fixed_due_dates?: string[] | null;
     payment_installment_amounts?: number[] | null;
+    freight_cost?: number | null;
   },
   options?: { provisional?: boolean }
 ): Promise<{ error?: string }> {
-  if (order.total <= 0) return {};
+  const total = paymentTotalWithFreight(order.total, order.freight_cost);
+  if (total <= 0) return {};
 
   const { count, error: cErr } = await admin
     .from("receivables")
@@ -465,7 +468,7 @@ export async function generateReceivablesForSalesOrder(
 
   const n = Math.max(1, Math.min(999, order.payment_installments));
   const amounts = resolveInstallmentAmounts(
-    order.total,
+    total,
     n,
     order.payment_installment_amounts
   );

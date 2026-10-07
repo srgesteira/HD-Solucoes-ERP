@@ -665,6 +665,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
               ? detailRow.actual_delivery
               : null,
           total: Number(detailRow.total ?? 0),
+          freight_cost:
+            typeof detailRow.freight_cost === "number"
+              ? detailRow.freight_cost
+              : Number(detailRow.freight_cost ?? 0),
           client_name: String(detailRow.client_name ?? ""),
           client_document:
             typeof detailRow.client_document === "string"
@@ -751,6 +755,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
               Number(v)
             )
           : null,
+        freight_cost:
+          typeof detailRow.freight_cost === "number"
+            ? detailRow.freight_cost
+            : Number(detailRow.freight_cost ?? 0),
       }),
       {
         total: updateData.total !== undefined || itemsReplaced,
@@ -764,6 +772,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
           updateData.payment_fixed_due_dates !== undefined,
         payment_installment_amounts:
           updateData.payment_installment_amounts !== undefined,
+        freight_cost: updateData.freight_cost !== undefined,
         order_date: updateData.order_date !== undefined,
         expected_delivery: updateData.expected_delivery !== undefined,
         actual_delivery: updateData.actual_delivery !== undefined,

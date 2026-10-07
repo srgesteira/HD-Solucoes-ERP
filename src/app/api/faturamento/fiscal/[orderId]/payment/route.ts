@@ -55,7 +55,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const { data: existing, error: loadErr } = await db
     .from("sales_orders")
     .select(
-      "id, billing_closure, order_number, order_date, expected_delivery, actual_delivery, total, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts, shipping_type"
+      "id, billing_closure, order_number, order_date, expected_delivery, actual_delivery, total, freight_cost, client_name, client_document, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts, shipping_type"
     )
     .eq("id", orderId)
     .eq("tenant_id", tenantId)
@@ -68,6 +68,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     expected_delivery: string | null;
     actual_delivery: string | null;
     total: number | null;
+    freight_cost?: number | null;
     client_name: string;
     client_document: string | null;
     payment_installments: number;
@@ -170,6 +171,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
         expected_delivery: row.expected_delivery,
         actual_delivery: row.actual_delivery,
         total: Number(row.total ?? 0),
+        freight_cost:
+          typeof update.freight_cost === "number"
+            ? update.freight_cost
+            : Number(row.freight_cost ?? 0),
         client_name: row.client_name,
         client_document: row.client_document,
         payment_installments: Number(
@@ -205,6 +210,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         payment_fixed_due_dates: update.payment_fixed_due_dates !== undefined,
         payment_installment_amounts:
           update.payment_installment_amounts !== undefined,
+        freight_cost: update.freight_cost !== undefined,
       }
     );
   } catch (recvErr) {

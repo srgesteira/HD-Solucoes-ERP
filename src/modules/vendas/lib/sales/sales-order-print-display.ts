@@ -6,6 +6,7 @@ import {
 } from "@/modules/vendas/lib/sales/quote-display";
 import { salesOrderStatusPill } from "@/modules/vendas/lib/sales/sales-order-list-display";
 import { formatPaymentTermsSummary } from "@/shared/utils/payment-terms-format";
+import { paymentTotalWithFreight } from "@/shared/utils/payment-installment-amounts";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { formatShortDate } from "@/shared/utils/date";
 
@@ -47,6 +48,7 @@ export type SalesOrderPrintData = {
   payment_days_to_first_due: number;
   payment_days_between_installments: number;
   payment_installment_amounts?: number[] | null;
+  freight_cost?: number | null;
   subtotal: number;
   discount: number;
   tax: number;
@@ -84,7 +86,7 @@ export function soPaymentTermsText(order: SalesOrderPrintData): string {
     payment_days_to_first_due: order.payment_days_to_first_due,
     payment_days_between_installments: order.payment_days_between_installments,
     payment_installment_amounts: order.payment_installment_amounts,
-    total: order.total,
+    total: paymentTotalWithFreight(order.total, order.freight_cost),
   });
 }
 

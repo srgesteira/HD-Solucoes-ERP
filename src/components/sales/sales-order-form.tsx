@@ -32,6 +32,7 @@ import { salesOrderCommercialUpdateSchema } from "@/shared/contracts/sales-order
 import { NumericInput } from "@/shared/ui/numeric-input";
 import { aggregatePurchaseLineTaxes } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import { computeSalesOrderTotal } from "@/modules/vendas/lib/sales/sales-order-totals";
+import { paymentTotalWithFreight } from "@/shared/utils/payment-installment-amounts";
 import type { SalesOrderEditGuard } from "@/modules/vendas/lib/sales/sales-order-edit";
 import {
   addDaysToISODate,
@@ -73,6 +74,7 @@ export type SalesOrderFormData = {
   total_ipi?: number;
   total_tax_base?: number;
   total: number;
+  freight_cost?: number | null;
   notes: string | null;
   customer_po_number: string | null;
   delivery_address_different?: boolean;
@@ -457,13 +459,22 @@ export function SalesOrderForm({
   const previewTax = Number(order?.tax ?? 0);
   const previewTotal = useMemo(
     () =>
-      computeSalesOrderTotal({
-        subtotal: lineTaxPreview.subtotal,
-        discount,
-        tax: previewTax,
-        total_ipi: lineTaxPreview.totalIpi,
-      }),
-    [lineTaxPreview.subtotal, lineTaxPreview.totalIpi, discount, previewTax]
+      paymentTotalWithFreight(
+        computeSalesOrderTotal({
+          subtotal: lineTaxPreview.subtotal,
+          discount,
+          tax: previewTax,
+          total_ipi: lineTaxPreview.totalIpi,
+        }),
+        order?.freight_cost
+      ),
+    [
+      lineTaxPreview.subtotal,
+      lineTaxPreview.totalIpi,
+      discount,
+      previewTax,
+      order?.freight_cost,
+    ]
   );
 
   const canEditDiscount = !isEdit || canEditCommercial || adminOnlyMode;

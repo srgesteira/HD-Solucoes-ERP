@@ -4,6 +4,17 @@ export function roundInstallmentMoney(n: number): number {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
+/** Total cobrado na NF-e / duplicata: mercadoria + frete informado na nota. */
+export function paymentTotalWithFreight(
+  goodsTotal: number,
+  freightCost?: number | null
+): number {
+  return roundInstallmentMoney(
+    Math.max(0, Number(goodsTotal) || 0) +
+      Math.max(0, Number(freightCost) || 0)
+  );
+}
+
 /** Reparte o total em N parcelas iguais (centavos) sem erro de soma. */
 export function splitAmountInInstallments(total: number, nRaw: number): number[] {
   const n = Math.max(1, Math.min(999, Math.floor(Number(nRaw)) || 1));

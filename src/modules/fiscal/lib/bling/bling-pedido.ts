@@ -705,7 +705,7 @@ export async function ensureBlingPedidoForSalesOrder(
     expected_delivery: so.expected_delivery,
     actual_delivery: so.actual_delivery,
     order_date: so.order_date,
-    total: netTotal,
+    total: roundMoney(netTotal + Math.max(0, freightCost)),
   };
   const nfeParcelas = buildBlingNfeParcelas(paymentSource);
   const orderDate = String(so.order_date ?? "").slice(0, 10);
@@ -777,10 +777,15 @@ export async function ensureBlingPedidoForSalesOrder(
   }
 
   const fetched = await blingGet(admin, tenantId, `/pedidos/vendas/${pedidoId}`);
-  const blingTotal = readBlingPedidoTotal(fetched) ?? netTotal;
+  const expectedParcelTotal = roundMoney(netTotal + Math.max(0, freightCost));
+  const fetchedTotal = readBlingPedidoTotal(fetched);
+  const parcelTotal =
+    fetchedTotal != null && fetchedTotal + 0.001 >= expectedParcelTotal
+      ? fetchedTotal
+      : expectedParcelTotal;
   const mirrored = parseBlingPedidoTransporte(fetched);
   const amounts = resolveInstallmentAmounts(
-    blingTotal,
+    parcelTotal,
     nfeParcelas.length,
     Array.isArray(so.payment_installment_amounts)
       ? so.payment_installment_amounts.map((v) => Number(v))

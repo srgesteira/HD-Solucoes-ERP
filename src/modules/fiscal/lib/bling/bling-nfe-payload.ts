@@ -6,6 +6,7 @@ import {
   type NfeComplementaryInfoSource,
 } from "@/modules/faturamento/lib/nfe-complementary-info";
 import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
+import { paymentTotalWithFreight } from "@/shared/utils/payment-installment-amounts";
 import { parseFreeformAddressToBling } from "@/modules/fiscal/lib/bling/bling-contact-address";
 import { buildBlingTransportePayload } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
 
@@ -146,6 +147,7 @@ export function fiscalReviewToNfePayloadSource(
     | "expected_delivery"
     | "order_date"
     | "total"
+    | "freight_cost"
     | "nfe_group"
   >
 ): NfeComplementaryInfoSource & {
@@ -170,7 +172,7 @@ export function fiscalReviewToNfePayloadSource(
     actual_delivery: review.actual_delivery,
     expected_delivery: review.expected_delivery,
     order_date: review.order_date,
-    total: Number(review.total ?? 0),
+    total: paymentTotalWithFreight(review.total, review.freight_cost),
     grouped_orders: review.nfe_group?.members.map((m) => ({
       id: m.id,
       order_number: m.order_number,

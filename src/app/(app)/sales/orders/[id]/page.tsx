@@ -44,6 +44,7 @@ import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
 import { defaultExpectedDeliveryForOrder } from "@/modules/vendas/lib/sales/sales-flow";
 import { computeSalesOrderTotal } from "@/modules/vendas/lib/sales/sales-order-totals";
 import { fmtBRL } from "@/shared/utils/format-brl";
+import { paymentTotalWithFreight } from "@/shared/utils/payment-installment-amounts";
 import { formatShortDate } from "@/shared/utils/date";
 import {
   quoteLineItemCode,
@@ -113,6 +114,7 @@ type SalesOrderDetail = {
   total_ipi?: number;
   total_tax_base?: number;
   total: number;
+  freight_cost?: number | null;
   notes: string | null;
   customer_po_number: string | null;
   quote_id: string | null;
@@ -1115,7 +1117,10 @@ export default function SalesOrderDetailPage() {
                     onInstallmentAmountsChange={
                       setPaymentInstallmentAmountsDraft
                     }
-                    documentTotal={q.total}
+                    documentTotal={paymentTotalWithFreight(
+                      q.total,
+                      q.freight_cost
+                    )}
                     onBlur={async () => {
                       if (!id || !q) return;
                       const pi = parseInt(paymentInstallmentsDraft, 10);
@@ -1163,7 +1168,7 @@ export default function SalesOrderDetailPage() {
                     payment_installment_amounts={
                       q.payment_installment_amounts
                     }
-                    total={q.total}
+                    total={paymentTotalWithFreight(q.total, q.freight_cost)}
                   />
                 )}
               </div>
