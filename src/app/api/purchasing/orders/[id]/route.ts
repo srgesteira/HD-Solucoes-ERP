@@ -249,6 +249,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         id: row.id,
         product_id: row.product_id,
         description: row.description,
+        show_product_description: row.show_product_description,
         quantity: row.quantity,
         unit: row.unit,
         unit_price: row.unit_price,

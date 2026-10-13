@@ -8,6 +8,7 @@ import {
   formatCompanyAddressForPrint,
   formatSupplierAddressForPrint,
   poComputedTotal,
+  poItemCatalogDescription,
   poItemLineDescription,
   poItemProductLabel,
   poPaymentTermsText,
@@ -197,6 +198,7 @@ export function PurchaseOrderPrintDocument({
             </thead>
             <tbody>
               {items.map((item, idx) => {
+                const catalogDesc = poItemCatalogDescription(item);
                 const lineDesc = poItemLineDescription(item);
                 const itemNotes = item.item_notes?.trim() || "";
                 return (
@@ -204,7 +206,13 @@ export function PurchaseOrderPrintDocument({
                     <td>{idx + 1}</td>
                     <td>
                       <div className="qp-item-name">{poItemProductLabel(item)}</div>
-                      {lineDesc ? (
+                      {catalogDesc ? (
+                        <p className="qp-item-extra whitespace-pre-wrap">
+                          <span className="qp-item-extra-label">Descrição: </span>
+                          {catalogDesc}
+                        </p>
+                      ) : null}
+                      {lineDesc && lineDesc !== catalogDesc ? (
                         <p className="qp-item-extra">
                           <span className="qp-item-extra-label">Descrição: </span>
                           {lineDesc}

@@ -17,6 +17,7 @@ export type PurchaseOrderLineInput = {
   id?: string;
   product_id: string | null;
   description: string;
+  show_product_description?: boolean;
   item_notes?: string | null;
   quantity: number;
   unit: string;
@@ -57,8 +58,15 @@ export function parsePurchaseOrderLines(raw: unknown):
 
     const description =
       typeof r.description === "string" ? r.description.trim() : "";
-    if (!description) {
-      return { ok: false, message: `Item ${i + 1}: descrição obrigatória.` };
+    const product_id_early =
+      r.product_id === undefined || r.product_id === null
+        ? null
+        : String(r.product_id).trim() || null;
+    if (!description && !product_id_early) {
+      return {
+        ok: false,
+        message: `Item ${i + 1}: informe o produto ou a descrição.`,
+      };
     }
 
     const quantityRaw = r.quantity;
@@ -158,10 +166,7 @@ export function parsePurchaseOrderLines(raw: unknown):
         ? String(r.unit).trim()
         : "UN";
 
-    const product_id =
-      r.product_id === undefined || r.product_id === null
-        ? null
-        : String(r.product_id).trim() || null;
+    const product_id = product_id_early;
 
     const id =
       r.id === undefined || r.id === null
@@ -186,6 +191,7 @@ export function parsePurchaseOrderLines(raw: unknown):
       id,
       product_id,
       description,
+      show_product_description: r.show_product_description === true,
       item_notes,
       quantity,
       unit,
@@ -247,16 +253,19 @@ export async function syncPurchaseOrderItems(
     ),
   ];
 
+  const nameById = new Map<string, string>();
   if (productIds.length) {
     const { data: prods, error: pErr } = await admin
       .from("products")
-      .select("id")
+      .select("id, name")
       .eq("tenant_id", tenantId)
       .in("id", productIds);
     if (pErr) return { ok: false, message: pErr.message };
-    const found = new Set((prods ?? []).map((p) => p.id));
+    for (const p of prods ?? []) {
+      nameById.set(p.id, p.name?.trim() || "");
+    }
     for (const pid of productIds) {
-      if (!found.has(pid)) {
+      if (!nameById.has(pid)) {
         return { ok: false, message: "Produto inválido numa linha." };
       }
     }
@@ -264,6 +273,16 @@ export async function syncPurchaseOrderItems(
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const description =
+      line.description.trim() ||
+      (line.product_id ? nameById.get(line.product_id)?.trim() : "") ||
+      "";
+    if (!description) {
+      return {
+        ok: false,
+        message: `Item ${i + 1}: informe o produto ou a descrição.`,
+      };
+    }
     const discount = roundMoney(Math.max(0, Number(line.discount ?? 0)));
     const total_price = lineNetSubtotal(
       line.quantity,
@@ -273,7 +292,8 @@ export async function syncPurchaseOrderItems(
 
     const itemPayload = {
       product_id: line.product_id,
-      description: line.description,
+      description,
+      show_product_description: Boolean(line.show_product_description),
       quantity: line.quantity,
       unit: line.unit,
       unit_price: line.unit_price,
@@ -295,7 +315,7 @@ export async function syncPurchaseOrderItems(
       if (received > 0 && line.quantity < received) {
         return {
           ok: false,
-          message: `A quantidade do item «${line.description}» não pode ser inferior ao já recebido (${received}).`,
+          message: `A quantidade do item «${description}» não pode ser inferior ao já recebido (${received}).`,
         };
       }
 

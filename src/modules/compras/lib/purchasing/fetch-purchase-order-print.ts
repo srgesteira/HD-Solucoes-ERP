@@ -16,7 +16,7 @@ const ORDER_PRINT_SELECT = `
   supplier:suppliers(*),
   items:purchase_order_items(
     *,
-    product:products!purchase_order_items_product_id_fkey(code, technical_code, name)
+    product:products!purchase_order_items_product_id_fkey(code, technical_code, name, description, technical_description)
   )
 `.trim();
 
@@ -60,6 +60,7 @@ function mapItems(
         typeof row.item_notes === "string" && row.item_notes.trim()
           ? row.item_notes.trim()
           : null,
+      show_product_description: row.show_product_description === true,
       quantity: qty,
       unit: String(row.unit ?? "UN"),
       unit_price: unitPrice,
@@ -73,6 +74,9 @@ function mapItems(
             code: (product.code as string | null) ?? null,
             technical_code: (product.technical_code as string | null) ?? null,
             name: (product.name as string | null) ?? null,
+            description: (product.description as string | null) ?? null,
+            technical_description:
+              (product.technical_description as string | null) ?? null,
           }
         : null,
     };

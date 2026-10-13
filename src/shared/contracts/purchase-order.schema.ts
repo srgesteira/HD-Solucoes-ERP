@@ -38,7 +38,8 @@ const purchaseOrderItemLineSchema = z
           : String(v).trim() || null,
       z.string().uuid().nullable()
     ),
-    description: z.string().trim().min(1, "Descrição obrigatória"),
+    description: z.string().trim().optional().default(""),
+    show_product_description: z.boolean().optional(),
     quantity: moneyField.positive("Quantidade inválida"),
     unit: z.string().trim().optional(),
     unit_price: moneyField,
@@ -55,10 +56,20 @@ const purchaseOrderItemLineSchema = z
       .nullable()
       .optional(),
   })
+  .superRefine((row, ctx) => {
+    if (!row.description && !row.product_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Informe o produto ou a descrição do item.",
+        path: ["description"],
+      });
+    }
+  })
   .transform((row) => ({
     id: row.id,
     product_id: row.product_id ?? null,
     description: row.description,
+    show_product_description: row.show_product_description === true,
     quantity: row.quantity,
     unit: row.unit?.trim() || "UN",
     unit_price: row.unit_price,

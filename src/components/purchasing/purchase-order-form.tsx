@@ -73,6 +73,7 @@ export type PurchaseOrderFormData = {
     tax_base?: number;
     usage_type?: string | null;
     item_notes?: string | null;
+    show_product_description?: boolean | null;
     line_number?: number | null;
     created_at?: string | null;
     product?:
@@ -152,11 +153,21 @@ export function itemsToPurchaseLines(items: OrderItemRow[]): {
       };
     }
 
+    const productName = prod?.name?.trim() || "";
+    const storedDescription = item.description?.trim() || "";
+    const storedIsExtra =
+      Boolean(storedDescription) &&
+      Boolean(productName) &&
+      storedDescription !== productName;
+
     lines.push({
       key: `line-${item.id ?? `idx-${index}`}`,
       id: item.id,
       productId: pid,
-      description: item.description?.trim() || prod?.name || "",
+      description:
+        storedDescription && storedDescription !== productName
+          ? storedDescription
+          : "",
       itemNotes: item.item_notes?.trim() ?? "",
       quantity: Number(item.quantity),
       unit: item.unit?.trim() || prod?.unit?.trim() || "UN",
@@ -167,6 +178,8 @@ export function itemsToPurchaseLines(items: OrderItemRow[]): {
       ipiRate: Number(item.ipi_rate ?? 0),
       ipiValue: Number(item.ipi_value ?? item.ipi_amount ?? 0),
       taxBase: Number(item.tax_base ?? 0),
+      showProductDescription:
+        Boolean(item.show_product_description) || storedIsExtra,
       usageType:
         item.usage_type === "consumo" ||
         item.usage_type === "materia_prima" ||
@@ -477,7 +490,7 @@ export function PurchaseOrderForm({
       body.other_costs = otherCosts;
       body.total_tax_non_creditable = taxNonCreditable;
 
-      const itemsResult = buildPurchaseOrderItemsPayload(lines);
+      const itemsResult = buildPurchaseOrderItemsPayload(lines, productCache);
       if ("error" in itemsResult) throw new Error(itemsResult.error);
       body.items = itemsResult;
     } else if (canEditPayment) {

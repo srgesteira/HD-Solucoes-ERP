@@ -25,6 +25,7 @@ export type PurchaseOrderPrintItem = {
   id: string;
   description: string;
   item_notes?: string | null;
+  show_product_description?: boolean | null;
   quantity: number;
   unit: string;
   unit_price: number;
@@ -37,6 +38,8 @@ export type PurchaseOrderPrintItem = {
     code?: string | null;
     technical_code?: string | null;
     name?: string | null;
+    description?: string | null;
+    technical_description?: string | null;
   } | null;
 };
 
@@ -99,6 +102,17 @@ export function poItemProductLabel(item: PurchaseOrderPrintItem): string {
   const name = p?.name?.trim() || item.description?.trim() || "—";
   if (code) return `${code} — ${name}`;
   return name;
+}
+
+/** Descrição cadastrada do produto, só quando a linha pede para incluir na impressão. */
+export function poItemCatalogDescription(
+  item: PurchaseOrderPrintItem
+): string | null {
+  if (!item.show_product_description) return null;
+  const tech = item.product?.technical_description?.trim() || "";
+  const desc = item.product?.description?.trim() || "";
+  if (tech && desc && tech !== desc) return `${tech}\n${desc}`;
+  return tech || desc || null;
 }
 
 /** Descrição da linha quando difere do nome do produto (aparece no impresso). */

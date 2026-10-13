@@ -111,12 +111,8 @@ function hitToProduct(hit: ProductSearchHit): PurchaseLineProduct {
   };
 }
 
-function initialLineDescription(hit: ProductSearchHit, p: PurchaseLineProduct): string {
-  const desc = hit.description?.trim();
-  if (desc) return desc;
-  const name = p.name?.trim();
-  if (name) return name;
-  return productLabel(p);
+function initialLineDescription(p: PurchaseLineProduct): string {
+  return p.name?.trim() || productLabel(p);
 }
 
 function lineFromProduct(
@@ -127,7 +123,7 @@ function lineFromProduct(
   const line: PurchaseOrderLineDraft = {
     ...(base ?? newPurchaseLine(0)),
     productId: p.id,
-    description: initialLineDescription(hit, p),
+    description: initialLineDescription(p),
     unit: (p.unit && p.unit.trim()) || "UN",
     usageType:
       base?.usageType ||
@@ -528,9 +524,31 @@ export function PurchaseOrderItemsEditor({
                       }
                       disabled={disabled}
                       className="h-9 text-sm"
-                      placeholder="Nome do item…"
+                      placeholder="Opcional"
                     />
                   </div>
+                  {prod ? (
+                    <label
+                      htmlFor={`poi-show-desc-${index}`}
+                      className="flex items-start gap-2 cursor-pointer"
+                    >
+                      <input
+                        id={`poi-show-desc-${index}`}
+                        type="checkbox"
+                        className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
+                        checked={Boolean(line.showProductDescription)}
+                        disabled={disabled}
+                        onChange={(e) =>
+                          updateLineAt(index, {
+                            showProductDescription: e.target.checked,
+                          })
+                        }
+                      />
+                      <span className="text-xs leading-snug text-slate-600">
+                        Incluir descrição do produto na impressão
+                      </span>
+                    </label>
+                  ) : null}
                 </div>
 
                 <Button
@@ -744,28 +762,6 @@ export function PurchaseOrderItemsEditor({
                   className="resize-y min-h-[48px] text-xs"
                   title="Texto impresso no pedido de compra sob o produto"
                 />
-                {isQuote && prod ? (
-                  <label
-                    htmlFor={`poi-show-desc-${index}`}
-                    className="flex items-start gap-2 cursor-pointer"
-                  >
-                    <input
-                      id={`poi-show-desc-${index}`}
-                      type="checkbox"
-                      className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-700 focus:ring-brand-700"
-                      checked={Boolean(line.showProductDescription)}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        updateLineAt(index, {
-                          showProductDescription: e.target.checked,
-                        })
-                      }
-                    />
-                    <span className="text-[11px] leading-snug text-slate-600">
-                      Incluir descrição do produto na impressão
-                    </span>
-                  </label>
-                ) : null}
               </div>
             </li>
           );
@@ -819,16 +815,33 @@ export function PurchaseOrderItemsEditor({
   );
 }
 
+function cachedProductName(
+  productId: string,
+  productById?:
+    | Map<string, PurchaseLineProduct>
+    | Record<string, PurchaseLineProduct>
+): string {
+  const id = productId.trim();
+  if (!id || !productById) return "";
+  const prod =
+    productById instanceof Map ? productById.get(id) : productById[id];
+  return prod?.name?.trim() || "";
+}
+
 export function buildPurchaseOrderItemsPayload(
-  lines: PurchaseOrderLineDraft[]
+  lines: PurchaseOrderLineDraft[],
+  productById?:
+    | Map<string, PurchaseLineProduct>
+    | Record<string, PurchaseLineProduct>
 ): Array<Record<string, unknown>> | { error: string } {
   const built: Array<Record<string, unknown>> = [];
 
   for (const line of lines) {
-    if (!line.productId.trim() && !line.description.trim()) continue;
-    if (!line.description.trim()) {
-      return { error: "Preencha a descrição de todos os itens." };
-    }
+    const typedDescription = line.description.trim();
+    const productId = line.productId.trim();
+    if (!productId && !typedDescription) continue;
+    const productName = cachedProductName(productId, productById);
+    const description = typedDescription || productName;
     if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
       return { error: "Quantidade inválida num item." };
     }
@@ -845,8 +858,9 @@ export function buildPurchaseOrderItemsPayload(
     const net = lineNetSubtotal(line.quantity, line.unitPrice, discount);
 
     const item: Record<string, unknown> = {
-      product_id: line.productId.trim() || null,
-      description: line.description.trim(),
+      product_id: productId || null,
+      description,
+      show_product_description: Boolean(line.showProductDescription),
       quantity: line.quantity,
       unit_price: line.unitPrice,
       discount,
@@ -894,9 +908,8 @@ export function buildQuoteRequestItemsPayload(
 
   for (const line of lines) {
     if (!line.productId.trim() && !line.description.trim()) continue;
-    if (!line.description.trim()) {
-      return { error: "Preencha a descrição de todos os itens." };
-    }
+    const description =
+      line.description.trim() || "Item para cotação";
     if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
       return { error: "Quantidade inválida num item." };
     }
@@ -910,7 +923,7 @@ export function buildQuoteRequestItemsPayload(
       usage_type: "consumo" | "materia_prima" | "revenda" | null;
     } = {
       product_id: line.productId.trim() || null,
-      description: line.description.trim(),
+      description,
       quantity: line.quantity,
       unit: line.unit.trim() || "UN",
       show_product_description: Boolean(line.showProductDescription),

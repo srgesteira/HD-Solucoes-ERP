@@ -9,6 +9,7 @@ import {
   formatCompanyAddressForPrint,
   formatSupplierAddressForPrint,
   poComputedTotal,
+  poItemCatalogDescription,
   poItemLineDescription,
   poItemProductLabel,
   poPaymentTermsText,
@@ -74,10 +75,14 @@ export function buildPurchaseOrderPrintHtml(
 
   const itemRows = items
     .map((item, idx) => {
+      const catalogDesc = poItemCatalogDescription(item);
       const lineDesc = poItemLineDescription(item);
       const itemNotes = item.item_notes?.trim() || "";
       const extras = [
-        lineDesc
+        catalogDesc
+          ? `<p class="qp-item-extra"><span class="qp-item-extra-label">Descrição: </span>${esc(catalogDesc)}</p>`
+          : "",
+        lineDesc && lineDesc !== catalogDesc
           ? `<p class="qp-item-extra"><span class="qp-item-extra-label">Descrição: </span>${esc(lineDesc)}</p>`
           : "",
         itemNotes
