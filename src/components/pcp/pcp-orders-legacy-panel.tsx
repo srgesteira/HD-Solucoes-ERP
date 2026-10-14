@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, CircleAlert } from "lucide-react";
+import { CheckCircle2, CircleAlert, FileSpreadsheet } from "lucide-react";
+import { downloadPcpOrderExcel } from "@/modules/pcp/lib/pcp-order-excel";
 import { ReadyForInvoiceCompositeBadge } from "@/components/fiscal/fiscal-status-badge";
 import type { PcpPlanningItem, PcpPlanningOrder } from "@/modules/pcp/lib/pcp-planning";
 import { matchesTokenSearch } from "@/shared/utils/universal-search";
@@ -222,13 +223,22 @@ export function PcpOrdersLegacyPanel({
                       {isOpen ? "▼" : "▶"}
                     </button>
                   </div>
-                  <div className="font-medium text-slate-800">
+                  <div className="min-w-0 font-medium text-slate-800">
                     <Link
                       href={`/sales/orders/${order.id}`}
                       className="text-[#1B4F72] hover:underline font-mono"
                     >
                       {order.order_number}
                     </Link>
+                    <button
+                      type="button"
+                      className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-emerald-800 hover:underline"
+                      title="Baixar planilha Excel deste pedido para enviar à produção"
+                      onClick={() => downloadPcpOrderExcel(order, pcReceived)}
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      Excel
+                    </button>
                   </div>
                   <div className="truncate">{order.client_name}</div>
                   <div className="text-center text-slate-600">
