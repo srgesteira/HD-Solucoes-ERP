@@ -155,10 +155,6 @@ export function itemsToPurchaseLines(items: OrderItemRow[]): {
 
     const productName = prod?.name?.trim() || "";
     const storedDescription = item.description?.trim() || "";
-    const storedIsExtra =
-      Boolean(storedDescription) &&
-      Boolean(productName) &&
-      storedDescription !== productName;
 
     lines.push({
       key: `line-${item.id ?? `idx-${index}`}`,
@@ -178,8 +174,7 @@ export function itemsToPurchaseLines(items: OrderItemRow[]): {
       ipiRate: Number(item.ipi_rate ?? 0),
       ipiValue: Number(item.ipi_value ?? item.ipi_amount ?? 0),
       taxBase: Number(item.tax_base ?? 0),
-      showProductDescription:
-        Boolean(item.show_product_description) || storedIsExtra,
+      showProductDescription: Boolean(item.show_product_description),
       usageType:
         item.usage_type === "consumo" ||
         item.usage_type === "materia_prima" ||

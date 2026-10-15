@@ -115,8 +115,9 @@ export function poItemCatalogDescription(
   return tech || desc || null;
 }
 
-/** Descrição da linha quando difere do nome do produto (aparece no impresso). */
+/** Texto extra da linha, só quando a opção de incluir descrição está marcada. */
 export function poItemLineDescription(item: PurchaseOrderPrintItem): string | null {
+  if (!item.show_product_description) return null;
   const desc = item.description?.trim();
   if (!desc) return null;
   const productName = item.product?.name?.trim() || "";
