@@ -153,12 +153,14 @@ export async function splitSalesOrder(
     id: order.id,
     mrp_processed: order.mrp_processed === true,
     production_order_id: order.production_order_id,
+    status: order.status,
   });
   if (!guard.can_edit_items) {
     return {
       ok: false,
-      message:
-        "Não é possível desmembrar: o MRP já foi processado ou a produção já iniciou.",
+      message: guard.has_invoice
+        ? "Não é possível desmembrar: o pedido já foi faturado."
+        : "Não é possível desmembrar: o MRP já foi processado ou a produção já iniciou.",
       status: 409,
     };
   }

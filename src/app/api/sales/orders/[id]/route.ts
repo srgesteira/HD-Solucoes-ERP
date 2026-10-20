@@ -20,6 +20,7 @@ import {
   assertUpdateAllowedWhenProductionStarted,
   bodyWantsSalesOrderContentEdit,
   getSalesOrderEditGuard,
+  applySalesOrderItemQuantities,
   replaceSalesOrderItemsFromLines,
   resolveCustomerForSalesOrderUpdate,
 } from "@/modules/vendas/lib/sales/sales-order-edit";
@@ -125,6 +126,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       typeof detail.production_order_id === "string"
         ? detail.production_order_id
         : null,
+    status: typeof detail.status === "string" ? detail.status : null,
   });
 
   return apiOk({ data: { ...detail, edit_guard } });
@@ -212,6 +214,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       typeof existing.production_order_id === "string"
         ? existing.production_order_id
         : null,
+    status: typeof existing.status === "string" ? existing.status : null,
   });
 
   const updateData: SalesOrderUpdate = {};
@@ -430,23 +433,58 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 
   let itemsReplaced = false;
+  let quantityOnly = false;
   let oldItemsSnapshot: SalesOrderItemSnapshot[] | null = null;
   let newItemsSnapshot: SalesOrderItemSnapshot[] | null = null;
 
   if (b.items !== undefined) {
-    if (!editGuard.can_edit_items) {
-      return apiError(
-        existing.mrp_processed === true
-          ? "Pedido já processado pelo MRP. Não é possível alterar os itens."
-          : "Produção já iniciada. Não é possível alterar os itens.",
-        409
-      );
-    }
     if (!isAdmin && !canSales) {
       return apiError("Sem permissão para alterar itens do pedido", 403);
     }
     const parsedLines = parseSaleLines(b.items);
     if (!parsedLines.ok) return apiError(parsedLines.message, 400);
+
+    if (!editGuard.can_edit_items && !editGuard.can_edit_quantities) {
+      return apiError(
+        editGuard.has_invoice
+          ? "Pedido já faturado. Não é possível alterar a quantidade."
+          : existing.mrp_processed === true
+            ? "Pedido já processado pelo MRP. Não é possível alterar os itens."
+            : "Produção já iniciada. Não é possível alterar os itens.",
+        409
+      );
+    }
+
+    if (!editGuard.can_edit_items && editGuard.can_edit_quantities) {
+      oldItemsSnapshot = await fetchSalesOrderItemsSnapshot(
+        admin,
+        tenantId,
+        id
+      );
+      const qtyResult = await applySalesOrderItemQuantities(
+        admin,
+        tenantId,
+        id,
+        parsedLines.lines,
+        {
+          userId: user.id,
+          orderStatus:
+            typeof existing.status === "string" ? existing.status : null,
+        }
+      );
+      if (qtyResult.error) return apiError(qtyResult.error, 409);
+      if (qtyResult.changed) {
+        itemsReplaced = true;
+        quantityOnly = true;
+        newItemsSnapshot = parsedLines.lines.map((l) => ({
+          product_id: l.product_id ?? null,
+          description: l.description,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+          unit: l.unit ?? "UN",
+        }));
+      }
+    } else {
 
     const { data: existingTaxRows } = await admin
       .from("sales_order_items")
@@ -504,11 +542,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
     );
     if (itemErr.error) return apiError(itemErr.error, 400);
     itemsReplaced = true;
+    }
   }
 
   const finalProductionCheck = assertUpdateAllowedWhenProductionStarted(
     updateData,
-    { itemsReplaced, customerResolved },
+    { itemsReplaced: itemsReplaced && !quantityOnly, customerResolved },
     editGuard.production_started
   );
   if (!finalProductionCheck.ok) {
@@ -853,6 +892,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       typeof responseRow.production_order_id === "string"
         ? responseRow.production_order_id
         : null,
+    status: typeof responseRow.status === "string" ? responseRow.status : null,
   });
   return apiOk({ data: { ...responseRow, edit_guard: guard } });
 }

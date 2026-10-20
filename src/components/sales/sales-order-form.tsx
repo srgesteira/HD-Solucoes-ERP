@@ -336,6 +336,15 @@ export function SalesOrderForm({
   const canEditItems = isEdit
     ? Boolean(order && (editGuard?.can_edit_items ?? !order.mrp_processed))
     : true;
+  const canEditQuantities = isEdit
+    ? Boolean(
+        order &&
+          (editGuard?.can_edit_quantities ??
+            editGuard?.can_edit_items ??
+            !order.mrp_processed)
+      )
+    : true;
+  const quantityOnly = isEdit && canEditQuantities && !canEditItems;
   const productionStarted = editGuard?.production_started === true;
   const canEditStatus = isEdit && isAdmin && order?.status !== "superseded";
 
@@ -428,7 +437,7 @@ export function SalesOrderForm({
   }, [isEdit, order?.status, orderId, router]);
 
   const lineTaxPreview = useMemo(() => {
-    if (canEditItems) {
+    if (canEditItems || canEditQuantities) {
       return aggregatePurchaseLineTaxes(
         lines.map((l) => ({
           quantity: l.quantity,
@@ -449,6 +458,7 @@ export function SalesOrderForm({
     };
   }, [
     canEditItems,
+    canEditQuantities,
     lines,
     order?.subtotal,
     order?.total_icms,
@@ -535,7 +545,7 @@ export function SalesOrderForm({
         body.expected_delivery = commercial.data.expected_delivery;
       }
 
-      if (canEditItems) {
+      if (canEditItems || canEditQuantities) {
         const itemsResult = buildSalesOrderItemsPayload(lines);
         if ("error" in itemsResult) throw new Error(itemsResult.error);
         body.items = itemsResult;
@@ -681,17 +691,28 @@ export function SalesOrderForm({
 
       {adminOnlyMode ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Produção já iniciada. Pode alterar prazo de entrega, observações e
-          parcelas. Itens, quantidades, preços e dados do cliente estão
-          bloqueados.
+          {canEditQuantities
+            ? "Produção já iniciada. O pedido ainda não foi faturado: pode alterar a quantidade. A ordem de produção acompanha o novo valor. Produto, preço e dados do cliente continuam bloqueados. Prazo, observações e parcelas também podem ser alterados."
+            : "Produção já iniciada. Pode alterar prazo de entrega, observações e parcelas. Itens, quantidades, preços e dados do cliente estão bloqueados."}
         </div>
       ) : null}
 
-      {!canEditItems && isEdit && !adminOnlyMode ? (
+      {quantityOnly && !adminOnlyMode ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
-          {order?.mrp_processed
-            ? "Os itens não podem ser alterados após o envio ao planeamento interno."
-            : "Os itens deste pedido não podem ser alterados."}
+          O pedido já foi ao planeamento e ainda não foi faturado. Pode alterar
+          a quantidade de cada item. A ordem de produção é actualizada junto.
+          Produto, preço e inclusão de itens continuam bloqueados. Se já
+          existirem compras emitidas, reveja-as no planeamento.
+        </div>
+      ) : null}
+
+      {!canEditItems && !canEditQuantities && isEdit && !adminOnlyMode ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+          {editGuard?.has_invoice
+            ? "O pedido já foi faturado. A quantidade não pode ser alterada."
+            : order?.mrp_processed
+              ? "Os itens não podem ser alterados após o envio ao planeamento interno."
+              : "Os itens deste pedido não podem ser alterados."}
         </div>
       ) : null}
 
@@ -797,11 +818,13 @@ export function SalesOrderForm({
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Itens do pedido</CardTitle>
             <p className="text-sm text-slate-500 font-normal">
-              Quantidade, preço, desconto e impostos (ICMS/IPI) por linha.
+              {quantityOnly
+                ? "Altere a quantidade. Preço, produto e impostos ficam bloqueados."
+                : "Quantidade, preço, desconto e impostos (ICMS/IPI) por linha."}
             </p>
           </CardHeader>
           <CardContent>
-            {canEditItems ? (
+            {canEditItems || canEditQuantities ? (
               <SalesOrderItemsEditor
                 lines={lines}
                 onLinesChange={setLines}
@@ -809,6 +832,7 @@ export function SalesOrderForm({
                 onProductCacheMerge={(patch) =>
                   setProductCache((prev) => ({ ...prev, ...patch }))
                 }
+                quantityOnly={quantityOnly}
               />
             ) : (
               <div className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">

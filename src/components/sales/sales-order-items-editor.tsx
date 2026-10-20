@@ -183,6 +183,8 @@ type Props = {
   productCache: Record<string, SalesOrderLineProduct>;
   onProductCacheMerge: (products: Record<string, SalesOrderLineProduct>) => void;
   disabled?: boolean;
+  /** Só a quantidade fica editável (pedido já no planeamento ou em produção, sem nota). */
+  quantityOnly?: boolean;
 };
 
 export function SalesOrderItemsEditor({
@@ -191,7 +193,10 @@ export function SalesOrderItemsEditor({
   productCache,
   onProductCacheMerge,
   disabled = false,
+  quantityOnly = false,
 }: Props) {
+  const structureLocked = disabled || quantityOnly;
+
   const productById = useMemo(() => {
     const map = new Map<string, SalesOrderLineProduct>();
     for (const p of Object.values(productCache)) map.set(p.id, p);
@@ -313,7 +318,7 @@ export function SalesOrderItemsEditor({
                           updateLineAt(index, line);
                         }}
                         productType="all"
-                        disabled={disabled}
+                        disabled={structureLocked}
                         catalogTitle="Pesquisar produto"
                       />
                       <Textarea
@@ -321,7 +326,7 @@ export function SalesOrderItemsEditor({
                         onChange={(e) =>
                           updateLineAt(index, { itemNotes: e.target.value })
                         }
-                        disabled={disabled}
+                        disabled={structureLocked}
                         rows={2}
                         placeholder="Obs. do item…"
                         className="resize-y min-h-[48px] text-xs"
@@ -339,7 +344,7 @@ export function SalesOrderItemsEditor({
                             : "",
                         })
                       }
-                      disabled={disabled}
+                      disabled={structureLocked}
                     >
                       <option value="">—</option>
                       {ITEM_USAGE_TYPE_OPTIONS.map((opt) => (
@@ -367,7 +372,7 @@ export function SalesOrderItemsEditor({
                       onChange={(e) =>
                         updateLineAt(index, { unit: e.target.value })
                       }
-                      disabled={disabled}
+                      disabled={structureLocked}
                       className="h-8 text-sm"
                     />
                   </td>
@@ -378,7 +383,7 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { unitPrice }, "both")
                       }
                       maxDecimals={2}
-                      disabled={disabled}
+                      disabled={structureLocked}
                       className="h-8 text-sm"
                     />
                   </td>
@@ -397,7 +402,7 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { discount: next }, "both");
                       }}
                       maxDecimals={2}
-                      disabled={disabled}
+                      disabled={structureLocked}
                       className="h-8 text-sm"
                       title="Desconto da linha em R$"
                     />
@@ -409,7 +414,7 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { icmsRate }, "icms")
                       }
                       maxDecimals={2}
-                      disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                      disabled={structureLocked || taxReadonlyOnOrder || taxesLocked}
                       readOnly={taxReadonlyOnOrder || taxesLocked}
                       className="h-8 text-sm"
                       placeholder="0"
@@ -422,7 +427,7 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { icmsValue }, "none")
                       }
                       maxDecimals={2}
-                      disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                      disabled={structureLocked || taxReadonlyOnOrder || taxesLocked}
                       readOnly={taxReadonlyOnOrder || taxesLocked}
                       className="h-8 text-sm"
                     />
@@ -434,7 +439,7 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { ipiRate }, "ipi")
                       }
                       maxDecimals={2}
-                      disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                      disabled={structureLocked || taxReadonlyOnOrder || taxesLocked}
                       readOnly={taxReadonlyOnOrder || taxesLocked}
                       className="h-8 text-sm"
                       placeholder="0"
@@ -447,7 +452,7 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { ipiValue }, "none")
                       }
                       maxDecimals={2}
-                      disabled={disabled || taxReadonlyOnOrder || taxesLocked}
+                      disabled={structureLocked || taxReadonlyOnOrder || taxesLocked}
                       readOnly={taxReadonlyOnOrder || taxesLocked}
                       className="h-8 text-sm"
                     />
@@ -474,7 +479,7 @@ export function SalesOrderItemsEditor({
                               )
                         )
                       }
-                      disabled={disabled || lines.length <= 1}
+                      disabled={structureLocked || lines.length <= 1}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -486,16 +491,18 @@ export function SalesOrderItemsEditor({
         </table>
       </div>
 
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={addEmptyLine}
-        disabled={disabled}
-      >
-        <Plus className="h-4 w-4" />
-        Adicionar produto
-      </Button>
+      {quantityOnly ? null : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={addEmptyLine}
+          disabled={disabled}
+        >
+          <Plus className="h-4 w-4" />
+          Adicionar produto
+        </Button>
+      )}
 
       <div className="text-sm text-slate-900 space-y-1">
         <p>

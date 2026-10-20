@@ -125,6 +125,8 @@ type SalesOrderDetail = {
   nfes?: unknown;
   edit_guard?: {
     can_edit_items?: boolean;
+    can_edit_quantities?: boolean;
+    has_invoice?: boolean;
     mrp_processed?: boolean;
     production_started?: boolean;
   } | null;
@@ -1178,6 +1180,22 @@ export default function SalesOrderDetailPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Itens</CardTitle>
+              {q.edit_guard?.can_edit_quantities &&
+              !q.edit_guard?.can_edit_items &&
+              canNavigateToEdit ? (
+                <p className="text-sm text-slate-500 font-normal">
+                  O pedido ainda não foi faturado. A quantidade pode ser
+                  alterada em{" "}
+                  <button
+                    type="button"
+                    className="text-brand-700 font-medium underline"
+                    onClick={() => router.push(`/sales/orders/${id}/edit`)}
+                  >
+                    Editar pedido
+                  </button>
+                  .
+                </p>
+              ) : null}
             </CardHeader>
             <CardContent className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
               <table className="w-full text-sm min-w-[720px]">
