@@ -1184,8 +1184,8 @@ export default function SalesOrderDetailPage() {
               !q.edit_guard?.can_edit_items &&
               canNavigateToEdit ? (
                 <p className="text-sm text-slate-500 font-normal">
-                  O pedido ainda não foi faturado. A quantidade pode ser
-                  alterada em{" "}
+                  O pedido ainda não foi faturado. Quantidade e valor podem ser
+                  alterados em{" "}
                   <button
                     type="button"
                     className="text-brand-700 font-medium underline"

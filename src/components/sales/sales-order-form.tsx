@@ -691,8 +691,8 @@ export function SalesOrderForm({
 
       {adminOnlyMode ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {canEditQuantities
-            ? "Produção já iniciada. O pedido ainda não foi faturado: pode alterar a quantidade. A ordem de produção acompanha o novo valor. Produto, preço e dados do cliente continuam bloqueados. Prazo, observações e parcelas também podem ser alterados."
+            {canEditQuantities
+            ? "Produção já iniciada. O pedido ainda não foi faturado: pode alterar a quantidade, o preço e o desconto do item. A ordem de produção acompanha a nova quantidade. Produto e dados do cliente continuam bloqueados. Prazo, observações e parcelas também podem ser alterados."
             : "Produção já iniciada. Pode alterar prazo de entrega, observações e parcelas. Itens, quantidades, preços e dados do cliente estão bloqueados."}
         </div>
       ) : null}
@@ -700,9 +700,10 @@ export function SalesOrderForm({
       {quantityOnly && !adminOnlyMode ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
           O pedido já foi ao planeamento e ainda não foi faturado. Pode alterar
-          a quantidade de cada item. A ordem de produção é actualizada junto.
-          Produto, preço e inclusão de itens continuam bloqueados. Se já
-          existirem compras emitidas, reveja-as no planeamento.
+          a quantidade, o preço e o desconto de cada item. A ordem de produção
+          acompanha a nova quantidade. Produto e inclusão de itens continuam
+          bloqueados. Se já existirem compras emitidas, reveja-as no
+          planeamento.
         </div>
       ) : null}
 
@@ -819,7 +820,7 @@ export function SalesOrderForm({
             <CardTitle className="text-lg">Itens do pedido</CardTitle>
             <p className="text-sm text-slate-500 font-normal">
               {quantityOnly
-                ? "Altere a quantidade. Preço, produto e impostos ficam bloqueados."
+                ? "Altere a quantidade, o preço e o desconto. Produto e impostos ficam bloqueados."
                 : "Quantidade, preço, desconto e impostos (ICMS/IPI) por linha."}
             </p>
           </CardHeader>

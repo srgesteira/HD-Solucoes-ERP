@@ -449,7 +449,7 @@ function sameQty(a: number, b: number): boolean {
 }
 
 /**
- * Altera só a quantidade de linhas existentes.
+ * Altera quantidade, preço e desconto de linhas existentes.
  * Usado quando o pedido já foi ao planeamento ou a produção começou,
  * mas ainda não foi faturado.
  */
@@ -471,7 +471,7 @@ export async function applySalesOrderItemQuantities(
 
   const existing = existingRows ?? [];
   const lockedMsg =
-    "Enquanto o pedido não for faturado, só a quantidade pode ser alterada. Produto, preço, desconto e inclusão ou remoção de itens ficam bloqueados depois do planeamento ou do início da produção.";
+    "Depois do planeamento ou do início da produção, produto e inclusão ou remoção de itens ficam bloqueados. Quantidade, preço e desconto podem ser alterados enquanto o pedido não for faturado.";
 
   if (lines.length !== existing.length) {
     return { error: lockedMsg, changed: false };
@@ -485,6 +485,7 @@ export async function applySalesOrderItemQuantities(
     description: string;
     oldQty: number;
     newQty: number;
+    qtyChanged: boolean;
     unitPrice: number;
     discount: number;
     icmsValue: number;
@@ -503,26 +504,20 @@ export async function applySalesOrderItemQuantities(
     const nextProduct = line.product_id ?? null;
     if (prevProduct !== nextProduct) {
       return {
-        error: `O item "${prev.description}" não pode trocar de produto. Altere só a quantidade.`,
-        changed: false,
-      };
-    }
-    if (!sameMoney(Number(prev.unit_price), line.unit_price)) {
-      return {
-        error: `O item "${prev.description}" não pode ter o preço alterado neste momento. Altere só a quantidade.`,
-        changed: false,
-      };
-    }
-    if (!sameMoney(Number(prev.discount ?? 0), Number(line.discount ?? 0))) {
-      return {
-        error: `O item "${prev.description}" não pode ter o desconto alterado neste momento. Altere só a quantidade.`,
+        error: `O item "${prev.description}" não pode trocar de produto. Altere a quantidade, o preço ou o desconto.`,
         changed: false,
       };
     }
 
     const oldQty = Number(prev.quantity);
     const newQty = Number(line.quantity);
-    if (sameQty(oldQty, newQty)) continue;
+    const qtyChanged = !sameQty(oldQty, newQty);
+    const priceChanged = !sameMoney(Number(prev.unit_price), line.unit_price);
+    const discountChanged = !sameMoney(
+      Number(prev.discount ?? 0),
+      Number(line.discount ?? 0)
+    );
+    if (!qtyChanged && !priceChanged && !discountChanged) continue;
 
     const discount = roundMoney(Math.max(0, Number(line.discount ?? 0)));
     const net = lineNetSubtotal(newQty, line.unit_price, discount);
@@ -533,6 +528,7 @@ export async function applySalesOrderItemQuantities(
       description: prev.description,
       oldQty,
       newQty,
+      qtyChanged,
       unitPrice: line.unit_price,
       discount,
       icmsValue: roundMoney(line.icms_value ?? 0),
@@ -543,15 +539,32 @@ export async function applySalesOrderItemQuantities(
 
   if (!changes.length) return { changed: false };
 
-  const soiIds = changes.map((c) => c.id);
-  const { data: oiRows, error: oiErr } = await admin
-    .from("order_items")
-    .select(
-      "id, order_id, sales_order_item_id, quantity, status, is_suggestion, completed_at, apontamento_start_at, apontamento_end_at, production_start, production_end"
-    )
-    .eq("tenant_id", tenantId)
-    .in("sales_order_item_id", soiIds);
-  if (oiErr) return { error: oiErr.message, changed: false };
+  const qtyChanges = changes.filter((c) => c.qtyChanged);
+  const soiIds = qtyChanges.map((c) => c.id);
+  let oiRows: Array<{
+    id: string;
+    order_id: string;
+    sales_order_item_id: string | null;
+    quantity: number;
+    status: string;
+    is_suggestion: boolean;
+    completed_at: string | null;
+    apontamento_start_at: string | null;
+    apontamento_end_at: string | null;
+    production_start: string | null;
+    production_end: string | null;
+  }> = [];
+  if (soiIds.length) {
+    const { data, error: oiErr } = await admin
+      .from("order_items")
+      .select(
+        "id, order_id, sales_order_item_id, quantity, status, is_suggestion, completed_at, apontamento_start_at, apontamento_end_at, production_start, production_end"
+      )
+      .eq("tenant_id", tenantId)
+      .in("sales_order_item_id", soiIds);
+    if (oiErr) return { error: oiErr.message, changed: false };
+    oiRows = data ?? [];
+  }
 
   const oiBySoi = new Map<string, typeof oiRows>();
   for (const oi of oiRows ?? []) {
@@ -565,7 +578,7 @@ export async function applySalesOrderItemQuantities(
   const reopenedOrderIds = new Set<string>();
   const targetsByChange = new Map<string, NonNullable<typeof oiRows>>();
 
-  for (const change of changes) {
+  for (const change of qtyChanges) {
     const linked = oiBySoi.get(change.id) ?? [];
     const real = linked.filter((row) => row.is_suggestion !== true);
     const matched = real.filter((row) =>
@@ -593,6 +606,8 @@ export async function applySalesOrderItemQuantities(
       .from("sales_order_items")
       .update({
         quantity: change.newQty,
+        unit_price: change.unitPrice,
+        discount: change.discount,
         total_price: lineNetSubtotal(
           change.newQty,
           change.unitPrice,
@@ -605,6 +620,8 @@ export async function applySalesOrderItemQuantities(
       .eq("id", change.id)
       .eq("tenant_id", tenantId);
     if (updErr) return { error: updErr.message, changed: false };
+
+    if (!change.qtyChanged) continue;
 
     for (const row of targets) {
       const finished = isOrderItemProductionFinished(row);

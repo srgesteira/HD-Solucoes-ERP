@@ -183,7 +183,7 @@ type Props = {
   productCache: Record<string, SalesOrderLineProduct>;
   onProductCacheMerge: (products: Record<string, SalesOrderLineProduct>) => void;
   disabled?: boolean;
-  /** Só a quantidade fica editável (pedido já no planeamento ou em produção, sem nota). */
+  /** Quantidade, preço e desconto editáveis; produto e inclusão de itens bloqueados. */
   quantityOnly?: boolean;
 };
 
@@ -383,7 +383,7 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { unitPrice }, "both")
                       }
                       maxDecimals={2}
-                      disabled={structureLocked}
+                      disabled={disabled}
                       className="h-8 text-sm"
                     />
                   </td>
@@ -402,7 +402,7 @@ export function SalesOrderItemsEditor({
                         updateLineAt(index, { discount: next }, "both");
                       }}
                       maxDecimals={2}
-                      disabled={structureLocked}
+                      disabled={disabled}
                       className="h-8 text-sm"
                       title="Desconto da linha em R$"
                     />
