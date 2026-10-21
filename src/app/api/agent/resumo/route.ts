@@ -64,13 +64,13 @@ export async function GET(request: NextRequest) {
       .order("updated_at", { ascending: true }),
     admin
       .from("receivables")
-      .select("client_name, document_number, current_amount, due_date, status")
+      .select("client_name, document_number, current_amount, due_date, status, is_forecast")
       .eq("tenant_id", tenantId)
       .in("status", ["pending", "partial", "overdue"])
       .order("due_date", { ascending: true }),
     admin
       .from("accounts_payable")
-      .select("description, current_amount, due_date, status")
+      .select("description, current_amount, due_date, status, is_forecast")
       .eq("tenant_id", tenantId)
       .in("status", ["pending", "overdue"])
       .order("due_date", { ascending: true }),
@@ -97,17 +97,24 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const r = recs.data ?? [];
-  lines.push("", `A RECEBER ${r.length} · R$ ${brl(r.reduce((s, x) => s + Number(x.current_amount ?? 0), 0))}`);
-  for (const x of r) {
-    lines.push(`${dm(x.due_date)} ${x.status} ${short(x.client_name)} ${x.document_number ?? ""} R$${brl(x.current_amount)}`);
-  }
-
-  const p = pays.data ?? [];
-  lines.push("", `A PAGAR ${p.length} · R$ ${brl(p.reduce((s, x) => s + Number(x.current_amount ?? 0), 0))}`);
-  for (const x of p) {
-    lines.push(`${dm(x.due_date)} ${x.status} ${String(x.description).slice(0, 50)} R$${brl(x.current_amount)}`);
-  }
+  const section = (
+    title: string,
+    rows: { current_amount: unknown }[],
+    fmt: (x: never) => string
+  ) => {
+    lines.push("", `${title} ${rows.length} · R$ ${brl(rows.reduce((s, x) => s + Number(x.current_amount ?? 0), 0))}`);
+    for (const x of rows) lines.push(fmt(x as never));
+  };
+  type Rec = { client_name: string | null; document_number: string | null; current_amount: number; due_date: string; status: string; is_forecast: boolean | null };
+  type Pay = { description: string; current_amount: number; due_date: string; status: string; is_forecast: boolean | null };
+  const recFmt = (x: Rec) => `${dm(x.due_date)} ${x.status} ${short(x.client_name)} ${x.document_number ?? ""} R$${brl(x.current_amount)}`;
+  const payFmt = (x: Pay) => `${dm(x.due_date)} ${x.status} ${String(x.description).slice(0, 50)} R$${brl(x.current_amount)}`;
+  const r = (recs.data ?? []) as Rec[];
+  const p = (pays.data ?? []) as Pay[];
+  section("A RECEBER (real)", r.filter((x) => !x.is_forecast), recFmt);
+  section("A PAGAR (real)", p.filter((x) => !x.is_forecast), payFmt);
+  section("PREVISTO A RECEBER (pedido de venda ainda não faturado)", r.filter((x) => x.is_forecast), recFmt);
+  section("PREVISTO A PAGAR (pedido de compra ainda não recebido)", p.filter((x) => x.is_forecast), payFmt);
 
   const o = pos.data ?? [];
   lines.push("", `PEDIDOS DE COMPRA ABERTOS ${o.length}`);
