@@ -176,7 +176,7 @@ export async function explainFiscalInconsistencies(
   const payload = JSON.stringify(issues.slice(0, 20), null, 2);
 
   const prompt =
-    `És assistente fiscal para uma contabilidade industrial brasileira (ERP HD Soluções).\n\n` +
+    `És assistente fiscal para uma contabilidade industrial brasileira (ERP HD Industrial).\n\n` +
     `Recebes uma lista de inconsistências JÁ DETECTADAS por um motor determinístico. ` +
     `NÃO inventes novos problemas nem alíquotas. Só explica o que está na lista e sugere ordem de correção.\n\n` +
     `Inconsistências:\n${payload}\n\n` +

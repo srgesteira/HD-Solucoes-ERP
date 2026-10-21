@@ -95,7 +95,7 @@ export async function sendPurchaseOrderEmail(args: {
         <a href="${escapeHtml(printUrl)}">Ver pedido completo no portal</a>
       </p>
       <p style="margin-top:20px;font-size:12px;color:#64748b;">
-        ERP HD Soluções Industriais
+        ERP HD Industrial
       </p>
     </body>
     </html>

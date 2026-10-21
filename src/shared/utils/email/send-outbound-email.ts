@@ -24,7 +24,7 @@ export type SendResendEmailResult = SendOutboundEmailResult;
 function defaultResendFrom(): string {
   return (
     process.env.NOTIFICATIONS_EMAIL_FROM?.trim() ||
-    "ERP HD Soluções <onboarding@resend.dev>"
+    "ERP HD Industrial <onboarding@resend.dev>"
   );
 }
 

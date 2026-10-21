@@ -31,7 +31,7 @@ export async function ensureBlingInvoiceWebhook(
 
   const created = await blingPost(admin, tenantId, "/notificacoes", {
     url,
-    descricao: "HD Soluções ERP — status NF-e",
+    descricao: "HD Industrial ERP — status NF-e",
     modulo: INVOICE_WEBHOOK_MODULO,
     ativo: true,
   });

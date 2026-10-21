@@ -71,7 +71,7 @@ export async function sendQuoteEmail(
     quote.quote_number,
     quote.revision_number
   );
-  const subject = `Orçamento ${number} — ${company?.trade_name?.trim() || company?.company_name?.trim() || "HD Soluções"}`;
+  const subject = `Orçamento ${number} — ${company?.trade_name?.trim() || company?.company_name?.trim() || "HD Industrial"}`;
 
   const intro =
     args.customMessage?.trim() ||
@@ -88,7 +88,7 @@ export async function sendQuoteEmail(
   </table>
   <p>O detalhamento completo está no PDF em anexo.</p>
   <p style="margin-top:20px;font-size:12px;color:#64748b;">
-    ${escapeHtml(company?.trade_name?.trim() || company?.company_name?.trim() || "HD Soluções Industriais")}<br/>
+    ${escapeHtml(company?.trade_name?.trim() || company?.company_name?.trim() || "HD Industrial")}<br/>
     ${escapeHtml([company?.phone?.trim(), company?.email?.trim(), company?.website?.trim()].filter(Boolean).join(" · "))}
   </p>
 </body></html>`;

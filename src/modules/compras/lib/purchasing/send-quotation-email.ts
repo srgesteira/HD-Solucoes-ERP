@@ -72,7 +72,7 @@ export async function sendPurchaseQuotationEmail(args: {
   }
 
   const subject =
-    args.subject?.trim() || "Solicitação de cotação — HD Soluções";
+    args.subject?.trim() || "Solicitação de cotação — HD Industrial";
   const html = `
     <!DOCTYPE html>
     <html>
@@ -80,7 +80,7 @@ export async function sendPurchaseQuotationEmail(args: {
       <p>${escapeHtml(args.message).replace(/\n/g, "<br/>")}</p>
       ${buildTableHtml(args.lines)}
       <p style="margin-top:20px;font-size:12px;color:#64748b;">
-        ERP HD Soluções Industriais — pedido de cotação automático.
+        ERP HD Industrial — pedido de cotação automático.
       </p>
     </body>
     </html>

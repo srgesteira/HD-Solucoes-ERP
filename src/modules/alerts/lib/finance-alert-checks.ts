@@ -193,6 +193,66 @@ export async function checkUpcomingPurchaseArrivals(
   }));
 }
 
+// --- 6. Orçamentos enviados sem resposta ------------------------------------
+
+/** Status de orçamento que ainda esperam resposta do cliente. */
+const FOLLOW_UP_QUOTE_STATUSES = ["sent", "approved", "revision"] as const;
+/** Dias sem movimento em que o orçamento entra no aviso (fora da segunda). */
+export const QUOTE_FOLLOW_UP_MILESTONES = [7, 14, 21, 30, 45, 60] as const;
+
+export type StaleQuote = {
+  id: string;
+  quote_number: string;
+  client_name: string;
+  total: number;
+  status: string;
+  days_idle: number;
+};
+
+export type StaleQuotesResult = {
+  /** Segunda-feira: lista completa (7+ dias). Outros dias: só quem bateu um marco. */
+  fullList: boolean;
+  quotes: StaleQuote[];
+  totalOpenValue: number;
+};
+
+export async function checkStaleQuotes(
+  admin: Admin,
+  tenantId: string,
+  now: Date = new Date()
+): Promise<StaleQuotesResult> {
+  const cutoff = new Date(now.getTime() - 7 * 86400000).toISOString();
+  const { data, error } = await admin
+    .from("quotes")
+    .select("id, quote_number, client_name, total, status, updated_at")
+    .eq("tenant_id", tenantId)
+    .in("status", FOLLOW_UP_QUOTE_STATUSES)
+    .is("converted_to_sale_id", null)
+    .lte("updated_at", cutoff)
+    .order("total", { ascending: false })
+    .limit(200);
+  if (error) throw new Error("Orçamentos: " + error.message);
+
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short" }).format(now);
+  const fullList = weekday === "Mon";
+  const milestones = new Set<number>(QUOTE_FOLLOW_UP_MILESTONES);
+
+  const all = (data ?? []).map((q) => ({
+    id: q.id,
+    quote_number: q.quote_number,
+    client_name: q.client_name,
+    total: Number(q.total ?? 0),
+    status: q.status,
+    days_idle: Math.floor((now.getTime() - new Date(q.updated_at).getTime()) / 86400000),
+  }));
+  const quotes = fullList ? all : all.filter((q) => milestones.has(q.days_idle));
+  return {
+    fullList,
+    quotes: quotes.slice(0, 15),
+    totalOpenValue: all.reduce((s, q) => s + q.total, 0),
+  };
+}
+
 // --- Orquestração ----------------------------------------------------------
 
 export type FinanceAlertChecks = {
@@ -201,6 +261,7 @@ export type FinanceAlertChecks = {
   billsTomorrow: DueBillsResult;
   salesDeliveries: UpcomingSalesOrder[];
   purchaseArrivals: UpcomingPurchaseOrder[];
+  staleQuotes: StaleQuotesResult;
 };
 
 export async function runFinanceAlertChecks(
@@ -216,12 +277,14 @@ export async function runFinanceAlertChecks(
     billsTomorrow,
     salesDeliveries,
     purchaseArrivals,
+    staleQuotes,
   ] = await Promise.all([
     checkCashCollision(admin, tenantId),
     checkBillsDueOn(admin, tenantId, today),
     checkBillsDueOn(admin, tenantId, tomorrow),
     checkUpcomingSalesDeliveries(admin, tenantId),
     checkUpcomingPurchaseArrivals(admin, tenantId),
+    checkStaleQuotes(admin, tenantId),
   ]);
 
   return {
@@ -230,5 +293,6 @@ export async function runFinanceAlertChecks(
     billsTomorrow,
     salesDeliveries,
     purchaseArrivals,
+    staleQuotes,
   };
 }

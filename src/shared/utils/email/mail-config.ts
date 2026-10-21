@@ -57,7 +57,7 @@ export function mailConfigFromEnv(): OutboundMailConfig | null {
     process.env.ZOHO_SMTP_FROM?.trim() ||
     process.env.NOTIFICATIONS_EMAIL_FROM?.trim() ||
     user;
-  const fromName = process.env.ZOHO_SMTP_FROM_NAME?.trim() || "HD Soluções";
+  const fromName = process.env.ZOHO_SMTP_FROM_NAME?.trim() || "HD Industrial";
   return {
     host,
     port,
@@ -89,7 +89,7 @@ export function mailConfigFromCompany(row: {
     row.smtp_from_name?.trim() ||
     row.trade_name?.trim() ||
     row.company_name?.trim() ||
-    "HD Soluções";
+    "HD Industrial";
   const port = Number(row.smtp_port ?? 465);
   return {
     host: row.smtp_host?.trim() || "smtp.zoho.com",

@@ -37,7 +37,7 @@ export async function notifyTaskAssigned(
   const resendKey = process.env.RESEND_API_KEY?.trim();
   const from =
     process.env.NOTIFICATIONS_EMAIL_FROM?.trim() ??
-    "ERP HD Soluções <onboarding@resend.dev>";
+    "ERP HD Industrial <onboarding@resend.dev>";
 
   if (!resendKey) {
     if (process.env.NODE_ENV === "development") {
@@ -64,7 +64,7 @@ export async function notifyTaskAssigned(
       <p style="font-size:1.1em;"><strong>${escapeHtml(payload.taskTitle)}</strong></p>
       ${descBlock}
       <p style="margin-top:20px;"><a href="${escapeHtml(link)}" style="display:inline-block;background:#0f766e;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;">Abrir tarefas</a></p>
-      <p style="font-size:12px;color:#64748b;">ERP HD Soluções Industriais — notificação automática (e-mail de cadastro).</p>
+      <p style="font-size:12px;color:#64748b;">ERP HD Industrial — notificação automática (e-mail de cadastro).</p>
     </body>
     </html>
   `.trim();

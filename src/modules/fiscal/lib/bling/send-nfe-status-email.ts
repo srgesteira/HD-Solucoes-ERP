@@ -109,7 +109,7 @@ export async function sendAuthorizedNfeEmail(
   const brand =
     company?.trade_name?.trim() ||
     company?.company_name?.trim() ||
-    "HD Soluções";
+    "HD Industrial";
   const numero = nfe.nfe_number?.trim() || "";
   const danfeName = numero
     ? `DANFE-${numero.replace(/\D/g, "")}.pdf`

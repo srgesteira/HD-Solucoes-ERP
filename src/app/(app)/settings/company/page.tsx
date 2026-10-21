@@ -1419,7 +1419,7 @@ export default function CompanySettingsPage() {
                           smtp_from_name: e.target.value,
                         }))
                       }
-                      placeholder="HD Soluções Industriais"
+                      placeholder="HD Industrial"
                     />
                   </div>
                   <div className="space-y-1">

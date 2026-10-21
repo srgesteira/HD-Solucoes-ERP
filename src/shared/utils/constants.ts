@@ -1,6 +1,6 @@
 export const APP_NAME = "ERP HD";
-export const APP_FULL_NAME = "ERP HD Soluções Industriais";
-export const COMPANY_NAME = "HD Soluções Industriais";
+export const APP_FULL_NAME = "ERP HD Industrial";
+export const COMPANY_NAME = "HD Industrial";
 
 /** Identificador interno do produto. */
 export const VERTICAL_ID = "industrial";

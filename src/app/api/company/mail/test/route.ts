@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   try {
     const result = await sendOutboundEmail({
       to: [to],
-      subject: "Teste de e-mail — ERP HD Soluções",
+      subject: "Teste de e-mail — ERP HD Industrial",
       html: `<p>Este é um teste do Zoho Mail ligado ao ERP.</p><p>Se recebeu esta mensagem, o envio de orçamentos, pedidos de compra e DANFE/XML está pronto.</p>`,
       mail,
     });

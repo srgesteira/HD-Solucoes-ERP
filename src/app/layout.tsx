@@ -5,11 +5,11 @@ import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: {
-    default: "ERP HD Soluções Industriais",
+    default: "ERP HD Industrial",
     template: "%s · ERP HD",
   },
   description:
-    "Sistema corporativo HD Soluções Industriais — PCP, vendas, compras, produção e financeiro.",
+    "Sistema corporativo HD Industrial — PCP, vendas, compras, produção e financeiro.",
 };
 
 export const viewport: Viewport = {

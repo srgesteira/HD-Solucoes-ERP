@@ -29,7 +29,7 @@ function escapeHtml(s: string): string {
  */
 export function buildFinanceAlertMessage(checks: FinanceAlertChecks): string {
   const lines: string[] = [];
-  lines.push("<b>📊 Resumo financeiro — HD Soluções</b>");
+  lines.push("<b>📊 Resumo financeiro — HD Industrial</b>");
   lines.push("");
 
   // 1. Colisão de caixa futura
@@ -81,6 +81,31 @@ export function buildFinanceAlertMessage(checks: FinanceAlertChecks): string {
           o.supplier_name ?? "fornecedor não informado"
         )} · ${money(o.total)}`
       );
+    }
+  }
+
+  // 6. Orçamentos para cobrar
+  const sq = checks.staleQuotes;
+  if (sq.fullList || sq.quotes.length > 0) {
+    lines.push("");
+    lines.push(
+      sq.fullList
+        ? "💼 <b>Orçamentos para cobrar (7+ dias sem resposta)</b>"
+        : "💼 <b>Orçamentos para cobrar hoje</b>"
+    );
+    if (sq.quotes.length === 0) {
+      lines.push("Nenhum orçamento parado. 👏");
+    } else {
+      for (const q of sq.quotes) {
+        lines.push(
+          `${q.days_idle >= 21 ? "🔴" : "🟡"} ${escapeHtml(q.quote_number)} · ${escapeHtml(q.client_name)} · ${money(
+            q.total
+          )} · ${q.days_idle} dias`
+        );
+      }
+      if (sq.fullList) {
+        lines.push(`Total parado: <b>${money(sq.totalOpenValue)}</b>. Uma ligação ou WhatsApp hoje destrava.`);
+      }
     }
   }
 
