@@ -1,7 +1,6 @@
 import { ImapFlow, type FetchMessageObject } from "imapflow";
 import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
-import MailComposer from "nodemailer/lib/mail-composer";
 import type { OutboundMailConfig } from "@/shared/utils/email/mail-config";
 
 /**
@@ -201,16 +200,8 @@ export async function sendMessage(cfg: OutboundMailConfig, args: SendArgs): Prom
   });
   const info = await transport.sendMail(mail);
 
-  // Cópia em Enviados para aparecer no Zoho como qualquer outro e-mail.
-  let saved = "cópia em Enviados: ok";
-  try {
-    const raw = await new MailComposer({ ...mail, messageId: info.messageId }).compile().build();
-    await withImap(cfg, async (c) => {
-      const path = await folderPath(c, "sent");
-      await c.append(path, raw, ["\\Seen"]);
-    });
-  } catch (e) {
-    saved = "cópia em Enviados falhou: " + (e instanceof Error ? e.message : String(e));
-  }
+  // O Zoho já guarda cópia em Enviados dos e-mails enviados por SMTP
+  // (configuração "Salvar uma cópia dos e-mails enviados"), então não duplicamos.
+  const saved = `id ${info.messageId}`;
   return `Enviado para ${args.to.join(", ")}${args.cc?.length ? " (cc " + args.cc.join(", ") + ")" : ""} | ${subject} | ${saved}`;
 }
