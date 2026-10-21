@@ -854,6 +854,22 @@ export async function PUT(request: NextRequest, { params }: Params) {
       );
     }
   }
+  if (newStatus === "cancelled" && prevStatus !== "cancelled") {
+    // Pedido cancelado não pode deixar previsão de recebimento para trás.
+    const { error: cancelRecvErr } = await admin
+      .from("receivables")
+      .update({ status: "cancelled" })
+      .eq("tenant_id", tenantId)
+      .eq("sales_order_id", id)
+      .eq("status", "pending")
+      .eq("paid_amount", 0);
+    if (cancelRecvErr) {
+      console.warn(
+        "[sales-order] Falha ao cancelar recebíveis do pedido cancelado:",
+        cancelRecvErr.message
+      );
+    }
+  }
   if (
     (newStatus === "cancelled" || newStatus === "shipped") &&
     prevStatus !== newStatus

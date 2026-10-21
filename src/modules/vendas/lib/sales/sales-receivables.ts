@@ -112,7 +112,29 @@ export async function syncReceivablesForSalesOrder(
     const newDue = targets.dueDates[idx];
     const newDoc = targets.documentNumbers[idx];
     const newDesc = targets.descriptions[idx];
-    if (newAmt === undefined || !newDue) continue;
+    if (newAmt === undefined || !newDue) {
+      // Parcela a mais (o número de parcelas diminuiu): cancela se ainda for
+      // previsão pendente e sem pagamento; senão pede decisão manual.
+      const o = Number(row.original_amount ?? 0);
+      const c = Number(row.current_amount ?? 0);
+      const pd = Number(row.paid_amount ?? 0);
+      const untouched = row.status === "pending" && pd <= 0.001 && Math.abs(c - o) <= 0.001;
+      if (untouched) {
+        const { error } = await admin
+          .from("receivables")
+          .update({ status: "cancelled" })
+          .eq("id", row.id)
+          .eq("tenant_id", tenantId);
+        if (error) warnings.push(`Parcela ${row.installment_index}: ${error.message}`);
+        else updated += 1;
+      } else {
+        lockedSkipped += 1;
+        warnings.push(
+          `Parcela ${row.installment_index ?? "?"} (${row.status}) sobrou após reduzir parcelas — requer decisão manual.`
+        );
+      }
+      continue;
+    }
 
     const orig = Number(row.original_amount ?? 0);
     const cur = Number(row.current_amount ?? 0);
