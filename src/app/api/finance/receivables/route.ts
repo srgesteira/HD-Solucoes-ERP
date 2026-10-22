@@ -3,8 +3,9 @@ import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { requireMenuModule } from "@/modules/core/lib/api-guards";
-import { getCurrentTenantId } from "@/modules/core/lib/tenant";
+import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import { RECEIVABLE_STATUSES } from "@/modules/core/types/finance.types";
+import { z } from "zod";
 import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 import {
   isReceivablesListTab,
@@ -109,4 +110,90 @@ export async function GET(request: NextRequest) {
     pagination: { page, limit, total: count ?? 0 },
     tab: tab ?? undefined,
   });
+}
+
+const manualReceivableSchema = z.object({
+  client_name: z.string().trim().min(1, "Cliente é obrigatório"),
+  client_document: z.string().trim().nullable().optional(),
+  description: z.string().trim().nullable().optional(),
+  document_number: z.string().trim().nullable().optional(),
+  amount: z.coerce.number().positive("Valor inválido"),
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Vencimento inválido"),
+  issue_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  notes: z.string().trim().nullable().optional(),
+});
+
+/**
+ * Lança manualmente um título a receber avulso (ex.: parcela de nota já
+ * faturada que não foi gerada pelo pedido). Fica sem vínculo ao pedido
+ * (source_kind = "manual") para não ser alterado pela sincronização de
+ * parcelas do pedido de venda.
+ */
+export async function POST(request: NextRequest) {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return apiError("Não autenticado", 401);
+  const moduleDenied = await requireMenuModule("faturamento");
+  if (moduleDenied) return moduleDenied;
+
+  if (!(await isCurrentUserTenantAdmin())) {
+    return apiError("Apenas administradores podem lançar títulos avulsos.", 403);
+  }
+
+  const tenantId = await getCurrentTenantId();
+  if (!tenantId) return apiError("Tenant não encontrado", 403);
+
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    return apiError("Body inválido", 400);
+  }
+
+  const parsed = manualReceivableSchema.safeParse(raw);
+  if (!parsed.success) {
+    return apiError(
+      parsed.error.issues[0]?.message ?? "Dados inválidos",
+      400
+    );
+  }
+  const b = parsed.data;
+  const amount = Math.round(b.amount * 100) / 100;
+
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("receivables")
+    .insert({
+      tenant_id: tenantId,
+      sales_order_id: null,
+      source_kind: "manual",
+      is_forecast: false,
+      status: "pending",
+      client_name: b.client_name,
+      client_document: b.client_document ?? null,
+      description: b.description ?? null,
+      document_number: b.document_number ?? null,
+      original_amount: amount,
+      current_amount: amount,
+      paid_amount: 0,
+      due_date: b.due_date,
+      issue_date: b.issue_date ?? new Date().toISOString().slice(0, 10),
+      notes: b.notes ?? null,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    return apiError(
+      "Erro ao lançar conta a receber: " + error.message,
+      supabaseErrorToHttp(error.code)
+    );
+  }
+
+  return apiOk({ data }, 201);
 }
