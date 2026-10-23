@@ -31,6 +31,7 @@ import {
   purchaseOrderRowToPayablesInput,
 } from "@/modules/compras/lib/purchasing/purchase-payables";
 import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const dynamic = "force-dynamic";
 
@@ -463,7 +464,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         return apiError("Pedido cancelado não pode ser recebido.", 400);
       }
       transitioningToReceived = true;
-      updateData.actual_delivery = new Date().toISOString().slice(0, 10);
+      updateData.actual_delivery = todayIsoSaoPaulo();
     }
   }
 

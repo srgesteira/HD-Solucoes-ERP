@@ -10,6 +10,7 @@ import {
   round1,
   round2,
 } from "@/modules/core/lib/dashboard/period";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   const { from, to } = parseDashboardPeriod(request.nextUrl.searchParams);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIsoSaoPaulo();
   const horizon = addDaysIso(today, 30);
   const admin = createSupabaseAdminClient();
 

@@ -45,7 +45,7 @@ import { defaultExpectedDeliveryForOrder } from "@/modules/vendas/lib/sales/sale
 import { computeSalesOrderTotal } from "@/modules/vendas/lib/sales/sales-order-totals";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { paymentTotalWithFreight } from "@/shared/utils/payment-installment-amounts";
-import { formatShortDate } from "@/shared/utils/date";
+import { formatShortDate, todayIsoSaoPaulo } from "@/shared/utils/date";
 import {
   quoteLineItemCode,
   quoteLineItemName,
@@ -624,7 +624,7 @@ export default function SalesOrderDetailPage() {
   const [baumodal, setBaumodal] = useState<ReceivableRow | null>(null);
   const [recvAmount, setRecvAmount] = useState("");
   const [recvDate, setRecvDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
+    todayIsoSaoPaulo()
   );
   const [recvInterest, setRecvInterest] = useState("0");
   const [recvDiscount, setRecvDiscount] = useState("0");
@@ -633,7 +633,7 @@ export default function SalesOrderDetailPage() {
     if (baumodal) {
       const cur = baumodal.current_amount;
       setRecvAmount(cur > 0 ? String(cur.toFixed(2)) : "");
-      setRecvDate(new Date().toISOString().slice(0, 10));
+      setRecvDate(todayIsoSaoPaulo());
       setRecvInterest("0");
       setRecvDiscount("0");
     }

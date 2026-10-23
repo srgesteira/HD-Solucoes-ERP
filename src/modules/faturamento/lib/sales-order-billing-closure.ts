@@ -169,7 +169,7 @@ export async function closeSalesOrderBilling(
     }
   }
 
-  const actualDelivery = new Date().toISOString().slice(0, 10);
+  const actualDelivery = todayIsoSaoPaulo();
   const materialReady = so.ready_for_invoice === true;
   const markDelivered = closure === "without_invoice" || materialReady;
 

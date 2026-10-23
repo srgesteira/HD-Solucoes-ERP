@@ -24,6 +24,7 @@ import { installmentAmountsFromBody } from "@/shared/utils/payment-installment-a
 import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
 import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
 import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const dynamic = "force-dynamic";
 
@@ -162,7 +163,7 @@ export async function POST(request: NextRequest) {
 
   const order_date =
     b.order_date === undefined || b.order_date === null
-      ? new Date().toISOString().slice(0, 10)
+      ? todayIsoSaoPaulo()
       : String(b.order_date).slice(0, 10);
 
   const expected_delivery =

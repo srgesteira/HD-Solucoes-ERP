@@ -44,6 +44,7 @@ import {
   FinanceTextCell,
   FINANCE_TABLE_WIDTHS,
 } from "@/components/finance/finance-table-ui";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Payable = {
   id: string;
@@ -152,7 +153,7 @@ export function PayablesPanel({
     category: "Geral",
     supplier_id: "",
     original_amount: "",
-    due_date: new Date().toISOString().slice(0, 10),
+    due_date: todayIsoSaoPaulo(),
     notes: "",
   });
 
@@ -261,7 +262,7 @@ export function PayablesPanel({
       category: "Geral",
       supplier_id: "",
       original_amount: "",
-      due_date: new Date().toISOString().slice(0, 10),
+      due_date: todayIsoSaoPaulo(),
       notes: "",
     });
     void load();

@@ -13,6 +13,7 @@ import {
   parseShippingType,
   parseValidityDays,
 } from "@/modules/vendas/lib/sales/quote-validity";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export type ParsedQuoteHeader = {
   customer_id: string;
@@ -51,7 +52,7 @@ export function parseQuoteHeaderFromBody(
 
   const quote_date =
     b.quote_date === undefined || b.quote_date === null
-      ? new Date().toISOString().slice(0, 10)
+      ? todayIsoSaoPaulo()
       : String(b.quote_date).slice(0, 10);
 
   const validityParsed = parseValidityDays(b.validity_days, 30);

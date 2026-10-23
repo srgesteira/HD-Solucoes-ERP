@@ -8,6 +8,7 @@ import {
 } from "@/modules/fiscal/lib/bling/bling-nfe-status";
 import { applyBlingNfeSnapshot } from "@/modules/fiscal/lib/bling/bling-apply-status";
 import { digitsOnly } from "@/modules/fiscal/lib/bling/bling-catalog";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
 
@@ -31,7 +32,7 @@ export async function searchBlingNfeForErpOrder(
     limite: "100",
     idContato: String(contactId),
     dataEmissaoInicial: from.toISOString().slice(0, 10),
-    dataEmissaoFinal: new Date().toISOString().slice(0, 10),
+    dataEmissaoFinal: todayIsoSaoPaulo(),
   });
   const listed = await blingGet(admin, tenantId, `/nfe?${qs.toString()}`);
   const rows = Array.isArray((listed as { data?: unknown }).data)

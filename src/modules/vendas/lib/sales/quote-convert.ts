@@ -9,6 +9,7 @@ import {
 import { fetchCustomerForTenant } from "@/modules/vendas/lib/sales/quote-customer";
 import { applyFiscalToSalesOrderItems } from "@/modules/fiscal/lib/fiscal-rules-service";
 import { sortQuoteItemsByLineNumber } from "@/modules/vendas/lib/sales/quote-items-order";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export type ConvertQuoteOptions = {
   payment_installments?: number;
@@ -106,7 +107,7 @@ export async function convertQuoteToSalesOrder(
     };
   }
 
-  const order_date = new Date().toISOString().slice(0, 10);
+  const order_date = todayIsoSaoPaulo();
 
   const expectedDelivery =
     typeof quoteRow.expected_delivery_date === "string" &&

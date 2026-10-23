@@ -8,6 +8,18 @@ import type { ReceivableUpdate } from "@/modules/core/types/finance.types";
 import { RECEIVABLE_STATUSES } from "@/modules/core/types/finance.types";
 import { buildReceivableMovementDescription } from "@/modules/finance/lib/financial-movements";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import { correctSettlementDate } from "@/modules/finance/lib/settlement-date-correction";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
+
+/** Campos que podem ser corrigidos num título já recebido (não mexem em valores). */
+const CLOSED_EDITABLE_FIELDS = new Set([
+  "payment_date",
+  "notes",
+  "description",
+  "document_number",
+  "client_name",
+  "client_document",
+]);
 
 export const dynamic = "force-dynamic";
 
@@ -102,10 +114,71 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
   if (!current) return apiError("Título não encontrado", 404);
 
-  if (
-    current.status === "paid" ||
-    current.status === "cancelled"
-  ) {
+  if (current.status === "paid") {
+    // Título recebido: só correções que não mexem em valores (data real do
+    // recebimento, cliente, descrição, notas). A data também corrige o extrato.
+    const keys = Object.keys(b).filter((k) => b[k] !== undefined);
+    if (keys.length === 0 || keys.some((k) => !CLOSED_EDITABLE_FIELDS.has(k))) {
+      return apiError("Título encerrado; não permite alteração de valores", 400);
+    }
+    let notesForAudit: string | null =
+      b.notes !== undefined
+        ? b.notes === null
+          ? null
+          : String(b.notes).trim() || null
+        : (current.notes as string | null);
+    const newPayDate =
+      typeof b.payment_date === "string" && b.payment_date.trim()
+        ? b.payment_date.slice(0, 10)
+        : null;
+    if (newPayDate && newPayDate !== current.payment_date) {
+      if (!(await isCurrentUserTenantAdmin())) {
+        return apiError("Apenas administradores podem corrigir a data de um recebimento já efetuado.", 403);
+      }
+      const fix = await correctSettlementDate(admin, {
+        tenantId,
+        sourceKind: "receivable",
+        sourceId: id,
+        newDate: newPayDate,
+        previousDate: current.payment_date as string | null,
+        previousNotes: notesForAudit,
+      });
+      if (!fix.ok) return apiError(fix.message, fix.status);
+      notesForAudit = null; // já gravadas pela correção
+    }
+    const closedUpdate: ReceivableUpdate = {};
+    if (b.description !== undefined)
+      closedUpdate.description = b.description === null ? null : String(b.description);
+    if (b.document_number !== undefined)
+      closedUpdate.document_number = b.document_number === null ? null : String(b.document_number);
+    if (b.client_name !== undefined)
+      closedUpdate.client_name = b.client_name === null ? null : String(b.client_name);
+    if (b.client_document !== undefined)
+      closedUpdate.client_document = b.client_document === null ? null : String(b.client_document);
+    if (b.notes !== undefined && notesForAudit !== null) closedUpdate.notes = notesForAudit;
+    if (Object.keys(closedUpdate).length > 0) {
+      const { error: updErr } = await admin
+        .from("receivables")
+        .update(closedUpdate)
+        .eq("id", id)
+        .eq("tenant_id", tenantId);
+      if (updErr) {
+        return apiError(
+          "Erro ao atualizar título: " + updErr.message,
+          supabaseErrorToHttp(updErr.code)
+        );
+      }
+    }
+    const { data: closedDetail } = await admin
+      .from("receivables")
+      .select(DETAIL_SELECT)
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    return apiOk({ data: closedDetail });
+  }
+
+  if (current.status === "cancelled") {
     return apiError("Título encerrado; não permite alteração de valores", 400);
   }
 
@@ -211,7 +284,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const payDateRaw =
       typeof b.payment_date === "string" && b.payment_date.trim()
         ? String(b.payment_date).slice(0, 10)
-        : new Date().toISOString().slice(0, 10);
+        : todayIsoSaoPaulo();
 
     settlement = {
       amount: recv,

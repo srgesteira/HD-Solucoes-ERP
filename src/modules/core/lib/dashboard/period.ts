@@ -2,6 +2,7 @@ import {
   addDaysIso as addDaysIsoFromRange,
   currentMonthRange,
 } from "@/modules/core/lib/dashboard/month-range";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 /** Reexport explícito (compatível com Turbopack em rotas API). */
 export function addDaysIso(iso: string, days: number): string {
@@ -19,7 +20,7 @@ export type DashboardPeriodRange = {
 
 /** Últimos 90 dias até hoje (para lead time de compras, etc.). */
 export function last90DaysRange(): { from: string; to: string } {
-  const to = new Date().toISOString().slice(0, 10);
+  const to = todayIsoSaoPaulo();
   return { from: addDaysIsoFromRange(to, -90), to };
 }
 

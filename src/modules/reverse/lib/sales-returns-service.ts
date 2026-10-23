@@ -8,6 +8,7 @@ import type {
   SalesReturnReason,
   SalesReturnStatus,
 } from "./returns-types";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 /**
  * §10.1 — devolução de venda.
@@ -272,7 +273,7 @@ export async function receiveSalesReturn(
       description: `Reembolso devolução ${args.returnId}`,
       original_amount: Number(r.total_value),
       current_amount: Number(r.total_value),
-      due_date: new Date().toISOString().slice(0, 10),
+      due_date: todayIsoSaoPaulo(),
       source_kind: "sales_return",
       status: "pending",
       is_forecast: false,

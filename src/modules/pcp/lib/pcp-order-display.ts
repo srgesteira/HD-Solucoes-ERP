@@ -17,7 +17,7 @@ function dateOnly(v: string | null | undefined): string | null {
   return s.length >= 10 ? s : null;
 }
 
-const todayYmd = () => new Date().toISOString().slice(0, 10);
+const todayYmd = () => todayIsoSaoPaulo();
 
 function isPastDeadline(d: string): boolean {
   return d < todayYmd();
@@ -304,7 +304,7 @@ export function pcpDeadlineCellClass(deadline: string | null): string {
   return pcpDeadlineProximityClass(deadline);
 }
 
-import { formatShortDate } from "@/shared/utils/date";
+import { formatShortDate, todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export function formatPcpDate(d: string | null | undefined): string {
   if (!d) return "—";

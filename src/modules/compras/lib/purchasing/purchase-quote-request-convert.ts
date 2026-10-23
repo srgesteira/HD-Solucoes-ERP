@@ -7,6 +7,7 @@ import {
   roundMoney,
 } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import { computePurchaseOrderTotal } from "@/modules/compras/lib/purchasing/purchase-order-totals";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
 
@@ -180,7 +181,7 @@ export async function convertPurchaseQuoteRequestToOrder(
     });
   }
 
-  const orderDate = new Date().toISOString().slice(0, 10);
+  const orderDate = todayIsoSaoPaulo();
   const expectedDelivery = request.need_date
     ? String(request.need_date).slice(0, 10)
     : items

@@ -5,6 +5,7 @@ import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
   const start_date =
     typeof b.start_date === "string" && b.start_date.trim()
       ? b.start_date.slice(0, 10)
-      : new Date().toISOString().slice(0, 10);
+      : todayIsoSaoPaulo();
 
   const end_date =
     b.end_date == null || b.end_date === ""

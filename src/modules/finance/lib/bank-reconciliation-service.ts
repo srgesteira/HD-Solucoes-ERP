@@ -6,6 +6,7 @@ import {
   buildReceivableMovementDescription,
   recordFinancialMovement,
 } from "@/modules/finance/lib/financial-movements";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
 
@@ -20,7 +21,7 @@ function roundMoney(n: number): number {
 }
 
 function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayIsoSaoPaulo();
 }
 
 function receivableStatusAfterBalance(
@@ -211,7 +212,7 @@ async function reverseReceivableSettlement(
 
   const movementDate =
     opts?.movementDate?.slice(0, 10) ||
-    new Date().toISOString().slice(0, 10);
+    todayIsoSaoPaulo();
   await recordFinancialMovement(admin, {
     tenantId,
     direction: "out",
@@ -312,7 +313,7 @@ async function reversePayableSettlement(
 
   const movementDate =
     opts?.movementDate?.slice(0, 10) ||
-    new Date().toISOString().slice(0, 10);
+    todayIsoSaoPaulo();
   await recordFinancialMovement(admin, {
     tenantId,
     direction: "in",

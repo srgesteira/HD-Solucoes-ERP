@@ -5,6 +5,7 @@ import { countPurchaseRequisitions } from "@/modules/compras/lib/purchasing-requ
 import { ENGINEERING_STATUS_PENDING } from "@/modules/engenharia/lib/products/engineering-workflow";
 import { loadDataHealthIssues } from "@/modules/core/lib/data-health/data-health";
 import { loadOnboardingState } from "@/modules/core/lib/onboarding/onboarding-state";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 /** Caminhos do menu lateral com contador de actividade em aberto. */
 export const MENU_ALERT_PATHS = {
@@ -67,7 +68,7 @@ function maxLevel(a: MenuAlertLevel, b: MenuAlertLevel): MenuAlertLevel {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayIsoSaoPaulo();
 }
 
 function countLabel(count: number, singular: string, plural: string): string {

@@ -15,6 +15,7 @@ import {
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
 import { usePermissions } from "@/hooks/use-permissions";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Entry = {
   id: string;
@@ -42,7 +43,7 @@ export default function FinanceCashFlowEntriesPage() {
     type: "in" as "in" | "out",
     description: "",
     amount: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: todayIsoSaoPaulo(),
     category: "",
   });
 
@@ -108,7 +109,7 @@ export default function FinanceCashFlowEntriesPage() {
       type: "in",
       description: "",
       amount: "",
-      date: new Date().toISOString().slice(0, 10),
+      date: todayIsoSaoPaulo(),
       category: "",
     });
     void load();

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
 
@@ -43,7 +44,7 @@ export function computePurchaseNeedDate(
   if (!pcp) return null;
   const lead = Math.max(0, Number(leadTimeDays ?? 0));
   const need = subtractDays(pcp, lead);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIsoSaoPaulo();
   return need < today ? today : need;
 }
 

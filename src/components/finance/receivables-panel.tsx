@@ -45,6 +45,7 @@ import {
   isReceivablesListTab,
   type ReceivablesListTab,
 } from "@/modules/faturamento/lib/receivables-list-tabs";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 function initialReceivableTab(
   searchParams: URLSearchParams,
@@ -132,7 +133,7 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
   const [recvOpen, setRecvOpen] = useState<ReceivableRow | null>(null);
   const [recvAmount, setRecvAmount] = useState("");
   const [recvDate, setRecvDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
+    todayIsoSaoPaulo()
   );
   const [recvInterest, setRecvInterest] = useState("");
   const [recvDiscount, setRecvDiscount] = useState("");
@@ -236,7 +237,7 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
     setRecvAmount("");
     setRecvInterest("");
     setRecvDiscount("");
-    setRecvDate(new Date().toISOString().slice(0, 10));
+    setRecvDate(todayIsoSaoPaulo());
     void load();
   }
 
@@ -439,7 +440,7 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
                   setRecvAmount(String(row.current_amount));
                   setRecvInterest("");
                   setRecvDiscount("");
-                  setRecvDate(new Date().toISOString().slice(0, 10));
+                  setRecvDate(todayIsoSaoPaulo());
                 }}
                 onEdit={() => setEditOpen(row)}
                 onDelete={() => void removeRow(row.id)}
