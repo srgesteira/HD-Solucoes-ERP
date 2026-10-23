@@ -68,7 +68,13 @@ export async function correctSettlementDate(
     };
   }
 
-  if (rows.length === 1 && rows[0].movement_date !== newDate) {
+  const movementChanged = rows.length === 1 && rows[0].movement_date !== newDate;
+  const titleChanged = (input.previousDate ?? null) !== newDate;
+  if (!movementChanged && !titleChanged) {
+    return { ok: true, movementsUpdated: 0 };
+  }
+
+  if (movementChanged) {
     const { error: updMovErr } = await db
       .from("financial_movements")
       .update({ movement_date: newDate })
@@ -85,8 +91,11 @@ export async function correctSettlementDate(
 
   const table = input.sourceKind === "payable" ? "accounts_payable" : "receivables";
   const label = input.sourceKind === "payable" ? "pagamento" : "recebimento";
+  const previousShown = movementChanged
+    ? rows[0].movement_date
+    : input.previousDate ?? null;
   const auditNote = `Data de ${label} corrigida de ${formatShortDate(
-    input.previousDate ?? rows[0]?.movement_date ?? null
+    previousShown
   )} para ${formatShortDate(newDate)} em ${formatShortDate(todayIsoSaoPaulo())}.`;
   const notes = input.previousNotes?.trim()
     ? `${input.previousNotes.trim()}\n${auditNote}`
@@ -106,5 +115,5 @@ export async function correctSettlementDate(
     };
   }
 
-  return { ok: true, movementsUpdated: rows.length };
+  return { ok: true, movementsUpdated: movementChanged ? 1 : 0 };
 }

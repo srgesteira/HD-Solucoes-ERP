@@ -131,7 +131,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       typeof b.payment_date === "string" && b.payment_date.trim()
         ? b.payment_date.slice(0, 10)
         : null;
-    if (newPayDate && newPayDate !== current.payment_date) {
+    if (newPayDate) {
       if (!(await isCurrentUserTenantAdmin())) {
         return apiError("Apenas administradores podem corrigir a data de um recebimento já efetuado.", 403);
       }

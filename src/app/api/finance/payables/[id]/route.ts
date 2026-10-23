@@ -68,8 +68,7 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
   if (
     row.status === "paid" &&
     b.payment_date &&
-    b.pay_amount == null &&
-    b.payment_date !== row.payment_date
+    b.pay_amount == null
   ) {
     if (!(await isCurrentUserTenantAdmin())) {
       return apiError("Apenas administradores podem corrigir a data de um pagamento já efetuado.", 403);
