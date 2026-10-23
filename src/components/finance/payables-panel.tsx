@@ -36,6 +36,7 @@ import {
 import { formatShortFinanceDescription } from "@/modules/finance/lib/finance-line-format";
 import { FinanceRowActions } from "@/components/finance/finance-row-actions";
 import { FinanceTitleEditDialog } from "@/components/finance/finance-title-edit-dialog";
+import { SettlementDateFixDialog } from "@/components/finance/settlement-date-fix-dialog";
 import {
   FinanceAmountCell,
   FinanceBalanceCell,
@@ -144,6 +145,8 @@ export function PayablesPanel({
   const setShowNew = onShowNewChange ?? setShowNewInternal;
   const [payOpen, setPayOpen] = useState<Payable | null>(null);
   const [payAmount, setPayAmount] = useState("");
+  const [payDate, setPayDate] = useState(() => todayIsoSaoPaulo());
+  const [fixDateOpen, setFixDateOpen] = useState<Payable | null>(null);
   const [editOpen, setEditOpen] = useState<Payable | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -306,7 +309,7 @@ export function PayablesPanel({
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pay_amount: amt }),
+      body: JSON.stringify({ pay_amount: amt, payment_date: payDate || undefined }),
     });
     const j = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) {
@@ -632,18 +635,20 @@ export function PayablesPanel({
                   render: (r) => {
                     const open =
                       r.status !== "paid" && r.status !== "cancelled";
+                    const canFixDate = isAdmin && r.status === "paid";
                     return (
                       <FinanceRowActions
                         canSettle={open}
-                        canEdit={open}
+                        canEdit={open || canFixDate}
                         canDelete={isAdmin}
                         deleting={deletingId === r.id}
                         settleLabel="Concretizar pagamento"
                         onSettle={() => {
                           setPayOpen(r);
                           setPayAmount(String(r.current_amount));
+                          setPayDate(todayIsoSaoPaulo());
                         }}
-                        onEdit={() => setEditOpen(r)}
+                        onEdit={() => (open ? setEditOpen(r) : setFixDateOpen(r))}
                         onDelete={() => void removeRow(r.id)}
                       />
                     );
@@ -668,6 +673,21 @@ export function PayablesPanel({
         onSave={submitEdit}
       />
 
+      <SettlementDateFixDialog
+        kind="payable"
+        target={
+          fixDateOpen
+            ? {
+                id: fixDateOpen.id,
+                label: fixDateOpen.description,
+                paymentDate: fixDateOpen.payment_date,
+              }
+            : null
+        }
+        onClose={() => setFixDateOpen(null)}
+        onSaved={() => void load()}
+      />
+
       {payOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <Card className="w-full max-w-md">
@@ -685,6 +705,13 @@ export function PayablesPanel({
                   step="0.01"
                   value={payAmount}
                   onChange={(e) => setPayAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Data do pagamento</Label>
+                <BrDateInput
+                  value={payDate || null}
+                  onChange={(iso) => setPayDate(iso ?? "")}
                 />
               </div>
               <div className="flex justify-end gap-2">
