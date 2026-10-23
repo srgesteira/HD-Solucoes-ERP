@@ -37,6 +37,7 @@ import {
   FINANCE_TABLE_WIDTHS,
 } from "@/components/finance/finance-table-ui";
 import { FinanceRowActions } from "@/components/finance/finance-row-actions";
+import { SettlementDateFixDialog } from "@/components/finance/settlement-date-fix-dialog";
 import { FinanceTitleEditDialog } from "@/components/finance/finance-title-edit-dialog";
 import {
   RECEIVABLES_LIST_TABS,
@@ -68,6 +69,7 @@ type ReceivableRow = {
   sales_order_id: string | null;
   due_date?: string | null;
   is_forecast?: boolean;
+  payment_date?: string | null;
 };
 
 const RECEIVABLE_STATUS_LABELS: Record<string, string> = {
@@ -138,6 +140,7 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
   const [recvInterest, setRecvInterest] = useState("");
   const [recvDiscount, setRecvDiscount] = useState("");
   const [editOpen, setEditOpen] = useState<ReceivableRow | null>(null);
+  const [fixDateOpen, setFixDateOpen] = useState<ReceivableRow | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const limit = 25;
@@ -428,10 +431,11 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
             const open =
               row.is_forecast !== true &&
               (row.status === "pending" || row.status === "partial");
+            const canFixDate = isAdmin && row.status === "paid";
             return (
               <FinanceRowActions
                 canSettle={open}
-                canEdit={open}
+                canEdit={open || canFixDate}
                 canDelete={isAdmin}
                 deleting={deletingId === row.id}
                 settleLabel="Concretizar recebimento"
@@ -442,7 +446,7 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
                   setRecvDiscount("");
                   setRecvDate(todayIsoSaoPaulo());
                 }}
-                onEdit={() => setEditOpen(row)}
+                onEdit={() => (open ? setEditOpen(row) : setFixDateOpen(row))}
                 onDelete={() => void removeRow(row.id)}
               />
             );
@@ -507,6 +511,23 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
         saving={editSaving}
         onClose={() => setEditOpen(null)}
         onSave={submitEdit}
+      />
+
+      <SettlementDateFixDialog
+        kind="receivable"
+        target={
+          fixDateOpen
+            ? {
+                id: fixDateOpen.id,
+                label: [fixDateOpen.client_name, fixDateOpen.description]
+                  .filter(Boolean)
+                  .join(" — "),
+                paymentDate: fixDateOpen.payment_date ?? null,
+              }
+            : null
+        }
+        onClose={() => setFixDateOpen(null)}
+        onSaved={() => void load()}
       />
 
       {recvOpen ? (
