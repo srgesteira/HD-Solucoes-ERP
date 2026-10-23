@@ -21,7 +21,7 @@ import {
   SortableTable,
   type SortableTableColumn,
 } from "@/shared/ui/sortable-table";
-import { formatShortDate } from "@/shared/utils/date";
+import { formatShortDate, todayIsoSaoPaulo } from "@/shared/utils/date";
 import {
   PurchaseOrderItemsEditor,
   buildQuoteRequestItemsPayload,
@@ -38,7 +38,7 @@ import {
 export const quoteRequestsQueryKey = ["purchasing-quote-requests"] as const;
 
 function todayISODate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayIsoSaoPaulo();
 }
 
 function formatDate(iso: string | null | undefined): string {

@@ -30,9 +30,10 @@ import {
 } from "@/modules/vendas/lib/sales/quote-line-pricing";
 import { fmtBRL } from "@/shared/utils/format-brl";
 import { NumericInput } from "@/shared/ui/numeric-input";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 function todayISODate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayIsoSaoPaulo();
 }
 
 async function fetchSuggestion(): Promise<string> {

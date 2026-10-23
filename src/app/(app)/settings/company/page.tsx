@@ -20,6 +20,7 @@ import {
 import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import type { Tables } from "@/modules/core/types/database";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type CompanyRow = Tables<"company_settings"> & {
   focusnfe_configured?: boolean;
@@ -428,7 +429,7 @@ export default function CompanySettingsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `export-lgpd-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `export-lgpd-${todayIsoSaoPaulo()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Download iniciado.");

@@ -22,6 +22,7 @@ import {
   matchesUniversalSearchRow,
   parseUniversalSearch,
 } from "@/shared/utils/universal-search";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type FixedExpense = {
   id: string;
@@ -52,7 +53,7 @@ const EMPTY_FORM = (): FormState => ({
   due_day: "10",
   cost_center_type: "fixed",
   is_active: true,
-  start_date: new Date().toISOString().slice(0, 10),
+  start_date: todayIsoSaoPaulo(),
   end_date: "",
   override_competencia: new Date().toISOString().slice(0, 7),
   override_amount: "",

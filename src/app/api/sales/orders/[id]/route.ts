@@ -53,6 +53,7 @@ import {
   reserveFinishedGoodsForSalesOrder,
 } from "@/modules/almoxarifado/lib/inventory-reservations";
 import { parseSalesOrderDeliveryAddressBody } from "@/modules/vendas/lib/sales/sales-order-delivery-address";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const dynamic = "force-dynamic";
 
@@ -601,6 +602,21 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (!data) return apiError("Pedido não encontrado", 404);
   }
 
+  // Troca de cliente/faturamento no pedido: as contas a receber do pedido passam
+  // a mostrar o novo cliente (antes ficavam com o nome antigo no extrato).
+  if (updateData.client_name !== undefined || updateData.client_document !== undefined) {
+    const recvUpdate: { client_name?: string; client_document?: string | null } = {};
+    if (updateData.client_name !== undefined) recvUpdate.client_name = updateData.client_name as string;
+    if (updateData.client_document !== undefined)
+      recvUpdate.client_document = (updateData.client_document as string | null) ?? null;
+    await admin
+      .from("receivables")
+      .update(recvUpdate)
+      .eq("tenant_id", tenantId)
+      .eq("sales_order_id", id)
+      .neq("status", "cancelled");
+  }
+
   if (updateData.discount !== undefined || itemsReplaced) {
     const totals = await recalculateSalesOrderHeaderTotals(admin, tenantId, id);
     if (totals.error) return apiError(totals.error, 500);
@@ -667,7 +683,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
               : null,
         }
       );
-      const confirmDate = new Date().toISOString().slice(0, 10);
+      const confirmDate = todayIsoSaoPaulo();
       const nextDelivery = computeExpectedDeliveryFromConfirmation(
         confirmDate,
         leadDays
@@ -833,7 +849,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       const deliveryDate =
         typeof detailRow.actual_delivery === "string"
           ? detailRow.actual_delivery
-          : new Date().toISOString().slice(0, 10);
+          : todayIsoSaoPaulo();
       if (
         typeof detailRow.actual_delivery !== "string" ||
         !detailRow.actual_delivery

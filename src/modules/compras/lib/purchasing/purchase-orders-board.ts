@@ -8,6 +8,7 @@ import {
   matchesUniversalSearchRow,
   parseUniversalSearch,
 } from "@/shared/utils/universal-search";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
 
@@ -34,7 +35,7 @@ export function computeOrderSituation(
   status: string,
   expectedDelivery: string | null
 ): OrderSituation {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIsoSaoPaulo();
   const st = status.toLowerCase();
   if (st === "received" || st === "cancelled") return "on_time";
   const exp = dateOnly(expectedDelivery);

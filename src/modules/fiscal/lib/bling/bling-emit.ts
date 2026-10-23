@@ -54,6 +54,7 @@ import {
   readBlingNfeValorNota,
 } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
 
@@ -266,7 +267,7 @@ async function listReusableBlingNfeIds(
     tipo: "1",
     idContato: String(contactId),
     dataEmissaoInicial: from.toISOString().slice(0, 10),
-    dataEmissaoFinal: new Date().toISOString().slice(0, 10),
+    dataEmissaoFinal: todayIsoSaoPaulo(),
   });
   const listed = await blingGet(admin, tenantId, `/nfe?${qs.toString()}`);
   const ids: number[] = [];

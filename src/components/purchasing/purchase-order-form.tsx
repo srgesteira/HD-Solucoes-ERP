@@ -31,7 +31,7 @@ import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purcha
 import { aggregatePurchaseLineTaxes } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 import { computePurchaseOrderTotal } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 import { fmtBRL } from "@/shared/utils/format-brl";
-import { formatShortDate } from "@/shared/utils/date";
+import { formatShortDate, todayIsoSaoPaulo } from "@/shared/utils/date";
 export type PurchaseOrderFormData = {
   id: string;
   po_number: string;
@@ -111,7 +111,7 @@ type Props = {
 };
 
 function todayISODate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayIsoSaoPaulo();
 }
 
 type OrderItemRow = NonNullable<PurchaseOrderFormData["items"]>[number];

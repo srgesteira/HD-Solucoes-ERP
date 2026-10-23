@@ -24,6 +24,7 @@ import {
   consultarNfeViaBling,
   emitirNfeViaBling,
 } from "@/modules/fiscal/lib/bling/bling-emit";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export type FocusNFeEnv = "homologacao" | "producao";
 
@@ -615,7 +616,7 @@ export async function emitirNFe(
         desc || `Pedido de venda — total R$ ${Number(so.total ?? 0).toFixed(2)}`;
 
       payload = buildNfsePayloadFromSalesOrder({
-        orderDate: String(so.order_date ?? new Date().toISOString().slice(0, 10)),
+        orderDate: String(so.order_date ?? todayIsoSaoPaulo()),
         clientName: String(so.client_name ?? "Consumidor"),
         clientDocument:
           so.client_document == null ? null : String(so.client_document),
@@ -712,7 +713,7 @@ export async function emitirNFe(
 
       payload = buildNfeProductPayloadFromSalesOrder({
         documentType: docType,
-        orderDate: String(so.order_date ?? new Date().toISOString().slice(0, 10)),
+        orderDate: String(so.order_date ?? todayIsoSaoPaulo()),
         orderNumber: String(so.order_number ?? so.id),
         clientName: String(so.client_name ?? "Consumidor"),
         clientDocument:

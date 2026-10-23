@@ -7,6 +7,7 @@ import type {
   PurchaseReturnStatus,
   ReturnFinancialAction,
 } from "./returns-types";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 /**
  * §10.3 — devolução de compra ao fornecedor.
@@ -278,8 +279,8 @@ export async function shipPurchaseReturn(
           : `Crédito do fornecedor — devolução ${args.returnId}`,
       original_amount: Number(r.total_value),
       current_amount: Number(r.total_value),
-      due_date: new Date().toISOString().slice(0, 10),
-      issue_date: new Date().toISOString().slice(0, 10),
+      due_date: todayIsoSaoPaulo(),
+      issue_date: todayIsoSaoPaulo(),
       source_kind: "purchase_return",
       status: "pending",
       is_forecast: false,

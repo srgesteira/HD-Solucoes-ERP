@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const PRODUCT_PRICE_TYPES = [
   "purchase",
@@ -34,7 +35,7 @@ export type RecordPriceHistoryInput = {
 };
 
 function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayIsoSaoPaulo();
 }
 
 /** Desloca posições 1..5 → 2..6 e remove a posição 6 anterior. */

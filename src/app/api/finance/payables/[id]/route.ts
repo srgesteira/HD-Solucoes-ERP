@@ -15,6 +15,8 @@ import {
 } from "@/modules/compras/lib/purchasing/purchase-payables";
 import { buildPayableMovementDescription } from "@/modules/finance/lib/financial-movements";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import { correctSettlementDate } from "@/modules/finance/lib/settlement-date-correction";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,37 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
   if (!row) return apiError("Registro não encontrado", 404);
 
   let current_amount = Number(row.current_amount ?? 0);
+
+  // Correção da data de uma conta JÁ paga (ex.: baixa em lote com a data de hoje):
+  // ajusta o título e o movimento do extrato, mantendo o valor.
+  if (
+    row.status === "paid" &&
+    b.payment_date &&
+    b.pay_amount == null &&
+    b.payment_date !== row.payment_date
+  ) {
+    if (!(await isCurrentUserTenantAdmin())) {
+      return apiError("Apenas administradores podem corrigir a data de um pagamento já efetuado.", 403);
+    }
+    const fix = await correctSettlementDate(admin, {
+      tenantId,
+      sourceKind: "payable",
+      sourceId: id,
+      newDate: b.payment_date,
+      previousDate: row.payment_date,
+      previousNotes: b.notes !== undefined ? b.notes : row.notes,
+    });
+    if (!fix.ok) return apiError(fix.message, fix.status);
+    b.payment_date = undefined;
+    if (b.notes !== undefined) b.notes = undefined;
+    const { data: fresh } = await admin
+      .from("accounts_payable")
+      .select("*")
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (fresh) Object.assign(row, fresh);
+  }
 
   if (b.adjust_amount != null && b.pay_amount != null) {
     return apiError(
@@ -138,8 +171,7 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const movementDate =
-      b.payment_date ?? new Date().toISOString().slice(0, 10);
+    const movementDate = b.payment_date ?? todayIsoSaoPaulo();
 
     const rpcAdmin = asUntypedAdmin(admin);
     const { data: settled, error: settleErr } = await rpcAdmin.rpc(
@@ -162,6 +194,20 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
       );
     }
     data = Array.isArray(settled) ? settled[0] : settled;
+
+    // fn_settle_payable grava payment_date = CURRENT_DATE (UTC do servidor) ao quitar;
+    // a data real é a informada na baixa (a mesma do movimento).
+    const settledRow = data as { status?: string; payment_date?: string | null } | null;
+    if (settledRow?.status === "paid" && settledRow.payment_date !== movementDate) {
+      const { data: fixedRow } = await admin
+        .from("accounts_payable")
+        .update({ payment_date: movementDate })
+        .eq("id", id)
+        .eq("tenant_id", tenantId)
+        .select("*")
+        .maybeSingle();
+      if (fixedRow) data = fixedRow;
+    }
   }
 
   return apiOk({ data });

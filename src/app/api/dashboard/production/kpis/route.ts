@@ -8,6 +8,7 @@ import {
   parseDashboardPeriod,
   round1,
 } from "@/modules/core/lib/dashboard/period";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 const WORKING_DAYS_PER_MONTH = 22;
 const HOURS_PER_DAY = 8;
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   const { from, to } = parseDashboardPeriod(request.nextUrl.searchParams);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIsoSaoPaulo();
   const admin = createSupabaseAdminClient();
 
   const { data: orders } = await admin

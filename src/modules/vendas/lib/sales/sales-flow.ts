@@ -16,6 +16,7 @@ import {
   resolveInstallmentAmounts,
   splitAmountInInstallments,
 } from "@/shared/utils/payment-installment-amounts";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export { splitAmountInInstallments };
 
@@ -56,7 +57,7 @@ export function defaultExpectedDeliveryForOrder(
   const base =
     orderDate && String(orderDate).slice(0, 10).length >= 10
       ? String(orderDate).slice(0, 10)
-      : new Date().toISOString().slice(0, 10);
+      : todayIsoSaoPaulo();
   return addDaysToISODate(base, fallbackDays);
 }
 

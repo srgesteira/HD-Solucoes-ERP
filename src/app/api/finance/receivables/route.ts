@@ -11,6 +11,7 @@ import {
   isReceivablesListTab,
   type ReceivablesListTab,
 } from "@/modules/faturamento/lib/receivables-list-tabs";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
   const tabRaw = searchParams.get("tab");
   const tab: ReceivablesListTab | null =
     tabRaw && isReceivablesListTab(tabRaw) ? tabRaw : null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIsoSaoPaulo();
 
   const page = Math.max(
     1,
@@ -182,7 +183,7 @@ export async function POST(request: NextRequest) {
       current_amount: amount,
       paid_amount: 0,
       due_date: b.due_date,
-      issue_date: b.issue_date ?? new Date().toISOString().slice(0, 10),
+      issue_date: b.issue_date ?? todayIsoSaoPaulo(),
       notes: b.notes ?? null,
     })
     .select("*")

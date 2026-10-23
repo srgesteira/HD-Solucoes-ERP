@@ -50,7 +50,7 @@ export function buildBlingNfeParcelas(
             source.payment_days_between_installments,
         });
   const fallbackDate =
-    dates[0] ?? source.order_date.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+    dates[0] ?? source.order_date.slice(0, 10) ?? todayIsoSaoPaulo();
   const formaId = Number(source.formaPagamentoId);
   const formaPagamento =
     Number.isFinite(formaId) && formaId > 0 ? { id: formaId } : undefined;

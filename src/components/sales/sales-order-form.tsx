@@ -51,6 +51,7 @@ import {
   type SalesOrderDeliveryAddress,
   validateDeliveryAddress,
 } from "@/modules/vendas/lib/sales/sales-order-delivery-address";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export type SalesOrderFormData = {
   id: string;
@@ -152,7 +153,7 @@ type Props = {
 };
 
 function todayISODate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayIsoSaoPaulo();
 }
 
 type OrderItemRow = NonNullable<SalesOrderFormData["items"]>[number];

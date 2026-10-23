@@ -34,6 +34,7 @@ import {
 } from "@/modules/vendas/lib/sales/sales-order-production-summary";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { assertLineTaxesUnchangedOutsideFaturamento } from "@/shared/auth/field-permissions";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const dynamic = "force-dynamic";
 
@@ -303,7 +304,7 @@ export async function POST(request: NextRequest) {
 
   const order_date =
     b.order_date === undefined || b.order_date === null
-      ? new Date().toISOString().slice(0, 10)
+      ? todayIsoSaoPaulo()
       : String(b.order_date).slice(0, 10);
 
   const expectedParsed = parseRequiredExpectedDelivery(b.expected_delivery);

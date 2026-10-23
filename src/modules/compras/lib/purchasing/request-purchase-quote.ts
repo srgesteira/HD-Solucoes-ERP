@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/modules/core/types/database";
 import { nextPurchaseQuoteRequestNumber } from "@/modules/compras/lib/purchasing/purchase-quote-request-number";
 import { matchesTokenSearch } from "@/shared/utils/universal-search";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
 
@@ -136,7 +137,7 @@ export async function createPurchaseQuoteRequest(
     }
   }
 
-  const requestDate = dateOnly(args.request_date) ?? new Date().toISOString().slice(0, 10);
+  const requestDate = dateOnly(args.request_date) ?? todayIsoSaoPaulo();
   const needDate = dateOnly(args.need_date);
   const requestNumber = await nextPurchaseQuoteRequestNumber(
     admin,
@@ -522,7 +523,7 @@ export async function updatePurchaseQuoteRequest(
   }
 
   const requestDate =
-    dateOnly(args.request_date) ?? new Date().toISOString().slice(0, 10);
+    dateOnly(args.request_date) ?? todayIsoSaoPaulo();
   const needDate = dateOnly(args.need_date);
 
   const { error: upErr } = await admin

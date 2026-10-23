@@ -5,6 +5,7 @@ import {
   type ReceivePurchaseOrderResult,
 } from "@/modules/compras/lib/purchasing/purchase-order-receive";
 import { effectivatePurchaseOrderPayables } from "@/modules/compras/lib/purchasing/purchase-payables";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
 
@@ -51,7 +52,7 @@ export async function finalizePurchaseOrderReceive(
   const invoiceIssueDate =
     dayOnly(options?.invoiceIssueDate) ?? dayOnly(options?.actualDelivery);
   const materialEntryDate =
-    invoiceIssueDate ?? new Date().toISOString().slice(0, 10);
+    invoiceIssueDate ?? todayIsoSaoPaulo();
 
   const paymentPatch: Database["public"]["Tables"]["purchase_orders"]["Update"] =
     {

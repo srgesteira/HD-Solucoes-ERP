@@ -10,6 +10,7 @@ import {
   isPayablesListTab,
   type PayablesListTab,
 } from "@/modules/faturamento/lib/payables-list-tabs";
+import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
   const overdue = sp.get("overdue");
   const tabRaw = sp.get("tab") ?? "open";
   const tab: PayablesListTab = isPayablesListTab(tabRaw) ? tabRaw : "open";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIsoSaoPaulo();
 
   const page = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(sp.get("limit") ?? "50", 10) || 50));
