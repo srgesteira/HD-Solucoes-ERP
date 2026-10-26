@@ -136,6 +136,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
   const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 
+  // Esta rota só altera o prazo. Sem o campo no body, não mexe em nada
+  // (antes um PATCH com outros campos apagava o prazo de entrega).
+  if (!("expected_delivery_date" in b) && !("expected_delivery" in b)) {
+    return apiError(
+      "Informe expected_delivery_date. Para outros campos use PUT.",
+      400
+    );
+  }
+
   const raw =
     b.expected_delivery_date ?? b.expected_delivery;
   const expected_delivery =
