@@ -54,6 +54,10 @@ import {
   readBlingNfeValorNota,
 } from "@/modules/fiscal/lib/bling/bling-nfe-payload";
 import { buildBlingNfeParcelas } from "@/modules/fiscal/lib/bling/bling-nfe-parcelas";
+import {
+  applyBlingCarrierToNfeBody,
+  resolveBlingCarrier,
+} from "@/modules/fiscal/lib/bling/bling-carrier";
 import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
 type Admin = SupabaseClient<Database>;
@@ -334,8 +338,13 @@ async function rewriteBlingNfeDraft(
     existingContato,
     review.client_state_registration
   );
+  const carrier = await resolveBlingCarrier(
+    admin,
+    tenantId,
+    review.carrier_name
+  );
   const merged: Record<string, unknown> = {
-    ...created,
+    ...applyBlingCarrierToNfeBody(created, carrier),
     numero,
     ...(existing.serie != null ? { serie: existing.serie } : {}),
     ...(existing.loja != null ? { loja: existing.loja } : {}),
@@ -449,13 +458,21 @@ async function upsertSequentialNfe(
     review,
     contactId
   );
-  const bodyBase: Record<string, unknown> = {
-    ...buildBlingNfeCreateBody({
-      ...fiscalReviewToBlingNfeCreateInput(review, contactId),
-      endereco,
-      formaPagamentoId,
-    }),
-  };
+  const carrier = await resolveBlingCarrier(
+    admin,
+    tenantId,
+    review.carrier_name
+  );
+  const bodyBase: Record<string, unknown> = applyBlingCarrierToNfeBody(
+    {
+      ...buildBlingNfeCreateBody({
+        ...fiscalReviewToBlingNfeCreateInput(review, contactId),
+        endereco,
+        formaPagamentoId,
+      }),
+    },
+    carrier
+  );
   if (naoContribuinte) {
     const nat102 = await resolveBlingNaturezaIdForNaoContribuinte(
       admin,

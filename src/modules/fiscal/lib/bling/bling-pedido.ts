@@ -37,6 +37,7 @@ import {
   parseBlingPedidoTransporte,
   readBlingPedidoNotaFiscalId,
 } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
+import { resolveBlingCarrier } from "@/modules/fiscal/lib/bling/bling-carrier";
 
 type Admin = SupabaseClient<Database>;
 
@@ -486,6 +487,10 @@ export async function ensureBlingPedidoForSalesOrder(
     freightCost = Number(extra.freight_cost ?? 0);
     carrierName = extra.carrier_name?.trim() || null;
   }
+  const carrier = carrierName
+    ? await resolveBlingCarrier(admin, tenantId, carrierName).catch(() => null)
+    : null;
+
   if ((!shippingType || freightCost <= 0) && so.quote_id) {
     const { data: quoteRow } = await db
       .from("quotes")
@@ -753,7 +758,13 @@ export async function ensureBlingPedidoForSalesOrder(
     transporte: {
       fretePorConta: fretePorContaFromShipping(shippingType),
       ...(freightCost > 0 ? { frete: roundMoney(freightCost) } : {}),
-      ...(carrierName ? { contato: { nome: carrierName } } : {}),
+      ...(carrierName
+        ? {
+            contato: carrier?.blingContactId
+              ? { id: carrier.blingContactId, nome: carrier.transportador.nome }
+              : { nome: carrierName },
+          }
+        : {}),
     },
   };
 
