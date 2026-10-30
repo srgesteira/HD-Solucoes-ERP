@@ -273,6 +273,27 @@ export default function FiscalOrderReviewPage() {
   const [shippingType, setShippingType] = useState("FOB");
   const [freightCost, setFreightCost] = useState(0);
   const [carrierName, setCarrierName] = useState("");
+  const [carrierOptions, setCarrierOptions] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/purchasing/suppliers?is_active=true&limit=100")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!alive || !j) return;
+        const rows = (Array.isArray(j?.data) ? j.data : []) as Array<{
+          name?: string | null;
+        }>;
+        setCarrierOptions(
+          rows
+            .map((r) => String(r.name ?? "").trim())
+            .filter(Boolean)
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [customerPo, setCustomerPo] = useState("");
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -1035,9 +1056,20 @@ export default function FiscalOrderReviewPage() {
                     value={carrierName}
                     onChange={(e) => setCarrierName(e.target.value)}
                     disabled={!isAdmin || Boolean(data.billing_closure)}
-                    placeholder="Nome na NF-e"
+                    placeholder="Fornecedor cadastrado (nome ou CNPJ)"
                     maxLength={120}
+                    list="fiscal-carrier-options"
                   />
+                  <datalist id="fiscal-carrier-options">
+                    {carrierOptions.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                  <p className="text-xs text-slate-500">
+                    Cadastrada em Fornecedores (com CNPJ e endereço), a
+                    transportadora sai completa na NF-e e é criada no Bling
+                    automaticamente.
+                  </p>
                 </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="fiscal-customer-po">
