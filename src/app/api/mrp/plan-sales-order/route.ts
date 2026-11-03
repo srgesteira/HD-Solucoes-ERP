@@ -54,6 +54,11 @@ export async function POST(request: NextRequest) {
     : null;
 
   const confirm = b.confirm === true;
+  const forceProductionItemIds = Array.isArray(b.force_production_item_ids)
+    ? b.force_production_item_ids.filter(
+        (x): x is string => typeof x === "string" && x.length > 0
+      )
+    : [];
 
   const admin = createSupabaseAdminClient();
 
@@ -114,7 +119,7 @@ export async function POST(request: NextRequest) {
         user.id,
         sales_order_id,
         true,
-        { createTracePurchaseOrders: false }
+        { createTracePurchaseOrders: false, forceProductionItemIds }
       );
 
       const poById = new Map<
@@ -162,7 +167,9 @@ export async function POST(request: NextRequest) {
       user.id,
       sales_order_id,
       confirm,
-      confirm ? { createTracePurchaseOrders: true } : undefined
+      confirm
+        ? { createTracePurchaseOrders: true, forceProductionItemIds }
+        : undefined
     );
 
     const poById = new Map<

@@ -880,6 +880,12 @@ export type ProcessMrpForSalesOrderOptions = {
   createTracePurchaseOrders?: boolean;
   /** Grafo BOM pré-carregado (evita N queries no MRP em lote). */
   bomGraph?: BomGraph;
+  /**
+   * Linhas do PV (sales_order_items.id) que SEMPRE geram OP — fabricação sob
+   * encomenda (montagem/engenharia). Ignora "sem BOM" e "stock disponível":
+   * o saldo em estoque pode ser o kit comprado que ainda precisa ser montado.
+   */
+  forceProductionItemIds?: string[];
 };
 
 /**
@@ -958,6 +964,7 @@ export async function processMrpForSalesOrder(
   }
 
   const results: MrpLineResult[] = [];
+  const forceSet = new Set(options?.forceProductionItemIds ?? []);
   /** Necessidade bruta agregada do PV (evita sobrescrever requisição linha a linha). */
   const aggregatedGross = new Map<string, number>();
   type MaterialAnchor = {
@@ -1029,6 +1036,7 @@ export async function processMrpForSalesOrder(
     }
 
     const hasBom = bomGraph.hasBom(row.product_id);
+    const forced = forceSet.has(row.id);
 
     const linePcpDate =
       row.pcp_deadline != null
@@ -1036,7 +1044,7 @@ export async function processMrpForSalesOrder(
         : orderPcpDate;
     const pcpDate = linePcpDate;
 
-    if (!hasBom) {
+    if (!hasBom && !forced) {
       const grossNoBom: GrossMaterialNeed[] = [
         { product_id: row.product_id, gross_qty: qty },
       ];
@@ -1097,18 +1105,17 @@ export async function processMrpForSalesOrder(
       continue;
     }
 
-    const gross = await calculateNeededMaterialsForProductQty(
-      admin,
-      tenantId,
-      row.product_id,
-      qty
-    );
-    const requirements = await getNetRequirements(
-      admin,
-      tenantId,
-      gross,
-      availOpts
-    );
+    const gross = hasBom
+      ? await calculateNeededMaterialsForProductQty(
+          admin,
+          tenantId,
+          row.product_id,
+          qty
+        )
+      : [];
+    const requirements = gross.length
+      ? await getNetRequirements(admin, tenantId, gross, availOpts)
+      : [];
     lineRes.requirements = requirements;
 
     if (!confirm) {
@@ -1124,7 +1131,7 @@ export async function processMrpForSalesOrder(
       row.product_id,
     ]);
     const fgSupply = physicalFreeStock(fgAvail.get(row.product_id));
-    if (!row.production_order_id && fgSupply >= qty - 0.0001) {
+    if (!forced && !row.production_order_id && fgSupply >= qty - 0.0001) {
       const { error: pickErr } = await admin.from("picking_suggestions").insert({
         tenant_id: tenantId,
         sales_order_id: salesOrderId,
