@@ -1,34 +1,93 @@
 import fs from "node:fs";
-import path from "node:path";
 
-const WINDOWS_BROWSERS = [
+/**
+ * HTML → PDF via puppeteer-core.
+ *
+ * - Serverless (Vercel / AWS Lambda): usa o Chromium empacotado em
+ *   `@sparticuz/chromium` (descompactado em /tmp na primeira chamada).
+ * - Desenvolvimento local: usa Chrome/Edge instalado (ou CHROME_PATH).
+ *
+ * Usado pelo PDF do pedido de compra e do orçamento — ponto único de impressão.
+ */
+
+const LOCAL_BROWSERS = [
   process.env.CHROME_PATH,
+  // Windows
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  // macOS
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  // Linux
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/microsoft-edge",
 ].filter((p): p is string => Boolean(p?.trim()));
 
-function findBrowserExecutable(): string | null {
-  for (const p of WINDOWS_BROWSERS) {
-    if (fs.existsSync(p)) return p;
+function isServerless(): boolean {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.AWS_EXECUTION_ENV
+  );
+}
+
+function findLocalBrowser(): string | null {
+  for (const p of LOCAL_BROWSERS) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      /* ignora */
+    }
   }
   return null;
 }
 
-export async function htmlToPdfBuffer(html: string): Promise<Buffer> {
-  const executablePath = findBrowserExecutable();
-  if (!executablePath) {
-    throw new Error(
-      "Chrome ou Edge não encontrado para gerar o PDF. Instale o Google Chrome ou defina CHROME_PATH."
-    );
+type LaunchConfig = {
+  executablePath: string;
+  args: string[];
+  headless: boolean | "shell";
+};
+
+async function resolveLaunchConfig(): Promise<LaunchConfig> {
+  // CHROME_PATH explícito sempre vence (útil para testar/depurar).
+  const local = process.env.CHROME_PATH?.trim() || (!isServerless() ? findLocalBrowser() : null);
+  if (local) {
+    return {
+      executablePath: local,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--font-render-hinting=none"],
+      headless: true,
+    };
   }
 
+  try {
+    const { default: chromium } = await import("@sparticuz/chromium");
+    chromium.setGraphicsMode = false;
+    const executablePath = await chromium.executablePath();
+    return {
+      executablePath,
+      args: [...chromium.args, "--font-render-hinting=none"],
+      headless: "shell",
+    };
+  } catch (err) {
+    const detail = err instanceof Error ? ` (${err.message})` : "";
+    throw new Error(
+      `Navegador para gerar o PDF não disponível${detail}. Em ambiente local, instale o Google Chrome ou defina CHROME_PATH.`
+    );
+  }
+}
+
+export async function htmlToPdfBuffer(html: string): Promise<Buffer> {
+  const config = await resolveLaunchConfig();
   const puppeteer = await import("puppeteer-core");
   const browser = await puppeteer.launch({
-    executablePath,
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--font-render-hinting=none"],
+    executablePath: config.executablePath,
+    headless: config.headless,
+    args: config.args,
   });
 
   try {
@@ -41,7 +100,7 @@ export async function htmlToPdfBuffer(html: string): Promise<Buffer> {
     });
     return Buffer.from(pdf);
   } finally {
-    await browser.close();
+    await browser.close().catch(() => undefined);
   }
 }
 

@@ -16,6 +16,9 @@ import { sortQuoteItemsByLineNumber } from "@/modules/vendas/lib/sales/quote-ite
 import { nextRevisionOnSend } from "@/modules/vendas/lib/sales/quote-revision";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+/** Geração de PDF com Chromium headless (cold start ~5–10 s). */
+export const maxDuration = 60;
 
 type Params = { params: Promise<{ id: string }> };
 

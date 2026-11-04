@@ -271,6 +271,30 @@ export function PurchaseOrderPrintDocument({
                 <dd>{fmtPoBRL(order.tax)}</dd>
               </div>
             ) : null}
+            {(order.freight_cost ?? 0) > 0 ? (
+              <div className="qp-totals-row">
+                <dt>Frete</dt>
+                <dd>{fmtPoBRL(order.freight_cost ?? 0)}</dd>
+              </div>
+            ) : null}
+            {(order.insurance_cost ?? 0) > 0 ? (
+              <div className="qp-totals-row">
+                <dt>Seguro</dt>
+                <dd>{fmtPoBRL(order.insurance_cost ?? 0)}</dd>
+              </div>
+            ) : null}
+            {(order.other_costs ?? 0) > 0 ? (
+              <div className="qp-totals-row">
+                <dt>Outras despesas</dt>
+                <dd>{fmtPoBRL(order.other_costs ?? 0)}</dd>
+              </div>
+            ) : null}
+            {(order.total_tax_non_creditable ?? 0) > 0 ? (
+              <div className="qp-totals-row">
+                <dt>Impostos não creditáveis</dt>
+                <dd>{fmtPoBRL(order.total_tax_non_creditable ?? 0)}</dd>
+              </div>
+            ) : null}
             <div className="qp-totals-row qp-totals-row--grand">
               <dt>Total</dt>
               <dd>{fmtPoBRL(total)}</dd>

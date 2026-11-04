@@ -179,6 +179,10 @@ export function buildPurchaseOrderPrintHtml(
         ${order.discount > 0 ? `<div class="qp-totals-row"><dt>Desconto</dt><dd>− ${esc(fmtPoBRL(order.discount))}</dd></div>` : ""}
         ${(order.total_ipi ?? 0) > 0 ? `<div class="qp-totals-row"><dt>Total IPI</dt><dd>${esc(fmtPoBRL(order.total_ipi ?? 0))}</dd></div>` : ""}
         ${order.tax > 0 ? `<div class="qp-totals-row"><dt>Outros impostos</dt><dd>${esc(fmtPoBRL(order.tax))}</dd></div>` : ""}
+        ${(order.freight_cost ?? 0) > 0 ? `<div class="qp-totals-row"><dt>Frete</dt><dd>${esc(fmtPoBRL(order.freight_cost ?? 0))}</dd></div>` : ""}
+        ${(order.insurance_cost ?? 0) > 0 ? `<div class="qp-totals-row"><dt>Seguro</dt><dd>${esc(fmtPoBRL(order.insurance_cost ?? 0))}</dd></div>` : ""}
+        ${(order.other_costs ?? 0) > 0 ? `<div class="qp-totals-row"><dt>Outras despesas</dt><dd>${esc(fmtPoBRL(order.other_costs ?? 0))}</dd></div>` : ""}
+        ${(order.total_tax_non_creditable ?? 0) > 0 ? `<div class="qp-totals-row"><dt>Impostos não creditáveis</dt><dd>${esc(fmtPoBRL(order.total_tax_non_creditable ?? 0))}</dd></div>` : ""}
         <div class="qp-totals-row qp-totals-row--grand"><dt>Total</dt><dd>${esc(fmtPoBRL(total))}</dd></div>
       </dl>
     </div>
