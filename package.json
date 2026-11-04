@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@11.2.2",
   "engines": {
-    "node": "22.x"
+    "node": ">=20.9.0"
   },
   "description": "ERP HD Soluções Industriais — sistema corporativo modular (Módulo 1: Agendador de Tarefas Kanban).",
   "scripts": {
