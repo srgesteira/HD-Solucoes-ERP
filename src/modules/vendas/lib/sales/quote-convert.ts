@@ -315,6 +315,8 @@ export async function convertQuoteToSalesOrder(
     .update({
       status: "converted",
       converted_to_sale_id: so.id,
+      // Orçamento virou pedido: não há mais finalização comercial pendente.
+      awaiting_commercial_finalize: false,
     })
     .eq("id", quoteId)
     .eq("tenant_id", tenantId);

@@ -525,6 +525,24 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
   if (!data) return apiError("Item não encontrado", 404);
 
+  // Último item concluído → fecha a OP automaticamente.
+  if (statusProvided && updateData.status === "completed") {
+    const { data: siblings } = await admin
+      .from("order_items")
+      .select("status")
+      .eq("order_id", orderId)
+      .eq("tenant_id", tenantId);
+    const all = (siblings ?? []) as { status: string | null }[];
+    if (all.length > 0 && all.every((s) => s.status === "completed")) {
+      await admin
+        .from("production_orders")
+        .update({ status: "finished", finished_at: new Date().toISOString() })
+        .eq("id", orderId)
+        .eq("tenant_id", tenantId)
+        .not("status", "in", "(finished,cancelled)");
+    }
+  }
+
   return apiOk({ data });
 }
 
