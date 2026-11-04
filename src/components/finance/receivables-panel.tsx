@@ -435,7 +435,9 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
             return (
               <FinanceRowActions
                 canSettle={open}
-                canEdit={open || canFixDate}
+                canEdit={open}
+                canFixDate={canFixDate}
+                fixDateLabel="Corrigir data de recebimento"
                 canDelete={isAdmin}
                 deleting={deletingId === row.id}
                 settleLabel="Concretizar recebimento"
@@ -446,7 +448,8 @@ export function ReceivablesPanel({ embedded = false }: ReceivablesPanelProps) {
                   setRecvDiscount("");
                   setRecvDate(todayIsoSaoPaulo());
                 }}
-                onEdit={() => (open ? setEditOpen(row) : setFixDateOpen(row))}
+                onEdit={() => setEditOpen(row)}
+                onFixDate={() => setFixDateOpen(row)}
                 onDelete={() => void removeRow(row.id)}
               />
             );

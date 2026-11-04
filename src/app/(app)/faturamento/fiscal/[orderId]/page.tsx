@@ -48,6 +48,7 @@ import {
   FiscalItemEditModal,
 } from "@/components/fiscal/fiscal-item-edit-modal";
 import { CreateBlingProductButton } from "@/components/faturamento/create-bling-product-button";
+import { CloseWithoutInvoiceDialog } from "@/components/faturamento/close-without-invoice-dialog";
 import { UnmappedBlingProductsPanel } from "@/components/faturamento/unmapped-bling-products-panel";
 import { PrepareBlingOrderPanel } from "@/components/faturamento/prepare-bling-order-panel";
 import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-billing-display";
@@ -207,10 +208,20 @@ async function postReapplyFiscal(orderId: string): Promise<FiscalOrderReview> {
   return json.data;
 }
 
-async function postCloseWithoutInvoice(orderId: string): Promise<void> {
+async function postCloseWithoutInvoice(
+  orderId: string,
+  actualDelivery: string | null
+): Promise<void> {
   const res = await fetch(
     `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/close-without-invoice`,
-    { method: "POST", credentials: "include" }
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        actualDelivery ? { actual_delivery: actualDelivery } : {}
+      ),
+    }
   );
   const json = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new Error(json.error ?? "Erro ao fechar sem nota");
@@ -359,9 +370,12 @@ export default function FiscalOrderReviewPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const closeMutation = useMutation({
-    mutationFn: () => postCloseWithoutInvoice(orderId),
+    mutationFn: (actualDelivery: string | null) =>
+      postCloseWithoutInvoice(orderId, actualDelivery),
     onSuccess: () => {
+      setCloseDialogOpen(false);
       toast.success("Pedido enviado para Autorizadas (entrega sem nota).");
       void queryClient.invalidateQueries({ queryKey: ["fiscal-invoicing"] });
       router.push("/faturamento/fiscal?tab=nfe_authorized");
@@ -644,7 +658,7 @@ export default function FiscalOrderReviewPage() {
                 type="button"
                 size="sm"
                 disabled={!isAdmin || closeMutation.isPending}
-                onClick={() => closeMutation.mutate()}
+                onClick={() => setCloseDialogOpen(true)}
               >
                 {closeMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1350,6 +1364,20 @@ export default function FiscalOrderReviewPage() {
           setAiQuestions([]);
         }}
         onSubmit={() => void runAi()}
+      />
+      <CloseWithoutInvoiceDialog
+        target={
+          closeDialogOpen && data
+            ? {
+                id: orderId,
+                orderNumber: data.order_number,
+                actualDelivery: data.actual_delivery ?? null,
+              }
+            : null
+        }
+        pending={closeMutation.isPending}
+        onCancel={() => setCloseDialogOpen(false)}
+        onConfirm={(date) => closeMutation.mutate(date)}
       />
     </AppPage>
   );

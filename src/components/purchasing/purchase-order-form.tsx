@@ -787,6 +787,10 @@ export function PurchaseOrderForm({
                   maxDecimals={2}
                   disabled={fieldsDisabled}
                 />
+                <p className="text-xs text-slate-500">
+                  IPI do fornecedor não vai aqui: informe por item (% IPI ou IPI
+                  R$) — ele soma ao total e entra no custo do item.
+                </p>
               </div>
             </div>
           ) : null}
@@ -815,8 +819,9 @@ export function PurchaseOrderForm({
               </strong>
             </p>
             <p className="text-xs text-slate-500">
-              IPI sobre o subtotal; ICMS informativo (base = subtotal + IPI). Total =
-              subtotal + IPI + custos − desconto.
+              IPI sobre o subtotal da linha (custo — não creditável no Simples
+              Nacional); ICMS informativo (base = subtotal + IPI). Total = subtotal
+              + IPI + custos − desconto.
             </p>
             <p className="text-lg font-semibold text-slate-900">
               Total do pedido:{" "}

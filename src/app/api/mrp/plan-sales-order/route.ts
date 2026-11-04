@@ -54,11 +54,14 @@ export async function POST(request: NextRequest) {
     : null;
 
   const confirm = b.confirm === true;
-  const forceProductionItemIds = Array.isArray(b.force_production_item_ids)
-    ? b.force_production_item_ids.filter(
-        (x): x is string => typeof x === "string" && x.length > 0
-      )
-    : [];
+  const parseIds = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string" && x.length > 0)
+      : [];
+  // HD1/HD2 já entram forçados no servidor; o checkbox desmarcado chega em
+  // unforce_production_item_ids. HD3 nunca é forçado (revenda → compra).
+  const forceProductionItemIds = parseIds(b.force_production_item_ids);
+  const unforceProductionItemIds = parseIds(b.unforce_production_item_ids);
 
   const admin = createSupabaseAdminClient();
 
@@ -119,7 +122,11 @@ export async function POST(request: NextRequest) {
         user.id,
         sales_order_id,
         true,
-        { createTracePurchaseOrders: false, forceProductionItemIds }
+        {
+          createTracePurchaseOrders: false,
+          forceProductionItemIds,
+          unforceProductionItemIds,
+        }
       );
 
       const poById = new Map<
@@ -168,8 +175,12 @@ export async function POST(request: NextRequest) {
       sales_order_id,
       confirm,
       confirm
-        ? { createTracePurchaseOrders: true, forceProductionItemIds }
-        : undefined
+        ? {
+            createTracePurchaseOrders: true,
+            forceProductionItemIds,
+            unforceProductionItemIds,
+          }
+        : { forceProductionItemIds, unforceProductionItemIds }
     );
 
     const poById = new Map<

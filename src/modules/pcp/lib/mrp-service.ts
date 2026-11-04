@@ -19,6 +19,7 @@ import {
   type BomGraph,
 } from "@/modules/pcp/lib/bom-graph";
 import type { Database } from "@/modules/core/types/database";
+import { shouldForceProductionForLine } from "@/modules/pcp/lib/mrp-force-production";
 
 type Admin = SupabaseClient<Database>;
 
@@ -886,6 +887,11 @@ export type ProcessMrpForSalesOrderOptions = {
    * o saldo em estoque pode ser o kit comprado que ainda precisa ser montado.
    */
   forceProductionItemIds?: string[];
+  /**
+   * Linhas que o usuário desmarcou explicitamente ("Forçar OP" na tela do MRP).
+   * Sem isso, HD1/HD2 entram sempre como forçados (regra automática).
+   */
+  unforceProductionItemIds?: string[];
 };
 
 /**
@@ -935,6 +941,7 @@ export async function processMrpForSalesOrder(
       id: string;
       type: string;
       technical_code: string;
+      code: string | null;
       name: string;
       product_nature: string | null;
       has_composition: boolean;
@@ -945,7 +952,7 @@ export async function processMrpForSalesOrder(
     const { data: prodRows, error: prErr } = await admin
       .from("products")
       .select(
-        "id, type, technical_code, name, product_nature, has_composition, default_production_line_id"
+        "id, type, technical_code, code, name, product_nature, has_composition, default_production_line_id"
       )
       .eq("tenant_id", tenantId)
       .in("id", productIds);
@@ -955,6 +962,7 @@ export async function processMrpForSalesOrder(
         id: p.id,
         type: p.type,
         technical_code: p.technical_code,
+        code: p.code ?? null,
         name: p.name,
         product_nature: p.product_nature ?? null,
         has_composition: Boolean(p.has_composition),
@@ -965,6 +973,7 @@ export async function processMrpForSalesOrder(
 
   const results: MrpLineResult[] = [];
   const forceSet = new Set(options?.forceProductionItemIds ?? []);
+  const unforceSet = new Set(options?.unforceProductionItemIds ?? []);
   /** Necessidade bruta agregada do PV (evita sobrescrever requisição linha a linha). */
   const aggregatedGross = new Map<string, number>();
   type MaterialAnchor = {
@@ -1036,7 +1045,14 @@ export async function processMrpForSalesOrder(
     }
 
     const hasBom = bomGraph.hasBom(row.product_id);
-    const forced = forceSet.has(row.id);
+    // HD1/HD2 (fabricados pela HD) sempre forçados; HD3 (revenda) nunca.
+    const forced = shouldForceProductionForLine({
+      salesOrderItemId: row.id,
+      technicalCode: p.technical_code,
+      code: p.code,
+      forcedIds: forceSet,
+      unforcedIds: unforceSet,
+    });
 
     const linePcpDate =
       row.pcp_deadline != null

@@ -5,8 +5,11 @@ import { LINE_TAX_FIELDS } from "./types";
  * Allowlist por entidade + módulo.
  * Campos fora da lista são readonly na UI e rejeitados com 403 na API.
  *
- * Impostos de linha: só `faturamento` tem os campos fiscais na allowlist.
- * `vendas` / `compras` não listam impostos → readonly + 403 se alterarem.
+ * Impostos de linha: só `faturamento` tem todos os campos fiscais na allowlist.
+ * `vendas` não lista impostos → readonly + 403 se alterar.
+ * `compras` pode informar o IPI do fornecedor (% ou R$) — a HD é Simples
+ * Nacional, então o IPI de compra é custo (não creditável) e precisa entrar
+ * no pedido. ICMS de compra continua só no Faturamento.
  */
 export const FIELD_ALLOWLISTS = {
   shipments: {
@@ -23,6 +26,6 @@ export const FIELD_ALLOWLISTS = {
   },
   purchase_order_items: {
     faturamento: [...LINE_TAX_FIELDS],
-    compras: [],
+    compras: ["ipi_rate", "ipi_value", "tax_base"],
   },
 } as const satisfies FieldAllowlistRegistry;

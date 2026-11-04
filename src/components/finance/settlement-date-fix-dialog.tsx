@@ -6,6 +6,7 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { BrDateInput } from "@/shared/ui/br-date-input";
 import { Label } from "@/shared/ui/label";
+import { Textarea } from "@/shared/ui/textarea";
 import { formatShortDate } from "@/shared/utils/date";
 
 type SettlementDateFixDialogProps = {
@@ -28,10 +29,12 @@ export function SettlementDateFixDialog({
   onSaved,
 }: SettlementDateFixDialogProps) {
   const [date, setDate] = useState("");
+  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setDate(target?.paymentDate?.slice(0, 10) ?? "");
+    setReason("");
   }, [target]);
 
   if (!target) return null;
@@ -43,6 +46,14 @@ export function SettlementDateFixDialog({
       toast.error(`Indique a data do ${word}.`);
       return;
     }
+    if (!reason.trim()) {
+      toast.error("Informe o motivo da correção.");
+      return;
+    }
+    if (date === (target.paymentDate?.slice(0, 10) ?? "")) {
+      toast.error("A nova data é igual à data atual.");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch(
@@ -51,7 +62,10 @@ export function SettlementDateFixDialog({
           method: "PUT",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ payment_date: date }),
+          body: JSON.stringify({
+            payment_date: date,
+            correction_reason: reason.trim(),
+          }),
         }
       );
       const j = (await res.json().catch(() => ({}))) as { error?: string };
@@ -83,16 +97,26 @@ export function SettlementDateFixDialog({
             <Label>Data real do {word}</Label>
             <BrDateInput value={date || null} onChange={(iso) => setDate(iso ?? "")} />
           </div>
+          <div className="space-y-1">
+            <Label>Motivo da correção</Label>
+            <Textarea
+              value={reason}
+              maxLength={500}
+              rows={3}
+              placeholder="Ex.: baixa em lote feita com a data de hoje; o pagamento saiu do banco em outra data."
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </div>
           <p className="text-xs text-slate-500">
             Corrige o título e o movimento do extrato. O valor não muda e fica uma nota de
-            auditoria no título.
+            auditoria no título (com o motivo).
           </p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancelar
             </Button>
             <Button type="button" onClick={() => void save()} disabled={saving}>
-              Guardar
+              {saving ? "Salvando…" : "Corrigir data"}
             </Button>
           </div>
         </CardContent>

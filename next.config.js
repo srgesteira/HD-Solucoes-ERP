@@ -3,7 +3,7 @@ const path = require("path");
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  serverExternalPackages: ["puppeteer-core", "unpdf", "pdf-parse", "@napi-rs/canvas"],
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "unpdf", "pdf-parse", "@napi-rs/canvas"],
   /**
    * Não usar `output: "standalone"` aqui: na Vercel o passo de cópia para
    * `.next/standalone` falha com rotas em grupos `(app)` (ENOENT no manifest).
@@ -23,9 +23,20 @@ const nextConfig = {
    * "multiple lockfiles" quando há um package-lock.json antigo em ~/.
    */
   outputFileTracingRoot: __dirname,
+  /**
+   * Binário do Chromium serverless (@sparticuz/chromium/bin/*.br) é lido do
+   * disco em runtime — o tracer não o detecta sozinho. Só nas rotas que geram PDF.
+   */
   outputFileTracingIncludes: {
     "/api/purchasing/orders/[id]/pdf": [
       "./node_modules/pdfkit/js/data/**",
+      "./node_modules/@sparticuz/chromium/bin/**",
+    ],
+    "/api/purchasing/orders/[id]/email": [
+      "./node_modules/@sparticuz/chromium/bin/**",
+    ],
+    "/api/sales/quotes/[id]/send-email": [
+      "./node_modules/@sparticuz/chromium/bin/**",
     ],
   },
   turbopack: {

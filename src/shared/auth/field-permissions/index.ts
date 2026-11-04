@@ -35,6 +35,17 @@ export function canEditField(
   return getEditableFields(entity, module).includes(field);
 }
 
+/** Pode editar o IPI da linha (alíquota e valor)? */
+export function canEditLineIpi(
+  entity: "sales_order_items" | "purchase_order_items",
+  module: FieldPermissionModule
+): boolean {
+  return (
+    canEditField(entity, module, "ipi_rate") &&
+    canEditField(entity, module, "ipi_value")
+  );
+}
+
 /** UI: campo fora da alçada → readonly. */
 export function isFieldReadonly(
   entity: FieldPermissionEntity,
@@ -110,7 +121,10 @@ export function assertLineTaxesUnchangedOutsideFaturamento(
     return { ok: true };
   }
 
-  const rateFields = ["icms_rate", "ipi_rate"] as const;
+  // Só trava as alíquotas que o módulo não pode editar (ex.: Compras edita IPI).
+  const rateFields = (["icms_rate", "ipi_rate"] as const).filter(
+    (field) => !canEditField(entity, module, field)
+  );
 
   for (let i = 0; i < incoming.length; i++) {
     const line = incoming[i]!;

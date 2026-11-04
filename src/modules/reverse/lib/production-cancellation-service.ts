@@ -3,6 +3,7 @@ import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { recordAuditEvent } from "@/modules/core/lib/audit/audit-log";
 import { releaseProductionOrderItemReservations } from "@/modules/almoxarifado/lib/inventory-reservations";
+import { dismissRequisitionsForProductionOrder } from "@/modules/compras/lib/purchasing/requisition-auto-dismiss";
 import type { ProductionCancellationReason } from "./returns-types";
 
 /**
@@ -17,8 +18,10 @@ import type { ProductionCancellationReason } from "./returns-types";
  *    operacional: alguns insumos foram efetivamente usados; reverter
  *    em massa pode mascarar custo). A área tem de fazer ajuste manual
  *    via inventory_movements se quiser repor.
- *  - Compras já abertas para essa OP NÃO são canceladas automaticamente
- *    (Compras decide caso a caso para não bagunçar negociação).
+ *  - Compras já abertas para essa OP (PC emitido) NÃO são canceladas
+ *    automaticamente (Compras decide caso a caso para não bagunçar negociação).
+ *    Requisições em rascunho (sem PC) são dispensadas — exceto as rastreadas a
+ *    linha de PV ainda ativo, que o MRP reaproveita no replanejamento.
  *  - Se OP veio de pedido de venda, o pedido NÃO é alterado — fluxo
  *    reverso de venda exige operação separada (sales_returns).
  *
@@ -95,6 +98,13 @@ export async function cancelProductionOrder(
     userId: args.userId,
     userEmail: args.userEmail,
   });
+
+  await dismissRequisitionsForProductionOrder(
+    admin,
+    args.tenantId,
+    args.productionOrderId,
+    "cancelled"
+  );
 
   await recordAuditEvent(admin, {
     tenantId: args.tenantId,

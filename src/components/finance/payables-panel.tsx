@@ -639,7 +639,9 @@ export function PayablesPanel({
                     return (
                       <FinanceRowActions
                         canSettle={open}
-                        canEdit={open || canFixDate}
+                        canEdit={open}
+                        canFixDate={canFixDate}
+                        fixDateLabel="Corrigir data de pagamento"
                         canDelete={isAdmin}
                         deleting={deletingId === r.id}
                         settleLabel="Concretizar pagamento"
@@ -648,7 +650,8 @@ export function PayablesPanel({
                           setPayAmount(String(r.current_amount));
                           setPayDate(todayIsoSaoPaulo());
                         }}
-                        onEdit={() => (open ? setEditOpen(r) : setFixDateOpen(r))}
+                        onEdit={() => setEditOpen(r)}
+                        onFixDate={() => setFixDateOpen(r)}
                         onDelete={() => void removeRow(r.id)}
                       />
                     );

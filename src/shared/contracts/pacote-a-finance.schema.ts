@@ -30,6 +30,8 @@ export const accountsPayableUpdateSchema = z
     pay_amount: z.coerce.number().positive().max(1e12).optional(),
     /** Ajuste manual de saldo; define amount_locked e acrescenta nota automática. */
     adjust_amount: z.coerce.number().positive().max(1e12).optional(),
+    /** Motivo da correção de data de uma conta já paga (vai para a nota de auditoria). */
+    correction_reason: z.string().max(500).nullable().optional(),
   });
 
 export const cashFlowEntryCreateSchema = z.object({

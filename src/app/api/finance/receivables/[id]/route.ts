@@ -19,6 +19,7 @@ const CLOSED_EDITABLE_FIELDS = new Set([
   "document_number",
   "client_name",
   "client_document",
+  "correction_reason",
 ]);
 
 export const dynamic = "force-dynamic";
@@ -142,6 +143,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         newDate: newPayDate,
         previousDate: current.payment_date as string | null,
         previousNotes: notesForAudit,
+        reason:
+          typeof b.correction_reason === "string" ? b.correction_reason : null,
       });
       if (!fix.ok) return apiError(fix.message, fix.status);
       notesForAudit = null; // já gravadas pela correção

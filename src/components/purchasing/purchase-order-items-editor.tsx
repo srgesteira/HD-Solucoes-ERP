@@ -19,6 +19,7 @@ import {
 } from "@/modules/compras/lib/purchasing/purchase-order-item-taxes";
 
 import {
+  canEditLineIpi,
   canEditLineTaxes,
   isFieldReadonly,
 } from "@/shared/auth/field-permissions";
@@ -35,6 +36,8 @@ const taxReadonlyOnOrder = isFieldReadonly(
   "icms_rate"
 );
 const taxesLocked = !canEditLineTaxes("purchase_order_items", "compras");
+/** IPI do fornecedor é informado no próprio pedido (custo para a HD — Simples Nacional). */
+const ipiLocked = !canEditLineIpi("purchase_order_items", "compras");
 
 export type PurchaseLineProduct = {
   id: string;
@@ -195,6 +198,11 @@ function withRecalcTaxes(
   taxMode: "icms" | "ipi" | "both" | "none" = "none"
 ): PurchaseOrderLineDraft {
   const merged = { ...line, ...patch };
+  // IPI informado em R$ (sem %): ao mudar qtd./preço/desconto, preserva o valor
+  // digitado em vez de zerá-lo pela alíquota 0.
+  if (taxMode === "both" && !(merged.ipiRate > 0)) {
+    taxMode = "icms";
+  }
   if (taxMode === "none") {
     if (
       patch.ipiValue !== undefined ||
@@ -706,9 +714,9 @@ export function PurchaseOrderItemsEditor({
                         }
                         maxDecimals={2}
                         disabled={
-                          disabled || taxReadonlyOnOrder || taxesLocked
+                          disabled || ipiLocked
                         }
-                        readOnly={taxReadonlyOnOrder || taxesLocked}
+                        readOnly={ipiLocked}
                         className="h-8 text-sm"
                         placeholder="0"
                       />
@@ -722,9 +730,9 @@ export function PurchaseOrderItemsEditor({
                         }
                         maxDecimals={2}
                         disabled={
-                          disabled || taxReadonlyOnOrder || taxesLocked
+                          disabled || ipiLocked
                         }
-                        readOnly={taxReadonlyOnOrder || taxesLocked}
+                        readOnly={ipiLocked}
                         className="h-8 text-sm"
                       />
                     </div>

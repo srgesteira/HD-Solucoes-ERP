@@ -11,6 +11,9 @@ import { fetchPurchaseOrderPrintContext } from "@/modules/compras/lib/purchasing
 import { generatePurchaseOrderPdfBuffer } from "@/modules/compras/lib/purchasing/generate-purchase-order-pdf";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+/** Geração de PDF com Chromium headless (cold start ~5–10 s). */
+export const maxDuration = 60;
 
 type Params = { params: Promise<{ id: string }> };
 

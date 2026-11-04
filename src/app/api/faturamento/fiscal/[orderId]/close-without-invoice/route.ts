@@ -28,6 +28,26 @@ export async function POST(
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
+  // Body opcional: { actual_delivery?: "yyyy-mm-dd" }
+  let actualDelivery: string | null = null;
+  try {
+    const text = await request.text();
+    if (text.trim()) {
+      const parsed = JSON.parse(text) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const raw = (parsed as Record<string, unknown>).actual_delivery;
+        if (raw !== undefined && raw !== null && raw !== "") {
+          if (typeof raw !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw.trim())) {
+            return apiError("Data real de entrega inválida (use aaaa-mm-dd).", 400);
+          }
+          actualDelivery = raw.trim();
+        }
+      }
+    }
+  } catch {
+    return apiError("Body inválido", 400);
+  }
+
   const admin = createSupabaseAdminClient();
 
   try {
@@ -35,7 +55,8 @@ export async function POST(
       admin,
       tenantId,
       orderId,
-      "without_invoice"
+      "without_invoice",
+      { actualDelivery }
     );
     if (!result.ok) {
       return apiError(result.reasons.join(" "), 400);
