@@ -29,14 +29,14 @@ const nextConfig = {
    */
   outputFileTracingIncludes: {
     "/api/purchasing/orders/[id]/pdf": [
-      "./node_modules/pdfkit/js/data/**",
-      "./node_modules/@sparticuz/chromium/bin/**",
+      "./node_modules/.pnpm/pdfkit@*/node_modules/pdfkit/js/data/**",
+      "./node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
     "/api/purchasing/orders/[id]/email": [
-      "./node_modules/@sparticuz/chromium/bin/**",
+      "./node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
     "/api/sales/quotes/[id]/send-email": [
-      "./node_modules/@sparticuz/chromium/bin/**",
+      "./node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
   },
   turbopack: {
