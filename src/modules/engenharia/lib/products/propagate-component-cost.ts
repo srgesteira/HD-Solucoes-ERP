@@ -30,7 +30,9 @@ async function syncComponentLinesUnitCost(
     .update({ unit_cost: unitCost })
     .eq("tenant_id", tenantId)
     .eq("component_product_id", componentProductId)
-    .eq("is_labor", false)
+    // Material sempre; MO de catálogo (ex.: pintura terceirizada) também —
+    // só fica de fora a MO interna calculada por centro de trabalho.
+    .or("is_labor.eq.false,work_center_id.is.null")
     .select("id");
 
   if (error) throw new Error(error.message);
