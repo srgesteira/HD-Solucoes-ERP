@@ -39,8 +39,12 @@ export type SalesOrderForReceivables = {
 };
 
 export type SyncReceivablesOptions = {
-  /** Gera as parcelas mesmo que o pedido ainda não tenha nenhum título. */
-  createIfNone?: boolean;
+  /**
+   * Cria parcelas em falta (índices sem título activo). Desligado por padrão:
+   * há recebíveis manuais (sales_order_id null) a cobrir parcelas de PVs e
+   * criar automaticamente duplicaria. Só o fecho da NF-e agrupada pede isto.
+   */
+  createMissing?: boolean;
 };
 
 export type SyncReceivablesResult = {
@@ -107,8 +111,8 @@ export function buildSalesOrderReceivableTargets(order: SalesOrderForReceivables
 /**
  * Recalcula parcelas pendentes sem baixa parcial (paid_amount = 0).
  * Não altera títulos pagos, parciais, cancelados ou com is_forecast já resolvido fora de pending.
- * Cria as parcelas que faltam (ex.: 1x → 2x depois de o PV ter gerado os títulos);
- * se o pedido não tiver nenhum título, só cria com `createIfNone`.
+ * Por padrão só actualiza títulos existentes (nunca cria). Com `createMissing`
+ * cria as parcelas que faltam (ex.: NF-e agrupada com mais duplicatas que títulos).
  */
 export async function syncReceivablesForSalesOrder(
   admin: Admin,
@@ -136,7 +140,8 @@ export async function syncReceivablesForSalesOrder(
   if (loadErr) {
     return { updated: 0, lockedSkipped: 0, warnings: [loadErr.message] };
   }
-  if (!existing?.length && !options?.createIfNone) {
+  const createMissing = options?.createMissing === true;
+  if (!existing?.length && !createMissing) {
     return { updated: 0, lockedSkipped: 0, warnings };
   }
 
@@ -154,7 +159,7 @@ export async function syncReceivablesForSalesOrder(
     (r) => r.status !== "cancelled" && r.is_forecast === true
   );
   const newRows: Database["public"]["Tables"]["receivables"]["Insert"][] = [];
-  for (let i = 0; i < targets.amounts.length; i++) {
+  for (let i = 0; createMissing && i < targets.amounts.length; i++) {
     if (activeIdx.has(i + 1)) continue;
     const amt = targets.amounts[i];
     const due = targets.dueDates[i];

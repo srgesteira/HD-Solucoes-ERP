@@ -268,14 +268,14 @@ export async function closeSalesOrderBilling(
             invoice_document_type: docType,
             payment_base_date: paymentBaseDate,
           });
+        const groupSchedule = options?.receivablesSchedule ?? null;
+        // Só a NF-e agrupada autorizada cria parcelas em falta (duplicatas da
+        // nota); restantes fechos apenas actualizam títulos existentes.
         const sync = await syncReceivablesForSalesOrder(
           admin,
           tenantId,
-          {
-            ...recvInput,
-            schedule_override: options?.receivablesSchedule ?? null,
-          },
-          { createIfNone: true }
+          { ...recvInput, schedule_override: groupSchedule },
+          { createMissing: Boolean(groupSchedule) }
         );
         if (sync.warnings.length) {
           console.warn(
