@@ -456,13 +456,51 @@ export async function loadMenuAlerts(
           );
         }
         // NF-e em erro — urgente.
-        const { count: nfeErrCount, error: nfeErr } = await admin
+        // Ignora tentativas em erro já superadas: o pedido foi fechado
+        // (billing_closure) ou tem outra nota autorizada.
+        const { data: nfeErrRows, error: nfeErr } = await admin
           .from("nfes")
-          .select("*", { count: "exact", head: true })
+          .select("id, sales_order_id")
           .eq("tenant_id", tenantId)
           .eq("status", "error");
         if (!nfeErr) {
-          const n = nfeErrCount ?? 0;
+          const errRows = (nfeErrRows ?? []) as {
+            id: string;
+            sales_order_id: string | null;
+          }[];
+          const orderIds = [
+            ...new Set(
+              errRows
+                .map((r) => r.sales_order_id)
+                .filter((v): v is string => !!v)
+            ),
+          ];
+          const resolved = new Set<string>();
+          if (orderIds.length) {
+            const { data: closed } = await db
+              .from("sales_orders")
+              .select("id")
+              .eq("tenant_id", tenantId)
+              .in("id", orderIds)
+              .not("billing_closure", "is", null);
+            for (const r of (closed ?? []) as { id: string }[]) {
+              resolved.add(r.id);
+            }
+            const { data: authorized } = await admin
+              .from("nfes")
+              .select("sales_order_id")
+              .eq("tenant_id", tenantId)
+              .in("sales_order_id", orderIds)
+              .eq("status", "authorized");
+            for (const r of (authorized ?? []) as {
+              sales_order_id: string | null;
+            }[]) {
+              if (r.sales_order_id) resolved.add(r.sales_order_id);
+            }
+          }
+          const n = errRows.filter(
+            (r) => !r.sales_order_id || !resolved.has(r.sales_order_id)
+          ).length;
           pushAlert(
             alerts,
             details,
@@ -486,7 +524,9 @@ export async function loadMenuAlerts(
           .from("quotes")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
-          .eq("awaiting_commercial_finalize", true);
+          .eq("awaiting_commercial_finalize", true)
+          // Convertidos/recusados já saíram do funil — flag residual não é pendência.
+          .not("status", "in", "(converted,rejected)");
         if (!error) {
           const n = count ?? 0;
           pushAlert(
