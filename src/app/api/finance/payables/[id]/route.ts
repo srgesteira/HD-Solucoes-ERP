@@ -80,6 +80,7 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
       newDate: b.payment_date,
       previousDate: row.payment_date,
       previousNotes: b.notes !== undefined ? b.notes : row.notes,
+      reason: b.correction_reason ?? null,
     });
     if (!fix.ok) return apiError(fix.message, fix.status);
     b.payment_date = undefined;

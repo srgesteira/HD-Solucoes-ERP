@@ -10,6 +10,10 @@ import { generateQuotePdfBuffer } from "@/modules/vendas/lib/sales/generate-quot
 import { sendOutboundEmail } from "@/shared/utils/email/send-outbound-email";
 import { resolveMailConfig } from "@/shared/utils/email/mail-config";
 import type { SendOutboundEmailResult } from "@/shared/utils/email/send-outbound-email";
+import {
+  sendViaZohoMailApi,
+  type ZohoSendResult,
+} from "@/shared/utils/email/zoho-mail-api";
 
 function escapeHtml(s: string | null | undefined): string {
   if (s == null) return "";
@@ -21,7 +25,7 @@ function escapeHtml(s: string | null | undefined): string {
     .replace(/'/g, "&#39;");
 }
 
-function quoteFileName(q: QuotePrintData): string {
+export function quoteFileName(q: QuotePrintData): string {
   const number = formatQuoteNumberWithRevision(
     q.quote_number,
     q.revision_number
@@ -103,6 +107,100 @@ export async function sendQuoteEmail(
     attachments: [
       {
         filename: quoteFileName(quote),
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  });
+}
+
+/* ---------- Envio pela API do Zoho Mail (com confirmação na UI) ---------- */
+
+function companyDisplayName(company: Tables<"company_settings"> | null | undefined): string {
+  return company?.trade_name?.trim() || company?.company_name?.trim() || "HD Industrial";
+}
+
+export type QuoteEmailDraft = {
+  to: string[];
+  cc: string[];
+  subject: string;
+  /** Corpo em texto simples (editável na UI; convertido para HTML no envio). */
+  body: string;
+};
+
+/**
+ * Rascunho do e-mail do orçamento (destinatário, assunto e corpo padrão) para o
+ * modal de confirmação. `quote.revision_number` deve ser a revisão que irá no PDF.
+ */
+export function buildQuoteEmailDraft(
+  quote: QuotePrintData,
+  company: Tables<"company_settings"> | null | undefined
+): QuoteEmailDraft {
+  const cust = unwrapQuoteCustomer(quote.customer, quote.client_name);
+  const to = [quote.client_email ?? cust?.email]
+    .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    .map((e) => e.trim());
+  const number = formatQuoteNumberWithRevision(quote.quote_number, quote.revision_number);
+  const name = companyDisplayName(company);
+  const contact = [company?.phone?.trim(), company?.email?.trim(), company?.website?.trim()]
+    .filter(Boolean)
+    .join(" · ");
+  const body = [
+    `Prezado(a) ${cust?.name ?? quote.client_name ?? "cliente"},`,
+    "",
+    `Segue em anexo o orçamento ${number}, válido até ${fmtQuoteDay(quote.valid_until)}.`,
+    "",
+    `Número: ${number}`,
+    `Data: ${fmtQuoteDay(quote.quote_date)}`,
+    `Validade: ${fmtQuoteDay(quote.valid_until)}`,
+    `Total: ${fmtQuoteBRL(Number(quote.total))}`,
+    "",
+    "O detalhamento completo está no PDF em anexo. Ficamos à disposição para qualquer dúvida.",
+    "",
+    "Atenciosamente,",
+    name,
+    ...(contact ? [contact] : []),
+  ].join("\n");
+  return { to, cc: [], subject: `Orçamento ${number} — ${name}`, body };
+}
+
+/** Converte o corpo em texto simples (editado pelo utilizador) em HTML seguro. */
+export function quoteEmailBodyToHtml(body: string): string {
+  const paragraphs = body
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p style="margin:0 0 12px;">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`)
+    .join("\n  ");
+  return `<!DOCTYPE html>
+<html><body style="font-family:system-ui,sans-serif;font-size:14px;line-height:1.5;color:#1e293b;">
+  ${paragraphs}
+</body></html>`;
+}
+
+export type SendQuoteEmailZohoArgs = {
+  quote: QuotePrintData;
+  company: Tables<"company_settings"> | null | undefined;
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
+};
+
+/** Gera o PDF (função existente) e envia pela API do Zoho Mail. Lança erro se falhar. */
+export async function sendQuoteEmailViaZoho(
+  args: SendQuoteEmailZohoArgs
+): Promise<ZohoSendResult> {
+  const pdfBuffer = await generateQuotePdfBuffer(args.quote, args.company);
+  return sendViaZohoMailApi({
+    to: args.to,
+    cc: args.cc,
+    subject: args.subject,
+    html: quoteEmailBodyToHtml(args.body),
+    attachments: [
+      {
+        filename: quoteFileName(args.quote),
         content: pdfBuffer,
         contentType: "application/pdf",
       },
