@@ -23,6 +23,8 @@ type SalesOrderBase = {
   client_name: string;
   client_document: string | null;
   order_date: string;
+  /** Data real de entrega já registada (pré-preenche «Confirmar sem nota»). */
+  actual_delivery: string | null;
   total: number;
   status: string;
   ready_for_invoice: boolean;
@@ -297,7 +299,7 @@ export async function listFiscalInvoicingOrders(
   let query = db
     .from("sales_orders")
     .select(
-      "id, order_number, client_name, client_document, order_date, total, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan, invoice_document_type",
+      "id, order_number, client_name, client_document, order_date, actual_delivery, total, status, ready_for_invoice, fiscal_status, billing_closure, billing_plan, invoice_document_type",
       { count: "exact" }
     )
     .eq("tenant_id", tenantId)
@@ -477,6 +479,8 @@ export async function listFiscalInvoicingOrders(
     const group = groupsByOrder.get(row.id) ?? null;
     const item: FiscalInvoicingListRow = {
       ...row,
+      actual_delivery:
+        typeof row.actual_delivery === "string" ? row.actual_delivery : null,
       total: Number(row.total ?? 0),
       ready_for_invoice: row.ready_for_invoice === true,
       credit_status: credit,

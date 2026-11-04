@@ -10,6 +10,13 @@ import {
 import { notifyCustomerNfeAuthorized } from "@/modules/fiscal/lib/bling/send-nfe-status-email";
 import { todayIsoSaoPaulo } from "@/shared/utils/date";
 import { loadNfeGroupForSalesOrder } from "@/modules/faturamento/lib/nfe-invoice-group";
+import type { SalesOrderForReceivables } from "@/modules/vendas/lib/sales/sales-receivables";
+import {
+  paymentTotalWithFreight,
+  resolveInstallmentAmounts,
+  roundInstallmentMoney,
+} from "@/shared/utils/payment-installment-amounts";
+import { normalizeIsoDate, resolvePaymentDueDates } from "@/shared/utils/payment-due";
 
 type Admin = SupabaseClient<Database>;
 
@@ -21,6 +28,18 @@ type SalesOrderBillingRow = {
   billing_closure: string | null;
   billing_plan: string | null;
   ready_for_invoice: boolean;
+  actual_delivery: string | null;
+};
+
+export type CloseSalesOrderBillingOptions = {
+  skipEmitGate?: boolean;
+  /**
+   * Data real de entrega (yyyy-mm-dd). Só usada se o pedido ainda não tiver
+   * `actual_delivery`; sem nenhuma das duas, usa hoje (São Paulo).
+   */
+  actualDelivery?: string | null;
+  /** Calendário explícito dos recebíveis (ex.: fatia do PV numa NF-e agrupada). */
+  receivablesSchedule?: SalesOrderForReceivables["schedule_override"];
 };
 
 /** Marca intenção de entrega sem NF-e (aba Fiscal pendente → Aguardando liberação). */
@@ -91,13 +110,20 @@ export async function closeSalesOrderBilling(
   tenantId: string,
   salesOrderId: string,
   closure: BillingClosure,
-  options?: { skipEmitGate?: boolean }
+  options?: CloseSalesOrderBillingOptions
 ): Promise<{ ok: true } | { ok: false; reasons: string[] }> {
+  const requestedDelivery =
+    options?.actualDelivery != null && options.actualDelivery !== ""
+      ? normalizeIsoDate(options.actualDelivery)
+      : null;
+  if (options?.actualDelivery && !requestedDelivery) {
+    return { ok: false, reasons: ["Data real de entrega inválida."] };
+  }
   const db = asUntypedAdmin(admin);
   const { data, error } = await db
     .from("sales_orders")
     .select(
-      "id, status, billing_closure, billing_plan, ready_for_invoice"
+      "id, status, billing_closure, billing_plan, ready_for_invoice, actual_delivery"
     )
     .eq("id", salesOrderId)
     .eq("tenant_id", tenantId)
@@ -169,7 +195,10 @@ export async function closeSalesOrderBilling(
     }
   }
 
-  const actualDelivery = todayIsoSaoPaulo();
+  // Nunca sobrescrever a entrega real já registada (pedidos antigos).
+  const existingDelivery = normalizeIsoDate(so.actual_delivery);
+  const actualDelivery =
+    existingDelivery ?? requestedDelivery ?? todayIsoSaoPaulo();
   const materialReady = so.ready_for_invoice === true;
   const markDelivered = closure === "without_invoice" || materialReady;
 
@@ -181,7 +210,10 @@ export async function closeSalesOrderBilling(
       billing_closure: closure,
       billing_plan: closure,
       ...(markDelivered
-        ? { status: "delivered", actual_delivery: actualDelivery }
+        ? {
+            status: "delivered",
+            ...(existingDelivery ? {} : { actual_delivery: actualDelivery }),
+          }
         : {}),
     })
     .eq("id", salesOrderId)
@@ -204,10 +236,13 @@ export async function closeSalesOrderBilling(
       const docType = (fresh as { invoice_document_type?: string | null })
         .invoice_document_type;
       if (docType !== "nfe_remessa") {
-        await syncReceivablesForSalesOrder(
-          admin,
-          tenantId,
-          salesOrderRowToReceivablesInput({
+        // Base dos vencimentos: sem nota → entrega real; NF-e → emissão (hoje,
+        // como nas duplicatas enviadas ao Bling).
+        const paymentBaseDate =
+          closure === "without_invoice"
+            ? normalizeIsoDate(fresh.actual_delivery) ?? actualDelivery
+            : todayIsoSaoPaulo();
+        const recvInput = salesOrderRowToReceivablesInput({
             id: fresh.id,
             order_number: fresh.order_number,
             order_date: fresh.order_date,
@@ -231,9 +266,24 @@ export async function closeSalesOrderBilling(
             ).payment_installment_amounts,
             freight_cost: (fresh as { freight_cost?: number | null }).freight_cost,
             invoice_document_type: docType,
-            payment_base_date: todayIsoSaoPaulo(),
-          })
+            payment_base_date: paymentBaseDate,
+          });
+        const sync = await syncReceivablesForSalesOrder(
+          admin,
+          tenantId,
+          {
+            ...recvInput,
+            schedule_override: options?.receivablesSchedule ?? null,
+          },
+          { createIfNone: true }
         );
+        if (sync.warnings.length) {
+          console.warn(
+            "[billing-closure] Avisos ao sincronizar recebíveis:",
+            salesOrderId,
+            sync.warnings
+          );
+        }
         await confirmProvisionalReceivablesForSalesOrder(
           admin,
           tenantId,
@@ -260,7 +310,7 @@ export async function maybeCloseSalesOrderOnNfeAuthorized(
 ): Promise<void> {
   const { data: nfe, error } = await admin
     .from("nfes")
-    .select("id, sales_order_id, status")
+    .select("id, sales_order_id, status, nfe_number")
     .eq("id", nfeId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -279,9 +329,32 @@ export async function maybeCloseSalesOrderOnNfeAuthorized(
     ? group.members.map((m) => m.id)
     : [nfe.sales_order_id];
 
+  // NF-e agrupada: as duplicatas saem com o prazo do PV primário sobre o total
+  // somado. Cada PV recebe a sua fatia de cada duplicata (mesmas datas), para
+  // que todas as parcelas da nota virem contas a receber.
+  let schedules: Map<string, GroupedReceivablesSchedule> | null = null;
+  if (group && group.members.length > 1) {
+    try {
+      schedules = await buildGroupedNfeReceivableSchedules(
+        admin,
+        tenantId,
+        group.primary_sales_order_id,
+        orderIds,
+        (nfe as { nfe_number?: string | null }).nfe_number ?? null
+      );
+    } catch (schedErr) {
+      console.warn(
+        "[billing-closure] Falha ao montar parcelas da NF-e agrupada:",
+        nfeId,
+        schedErr instanceof Error ? schedErr.message : schedErr
+      );
+    }
+  }
+
   for (const orderId of orderIds) {
     const result = await closeSalesOrderBilling(admin, tenantId, orderId, "nfe", {
       skipEmitGate: true,
+      receivablesSchedule: schedules?.get(orderId) ?? null,
     });
     if (!result.ok) {
       console.warn(
@@ -291,4 +364,144 @@ export async function maybeCloseSalesOrderOnNfeAuthorized(
       );
     }
   }
+}
+
+type GroupedReceivablesSchedule = NonNullable<
+  SalesOrderForReceivables["schedule_override"]
+>;
+
+type GroupOrderPaymentRow = {
+  id: string;
+  order_number: string;
+  total: number | null;
+  freight_cost: number | null;
+  payment_installments: number | null;
+  payment_days_to_first_due: number | null;
+  payment_days_between_installments: number | null;
+  payment_due_mode: string | null;
+  payment_fixed_due_dates: string[] | null;
+  payment_installment_amounts: number[] | null;
+};
+
+/**
+ * Reparte as duplicatas de uma NF-e agrupada pelos PVs do grupo.
+ * Duplicatas = prazo/valores do PV primário sobre a soma (mercadoria + frete)
+ * de todos os PVs, vencimentos a partir de hoje (mesma regra de
+ * `buildBlingNfeParcelas`). Cada PV fica com N parcelas (N = duplicatas), na
+ * proporção do seu total; a soma por data = valor da duplicata e a soma por
+ * PV = total do PV.
+ */
+export async function buildGroupedNfeReceivableSchedules(
+  admin: Admin,
+  tenantId: string,
+  primaryOrderId: string,
+  orderIds: string[],
+  nfeNumber: string | null,
+  emissionDateIso: string = todayIsoSaoPaulo()
+): Promise<Map<string, GroupedReceivablesSchedule>> {
+  const out = new Map<string, GroupedReceivablesSchedule>();
+  const { data, error } = await asUntypedAdmin(admin)
+    .from("sales_orders")
+    .select(
+      "id, order_number, total, freight_cost, payment_installments, payment_days_to_first_due, payment_days_between_installments, payment_due_mode, payment_fixed_due_dates, payment_installment_amounts"
+    )
+    .eq("tenant_id", tenantId)
+    .in("id", orderIds);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as GroupOrderPaymentRow[];
+  const primary = rows.find((r) => r.id === primaryOrderId);
+  if (!primary) return out;
+
+  const ordered = [
+    primary,
+    ...orderIds
+      .filter((id) => id !== primaryOrderId)
+      .map((id) => rows.find((r) => r.id === id))
+      .filter((r): r is GroupOrderPaymentRow => Boolean(r)),
+  ];
+  const memberTotals = ordered.map((r) =>
+    paymentTotalWithFreight(Number(r.total ?? 0), r.freight_cost)
+  );
+  const grandTotal = roundInstallmentMoney(
+    memberTotals.reduce((s, v) => s + v, 0)
+  );
+  if (grandTotal <= 0) return out;
+
+  return computeGroupedNfeSchedules({
+    primary,
+    ordered,
+    memberTotals,
+    grandTotal,
+    nfeNumber,
+    emissionDateIso,
+  });
+}
+
+function computeGroupedNfeSchedules(input: {
+  primary: GroupOrderPaymentRow;
+  ordered: GroupOrderPaymentRow[];
+  memberTotals: number[];
+  grandTotal: number;
+  nfeNumber: string | null;
+  emissionDateIso: string;
+}): Map<string, GroupedReceivablesSchedule> {
+  const { primary, ordered, memberTotals, grandTotal } = input;
+  const out = new Map<string, GroupedReceivablesSchedule>();
+  const n = Math.max(
+    1,
+    Math.min(999, Math.floor(Number(primary.payment_installments)) || 1)
+  );
+  const dupAmounts = resolveInstallmentAmounts(
+    grandTotal,
+    n,
+    primary.payment_installment_amounts
+  );
+  const dueDates = resolvePaymentDueDates(
+    {
+      payment_due_mode: primary.payment_due_mode,
+      payment_fixed_due_dates: primary.payment_fixed_due_dates,
+      payment_installments: n,
+      payment_days_to_first_due: primary.payment_days_to_first_due ?? 30,
+      payment_days_between_installments:
+        primary.payment_days_between_installments ?? 0,
+    },
+    input.emissionDateIso
+  );
+  const cents = (v: number) => Math.round(v * 100);
+  const dupCents = dupAmounts.map(cents);
+  const allocated = dupCents.map(() => 0);
+  const nfLabel = input.nfeNumber?.trim()
+    ? `NF-e ${input.nfeNumber.trim()}`
+    : "NF-e agrupada";
+
+  ordered.forEach((row, m) => {
+    const isLast = m === ordered.length - 1;
+    const memberCents = cents(memberTotals[m]);
+    const parts: number[] = [];
+    if (isLast) {
+      // Último PV fica com o resto de cada duplicata (soma por data exacta).
+      for (let i = 0; i < n; i++) parts.push(dupCents[i] - allocated[i]);
+    } else {
+      const share = grandTotal > 0 ? memberTotals[m] / grandTotal : 0;
+      let acc = 0;
+      for (let i = 0; i < n; i++) {
+        const v =
+          i === n - 1 ? memberCents - acc : Math.round(dupCents[i] * share);
+        parts.push(v);
+        acc += v;
+      }
+    }
+    parts.forEach((v, i) => {
+      allocated[i] += v;
+    });
+    out.set(row.id, {
+      amounts: parts.map((v) => Math.max(0, v) / 100),
+      dueDates,
+      descriptions: parts.map(
+        (_, i) =>
+          `Parcela ${i + 1}/${n} — pedido ${row.order_number} (${nfLabel}, duplicata ${String(i + 1).padStart(3, "0")})`
+      ),
+    });
+  });
+  return out;
 }

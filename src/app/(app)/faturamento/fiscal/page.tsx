@@ -49,6 +49,10 @@ import {
   nfeStatusPill,
   salesOrderStatusPill,
 } from "@/modules/faturamento/lib/fiscal-invoicing-list-display";
+import {
+  CloseWithoutInvoiceDialog,
+  type CloseWithoutInvoiceTarget,
+} from "@/components/faturamento/close-without-invoice-dialog";
 import { billingNfeDisplayLabel } from "@/modules/faturamento/lib/sales-order-billing-display";
 import {
   FISCAL_INVOICING_LIST_TAB_DEFAULT,
@@ -135,10 +139,20 @@ async function postPlanWithoutInvoice(orderId: string): Promise<void> {
   if (!res.ok) throw new Error(json.error ?? "Erro ao marcar sem nota");
 }
 
-async function postCloseWithoutInvoice(orderId: string): Promise<void> {
+async function postCloseWithoutInvoice(
+  orderId: string,
+  actualDelivery: string | null
+): Promise<void> {
   const res = await fetch(
     `/api/faturamento/fiscal/${encodeURIComponent(orderId)}/close-without-invoice`,
-    { method: "POST", credentials: "include" }
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        actualDelivery ? { actual_delivery: actualDelivery } : {}
+      ),
+    }
   );
   const json = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new Error(json.error ?? "Erro ao fechar sem nota");
@@ -398,12 +412,21 @@ export default function FiscalInvoicingPage() {
     onSettled: () => setPlanningWithoutInvoiceId(null),
   });
 
+  const [closeWithoutInvoiceTarget, setCloseWithoutInvoiceTarget] =
+    useState<CloseWithoutInvoiceTarget | null>(null);
   const closeWithoutInvoiceMutation = useMutation({
-    mutationFn: async (orderId: string) => {
+    mutationFn: async ({
+      orderId,
+      actualDelivery,
+    }: {
+      orderId: string;
+      actualDelivery: string | null;
+    }) => {
       setClosingWithoutInvoiceId(orderId);
-      await postCloseWithoutInvoice(orderId);
+      await postCloseWithoutInvoice(orderId, actualDelivery);
     },
     onSuccess: () => {
+      setCloseWithoutInvoiceTarget(null);
       toast.success("Pedido concluído — entrega sem nota fiscal.");
       setTab("nfe_authorized");
       invalidateList();
@@ -904,7 +927,13 @@ export default function FiscalInvoicingPage() {
                       ? "Confirmar entrega sem nota — vai para Autorizadas"
                       : "Aguardando liberação da produção ou crédito para confirmar sem nota"
                   }
-                  onClick={() => closeWithoutInvoiceMutation.mutate(row.id)}
+                  onClick={() =>
+                    setCloseWithoutInvoiceTarget({
+                      id: row.id,
+                      orderNumber: row.order_number,
+                      actualDelivery: row.actual_delivery ?? null,
+                    })
+                  }
                 >
                   {closingWithoutInvoiceId === row.id ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1059,6 +1088,18 @@ export default function FiscalInvoicingPage() {
           Ir para pedidos de venda
         </Link>
       </p>
+      <CloseWithoutInvoiceDialog
+        target={closeWithoutInvoiceTarget}
+        pending={closeWithoutInvoiceMutation.isPending}
+        onCancel={() => setCloseWithoutInvoiceTarget(null)}
+        onConfirm={(date) => {
+          if (!closeWithoutInvoiceTarget) return;
+          closeWithoutInvoiceMutation.mutate({
+            orderId: closeWithoutInvoiceTarget.id,
+            actualDelivery: date,
+          });
+        }}
+      />
     </AppPage>
   );
 }

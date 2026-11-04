@@ -27,10 +27,25 @@ export type SalesOrderForReceivables = {
   payment_fixed_due_dates?: string[] | null;
   payment_installment_amounts?: number[] | null;
   invoice_document_type?: string | null;
+  /**
+   * Calendário explícito (ex.: NF-e agrupada — fatia deste PV em cada duplicata).
+   * Quando presente, substitui prazos/valores calculados a partir do PV.
+   */
+  schedule_override?: {
+    amounts: number[];
+    dueDates: string[];
+    descriptions?: string[];
+  } | null;
+};
+
+export type SyncReceivablesOptions = {
+  /** Gera as parcelas mesmo que o pedido ainda não tenha nenhum título. */
+  createIfNone?: boolean;
 };
 
 export type SyncReceivablesResult = {
   updated: number;
+  created?: number;
   lockedSkipped: number;
   warnings: string[];
 };
@@ -41,6 +56,25 @@ export function buildSalesOrderReceivableTargets(order: SalesOrderForReceivables
   documentNumbers: string[];
   descriptions: string[];
 } {
+  const override = order.schedule_override;
+  if (override && override.amounts.length > 0) {
+    const n = Math.min(999, override.amounts.length);
+    const documentNumbers: string[] = [];
+    const descriptions: string[] = [];
+    for (let i = 0; i < n; i++) {
+      documentNumbers.push(`${order.order_number}-${i + 1}/${n}`);
+      descriptions.push(
+        override.descriptions?.[i] ??
+          `Parcela ${i + 1}/${n} — pedido ${order.order_number}`
+      );
+    }
+    return {
+      amounts: override.amounts.slice(0, n),
+      dueDates: override.dueDates.slice(0, n),
+      documentNumbers,
+      descriptions,
+    };
+  }
   const total = Number(order.total ?? 0);
   const n = Math.max(1, Math.min(999, order.payment_installments ?? 1));
   const amounts = resolveInstallmentAmounts(
@@ -73,11 +107,14 @@ export function buildSalesOrderReceivableTargets(order: SalesOrderForReceivables
 /**
  * Recalcula parcelas pendentes sem baixa parcial (paid_amount = 0).
  * Não altera títulos pagos, parciais, cancelados ou com is_forecast já resolvido fora de pending.
+ * Cria as parcelas que faltam (ex.: 1x → 2x depois de o PV ter gerado os títulos);
+ * se o pedido não tiver nenhum título, só cria com `createIfNone`.
  */
 export async function syncReceivablesForSalesOrder(
   admin: Admin,
   tenantId: string,
-  order: SalesOrderForReceivables
+  order: SalesOrderForReceivables,
+  options?: SyncReceivablesOptions
 ): Promise<SyncReceivablesResult> {
   const warnings: string[] = [];
   const total = Number(order.total ?? 0);
@@ -99,14 +136,50 @@ export async function syncReceivablesForSalesOrder(
   if (loadErr) {
     return { updated: 0, lockedSkipped: 0, warnings: [loadErr.message] };
   }
-  if (!existing?.length) {
+  if (!existing?.length && !options?.createIfNone) {
     return { updated: 0, lockedSkipped: 0, warnings };
   }
 
   let updated = 0;
   let lockedSkipped = 0;
+  let created = 0;
 
-  for (const row of existing) {
+  // Parcelas sem título activo (nunca criadas ou só canceladas) → inserir.
+  const activeIdx = new Set(
+    (existing ?? [])
+      .filter((r) => r.status !== "cancelled")
+      .map((r) => r.installment_index ?? 1)
+  );
+  const anyForecast = (existing ?? []).some(
+    (r) => r.status !== "cancelled" && r.is_forecast === true
+  );
+  const newRows: Database["public"]["Tables"]["receivables"]["Insert"][] = [];
+  for (let i = 0; i < targets.amounts.length; i++) {
+    if (activeIdx.has(i + 1)) continue;
+    const amt = targets.amounts[i];
+    const due = targets.dueDates[i];
+    if (amt === undefined || !due) continue;
+    newRows.push({
+      tenant_id: tenantId,
+      sales_order_id: order.id,
+      document_number: targets.documentNumbers[i],
+      description: targets.descriptions[i],
+      original_amount: amt,
+      current_amount: amt,
+      issue_date: order.order_date.slice(0, 10),
+      due_date: due,
+      status: "pending",
+      client_name: order.client_name,
+      client_document: order.client_document,
+      installment_index: i + 1,
+      source_kind: RECEIVABLE_SOURCE_SALES_ORDER,
+      is_forecast: existing?.length ? anyForecast : true,
+    });
+  }
+  // Linhas canceladas não contam: evita avisos/recálculo sobre títulos mortos.
+  const existingActive = (existing ?? []).filter((r) => r.status !== "cancelled");
+
+  for (const row of existingActive) {
     const idx = (row.installment_index ?? 1) - 1;
     const newAmt = targets.amounts[idx];
     const newDue = targets.dueDates[idx];
@@ -182,7 +255,16 @@ export async function syncReceivablesForSalesOrder(
     }
   }
 
-  return { updated, lockedSkipped, warnings };
+  if (newRows.length) {
+    const { error } = await admin.from("receivables").insert(newRows);
+    if (error) {
+      warnings.push(`Falha ao criar parcelas em falta: ${error.message}`);
+    } else {
+      created = newRows.length;
+    }
+  }
+
+  return { updated, created, lockedSkipped, warnings };
 }
 
 export function salesOrderRowToReceivablesInput(row: {
