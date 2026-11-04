@@ -14,6 +14,9 @@ import { sendPurchaseOrderEmail } from "@/modules/compras/lib/purchasing/send-pu
 import { loadTenantMailConfig } from "@/shared/utils/email/load-tenant-mail-config";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+/** Geração de PDF com Chromium headless (cold start ~5–10 s). */
+export const maxDuration = 60;
 
 type Params = { params: Promise<{ id: string }> };
 
