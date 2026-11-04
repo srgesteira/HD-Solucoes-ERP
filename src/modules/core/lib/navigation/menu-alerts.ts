@@ -552,12 +552,14 @@ export async function loadMenuAlerts(
   if (access.pcp) {
     tasks.push(
       (async () => {
-        const { count, error } = await admin
+        // Pedido já faturado (billing_closure) não precisa mais de MRP.
+        const { count, error } = await asUntypedAdmin(admin)
           .from("sales_orders")
           .select("*", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
           .eq("mrp_processed", false)
           .eq("ready_for_invoice", false)
+          .is("billing_closure", null)
           .in("status", ["pending", "confirmed", "in_production"]);
         if (!error) {
           const n = count ?? 0;
