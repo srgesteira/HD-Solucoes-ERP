@@ -16,6 +16,8 @@ export type SettlementDateCorrectionInput = {
   previousDate: string | null;
   /** Notas atuais do título (a correção é acrescentada, nunca apagada). */
   previousNotes: string | null;
+  /** Motivo informado pelo utilizador (opcional; acrescentado à nota de auditoria). */
+  reason?: string | null;
 };
 
 export type SettlementDateCorrectionResult =
@@ -96,7 +98,9 @@ export async function correctSettlementDate(
     : input.previousDate ?? null;
   const auditNote = `Data de ${label} corrigida de ${formatShortDate(
     previousShown
-  )} para ${formatShortDate(newDate)} em ${formatShortDate(todayIsoSaoPaulo())}.`;
+  )} para ${formatShortDate(newDate)} em ${formatShortDate(todayIsoSaoPaulo())}.${
+    input.reason?.trim() ? ` Motivo: ${input.reason.trim().slice(0, 500)}` : ""
+  }`;
   const notes = input.previousNotes?.trim()
     ? `${input.previousNotes.trim()}\n${auditNote}`
     : auditNote;

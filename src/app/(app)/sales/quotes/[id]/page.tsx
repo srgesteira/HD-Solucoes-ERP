@@ -46,7 +46,10 @@ import type { QuoteStatus } from "@/modules/core/types/sales.types";
 import { QuoteRejectModal } from "@/components/sales/quote-reject-modal";
 import { CustomerPoConvertModal } from "@/components/sales/customer-po-convert-modal";
 import { QuoteCostReviewPanel } from "@/components/sales/quote-cost-review-panel";
-import { QuoteSendEmailModal } from "@/components/sales/quote-send-email-modal";
+import {
+  QuoteSendEmailModal,
+  type QuoteSendEmailPayload,
+} from "@/components/sales/quote-send-email-modal";
 import { AuditHistoryPanel } from "@/components/audit/audit-history-panel";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
 import {
@@ -232,14 +235,23 @@ async function postApproveQuote(
 
 async function postSendQuoteEmail(
   id: string,
-  to: string[],
-  message: string | null
+  payload: QuoteSendEmailPayload
 ): Promise<{ sent: boolean; simulated: boolean; message: string | null }> {
+  const body =
+    payload.mode === "zoho"
+      ? {
+          to: payload.to,
+          cc: payload.cc,
+          subject: payload.subject,
+          body: payload.body,
+          confirmed: true,
+        }
+      : { to: payload.to, message: payload.message };
   const res = await fetch(`/api/sales/quotes/${id}/send-email`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ to, message }),
+    body: JSON.stringify(body),
   });
   const json = (await res.json().catch(() => ({}))) as {
     sent?: boolean;
@@ -518,15 +530,14 @@ export default function QuoteDetailPage() {
   });
 
   const sendEmailMutation = useMutation({
-    mutationFn: (p: { to: string[]; message: string | null }) =>
-      postSendQuoteEmail(id, p.to, p.message),
+    mutationFn: (p: QuoteSendEmailPayload) => postSendQuoteEmail(id, p),
     onSuccess: (result) => {
       if (result.sent) {
         toast.success(result.message ?? "Orçamento enviado por e-mail.");
       } else if (result.simulated) {
         toast.info(
           result.message ??
-            "Envio simulado — configure o serviço de e-mail (RESEND_API_KEY)."
+            "Envio simulado — Zoho não configurado (veja docs/ZOHO-SETUP.md)."
         );
       } else {
         toast.warning(result.message ?? "Envio não confirmado.");
@@ -1284,6 +1295,7 @@ export default function QuoteDetailPage() {
 
       <QuoteSendEmailModal
         open={sendEmailOpen}
+        quoteId={id}
         quoteNumber={
           q
             ? formatQuoteNumberWithRevision(q.quote_number, q.revision_number)
@@ -1300,7 +1312,7 @@ export default function QuoteDetailPage() {
         onClose={() =>
           !sendEmailMutation.isPending && setSendEmailOpen(false)
         }
-        onSubmit={(to, message) => sendEmailMutation.mutate({ to, message })}
+        onSubmit={(payload) => sendEmailMutation.mutate(payload)}
       />
     </AppPage>
   );
