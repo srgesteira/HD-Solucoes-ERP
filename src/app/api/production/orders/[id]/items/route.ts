@@ -10,6 +10,7 @@ import {
 } from "@/modules/core/lib/tenant";
 import type { Database } from "@/modules/core/types/database";
 import { ensureOrderItemOperations } from "@/modules/pcp/lib/product-routing-service";
+import { dismissRequisitionsForProductionOrder } from "@/modules/compras/lib/purchasing/requisition-auto-dismiss";
 
 export const dynamic = "force-dynamic";
 
@@ -534,12 +535,21 @@ export async function PUT(request: NextRequest, { params }: Params) {
       .eq("tenant_id", tenantId);
     const all = (siblings ?? []) as { status: string | null }[];
     if (all.length > 0 && all.every((s) => s.status === "completed")) {
-      await admin
+      const { data: closed } = await admin
         .from("production_orders")
         .update({ status: "finished", finished_at: new Date().toISOString() })
         .eq("id", orderId)
         .eq("tenant_id", tenantId)
-        .not("status", "in", "(finished,cancelled)");
+        .not("status", "in", "(finished,cancelled)")
+        .select("id");
+      if ((closed ?? []).length > 0) {
+        await dismissRequisitionsForProductionOrder(
+          admin,
+          tenantId,
+          orderId,
+          "finished"
+        );
+      }
     }
   }
 
