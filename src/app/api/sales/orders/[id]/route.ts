@@ -54,6 +54,7 @@ import {
 } from "@/modules/almoxarifado/lib/inventory-reservations";
 import { parseSalesOrderDeliveryAddressBody } from "@/modules/vendas/lib/sales/sales-order-delivery-address";
 import { todayIsoSaoPaulo } from "@/shared/utils/date";
+import { dismissRequisitionsForSalesOrder } from "@/modules/compras/lib/purchasing/requisition-auto-dismiss";
 
 export const dynamic = "force-dynamic";
 
@@ -885,6 +886,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         cancelRecvErr.message
       );
     }
+    // Requisições de compra em rascunho do pedido cancelado ficam órfãs.
+    await dismissRequisitionsForSalesOrder(admin, tenantId, id);
   }
   if (
     (newStatus === "cancelled" || newStatus === "shipped") &&

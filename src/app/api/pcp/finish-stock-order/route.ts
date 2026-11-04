@@ -7,6 +7,7 @@ import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { currentUserCanPcpPlanning } from "@/modules/pcp/lib/pcp-api-auth";
 import { isOrderItemProductionFinished } from "@/modules/pcp/lib/order-item-production-status";
 import { applyProductionFinishInboundForOrder } from "@/modules/almoxarifado/lib/production-finish-inventory";
+import { dismissRequisitionsForProductionOrder } from "@/modules/compras/lib/purchasing/requisition-auto-dismiss";
 
 export const dynamic = "force-dynamic";
 
@@ -122,6 +123,13 @@ export async function POST(request: NextRequest) {
 
   if (updErr) return apiError(updErr.message, 400);
   if (!updated) return apiError("Ordem de produção não encontrada", 404);
+
+  await dismissRequisitionsForProductionOrder(
+    admin,
+    tenantId,
+    productionOrderId,
+    "finished"
+  );
 
   return apiOk({ production_order: updated, inventory: inventoryPosted });
 }

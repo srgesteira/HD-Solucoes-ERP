@@ -8,6 +8,11 @@ import {
   isCurrentUserTenantAdmin,
 } from "@/modules/core/lib/tenant";
 import type { Database } from "@/modules/core/types/database";
+import {
+  dismissRequisitionIdsSafe,
+  dismissRequisitionsForProductionOrder,
+  findOpenRequisitionIdsForProductionOrder,
+} from "@/modules/compras/lib/purchasing/requisition-auto-dismiss";
 
 export const dynamic = "force-dynamic";
 
@@ -164,6 +169,16 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
   if (!data) return apiError("Pedido não encontrado", 404);
 
+  // OP fechada → requisições de compra em rascunho ligadas ficam órfãs.
+  if (updateData.status === "finished" || updateData.status === "cancelled") {
+    await dismissRequisitionsForProductionOrder(
+      admin,
+      tenantId,
+      id,
+      updateData.status
+    );
+  }
+
   return apiOk({ data });
 }
 
@@ -187,6 +202,23 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   const admin = createSupabaseAdminClient();
+
+  // Coletar antes de remover: o DELETE zera (SET NULL) os vínculos da requisição.
+  let orphanRequisitionIds: string[] = [];
+  try {
+    orphanRequisitionIds = await findOpenRequisitionIdsForProductionOrder(
+      admin,
+      tenantId,
+      id,
+      { keepActiveSalesLines: true }
+    );
+  } catch (e) {
+    console.warn(
+      "[production-order] Falha ao localizar requisições da OP removida:",
+      e instanceof Error ? e.message : e
+    );
+  }
+
   const { data: removed, error } = await admin
     .from("production_orders")
     .delete()
@@ -202,6 +234,13 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     );
   }
   if (!removed) return apiError("Pedido não encontrado", 404);
+
+  await dismissRequisitionIdsSafe(
+    admin,
+    tenantId,
+    orphanRequisitionIds,
+    `OP ${id} removida`
+  );
 
   return apiOk({ success: true });
 }

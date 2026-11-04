@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Boxes, Loader2 } from "lucide-react";
@@ -16,10 +16,77 @@ import type {
   MaterialRequirement,
   MrpBatchSummary,
 } from "@/modules/pcp/lib/mrp-service";
+import {
+  isHdManufacturedCode,
+  isHdResaleCode,
+} from "@/modules/pcp/lib/mrp-force-production";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type MrpOrderLine = {
+  id: string;
+  line_number: number;
+  description: string;
+  quantity: number;
+  unit: string;
+  code: string;
+  /** HD1/HD2 — forçado automaticamente no servidor. */
+  autoForced: boolean;
+  /** HD3 — revenda, nunca gera OP. */
+  resale: boolean;
+  hasOp: boolean;
+};
+
+type ForceSelection = {
+  force_production_item_ids: string[];
+  unforce_production_item_ids: string[];
+};
+
+async function fetchOrderLines(salesOrderId: string): Promise<MrpOrderLine[]> {
+  const res = await fetch(`/api/sales/orders/${salesOrderId}`, {
+    credentials: "include",
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    data?: { items?: unknown[] };
+  };
+  if (!res.ok) {
+    throw new Error(
+      typeof json.error === "string" ? json.error : "Pedido não encontrado"
+    );
+  }
+  const items = Array.isArray(json.data?.items) ? json.data.items : [];
+  return items
+    .map((raw) => {
+      const it = (raw ?? {}) as Record<string, unknown>;
+      const prodRaw = it.product;
+      const prod = (
+        Array.isArray(prodRaw) ? prodRaw[0] : prodRaw
+      ) as Record<string, unknown> | null | undefined;
+      const technical =
+        typeof prod?.technical_code === "string" ? prod.technical_code : null;
+      const manual = typeof prod?.code === "string" ? prod.code : null;
+      return {
+        id: String(it.id ?? ""),
+        line_number: Number(it.line_number ?? 0),
+        description: String(it.description ?? prod?.name ?? ""),
+        quantity: Number(it.quantity ?? 0),
+        unit: String(it.unit ?? ""),
+        code: (technical?.trim() || manual?.trim() || "—") as string,
+        autoForced: isHdManufacturedCode(technical, manual),
+        resale: isHdResaleCode(technical, manual),
+        hasOp: typeof it.production_order_id === "string",
+      } satisfies MrpOrderLine;
+    })
+    .filter((l) => l.id)
+    .sort((a, b) => a.line_number - b.line_number);
+}
 
 async function postPlan(
   salesOrderId: string,
-  mode: "requirements" | "purchase_orders" | "production" | "full"
+  mode: "requirements" | "purchase_orders" | "production" | "full",
+  force?: ForceSelection
 ): Promise<{
   requirements?: MaterialRequirement[];
   purchase_orders?: Array<{ id: string; po_number: string }>;
@@ -32,6 +99,10 @@ async function postPlan(
     body.confirm = true;
   } else {
     body.action = mode;
+  }
+  if (force && (mode === "full" || mode === "production")) {
+    body.force_production_item_ids = force.force_production_item_ids;
+    body.unforce_production_item_ids = force.unforce_production_item_ids;
   }
   const res = await fetch("/api/mrp/plan-sales-order", {
     method: "POST",
@@ -86,6 +157,60 @@ function MrpPageContent() {
   const [busy, setBusy] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchResult, setBatchResult] = useState<MrpBatchSummary | null>(null);
+  const [lines, setLines] = useState<MrpOrderLine[]>([]);
+  const [linesLoading, setLinesLoading] = useState(false);
+  const [linesError, setLinesError] = useState<string | null>(null);
+  /** Estado do checkbox "Forçar OP" por linha (sales_order_items.id). */
+  const [forced, setForced] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const id = orderId.trim();
+    if (!UUID_RE.test(id)) {
+      setLines([]);
+      setForced({});
+      setLinesError(null);
+      return;
+    }
+    let cancelled = false;
+    setLinesLoading(true);
+    setLinesError(null);
+    void fetchOrderLines(id)
+      .then((ls) => {
+        if (cancelled) return;
+        setLines(ls);
+        // HD1/HD2 pré-marcados; HD3 (revenda) nunca.
+        setForced(
+          Object.fromEntries(ls.map((l) => [l.id, l.autoForced && !l.resale]))
+        );
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setLines([]);
+        setForced({});
+        setLinesError(e instanceof Error ? e.message : "Erro ao carregar linhas");
+      })
+      .finally(() => {
+        if (!cancelled) setLinesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
+  const forceSelection = useMemo<ForceSelection>(() => {
+    const force: string[] = [];
+    const unforce: string[] = [];
+    for (const l of lines) {
+      if (l.resale) continue;
+      const on = forced[l.id] === true;
+      if (on) force.push(l.id);
+      else if (l.autoForced) unforce.push(l.id);
+    }
+    return {
+      force_production_item_ids: force,
+      unforce_production_item_ids: unforce,
+    };
+  }, [lines, forced]);
 
   useEffect(() => {
     const q = searchParams.get("sales_order_id")?.trim();
@@ -110,7 +235,7 @@ function MrpPageContent() {
     }
     setBusy(true);
     try {
-      const json = await postPlan(id, mode);
+      const json = await postPlan(id, mode, forceSelection);
       setReqs(json.requirements ?? []);
       if (mode === "purchase_orders" || mode === "full") {
         setLastPos(json.purchase_orders ?? []);
@@ -209,6 +334,85 @@ function MrpPageContent() {
               className="font-mono text-xs"
             />
           </div>
+          {linesLoading ? (
+            <p className="text-xs text-slate-500 flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> A carregar linhas
+              do pedido…
+            </p>
+          ) : linesError ? (
+            <p className="text-xs text-red-700 dark:text-red-400">{linesError}</p>
+          ) : lines.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                <strong>Forçar OP</strong>: gera ordem de produção mesmo sem BOM
+                ou com kit em estoque (fabricação sob encomenda). Itens HD1/HD2
+                (fabricados pela HD) vêm marcados; HD3 é revenda e segue para
+                compra.
+              </p>
+              <div className="rounded-lg border border-slate-200 overflow-x-auto dark:border-slate-800">
+                <table className="w-full text-sm min-w-[560px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 dark:bg-slate-900/50">
+                      <th className="px-3 py-2 text-center font-medium w-24">
+                        Forçar OP
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium w-12">#</th>
+                      <th className="px-3 py-2 text-left font-medium">Código</th>
+                      <th className="px-3 py-2 text-left font-medium">Descrição</th>
+                      <th className="px-3 py-2 text-right font-medium">Qtd.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((l) => (
+                      <tr
+                        key={l.id}
+                        className="border-b border-slate-100 dark:border-slate-800"
+                      >
+                        <td className="px-3 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-brand-700"
+                            aria-label={`Forçar OP na linha ${l.line_number}`}
+                            title={
+                              l.resale
+                                ? "HD3 é revenda — não gera OP (vai para compra)."
+                                : l.hasOp
+                                  ? "Linha já possui ordem de produção."
+                                  : "Gerar OP mesmo sem BOM ou com estoque."
+                            }
+                            disabled={busy || l.resale}
+                            checked={!l.resale && forced[l.id] === true}
+                            onChange={(e) =>
+                              setForced((prev) => ({
+                                ...prev,
+                                [l.id]: e.target.checked,
+                              }))
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2 tabular-nums">{l.line_number}</td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {l.code}
+                          {l.resale ? (
+                            <span className="ml-1 text-slate-500">(revenda)</span>
+                          ) : null}
+                          {l.hasOp ? (
+                            <span className="ml-1 text-slate-500">(com OP)</span>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2 max-w-[20rem]">
+                          <span className="line-clamp-2">{l.description}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {l.quantity} {l.unit}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
