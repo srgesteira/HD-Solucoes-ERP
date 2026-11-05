@@ -22,6 +22,10 @@ import type { QuotePrintData } from "@/modules/vendas/lib/sales/quote-display";
 import type { Tables } from "@/modules/core/types/database";
 import { sortQuoteItemsByLineNumber } from "@/modules/vendas/lib/sales/quote-items-order";
 import { nextRevisionOnSend } from "@/modules/vendas/lib/sales/quote-revision";
+import {
+  confidentialPricingErrorMessage,
+  findConfidentialPricingText,
+} from "@/modules/vendas/lib/sales/quote-confidential-guard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -357,6 +361,10 @@ async function sendWithZoho(
   const admin = createSupabaseAdminClient();
   const loaded = await loadQuoteForEmail(admin, tenantId, id);
   if (!loaded.ok) return loaded.response;
+  {
+    const hits = findConfidentialPricingText(loaded.quote);
+    if (hits.length) return apiError(confidentialPricingErrorMessage(hits), 422);
+  }
   const meta = loaded.quote;
   if (!SENDABLE_STATUSES.has(meta.status ?? "")) {
     return apiError("Só é possível enviar orçamentos em rascunho, em revisão ou já enviados.", 400);

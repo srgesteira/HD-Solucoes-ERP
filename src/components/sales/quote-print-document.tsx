@@ -844,11 +844,6 @@ export function QuotePrintDocument({ quote, company, className }: Props) {
                     </td>
                     <td className="qp-num">
                       {fmtQuoteBRL(Number(line.unit_price))}
-                      {line.markup_percent != null ? (
-                        <span className="qp-markup-hint">
-                          ({Number(line.markup_percent)}% markup)
-                        </span>
-                      ) : null}
                     </td>
                     <td className="qp-num qp-line-total">
                       {fmtQuoteBRL(Number(line.total_price))}

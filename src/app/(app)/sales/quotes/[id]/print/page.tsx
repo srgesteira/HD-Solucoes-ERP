@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { downloadQuotePdf } from "@/modules/vendas/lib/sales/download-quote-pdf";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Printer } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, Printer } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { QuotePrintDocument } from "@/components/sales/quote-print-document";
 import type { QuotePrintData } from "@/modules/vendas/lib/sales/quote-display";
@@ -66,8 +68,19 @@ export default function QuotePrintPage() {
     return () => window.clearTimeout(t);
   }, [quoteQuery.data]);
 
+  const [downloading, setDownloading] = useState(false);
   const handlePrint = () => {
     window.print();
+  };
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      await downloadQuotePdf(id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -79,15 +92,31 @@ export default function QuotePrintPage() {
             Voltar ao orçamento
           </Button>
         </Link>
-        <Button
-          type="button"
-          size="sm"
-          onClick={handlePrint}
-          disabled={!quoteQuery.data}
-        >
-          <Printer className="h-4 w-4" />
-          Imprimir / Guardar PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleDownload}
+            disabled={!quoteQuery.data || downloading}
+          >
+            {downloading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4" />
+            )}
+            Baixar PDF
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handlePrint}
+            disabled={!quoteQuery.data}
+          >
+            <Printer className="h-4 w-4" />
+            Imprimir
+          </Button>
+        </div>
       </div>
 
       <div className="p-4 lg:p-8 print:p-0">
