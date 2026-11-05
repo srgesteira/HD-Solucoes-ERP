@@ -16,6 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { downloadQuotePdf } from "@/modules/vendas/lib/sales/download-quote-pdf";
 import {
   formatQuoteDisplayTitle,
   formatQuoteNumberWithRevision,
@@ -320,6 +321,7 @@ export default function QuoteDetailPage() {
   const q = quoteQuery.data?.data;
 
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
   const [approvePoOpen, setApprovePoOpen] = useState(false);
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -586,21 +588,48 @@ export default function QuoteDetailPage() {
       actions={
         <>
           {q ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                window.open(
-                  `/sales/quotes/${id}/print`,
-                  "_blank",
-                  "noopener,noreferrer"
-                )
-              }
-            >
-              <Printer className="h-4 w-4" />
-              Imprimir / PDF
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pdfDownloading}
+                onClick={async () => {
+                  setPdfDownloading(true);
+                  try {
+                    await downloadQuotePdf(id);
+                  } catch (e) {
+                    toast.error(
+                      e instanceof Error ? e.message : "Erro ao gerar PDF"
+                    );
+                  } finally {
+                    setPdfDownloading(false);
+                  }
+                }}
+              >
+                {pdfDownloading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+                Baixar PDF
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  window.open(
+                    `/sales/quotes/${id}/print`,
+                    "_blank",
+                    "noopener,noreferrer"
+                  )
+                }
+              >
+                <Printer className="h-4 w-4" />
+                Imprimir
+              </Button>
+            </>
           ) : null}
           {canContentEdit && !editing ? (
             <Button
