@@ -5,6 +5,7 @@ import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import seed202611 from "@/modules/crm/data/prospeccao-2026-11.json";
+import seedRotina202611 from "@/modules/crm/data/prospeccao-rotina-2026-11.json";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,7 +27,10 @@ type Lead = {
   quando?: string;
 };
 
-const SEEDS: Record<string, Lead[]> = { "2026-11": seed202611 as Lead[] };
+const SEEDS: Record<string, Lead[]> = {
+  "2026-11": seed202611 as Lead[],
+  "rotina-2026-11": seedRotina202611 as Lead[],
+};
 
 const norm = (s: string) =>
   s
