@@ -240,7 +240,7 @@ export default function CustomersPage() {
         key: "name",
         label: "Nome",
         type: "text",
-        width: "w-[22%]",
+        width: "w-[24%]",
         accessor: (row) => row.name,
         render: (row) => (
           <Link
@@ -267,7 +267,7 @@ export default function CustomersPage() {
         key: "crm_stage",
         label: "Etapa",
         type: "text",
-        width: "w-[9%]",
+        width: "w-[11%]",
         accessor: (row) => row.crm_stage ?? "",
         truncate: false,
         render: (row) => {
@@ -292,7 +292,7 @@ export default function CustomersPage() {
         key: "email",
         label: "E-mail",
         type: "text",
-        width: "w-[20%]",
+        width: "w-[16%]",
         accessor: (row) => row.email,
         render: (row) => (
           <span className={CRONOGRAMA_TOKENS.cellText}>
@@ -304,7 +304,7 @@ export default function CustomersPage() {
         key: "phone",
         label: "Telefone",
         type: "text",
-        width: "w-[14%]",
+        width: "w-[12%]",
         accessor: (row) => row.phone,
         truncate: false,
         render: (row) => (
@@ -317,7 +317,7 @@ export default function CustomersPage() {
         key: "is_active",
         label: "Estado",
         type: "text",
-        width: "w-[10%]",
+        width: "w-[8%]",
         accessor: (row) => (row.is_active ? "Ativo" : "Inativo"),
         truncate: false,
         render: (row) => (
