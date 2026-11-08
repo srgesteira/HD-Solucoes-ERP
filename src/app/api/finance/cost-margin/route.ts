@@ -14,7 +14,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
  * Cálculo inteiro no banco (fn_cost_margin_report) → JSON compacto (barato para o agente ler).
  */
 export async function GET(request: NextRequest) {
-  const gate = await assertMenuModuleAccess("finance");
+  const gate = await assertMenuModuleAccess("faturamento");
   if (!gate.ok) return gate.response;
   const tenantId = await getCurrentTenantId();
   if (!tenantId) return apiError("Tenant não encontrado", 403);
