@@ -367,6 +367,12 @@ const MENU_STRUCTURE: NavEntry[] = [
         icon: Activity,
         module: "finance",
       },
+      {
+        title: "Margem por família",
+        href: "/finance/margem-familias",
+        icon: PieChart,
+        module: "finance",
+      },
     ],
   },
   {

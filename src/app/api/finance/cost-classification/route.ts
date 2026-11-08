@@ -40,7 +40,12 @@ async function loadCatalog(admin: Admin, tenantId: string) {
   if (cc.error) throw cc.error;
   if (cn.error) throw cn.error;
   return {
-    centers: (cc.data ?? []) as { id: string; code: string; name: string; kind: string }[],
+    centers: (cc.data ?? []) as {
+      id: string;
+      code: string;
+      name: string;
+      kind: string;
+    }[],
     natures: (cn.data ?? []) as { id: string; code: string; name: string }[],
   };
 }
@@ -68,7 +73,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await admin
       .from("purchase_order_items")
       .select(
-        "id, description, total_price, cost_center_id, cost_nature_id, purchase_orders!inner(po_number, order_date, status, suppliers(name))"
+        "id, description, total_price, cost_center_id, cost_nature_id, purchase_orders!inner(po_number, order_date, status, suppliers(name))",
       )
       .eq("tenant_id", tenantId)
       .gte("purchase_orders.order_date", since)
@@ -76,7 +81,10 @@ export async function GET(request: NextRequest) {
       .or("cost_center_id.is.null,cost_nature_id.is.null")
       .limit(200);
     if (error) {
-      return apiError("Erro ao listar pendências: " + error.message, supabaseErrorToHttp(error.code));
+      return apiError(
+        "Erro ao listar pendências: " + error.message,
+        supabaseErrorToHttp(error.code),
+      );
     }
 
     const centerCode = new Map(catalog.centers.map((c) => [c.id, c.code]));
@@ -87,17 +95,39 @@ export async function GET(request: NextRequest) {
       total_price: number | null;
       cost_center_id: string | null;
       cost_nature_id: string | null;
-      purchase_orders: { po_number: string; suppliers: { name: string } | null } | null;
+      purchase_orders: {
+        po_number: string;
+        suppliers: { name: string } | null;
+      } | null;
     };
-    const pending = ((data ?? []) as unknown as Row[]).map((r) => ({
-      item_id: r.id,
-      pc: r.purchase_orders?.po_number ?? null,
-      fornecedor: r.purchase_orders?.suppliers?.name ?? null,
-      item: r.description,
-      valor: r.total_price,
-      centro: r.cost_center_id ? centerCode.get(r.cost_center_id) ?? null : null,
-      natureza: r.cost_nature_id ? natureCode.get(r.cost_nature_id) ?? null : null,
-    }));
+    // MP/embalagem sem família = compra para estoque (custo vai à família no consumo da OP): não pergunta
+    const stockNatures = new Set(
+      catalog.natures
+        .filter((n) => n.code === "MP" || n.code === "EMB")
+        .map((n) => n.id),
+    );
+    const pending = ((data ?? []) as unknown as Row[])
+      .filter(
+        (r) =>
+          !(
+            r.cost_center_id == null &&
+            r.cost_nature_id != null &&
+            stockNatures.has(r.cost_nature_id)
+          ),
+      )
+      .map((r) => ({
+        item_id: r.id,
+        pc: r.purchase_orders?.po_number ?? null,
+        fornecedor: r.purchase_orders?.suppliers?.name ?? null,
+        item: r.description,
+        valor: r.total_price,
+        centro: r.cost_center_id
+          ? (centerCode.get(r.cost_center_id) ?? null)
+          : null,
+        natureza: r.cost_nature_id
+          ? (natureCode.get(r.cost_nature_id) ?? null)
+          : null,
+      }));
     return apiOk({ since, count: pending.length, pending });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -119,26 +149,38 @@ export async function POST(request: NextRequest) {
   }
   const itemId = typeof b.item_id === "string" ? b.item_id : "";
   const centerCodeIn = typeof b.center === "string" ? b.center.trim() : "";
-  const natureCodeIn = typeof b.nature === "string" ? b.nature.trim().toUpperCase() : "";
-  const remember = b.remember === "supplier" || b.remember === "product" ? b.remember : null;
+  const natureCodeIn =
+    typeof b.nature === "string" ? b.nature.trim().toUpperCase() : "";
+  const remember =
+    b.remember === "supplier" || b.remember === "product" ? b.remember : null;
   if (!itemId) return apiError("item_id é obrigatório", 400);
-  if (!centerCodeIn && !natureCodeIn) return apiError("Informe center e/ou nature", 400);
+  if (!centerCodeIn && !natureCodeIn)
+    return apiError("Informe center e/ou nature", 400);
 
   const admin = asUntypedAdmin(createSupabaseAdminClient());
   try {
     const catalog = await loadCatalog(admin, tenantId);
-    const center = centerCodeIn ? catalog.centers.find((c) => c.code === centerCodeIn) : undefined;
-    const nature = natureCodeIn ? catalog.natures.find((n) => n.code === natureCodeIn) : undefined;
-    if (centerCodeIn && !center) return apiError(`Centro ${centerCodeIn} não existe`, 400);
-    if (natureCodeIn && !nature) return apiError(`Natureza ${natureCodeIn} não existe`, 400);
+    const center = centerCodeIn
+      ? catalog.centers.find((c) => c.code === centerCodeIn)
+      : undefined;
+    const nature = natureCodeIn
+      ? catalog.natures.find((n) => n.code === natureCodeIn)
+      : undefined;
+    if (centerCodeIn && !center)
+      return apiError(`Centro ${centerCodeIn} não existe`, 400);
+    if (natureCodeIn && !nature)
+      return apiError(`Natureza ${natureCodeIn} não existe`, 400);
 
     const { data: item, error: itemErr } = await admin
       .from("purchase_order_items")
-      .select("id, product_id, cost_center_id, cost_nature_id, purchase_orders!inner(supplier_id)")
+      .select(
+        "id, product_id, cost_center_id, cost_nature_id, purchase_orders!inner(supplier_id)",
+      )
       .eq("tenant_id", tenantId)
       .eq("id", itemId)
       .maybeSingle();
-    if (itemErr) return apiError(itemErr.message, supabaseErrorToHttp(itemErr.code));
+    if (itemErr)
+      return apiError(itemErr.message, supabaseErrorToHttp(itemErr.code));
     if (!item) return apiError("Item não encontrado", 404);
     const it = item as unknown as {
       product_id: string | null;
@@ -151,7 +193,11 @@ export async function POST(request: NextRequest) {
     const newNature = nature?.id ?? it.cost_nature_id;
     const { error: upErr } = await admin
       .from("purchase_order_items")
-      .update({ cost_center_id: newCenter, cost_nature_id: newNature, cost_classified_by: "manual" })
+      .update({
+        cost_center_id: newCenter,
+        cost_nature_id: newNature,
+        cost_classified_by: "manual",
+      })
       .eq("id", itemId)
       .eq("tenant_id", tenantId);
     if (upErr) return apiError(upErr.message, supabaseErrorToHttp(upErr.code));
@@ -159,27 +205,42 @@ export async function POST(request: NextRequest) {
     let rule: string | null = null;
     if (remember) {
       const matchCol = remember === "supplier" ? "supplier_id" : "product_id";
-      const matchVal = remember === "supplier" ? it.purchase_orders.supplier_id : it.product_id;
+      const matchVal =
+        remember === "supplier"
+          ? it.purchase_orders.supplier_id
+          : it.product_id;
       if (matchVal) {
         await admin
           .from("cost_classification_rules")
           .delete()
           .eq("tenant_id", tenantId)
           .eq(matchCol, matchVal);
-        const { error: rErr } = await admin.from("cost_classification_rules").insert({
-          tenant_id: tenantId,
-          [matchCol]: matchVal,
-          cost_center_id: center?.id ?? null,
-          cost_nature_id: nature?.id ?? null,
-          priority: 40,
-          notes: "Aprendida na classificação manual",
-        });
-        if (rErr) return apiError("Item salvo, mas a regra falhou: " + rErr.message, 500);
+        const { error: rErr } = await admin
+          .from("cost_classification_rules")
+          .insert({
+            tenant_id: tenantId,
+            [matchCol]: matchVal,
+            cost_center_id: center?.id ?? null,
+            cost_nature_id: nature?.id ?? null,
+            priority: 40,
+            notes: "Aprendida na classificação manual",
+          });
+        if (rErr)
+          return apiError(
+            "Item salvo, mas a regra falhou: " + rErr.message,
+            500,
+          );
         rule = remember;
       }
     }
 
-    return apiOk({ ok: true, item_id: itemId, center: center?.code ?? null, nature: nature?.code ?? null, rule });
+    return apiOk({
+      ok: true,
+      item_id: itemId,
+      center: center?.code ?? null,
+      nature: nature?.code ?? null,
+      rule,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return apiError("Erro: " + msg, 500);
