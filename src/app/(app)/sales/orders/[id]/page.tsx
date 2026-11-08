@@ -38,6 +38,7 @@ import {
   type FiscalStatus,
 } from "@/modules/fiscal/lib/fiscal-rules-types";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
+import { OrderSummaryStrip, type SummaryAlert } from "@/components/orders/order-summary-strip";
 import type { Tables } from "@/modules/core/types/database";
 import type { ReceivableStatus } from "@/modules/core/types/finance.types";
 import type { SalesOrderStatus } from "@/modules/core/types/sales.types";
@@ -304,6 +305,7 @@ async function fetchReceivablesForOrder(
 ): Promise<ReceivableRow[]> {
   const params = new URLSearchParams();
   params.append("sales_order_id", salesOrderId);
+  params.append("tab", "all"); // inclui previsões (antes a tela dizia "nenhuma parcela")
   params.append("page", "1");
   params.append("limit", "100");
 
@@ -753,6 +755,41 @@ export default function SalesOrderDetailPage() {
 
   const headerPill = q ? salesOrderStatusPill(q.status) : null;
 
+  const summary = useMemo(() => {
+    if (!q) return null;
+    const rows = receivablesQuery.data ?? [];
+    const planned = rows.reduce((a, r) => a + Number(r.original_amount || 0), 0);
+    const settled = rows.reduce((a, r) => a + Number(r.paid_amount || 0), 0);
+    const nextRow = [...rows]
+      .filter((r) => r.status !== "paid" && r.status !== "cancelled")
+      .sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
+    const docTotal = paymentTotalWithFreight(q.total, q.freight_cost);
+    const delivered = q.status === "delivered" || q.status === "shipped";
+    const alerts: SummaryAlert[] = [];
+    if (q.status !== "cancelled" && q.expected_delivery && !delivered) {
+      const due = String(q.expected_delivery).slice(0, 10);
+      if (due < todayIsoSaoPaulo()) alerts.push({ tone: "danger", text: "Prazo de entrega vencido — avisar o cliente ou ajustar a data." });
+    }
+    if (receivablesQuery.isSuccess && q.status !== "cancelled" && q.status !== "pending" && rows.length === 0) {
+      alerts.push({ tone: "warning", text: "Pedido sem parcelas no financeiro — a previsão de recebimento não está entrando no caixa." });
+    }
+    if (rows.length && Math.abs(planned - docTotal) > 0.05) {
+      alerts.push({
+        tone: "warning",
+        text: `Parcelas somam ${fmtBRL(planned)}, mas o pedido vale ${fmtBRL(docTotal)} — conferir valores ou frete.`,
+      });
+    }
+    return {
+      planned,
+      settled,
+      next: nextRow ? { date: nextRow.due_date, amount: Number(nextRow.current_amount ?? nextRow.original_amount) } : null,
+      docTotal,
+      delivered,
+      alerts,
+      customerId: (q as unknown as { customer_id?: string | null }).customer_id ?? null,
+    };
+  }, [q, receivablesQuery.data, receivablesQuery.isSuccess]);
+
   return (
     <AppPage
       backHref="/sales/orders"
@@ -910,10 +947,35 @@ export default function SalesOrderDetailPage() {
         </p>
       ) : q ? (
         <>
-          <CompanyDocumentBranding
-            settings={companyBrandingQuery.data ?? null}
-            documentLabel="Pedido de venda"
-          />
+          {summary ? (
+            <OrderSummaryStrip
+              steps={[
+                { key: "pending", label: "Pendente" },
+                { key: "confirmed", label: "Confirmado" },
+                { key: "in_production", label: "Em produção" },
+                { key: "shipped", label: "Expedido" },
+                { key: "delivered", label: "Entregue" },
+              ]}
+              currentKey={q.status}
+              cancelled={q.status === "cancelled"}
+              partyLabel="Cliente"
+              partyName={q.client_name}
+              partyHref={summary.customerId ? `/customers/${summary.customerId}` : null}
+              total={summary.docTotal}
+              deadline={q.expected_delivery}
+              deadlineLabel="Entrega prometida"
+              done={summary.delivered}
+              finance={{ label: "Recebido", planned: summary.planned, settled: summary.settled, next: summary.next }}
+              alerts={summary.alerts}
+            />
+          ) : null}
+          {/* Cabeçalho de documento (logo/razão social) só na impressão */}
+          <div className="hidden print:block">
+            <CompanyDocumentBranding
+              settings={companyBrandingQuery.data ?? null}
+              documentLabel="Pedido de venda"
+            />
+          </div>
           <Card>
             <CardHeader className="pb-3">
               <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">

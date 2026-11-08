@@ -18,6 +18,7 @@ import {
 } from "@/shared/ui/sortable-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { AppPage } from "@/shared/ui/app-page";
+import { KpiCard } from "@/shared/ui/page-helpers";
 import {
   CRONOGRAMA_TOKENS,
   CronogramaError,
@@ -182,6 +183,32 @@ export default function SalesOrdersListPage() {
     staleTime: 60_000,
   });
 
+  // Indicadores do topo: carteira em aberto, atrasados e entregas da semana
+  const openQuery = useQuery({
+    queryKey: ["sales-orders", "kpis"],
+    queryFn: () => fetchSalesOrders({ tab: "open" as SalesOrderListTab, search: "", page: 1, limit: 100 }),
+    staleTime: 60_000,
+  });
+  const kpis = useMemo(() => {
+    const rows = (openQuery.data?.data ?? []).filter((r) => r.status !== "cancelled");
+    const today = new Date().toISOString().slice(0, 10);
+    const in7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const pending = rows.filter((r) => r.status !== "shipped" && r.status !== "delivered");
+    const late = pending.filter((r) => r.expected_delivery && r.expected_delivery.slice(0, 10) < today);
+    const week = pending.filter(
+      (r) => r.expected_delivery && r.expected_delivery.slice(0, 10) >= today && r.expected_delivery.slice(0, 10) <= in7
+    );
+    const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+    return {
+      carteira: brl(rows.reduce((a, r) => a + Number(r.total || 0), 0)),
+      n: rows.length,
+      late: late.length,
+      lateNames: late.map((r) => r.order_number).join(", "),
+      week: week.length,
+      ready: rows.filter((r) => r.ready_for_invoice).length,
+    };
+  }, [openQuery.data]);
+
   const [cancelTarget, setCancelTarget] = useState<SalesOrderListRow | null>(
     null
   );
@@ -321,10 +348,23 @@ export default function SalesOrdersListPage() {
         truncate: false,
         render: (row) =>
           canSales ? (
-            <InlineDateEdit
-              value={row.expected_delivery}
-              onSave={(v) => handleExpectedDeliveryChange(row, v)}
-            />
+            <span
+              className={cn(
+                "inline-block rounded",
+                row.expected_delivery &&
+                  row.status !== "shipped" &&
+                  row.status !== "delivered" &&
+                  row.status !== "cancelled" &&
+                  row.expected_delivery.slice(0, 10) < new Date().toISOString().slice(0, 10) &&
+                  "ring-2 ring-rose-300"
+              )}
+              title="Vermelho = prazo vencido"
+            >
+              <InlineDateEdit
+                value={row.expected_delivery}
+                onSave={(v) => handleExpectedDeliveryChange(row, v)}
+              />
+            </span>
           ) : (
             <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
               {formatSalesListDate(row.expected_delivery)}
@@ -493,6 +533,18 @@ export default function SalesOrdersListPage() {
         ) : null
       }
     >
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <KpiCard label="Carteira em aberto" value={kpis.carteira} hint={`${kpis.n} pedido(s)`} tone="brand" />
+        <KpiCard
+          label="Atrasados"
+          value={kpis.late}
+          hint={kpis.lateNames || "nenhum"}
+          tone={kpis.late ? "danger" : "success"}
+        />
+        <KpiCard label="Entregar em 7 dias" value={kpis.week} tone={kpis.week ? "warning" : "neutral"} />
+        <KpiCard label="Liberados para faturar" value={kpis.ready} tone={kpis.ready ? "info" : "neutral"} />
+      </div>
+
       <Tabs value={tab} onValueChange={onTabChange}>
         <TabsList className="w-full flex flex-wrap h-auto gap-1">
           {SALES_ORDER_LIST_TABS.map((tabId) => (
