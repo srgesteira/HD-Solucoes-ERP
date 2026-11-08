@@ -32,6 +32,7 @@ import {
   Package,
   Percent,
   PieChart,
+  Target,
   Receipt,
   Rocket,
   RotateCcw,
@@ -397,6 +398,12 @@ const MENU_STRUCTURE: NavEntry[] = [
         title: "Clientes",
         href: "/customers",
         icon: User,
+        module: "sales",
+      },
+      {
+        title: "CRM",
+        href: "/sales/crm",
+        icon: Target,
         module: "sales",
       },
       {

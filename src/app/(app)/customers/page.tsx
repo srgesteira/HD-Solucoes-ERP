@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Edit, Plus, User, UserX } from "lucide-react";
+import { Edit, ExternalLink, Plus, User, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import {
@@ -44,7 +45,21 @@ interface CustomerRow {
   address: string | null;
   notes: string | null;
   is_active: boolean;
+  trade_name?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  crm_stage?: string | null;
+  next_contact_at?: string | null;
 }
+
+const STAGE_LABEL: Record<string, { label: string; tone: "info" | "brand" | "success" | "muted" | "danger" }> = {
+  lead: { label: "Lead", tone: "info" },
+  contato: { label: "Em contato", tone: "info" },
+  qualificado: { label: "Qualificado", tone: "brand" },
+  cliente: { label: "Cliente", tone: "success" },
+  inativo: { label: "Inativo", tone: "muted" },
+  perdido: { label: "Perdido", tone: "danger" },
+};
 
 interface CustomersApiResponse {
   data: CustomerRow[];
@@ -228,10 +243,37 @@ export default function CustomersPage() {
         width: "w-[22%]",
         accessor: (row) => row.name,
         render: (row) => (
-          <span className={`${CRONOGRAMA_TOKENS.cellText} font-medium line-clamp-2`}>
-            {row.name}
+          <Link
+            href={`/customers/${row.id}`}
+            className={`${CRONOGRAMA_TOKENS.cellText} font-medium line-clamp-2 text-brand-700 hover:underline`}
+          >
+            {row.trade_name?.trim() || row.name}
+          </Link>
+        ),
+      },
+      {
+        key: "city",
+        label: "Cidade/UF",
+        type: "text",
+        width: "w-[12%]",
+        accessor: (row) => [row.address_city, row.address_state].filter(Boolean).join("/"),
+        render: (row) => (
+          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
+            {[row.address_city, row.address_state].filter(Boolean).join("/") || "—"}
           </span>
         ),
+      },
+      {
+        key: "crm_stage",
+        label: "Etapa",
+        type: "text",
+        width: "w-[9%]",
+        accessor: (row) => row.crm_stage ?? "",
+        truncate: false,
+        render: (row) => {
+          const st = STAGE_LABEL[row.crm_stage ?? ""];
+          return st ? <StatusBadge tone={st.tone}>{st.label}</StatusBadge> : <span>—</span>;
+        },
       },
       {
         key: "document",
@@ -243,19 +285,6 @@ export default function CustomersPage() {
         render: (row) => (
           <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
             {row.document?.trim() || "—"}
-          </span>
-        ),
-      },
-      {
-        key: "state_registration",
-        label: "IE",
-        type: "text",
-        width: "w-[12%]",
-        accessor: (row) => row.state_registration,
-        truncate: false,
-        render: (row) => (
-          <span className={`${CRONOGRAMA_TOKENS.cellMuted} whitespace-nowrap`}>
-            {row.state_registration?.trim() || "—"}
           </span>
         ),
       },
@@ -348,6 +377,14 @@ export default function CustomersPage() {
           render: (row) => (
             <RowActionsMenu
               items={[
+                {
+                  id: "open",
+                  label: "Abrir ficha",
+                  icon: <ExternalLink className="h-4 w-4" />,
+                  onClick: () => {
+                    window.location.href = `/customers/${row.id}`;
+                  },
+                },
                 {
                   id: "edit",
                   label: "Editar",

@@ -31,13 +31,15 @@ export async function GET(request: NextRequest) {
   const to = from + limit - 1;
 
   const admin = createSupabaseAdminClient();
-  let q = admin
+  let q = asUntypedAdmin(admin)
     .from("customers")
     .select(
-      "id, name, document, state_registration, email, phone, address, notes, is_active, created_at, updated_at",
+      "id, name, trade_name, document, state_registration, email, phone, address, address_city, address_state, crm_stage, next_contact_at, notes, is_active, created_at, updated_at",
       { count: "exact" }
     )
     .eq("tenant_id", tenantId);
+  const stage = params.get("crm_stage");
+  if (stage) q = q.eq("crm_stage", stage);
 
   if (isActive !== null && isActive !== "" && isActive !== "all") {
     q = q.eq("is_active", isActive === "true");
