@@ -61,7 +61,10 @@ export function FinanceOverview() {
     m.outflow += p.outflow;
     m.end = p.cumulative;
   }
-  const shown = months.slice(0, 5);
+  // Último mês só entra se a projeção cobrir até o fim dele (senão mostra saídas pela metade)
+  const last = series[series.length - 1]?.date;
+  const lastComplete = last ? new Date(`${last}T12:00:00`).getDate() >= 28 : false;
+  const shown = (lastComplete ? months : months.slice(0, -1)).slice(0, 5);
   const firstNeg = shown.find((m) => m.end < 0);
 
   return (
