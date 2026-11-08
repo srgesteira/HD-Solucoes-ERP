@@ -13,6 +13,7 @@ import { PayablesPanel } from "@/components/finance/payables-panel";
 import { ReceivablesPanel } from "@/components/finance/receivables-panel";
 import { CashFlowPanel } from "@/components/finance/cash-flow-panel";
 import { FixedExpensesPanel } from "@/components/finance/fixed-expenses-panel";
+import { FinanceOverview } from "@/components/finance/finance-overview";
 
 type TabValue = "movimentacao" | "pagar" | "receber" | "fluxo" | "fixas";
 
@@ -89,6 +90,8 @@ export function FinanceAccountsPage() {
       density="comfortable"
       width="wide"
     >
+      <FinanceOverview />
+
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList className="w-full flex flex-wrap h-auto gap-1">
           {TAB_OPTIONS.map((tab) => (
