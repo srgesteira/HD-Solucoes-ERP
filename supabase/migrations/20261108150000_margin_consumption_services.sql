@@ -74,9 +74,10 @@ real_costs AS (
   FROM public.purchase_order_items poi
   JOIN public.purchase_orders po ON po.id = poi.purchase_order_id
   WHERE po.tenant_id = p_tenant AND po.status <> 'cancelled' AND po.order_date BETWEEN p_from AND p_to
-    -- MP/embalagem: sem família ou com produto de estoque → custo vai no consumo da OP
+    -- MP/embalagem: sem família ou produto de estoque (não ligado a PV) → custo vai no consumo da OP;
+    -- compra ligada direto a um item de PV conta como custo direto na hora
     AND NOT (poi.cost_nature_id IN (SELECT id FROM nat WHERE code IN ('MP', 'EMB'))
-             AND (poi.cost_center_id IS NULL OR poi.product_id IS NOT NULL))
+             AND (poi.cost_center_id IS NULL OR (poi.product_id IS NOT NULL AND poi.sales_order_item_id IS NULL)))
   UNION ALL
   SELECT ap.cost_center_id, ap.cost_nature_id, coalesce(ap.original_amount, 0), date_trunc('month', ap.due_date)::date
   FROM public.accounts_payable ap
