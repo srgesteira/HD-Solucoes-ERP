@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,6 +28,7 @@ import { cn } from "@/shared/utils/cn";
 import { useMe } from "@/hooks/use-me";
 import { usePermissions } from "@/hooks/use-permissions";
 import { CompanyDocumentBranding } from "@/components/company/company-document-branding";
+import { OrderSummaryStrip, type SummaryAlert } from "@/components/orders/order-summary-strip";
 import { PurchaseOrderForm } from "@/components/purchasing/purchase-order-form";
 import type { Tables } from "@/modules/core/types/database";
 
@@ -227,6 +228,65 @@ export default function PurchaseOrderDetailPage() {
   }, [orderSummary?.status]);
 
   const sb = orderSummary ? statusBadge(orderSummary.status) : null;
+
+  // Parcelas do PC (reais e previstas) para a faixa de resumo
+  const payablesQuery = useQuery({
+    queryKey: ["finance-payables", "po", orderId],
+    queryFn: async () => {
+      const res = await fetch(`/api/finance/payables?purchase_order_id=${orderId}&tab=all&limit=100`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        data?: { due_date: string; original_amount: number; paid_amount?: number | null; current_amount?: number | null; status: string }[];
+      };
+      return j.data ?? [];
+    },
+    enabled: !!orderId,
+  });
+
+  const poSummary = useMemo(() => {
+    const o = orderSummary as unknown as Record<string, unknown> | undefined;
+    if (!o) return null;
+    const rows = payablesQuery.data ?? [];
+    const planned = rows.reduce((a, r) => a + Number(r.original_amount || 0), 0);
+    const settled = rows.reduce((a, r) => a + Number(r.paid_amount || (r.status === "paid" ? r.original_amount : 0) || 0), 0);
+    const next = [...rows]
+      .filter((r) => r.status !== "paid" && r.status !== "cancelled")
+      .sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
+    const total = Number(o.total || 0);
+    const status = String(o.status || "draft");
+    const received = status === "received";
+    const supplier = (o.supplier ?? null) as { id?: string; name?: string } | null;
+    const alerts: SummaryAlert[] = [];
+    const exp = typeof o.expected_delivery === "string" ? o.expected_delivery : null;
+    if (exp && !received && status !== "cancelled" && exp.slice(0, 10) < new Date().toISOString().slice(0, 10)) {
+      alerts.push({ tone: "danger", text: "Entrega do fornecedor atrasada — cobrar o fornecedor e avisar o PCP." });
+    }
+    if (status === "sent") {
+      alerts.push({ tone: "info", text: "PC ainda \"Enviado\": marque Confirmado quando o fornecedor confirmar, para entrar na previsão de caixa." });
+    }
+    if (payablesQuery.isSuccess && ["confirmed", "partial", "received"].includes(status) && rows.length === 0) {
+      alerts.push({ tone: "warning", text: "PC sem parcelas a pagar no financeiro — o caixa não está vendo esta compra." });
+    }
+    if (rows.length && Math.abs(planned - total) > 0.05) {
+      alerts.push({
+        tone: "warning",
+        text: `Parcelas somam ${planned.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}, mas o PC vale ${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`,
+      });
+    }
+    return {
+      status,
+      total,
+      exp,
+      received,
+      supplierName: supplier?.name ?? "—",
+      planned,
+      settled,
+      next: next ? { date: next.due_date, amount: Number(next.current_amount ?? next.original_amount) } : null,
+      alerts,
+    };
+  }, [orderSummary, payablesQuery.data, payablesQuery.isSuccess]);
 
   const statusMutation = useMutation({
     mutationFn: (status: PurchaseOrderStatus) =>
@@ -468,10 +528,33 @@ export default function PurchaseOrderDetailPage() {
         </div>
       }
     >
-      <CompanyDocumentBranding
-        settings={companyBrandingQuery.data ?? null}
-        documentLabel="Pedido de compra"
-      />
+      {poSummary ? (
+        <OrderSummaryStrip
+          steps={[
+            { key: "draft", label: "Rascunho" },
+            { key: "sent", label: "Enviado" },
+            { key: "confirmed", label: "Confirmado" },
+            { key: "partial", label: "Recebido parcial" },
+            { key: "received", label: "Recebido" },
+          ]}
+          currentKey={poSummary.status}
+          cancelled={poSummary.status === "cancelled"}
+          partyLabel="Fornecedor"
+          partyName={poSummary.supplierName}
+          total={poSummary.total}
+          deadline={poSummary.exp}
+          deadlineLabel="Entrega do fornecedor"
+          done={poSummary.received}
+          finance={{ label: "Pago", planned: poSummary.planned, settled: poSummary.settled, next: poSummary.next }}
+          alerts={poSummary.alerts}
+        />
+      ) : null}
+      <div className="hidden print:block">
+        <CompanyDocumentBranding
+          settings={companyBrandingQuery.data ?? null}
+          documentLabel="Pedido de compra"
+        />
+      </div>
 
       <Card>
         <CardHeader className="pb-2 space-y-3">

@@ -59,6 +59,10 @@ export async function GET(request: NextRequest) {
   if (supplier_id) {
     q = q.eq("supplier_id", supplier_id);
   }
+  const purchase_order_id = sp.get("purchase_order_id");
+  if (purchase_order_id) {
+    q = q.eq("purchase_order_id", purchase_order_id);
+  }
   if (overdue === "1") {
     q = q
       .eq("is_forecast", false)
