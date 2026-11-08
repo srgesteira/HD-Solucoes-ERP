@@ -144,7 +144,7 @@ export async function buildTodayBrief(admin: Admin, tenantId: string): Promise<s
   L.push("", `CRM: ${ch.length} contato(s) hoje · ${tasks.length} tarefa(s) · ${stale.length} proposta(s) parada(s) 7d+`);
   for (const x of ch.slice(0, 15)) L.push(`  contato ${short(x.cliente)} — ${String(x.acao ?? "").slice(0, 60)}`);
   for (const x of tasks.slice(0, 10)) L.push(`  tarefa ${short(x.cliente)} — ${x.resumo.slice(0, 60)}`);
-  for (const x of stale.slice(0, 8)) L.push(`  parada ${x.dias_sem_contato}d ${short(x.cliente)} ${x.titulo.slice(-12)} R$${brl(x.valor)}`);
+  for (const x of stale.slice(0, 8)) L.push(`  parada ${x.dias_sem_contato}d ${short(x.cliente)} ${x.titulo.replace(/^Orçamento /, "").slice(0, 14)} R$${brl(x.valor)}`);
 
   // ---- CUSTOS a classificar (exclui MP/embalagem de estoque)
   type CI = { description: string | null; total_price: number; cost_nature_id: string | null; purchase_orders: { po_number: string } };
