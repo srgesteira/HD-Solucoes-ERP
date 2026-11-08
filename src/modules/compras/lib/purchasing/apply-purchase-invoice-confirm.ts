@@ -5,6 +5,7 @@ import { applyInventoryInbound } from "@/modules/almoxarifado/lib/inventory-inbo
 import { INVENTORY_ORIGIN } from "@/modules/almoxarifado/lib/inventory-origins";
 import { finalizePurchaseOrderReceive } from "@/modules/compras/lib/purchasing/purchase-order-receive-finalize";
 import { recordProductPriceHistory } from "@/modules/engenharia/lib/products/product-price-history";
+import { propagateComponentCostChange } from "@/modules/engenharia/lib/products/propagate-component-cost";
 
 type Admin = SupabaseClient<Database>;
 
@@ -199,6 +200,7 @@ export async function applyPurchaseInvoiceConfirm(
             value: unitPrice,
             notes: `NF-e ${inv.invoiceNumber ?? ""} — conciliação`,
           });
+          await propagateComponentCostChange(admin, tenantId, productId);
         }
       }
     } else {
@@ -222,6 +224,7 @@ export async function applyPurchaseInvoiceConfirm(
           value: unitPrice,
           notes: `NF-e ${inv.invoiceNumber ?? ""} — nova compra`,
         });
+        await propagateComponentCostChange(admin, tenantId, map.productId);
       }
     }
 

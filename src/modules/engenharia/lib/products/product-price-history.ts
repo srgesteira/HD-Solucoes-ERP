@@ -84,7 +84,28 @@ async function hasPurchaseHistory(
   return (count ?? 0) > 0;
 }
 
+/** Produto fabricado = tem composição (BOM) cadastrada. */
+async function hasComposition(
+  admin: Admin,
+  tenantId: string,
+  productId: string
+): Promise<boolean> {
+  const { count, error } = await admin
+    .from("product_components")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("parent_product_id", productId);
+  if (error) throw new Error(error.message);
+  return (count ?? 0) > 0;
+}
+
 /**
+ * Regra de custo (HD):
+ * - Item comprado (sem composição): custo = última compra (recebimento/NF-e).
+ * - Item fabricado (com composição): custo = soma da composição, que já usa a
+ *   última compra de cada componente. Compra directa de um fabricado fica só
+ *   no histórico (evita PC de mão de obra sobrescrever o custo do equipamento).
+ *
  * Regista valor na posição 1 e desloca histórico anterior (máx. 6 entradas).
  * Atualiza products.cost_price conforme o tipo.
  */
@@ -124,10 +145,11 @@ export async function recordProductPriceHistory(
 
   let shouldUpdateCost = false;
   if (input.priceType === "purchase") {
-    shouldUpdateCost = true;
+    shouldUpdateCost = !(await hasComposition(admin, tenantId, productId));
   } else if (input.priceType === "production_cost") {
-    const hasPurchase = await hasPurchaseHistory(admin, tenantId, productId);
-    shouldUpdateCost = !hasPurchase;
+    shouldUpdateCost =
+      (await hasComposition(admin, tenantId, productId)) ||
+      !(await hasPurchaseHistory(admin, tenantId, productId));
   }
 
   if (shouldUpdateCost) {
