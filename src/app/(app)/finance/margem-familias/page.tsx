@@ -24,6 +24,8 @@ type Familia = {
 type Report = {
   periodo: [string, string];
   familias: Familia[];
+  servicos: Record<string, number>;
+  consumo_mp: number;
   receita_sem_familia: number;
   rateio_base: { apoio: number; producao_sem_familia: number };
   abaixo_da_margem: Record<string, number>;
@@ -104,7 +106,8 @@ export default function MargemFamiliasPage() {
     const receita = fs.reduce((a, f) => a + f.receita, 0);
     const margem = fs.reduce((a, f) => a + f.margem_real, 0);
     const below = Object.values(data?.abaixo_da_margem ?? {}).reduce((a, v) => a + v, 0);
-    return { receita, margem, below, resultado: margem - below };
+    const servicos = Object.values(data?.servicos ?? {}).reduce((a, v) => a + v, 0);
+    return { receita, margem, below, servicos, resultado: margem + servicos - below };
   }, [data]);
 
   return (
@@ -115,7 +118,7 @@ export default function MargemFamiliasPage() {
           Margem por família
         </span>
       }
-      description="Receita e margem padrão do pedido de venda × custo real (compras e contas classificadas por centro de custo), com rateio do apoio pela participação no faturamento."
+      description="Receita e margem padrão do PV × custo real (MP consumida nas OPs, compras diretas, MO, pintura e contas classificadas), com rateio do apoio pelo faturamento. Use trimestre para casar venda e consumo."
       density="comfortable"
     >
       <ReportFilters loading={loading} onApply={(range) => void load(range)} />
@@ -129,10 +132,11 @@ export default function MargemFamiliasPage() {
 
       {data ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {[
               { t: "Receita das famílias", v: brl(totals.receita) },
               { t: "Margem real (após rateio)", v: brl(totals.margem) },
+              { t: "Serviços (consultoria)", v: brl(totals.servicos) },
               { t: "Adm, impostos e retirada", v: brl(totals.below) },
               { t: "Resultado do período", v: brl(totals.resultado) },
             ].map((k) => (
@@ -170,6 +174,7 @@ export default function MargemFamiliasPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="text-sm space-y-1 text-slate-700">
+              <p>Matéria-prima consumida nas OPs (custo do cadastro): {brl(data.consumo_mp)}</p>
               <p>Apoio à produção: {brl(data.rateio_base.apoio)}</p>
               <p>Produção sem família (MP de estoque, MO avulsa, pintura avulsa): {brl(data.rateio_base.producao_sem_familia)}</p>
               {Object.entries(data.abaixo_da_margem).map(([k, v]) => (
