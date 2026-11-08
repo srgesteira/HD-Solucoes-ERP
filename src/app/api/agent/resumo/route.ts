@@ -3,11 +3,13 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { assertFinanceOrReportsAccess } from "@/modules/core/lib/module-access";
+import { buildTodayBrief } from "@/modules/agent/lib/today-brief";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/agent/resumo
+ * GET /api/agent/resumo            → retrato completo (listas)
+ * GET /api/agent/resumo?modo=hoje   → só exceções e ações do dia (usar nas rotinas)
  * Retrato compacto (texto puro) da empresa para o assistente (Claude):
  * orçamentos em aberto, contas a receber/pagar e pedidos de compra.
  * Pensado para gastar o mínimo de tokens — uma chamada substitui várias
@@ -53,6 +55,18 @@ export async function GET(request: NextRequest) {
     tenantId = await getCurrentTenantId();
   }
   if (!tenantId) return apiError("Tenant não encontrado", 403);
+
+  // ?modo=hoje → só o que pede ação hoje (economiza tokens nas rotinas diárias)
+  if (request.nextUrl.searchParams.get("modo") === "hoje") {
+    try {
+      const text = await buildTodayBrief(admin, tenantId);
+      return new NextResponse(text, {
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    } catch (e) {
+      return apiError("Erro no resumo do dia: " + (e instanceof Error ? e.message : String(e)), 500);
+    }
+  }
 
   const [quotes, recs, pays, pos] = await Promise.all([
     admin
