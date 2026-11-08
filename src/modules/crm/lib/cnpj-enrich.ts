@@ -27,13 +27,81 @@ type BrasilApiCnpj = {
 
 export type CustomerRow = Record<string, unknown> & { id: string; document: string | null };
 
-export async function fetchCnpj(cnpjDigits: string): Promise<BrasilApiCnpj | null> {
+type CnpjWs = {
+  razao_social?: string;
+  simples?: { simples?: string; mei?: string } | null;
+  estabelecimento?: {
+    nome_fantasia?: string | null;
+    tipo_logradouro?: string | null;
+    logradouro?: string | null;
+    numero?: string | null;
+    complemento?: string | null;
+    bairro?: string | null;
+    cep?: string | null;
+    email?: string | null;
+    estado?: { sigla?: string } | null;
+    cidade?: { nome?: string; ibge_id?: number } | null;
+    atividade_principal?: { descricao?: string } | null;
+    inscricoes_estaduais?: { inscricao_estadual?: string; ativo?: boolean; estado?: { sigla?: string } }[];
+  };
+};
+
+export type CnpjData = BrasilApiCnpj & { inscricao_estadual?: string | null };
+
+async function fetchBrasilApi(cnpjDigits: string): Promise<CnpjData | null> {
   const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjDigits}`, {
     headers: { Accept: "application/json" },
     cache: "no-store",
   });
   if (!res.ok) return null;
-  return (await res.json()) as BrasilApiCnpj;
+  return (await res.json()) as CnpjData;
+}
+
+/** publica.cnpj.ws: aceita chamadas do servidor e traz a IE (limite ~3/min). */
+async function fetchCnpjWs(cnpjDigits: string): Promise<CnpjData | null> {
+  const res = await fetch(`https://publica.cnpj.ws/cnpj/${cnpjDigits}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const j = (await res.json()) as CnpjWs;
+  const e = j.estabelecimento ?? {};
+  const uf = e.estado?.sigla ?? null;
+  const ies = (e.inscricoes_estaduais ?? []).filter((x) => x.ativo !== false && x.inscricao_estadual);
+  const ie = ies.find((x) => (x.estado?.sigla ?? "") === uf) ?? ies[0];
+  return {
+    razao_social: j.razao_social,
+    nome_fantasia: e.nome_fantasia ?? undefined,
+    descricao_tipo_de_logradouro: e.tipo_logradouro ?? undefined,
+    logradouro: e.logradouro ?? undefined,
+    numero: e.numero ?? undefined,
+    complemento: e.complemento ?? undefined,
+    bairro: e.bairro ?? undefined,
+    municipio: e.cidade?.nome,
+    uf: uf ?? undefined,
+    cep: e.cep ?? undefined,
+    codigo_municipio_ibge: e.cidade?.ibge_id,
+    opcao_pelo_simples: j.simples ? j.simples.simples === "Sim" : null,
+    opcao_pelo_mei: j.simples ? j.simples.mei === "Sim" : null,
+    email: e.email ?? null,
+    cnae_fiscal_descricao: e.atividade_principal?.descricao ?? null,
+    inscricao_estadual: ie?.inscricao_estadual?.replace(/\D/g, "") ?? null,
+  };
+}
+
+/** BrasilAPI (bloqueia alguns servidores) → publica.cnpj.ws (com IE). */
+export async function fetchCnpj(cnpjDigits: string): Promise<CnpjData | null> {
+  try {
+    const b = await fetchBrasilApi(cnpjDigits);
+    if (b) return b;
+  } catch {
+    /* tenta a próxima */
+  }
+  try {
+    return await fetchCnpjWs(cnpjDigits);
+  } catch {
+    return null;
+  }
 }
 
 function clean(v: unknown): string | null {
@@ -43,7 +111,7 @@ function clean(v: unknown): string | null {
 }
 
 /** Devolve só os campos que estão vazios no cliente e a Receita tem. */
-export function buildEnrichPatch(c: CustomerRow, r: BrasilApiCnpj): Record<string, unknown> {
+export function buildEnrichPatch(c: CustomerRow, r: CnpjData): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   const setIfEmpty = (key: string, value: unknown) => {
     const v = clean(value);
@@ -65,6 +133,10 @@ export function buildEnrichPatch(c: CustomerRow, r: BrasilApiCnpj): Record<strin
     else if (r.opcao_pelo_simples) patch.tax_regime = "simples";
   }
   if (!c.segment) setIfEmpty("segment", r.cnae_fiscal_descricao);
+  if (!c.state_registration && !c.icms_taxpayer && r.inscricao_estadual !== undefined) {
+    if (r.inscricao_estadual) patch.state_registration = r.inscricao_estadual;
+    else patch.icms_taxpayer = 9; // sem IE ativa = não contribuinte
+  }
   setIfEmpty("email", r.email?.toLowerCase());
   return patch;
 }

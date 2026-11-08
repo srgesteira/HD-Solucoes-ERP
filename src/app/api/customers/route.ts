@@ -5,6 +5,8 @@ import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { assertMenuModuleAccess } from "@/modules/core/lib/module-access";
 import type { Database } from "@/modules/core/types/database";
 import { applyTokenFieldIlikeOrFilters } from "@/shared/utils/universal-search";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import { buildEnrichPatch, fetchCnpj, type CustomerRow } from "@/modules/crm/lib/cnpj-enrich";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +140,25 @@ export async function POST(request: NextRequest) {
       "Erro ao criar cliente: " + error.message,
       supabaseErrorToHttp(error.code)
     );
+  }
+
+  // Completa o cadastro fiscal pelo CNPJ (endereço, IBGE, regime, IE). Best-effort, até ~8s.
+  const digits = String(data?.document ?? "").replace(/\D/g, "");
+  if (data && digits.length === 14) {
+    try {
+      const r = await Promise.race([
+        fetchCnpj(digits),
+        new Promise<null>((res) => setTimeout(() => res(null), 8000)),
+      ]);
+      if (r) {
+        const patch = buildEnrichPatch(data as unknown as CustomerRow, r);
+        if (Object.keys(patch).length) {
+          await asUntypedAdmin(admin).from("customers").update(patch).eq("id", data.id).eq("tenant_id", tenantId);
+        }
+      }
+    } catch {
+      /* cadastro já foi criado; enriquecimento é opcional */
+    }
   }
 
   console.log("[POST /api/customers] cliente criado", {
