@@ -154,5 +154,38 @@ export async function buildTodayBrief(admin: Admin, tenantId: string): Promise<s
   L.push(pend.length ? `CUSTOS a classificar: ${pend.length}` : "CUSTOS: nada a classificar");
   for (const x of pend.slice(0, 10)) L.push(`  PC ${x.purchase_orders.po_number} ${String(x.description).slice(0, 40)} R$${brl(x.total_price)}`);
 
+  // ---- NF-e emitidas contra o CNPJ (inbox, status "new")
+  type NI = {
+    issuer_name: string | null;
+    issue_date: string | null;
+    total_amount: number | null;
+    json_payload: {
+      source?: string;
+      numero?: string | null;
+      parcelas?: { data: string; valor: number }[];
+      suggested_po?: { po_number: string } | null;
+      payables_note?: string;
+    } | null;
+  };
+  const { data: nfIn } = await db
+    .from("inbound_nfe_inbox")
+    .select("issuer_name, issue_date, total_amount, json_payload")
+    .eq("tenant_id", tenantId)
+    .eq("status", "new")
+    .order("issue_date", { ascending: false })
+    .limit(20);
+  const nfs = (nfIn ?? []) as NI[];
+  L.push("", nfs.length ? `NF-e RECEBIDAS (novas): ${nfs.length}` : "NF-e RECEBIDAS: nada novo");
+  for (const x of nfs) {
+    const m = x.json_payload ?? {};
+    const venc = (m.parcelas ?? []).map((p) => dm(p.data)).join(",");
+    L.push(
+      `  NF ${m.numero ?? "?"} ${short(x.issuer_name)} emit ${dm(x.issue_date)} R$${brl(x.total_amount)}` +
+        (venc ? ` venc ${venc}` : "") +
+        (m.suggested_po ? ` · PC ${m.suggested_po.po_number}` : " · sem PC") +
+        (m.payables_note ? ` · ${m.payables_note}` : "")
+    );
+  }
+
   return L.join("\n");
 }
