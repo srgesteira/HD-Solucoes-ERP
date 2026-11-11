@@ -80,6 +80,7 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
   const [busy, setBusy] = useState(false);
   const [finishAfter, setFinishAfter] = useState(true);
   const [qr, setQr] = useState("");
+  const [qrPainel, setQrPainel] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
 
   useEffect(() => {
@@ -107,6 +108,21 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
       cancel = true;
     };
   }, [open, orderItemId]);
+
+  const qrUrlPainel = (tpl.qr_url ?? "").trim();
+  useEffect(() => {
+    if (!qrUrlPainel) {
+      setQrPainel("");
+      return;
+    }
+    let cancel = false;
+    makeQrDataUrl(qrUrlPainel)
+      .then((u) => !cancel && setQrPainel(u))
+      .catch(() => !cancel && setQrPainel(""));
+    return () => {
+      cancel = true;
+    };
+  }, [qrUrlPainel]);
 
   const set = (patch: Partial<LabelTemplate>) => setTpl((t) => ({ ...t, ...patch }));
   const filtrosPorUnidade = tpl.modelo === "painel" ? Math.max(0, Math.floor(tpl.filtros_por_unidade ?? 0)) : 0;
@@ -136,6 +152,7 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
         out.push({
           ...common,
           modelo: tpl.modelo,
+          qrDataUrl: (tpl.modelo === "painel" && qrPainel) || qr,
           codigo: info.codigo,
           descricao: descricaoSemMedida(info.descricao) || info.descricao,
           medida: medidaFromDescricao(info.descricao),
@@ -191,7 +208,7 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info, tpl, qr, logo, totalFiltros]);
+  }, [info, tpl, qr, qrPainel, logo, totalFiltros]);
 
   const saveTemplate = async (silent = false): Promise<boolean> => {
     if (!info) return false;
@@ -325,6 +342,18 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
                 </label>
               )}
             </div>
+
+            {tpl.modelo === "painel" ? (
+              <label className="block text-xs font-medium text-slate-700">
+                Link do QR Code (manual do produto)
+                <input
+                  className={inputCls}
+                  value={tpl.qr_url ?? ""}
+                  onChange={(e) => set({ qr_url: e.target.value })}
+                  placeholder="Vazio = site da empresa"
+                />
+              </label>
+            ) : null}
 
             {tpl.modelo === "filtro_completa" ? (
               <div className="grid gap-3 sm:grid-cols-3">

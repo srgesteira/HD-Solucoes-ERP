@@ -16,6 +16,8 @@ export type FiltroModelo = "filtro_completa" | "filtro_simples";
 
 export type LabelTemplate = {
   modelo: LabelModelo;
+  /** Link do QR Code (ex.: manual do produto no site). Vazio = site da empresa. */
+  qr_url?: string;
   /** Texto livre extra no painel (ex.: "220V · 60Hz", "Ventilação: 1.200 m³/h"). */
   linha_extra?: string;
   /** Campos do filtro (quando o próprio item é filtro). */
@@ -107,6 +109,16 @@ function isFiltro(descricao: string, codigo?: string | null): boolean {
   return /\bFILTRO\b|\bHEPA\b|\bHF-/.test(t);
 }
 
+/** Manuais publicados no site, por família de produto. */
+export const MANUAIS_SITE: { re: RegExp; url: string }[] = [
+  { re: /\bFXSQ\b|\bFXMQ\b|DAIKIN/i, url: "https://www.hdindustrial.ind.br/manual/paineis-daikin" },
+];
+
+export function manualDoProduto(descricao: string, codigo?: string | null): string | undefined {
+  const t = `${codigo ?? ""} ${descricao}`;
+  return MANUAIS_SITE.find((m) => m.re.test(t))?.url;
+}
+
 /** Modelo padrão quando o produto ainda não tem modelo salvo. */
 export function detectarTemplatePadrao(
   descricao: string,
@@ -116,7 +128,7 @@ export function detectarTemplatePadrao(
   if (isFiltro(descricao, codigo)) {
     return { modelo: decidirModeloFiltro(classe), classe: classe ?? "" };
   }
-  return { modelo: "painel" };
+  return { modelo: "painel", qr_url: manualDoProduto(descricao, codigo) };
 }
 
 /** Lê o jsonb salvo, tolerante a campos faltando/lixo. */
@@ -132,6 +144,7 @@ export function parseLabelTemplate(raw: unknown): LabelTemplate | null {
   const fm = r.filtro_modelo;
   return {
     modelo,
+    qr_url: s("qr_url"),
     linha_extra: s("linha_extra"),
     classe: s("classe"),
     vazao: s("vazao"),
