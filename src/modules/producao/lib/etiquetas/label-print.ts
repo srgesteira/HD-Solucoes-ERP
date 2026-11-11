@@ -199,3 +199,32 @@ export function writeLabelsToWindow(win: Window, list: LabelPrintData[], title: 
   win.document.write(html);
   win.document.close();
 }
+
+/**
+ * Imprime num iframe escondido na própria página (sem pop-up).
+ * Funciona no navegador do app Claude e em navegadores que bloqueiam pop-up.
+ */
+export function printLabelsInIframe(list: LabelPrintData[], title: string): void {
+  const css = cssDaFamilia(familiaDaLista(list));
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body><div class="etiqueta-print-root">${labelsSheetsHtml(list)}</div>${PRINT_SCRIPT}</body></html>`;
+  document.getElementById("hd-etiqueta-print-frame")?.remove();
+  const frame = document.createElement("iframe");
+  frame.id = "hd-etiqueta-print-frame";
+  frame.setAttribute("aria-hidden", "true");
+  Object.assign(frame.style, {
+    position: "fixed",
+    right: "0",
+    bottom: "0",
+    width: "0",
+    height: "0",
+    border: "0",
+    visibility: "hidden",
+  });
+  document.body.appendChild(frame);
+  const doc = frame.contentWindow?.document;
+  if (!doc) throw new Error("Não foi possível preparar a impressão.");
+  doc.open();
+  doc.write(html);
+  doc.close();
+  window.setTimeout(() => frame.remove(), 10 * 60_000);
+}

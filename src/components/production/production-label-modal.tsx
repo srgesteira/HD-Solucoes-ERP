@@ -23,9 +23,7 @@ import {
   fetchLogoDataUrl,
   labelsSheetsHtml,
   makeQrDataUrl,
-  openLabelPrintWindow,
-  POPUP_BLOCKED_ERROR,
-  writeLabelsToWindow,
+  printLabelsInIframe,
   type LabelPrintData,
 } from "@/modules/producao/lib/etiquetas/label-print";
 
@@ -249,14 +247,9 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
       toast.error("Nenhuma etiqueta para imprimir.");
       return;
     }
-    const win = openLabelPrintWindow();
-    if (!win) {
-      toast.error(POPUP_BLOCKED_ERROR);
-      return;
-    }
     setBusy(true);
     try {
-      writeLabelsToWindow(win, list, `Etiquetas ${info.pedido}`);
+      printLabelsInIframe(list, `Etiquetas ${info.pedido}`);
       void saveTemplate(true);
       if (canFinish && finishAfter && onFinish && !series.trim() && (alvo === "filtros" || totalFiltros === 0)) {
         onFinish(info.order_item_id);
@@ -264,11 +257,6 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
-      try {
-        win.close();
-      } catch {
-        /* ignore */
-      }
     } finally {
       setBusy(false);
     }
