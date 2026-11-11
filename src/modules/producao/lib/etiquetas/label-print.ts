@@ -1,6 +1,13 @@
 import QRCode from "qrcode";
-import { ETIQUETA_PRINT_CSS } from "@/modules/producao/lib/etiquetas/label-print-styles";
-import type { LabelModelo } from "@/modules/producao/lib/etiquetas/label-template";
+import {
+  FILTRO_PRINT_CSS,
+  painelPrintCss,
+} from "@/modules/producao/lib/etiquetas/label-print-styles";
+import {
+  familiaDoModelo,
+  LABEL_FORMATOS,
+  type LabelModelo,
+} from "@/modules/producao/lib/etiquetas/label-template";
 
 /** Uma etiqueta pronta para imprimir (100×20 mm). */
 export type LabelPrintData = {
@@ -80,16 +87,19 @@ const FLUXO_SVG = `<div class="etiqueta-filtro__fluxo" aria-hidden="true"><div c
 
 function painelHtml(d: LabelPrintData): string {
   const medidaExtra = [d.medida, d.linhaExtra?.trim()].filter(Boolean).join(" · ");
+  const logo = d.logoDataUrl
+    ? `<img src="${d.logoDataUrl}" alt="" class="etiqueta-painel__logo-img">`
+    : `<div class="etiqueta-painel__logo-text">${esc(d.empresa)}</div>`;
   return `<div class="etiqueta-painel">
-  <div class="etiqueta-painel__logo-wrap">${logoHtml(d, "etiqueta-painel__logo-img", "etiqueta-painel__logo-text")}</div>
-  <div class="etiqueta-painel__center">
-    <div class="etiqueta-painel__code">${esc(d.codigo)}</div>
-    <div class="etiqueta-painel__desc">${esc(d.descricao)}</div>
-    ${medidaExtra ? `<div class="etiqueta-painel__line">${esc(medidaExtra)}</div>` : ""}
-    <div class="etiqueta-painel__line">${esc(traceLine(d))}</div>
-    <div class="etiqueta-painel__line">SÉRIE: ${d.serie}/${d.serieTotal} · LOTE: ${esc(d.lote)}</div>
+  <div class="etiqueta-painel__top">
+    <div class="etiqueta-painel__logo-wrap">${logo}</div>
+    <div class="etiqueta-painel__qr"><img src="${d.qrDataUrl}" alt=""><span class="etiqueta-painel__site">${esc(d.site)}</span></div>
   </div>
-  <div class="etiqueta-painel__right"><img src="${d.qrDataUrl}" alt=""><span class="etiqueta-painel__site">${esc(d.site)}</span></div>
+  <div class="etiqueta-painel__code">${esc(d.codigo)}</div>
+  <div class="etiqueta-painel__desc">${esc(d.descricao)}</div>
+  ${medidaExtra ? `<div class="etiqueta-painel__line">${esc(medidaExtra)}</div>` : ""}
+  <div class="etiqueta-painel__line">${esc(traceLine(d))}</div>
+  <div class="etiqueta-painel__line">SÉRIE: ${d.serie}/${d.serieTotal} · LOTE: ${esc(d.lote)}</div>
 </div>`;
 }
 
@@ -133,8 +143,18 @@ export function labelsSheetsHtml(list: LabelPrintData[]): string {
   return list.map((d) => `<div class="etiqueta-sheet">${labelHtml(d)}</div>`).join("");
 }
 
-/** CSS para o preview em tela (sem regras de @page). */
-export const LABEL_PREVIEW_CSS = ETIQUETA_PRINT_CSS;
+/** CSS da família (painel 50×30 / filtro 100×20). Um job de impressão = uma família. */
+export function cssDaFamilia(familia: "painel" | "filtro"): string {
+  if (familia === "painel") {
+    const f = LABEL_FORMATOS.painel;
+    return painelPrintCss(f.largura_mm, f.altura_mm);
+  }
+  return FILTRO_PRINT_CSS;
+}
+
+export function familiaDaLista(list: LabelPrintData[]): "painel" | "filtro" {
+  return list.length && familiaDoModelo(list[0].modelo) === "painel" ? "painel" : "filtro";
+}
 
 const PRINT_SCRIPT = `<script>
 (function(){
@@ -170,8 +190,10 @@ export function openLabelPrintWindow(): Window | null {
   return w;
 }
 
+/** Todas as etiquetas da lista devem ser da mesma família (mesmo tamanho de papel). */
 export function writeLabelsToWindow(win: Window, list: LabelPrintData[], title: string): void {
-  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${ETIQUETA_PRINT_CSS}</style></head><body><div class="etiqueta-print-root">${labelsSheetsHtml(list)}</div>${PRINT_SCRIPT}</body></html>`;
+  const css = cssDaFamilia(familiaDaLista(list));
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body><div class="etiqueta-print-root">${labelsSheetsHtml(list)}</div>${PRINT_SCRIPT}</body></html>`;
   win.document.open();
   win.document.write(html);
   win.document.close();

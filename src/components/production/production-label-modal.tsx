@@ -7,6 +7,8 @@ import { Button } from "@/shared/ui/button";
 import {
   decidirModeloFiltro,
   descricaoSemMedida,
+  familiaDoModelo,
+  LABEL_FORMATOS,
   detectarClasseFiltragem,
   gerarLote,
   LABEL_MODELO_LABELS,
@@ -17,9 +19,9 @@ import {
   type LabelTemplate,
 } from "@/modules/producao/lib/etiquetas/label-template";
 import {
+  cssDaFamilia,
   fetchLogoDataUrl,
   labelsSheetsHtml,
-  LABEL_PREVIEW_CSS,
   makeQrDataUrl,
   openLabelPrintWindow,
   POPUP_BLOCKED_ERROR,
@@ -52,7 +54,7 @@ type Props = {
   onFinish?: (orderItemId: string) => void;
 };
 
-type Alvo = "principal" | "filtros" | "tudo";
+type Alvo = "principal" | "filtros";
 
 async function fetchInfo(orderItemId: string): Promise<LabelInfo> {
   const res = await fetch(`/api/production/labels?order_item_id=${encodeURIComponent(orderItemId)}`, {
@@ -61,6 +63,11 @@ async function fetchInfo(orderItemId: string): Promise<LabelInfo> {
   const json = (await res.json().catch(() => ({}))) as { data?: LabelInfo; error?: string } & Partial<LabelInfo>;
   if (!res.ok) throw new Error(json.error ?? "Erro ao carregar dados da etiqueta");
   return (json.data ?? json) as LabelInfo;
+}
+
+function formatoTxt(fam: "painel" | "filtro"): string {
+  const f = LABEL_FORMATOS[fam];
+  return `${f.largura_mm}×${f.altura_mm}${f.impressora ? ` · ${f.impressora}` : ""}`;
 }
 
 const inputCls = "mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs";
@@ -165,18 +172,26 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
     return out;
   };
 
-  const previewList = useMemo(() => {
+  const previewDocs = useMemo(() => {
+    const doc = (list: LabelPrintData[]) => {
+      const fam = list.length && familiaDoModelo(list[0].modelo) === "painel" ? "painel" : "filtro";
+      return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${cssDaFamilia(fam)} body{padding:8px!important;min-height:0!important;}</style></head><body><div class="etiqueta-print-root">${labelsSheetsHtml(list)}</div></body></html>`;
+    };
+    const out: { titulo: string; html: string }[] = [];
     const a = buildList("principal", [1]);
-    const b = totalFiltros > 0 ? buildList("filtros", [1]) : [];
-    return [...a, ...b];
+    if (a.length) {
+      const fam = familiaDoModelo(a[0].modelo);
+      const f = LABEL_FORMATOS[fam];
+      out.push({ titulo: `${fam === "painel" ? "Painel" : "Filtro"} ${f.largura_mm}×${f.altura_mm} mm`, html: doc(a) });
+    }
+    if (totalFiltros > 0) {
+      const b = buildList("filtros", [1]);
+      const f = LABEL_FORMATOS.filtro;
+      if (b.length) out.push({ titulo: `Filtro ${f.largura_mm}×${f.altura_mm} mm`, html: doc(b) });
+    }
+    return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info, tpl, qr, logo, totalFiltros]);
-
-  const previewDoc = useMemo(
-    () =>
-      `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${LABEL_PREVIEW_CSS} body{padding:8px!important;min-height:0!important;}</style></head><body><div class="etiqueta-print-root">${labelsSheetsHtml(previewList)}</div></body></html>`,
-    [previewList]
-  );
 
   const saveTemplate = async (silent = false): Promise<boolean> => {
     if (!info) return false;
@@ -226,7 +241,7 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
     try {
       writeLabelsToWindow(win, list, `Etiquetas ${info.pedido}`);
       void saveTemplate(true);
-      if (canFinish && finishAfter && onFinish && !series.trim()) {
+      if (canFinish && finishAfter && onFinish && !series.trim() && (alvo === "filtros" || totalFiltros === 0)) {
         onFinish(info.order_item_id);
         onClose();
       }
@@ -391,9 +406,13 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
               <input className={inputCls} value={series} onChange={(e) => setSeries(e.target.value)} placeholder="Ex.: 2 ou 2,5,7 — vazio = todas" />
             </label>
 
-            <div className="space-y-1">
-              <p className="text-[11px] text-slate-500">Pré-visualização 100×20 mm (série 1)</p>
-              <iframe title="Pré-visualização da etiqueta" className="w-full h-48 rounded-md border border-dashed border-slate-300 bg-slate-100" srcDoc={previewDoc} />
+            <div className="space-y-2">
+              {previewDocs.map((p) => (
+                <div key={p.titulo} className="space-y-1">
+                  <p className="text-[11px] text-slate-500">Pré-visualização {p.titulo} (série 1)</p>
+                  <iframe title={p.titulo} className="w-full h-40 rounded-md border border-dashed border-slate-300 bg-slate-100" srcDoc={p.html} />
+                </div>
+              ))}
             </div>
 
             {canFinish && onFinish ? (
@@ -407,20 +426,17 @@ export function ProductionLabelModal({ orderItemId, open, onClose, canFinish, on
               <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void saveTemplate()}>
                 <Save className="h-3.5 w-3.5 mr-1" /> Salvar modelo
               </Button>
-              {totalFiltros > 0 ? (
-                <>
-                  <Button type="button" variant="outline" size="sm" disabled={busy || !qr} onClick={() => print("principal")}>
-                    Só painéis ({info.quantidade})
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" disabled={busy || !qr} onClick={() => print("filtros")}>
-                    Só filtros ({totalFiltros})
-                  </Button>
-                </>
-              ) : null}
-              <Button type="button" size="sm" disabled={busy || !qr} onClick={() => print("tudo")}>
+              <Button type="button" size="sm" disabled={busy || !qr} onClick={() => print("principal")}>
                 <Printer className="h-3.5 w-3.5 mr-1" />
-                Imprimir {totalFiltros > 0 ? `tudo (${info.quantidade + totalFiltros})` : `todas (${info.quantidade})`}
+                Imprimir {tpl.modelo === "painel" ? "painéis" : "filtros"} ({info.quantidade}) ·{" "}
+                {formatoTxt(familiaDoModelo(tpl.modelo))}
               </Button>
+              {totalFiltros > 0 ? (
+                <Button type="button" size="sm" disabled={busy || !qr} onClick={() => print("filtros")}>
+                  <Printer className="h-3.5 w-3.5 mr-1" />
+                  Imprimir filtros ({totalFiltros}) · {formatoTxt("filtro")}
+                </Button>
+              ) : null}
             </div>
           </>
         ) : null}

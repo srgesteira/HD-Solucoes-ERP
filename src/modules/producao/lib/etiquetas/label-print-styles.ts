@@ -1,5 +1,5 @@
 /** CSS da etiqueta 100×20 mm (Argox). Filtro = mesmo layout do PCP Control HEPA; painel = modelo HD. */
-export const ETIQUETA_PRINT_CSS = `/* Etiqueta 100×20 mm — janela de impressão (1:1, sem scale do preview). */
+export const FILTRO_PRINT_CSS = `/* Etiqueta 100×20 mm — janela de impressão (1:1, sem scale do preview). */
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -531,115 +531,6 @@ body {
   }
 }
 
-/* ===== Modelo PAINEL (HD) ===== */
-.etiqueta-painel {
-  width: 100mm;
-  height: 20mm;
-  box-sizing: border-box;
-  font-family: Arial, Helvetica, sans-serif;
-  color: #000;
-  background: #fff;
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  overflow: hidden;
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
-.etiqueta-painel__logo-wrap {
-  width: 24mm;
-  flex: 0 0 24mm;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.6mm 0.6mm;
-  box-sizing: border-box;
-}
-.etiqueta-painel__logo-img {
-  display: block;
-  max-width: 100%;
-  max-height: 15mm;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-}
-.etiqueta-painel__logo-text {
-  font-family: "Arial Black", Arial, sans-serif;
-  font-size: 9pt;
-  font-weight: 900;
-  line-height: 1;
-  text-align: center;
-}
-.etiqueta-painel__center {
-  width: 59mm;
-  flex: 0 0 59mm;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.15mm;
-  padding: 0.4mm 1mm 0.4mm 0.6mm;
-  box-sizing: border-box;
-  overflow: hidden;
-  border-left: 0.25mm solid #000;
-}
-.etiqueta-painel__code {
-  font-size: 8pt;
-  font-weight: 800;
-  line-height: 1.05;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.etiqueta-painel__desc {
-  font-size: 6.6pt;
-  font-weight: 700;
-  line-height: 1.05;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.etiqueta-painel__line {
-  font-size: 6.2pt;
-  font-weight: 700;
-  line-height: 1.05;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-}
-.etiqueta-painel__right {
-  width: 17mm;
-  flex: 0 0 17mm;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3mm;
-  padding: 0.3mm;
-  box-sizing: border-box;
-}
-.etiqueta-painel__right img {
-  width: 13mm;
-  height: 13mm;
-  display: block;
-}
-.etiqueta-painel__site {
-  font-size: 4.2pt;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-}
-@media print {
-  .etiqueta-painel {
-    width: 100mm !important;
-    height: 20mm !important;
-    padding: 0.1mm 0 !important;
-    transform: none !important;
-    zoom: 1 !important;
-  }
-}
-
 /* Filtro simples (HD): 3-4 linhas compactas, QR menor como na completa */
 .etiqueta-filtro--simples .etiqueta-filtro__center-col { width: 46mm; flex: 0 0 46mm; padding: 0.4mm 0.45mm 0.4mm 0.6mm; gap: 0.2mm; }
 .etiqueta-filtro--simples .etiqueta-filtro__line { font-size: 7pt; line-height: 1.05; }
@@ -648,3 +539,46 @@ body {
 .etiqueta-filtro--simples .etiqueta-filtro__right { width: 15mm; flex: 0 0 15mm; }
 .etiqueta-filtro--simples .etiqueta-filtro__qr img { width: 11mm; height: 11mm; }
 `;
+
+/**
+ * CSS da etiqueta de PAINEL (padrão 50×30 mm). Tamanho vem do formato salvo.
+ * Layout em mm proporcional: logo + QR no topo, textos embaixo.
+ */
+export function painelPrintCss(w: number, h: number): string {
+  return `*, *::before, *::after { box-sizing: border-box; }
+@page { size: ${w}mm ${h}mm; margin: 0; }
+html, body { margin: 0; padding: 0; width: ${w}mm; background: #fff; }
+.etiqueta-print-root { margin: 0; padding: 0; width: ${w}mm; }
+.etiqueta-sheet {
+  display: block; width: ${w}mm; height: ${h}mm; min-height: ${h}mm; max-height: ${h}mm;
+  margin: 0; padding: 0; overflow: hidden;
+  page-break-inside: avoid; break-inside: avoid; page-break-after: always; break-after: page;
+}
+.etiqueta-sheet:last-child { page-break-after: auto; break-after: auto; }
+@media screen {
+  html, body { padding: 16px; width: auto; min-height: 100vh; background: #e2e8f0; display: flex; flex-direction: column; align-items: center; }
+  .etiqueta-print-root { width: auto; }
+  .etiqueta-sheet { margin-bottom: 4mm; background: #fff; box-shadow: 0 0 0 1px #cbd5e1; }
+}
+.etiqueta-painel {
+  width: ${w}mm; height: ${h}mm; padding: 1.2mm 1.4mm; overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff;
+  display: flex; flex-direction: column; gap: 0.5mm;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.etiqueta-painel__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1mm; flex: 0 0 auto; }
+.etiqueta-painel__logo-wrap { flex: 1 1 auto; min-width: 0; height: ${(h * 0.3).toFixed(1)}mm; display: flex; align-items: center; }
+.etiqueta-painel__logo-img { max-height: 100%; max-width: 100%; object-fit: contain; display: block; }
+.etiqueta-painel__logo-text { font-family: "Arial Black", Arial, sans-serif; font-size: 8pt; font-weight: 900; line-height: 1; }
+.etiqueta-painel__qr { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; }
+.etiqueta-painel__qr img { width: ${(h * 0.4).toFixed(1)}mm; height: ${(h * 0.4).toFixed(1)}mm; display: block; }
+.etiqueta-painel__site { font-size: 3.6pt; font-weight: 700; line-height: 1; margin-top: 0.3mm; white-space: nowrap; }
+.etiqueta-painel__code { font-size: 7.5pt; font-weight: 800; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.etiqueta-painel__desc { font-size: 6pt; font-weight: 700; line-height: 1.05; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.etiqueta-painel__line { font-size: 5.6pt; font-weight: 700; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
+@media print {
+  html, body { width: ${w}mm !important; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  .etiqueta-sheet, .etiqueta-painel { width: ${w}mm !important; height: ${h}mm !important; transform: none !important; zoom: 1 !important; }
+}
+`;
+}

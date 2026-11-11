@@ -34,6 +34,25 @@ export type LabelTemplate = {
   filtro_perda_final?: string;
 };
 
+/**
+ * Formato físico de cada família de etiqueta (rolo + impressora).
+ * Painel e filtro têm tamanhos diferentes → saem em impressões separadas.
+ */
+export type LabelFormato = {
+  largura_mm: number;
+  altura_mm: number;
+  impressora: string;
+};
+
+export const LABEL_FORMATOS: Record<"painel" | "filtro", LabelFormato> = {
+  painel: { largura_mm: 50, altura_mm: 30, impressora: "" },
+  filtro: { largura_mm: 100, altura_mm: 20, impressora: "Elgin L42 Pro" },
+};
+
+export function familiaDoModelo(m: LabelModelo): "painel" | "filtro" {
+  return m === "painel" ? "painel" : "filtro";
+}
+
 export const LABEL_MODELO_LABELS: Record<LabelModelo, string> = {
   painel: "Painel / equipamento",
   filtro_completa: "Filtro completa (F/H)",
