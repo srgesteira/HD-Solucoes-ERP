@@ -39,6 +39,7 @@ import {
   resolveBlingNaturezaIdForNaoContribuinte,
 } from "@/modules/fiscal/lib/bling/bling-pedido";
 import { readBlingPedidoNotaFiscalId } from "@/modules/fiscal/lib/bling/bling-pedido-transporte";
+import { loadNfeVolumeForSalesOrder } from "@/modules/fiscal/lib/bling/nfe-volume";
 import {
   nfeEnderecoFromBlingContact,
   type BlingEnderecoPayload,
@@ -324,6 +325,7 @@ async function rewriteBlingNfeDraft(
   );
   const created = buildBlingNfeCreateBody({
     ...fiscalReviewToBlingNfeCreateInput(review, contactId),
+    volume: await loadNfeVolumeForSalesOrder(admin, tenantId, review.id),
     endereco,
     formaPagamentoId,
   });
@@ -467,6 +469,7 @@ async function upsertSequentialNfe(
     {
       ...buildBlingNfeCreateBody({
         ...fiscalReviewToBlingNfeCreateInput(review, contactId),
+    volume: await loadNfeVolumeForSalesOrder(admin, tenantId, review.id),
         endereco,
         formaPagamentoId,
       }),
@@ -544,6 +547,7 @@ async function alignBlingNfeDestinoBeforeEnviar(
   if (!data) return;
   const created = buildBlingNfeCreateBody({
     ...fiscalReviewToBlingNfeCreateInput(review, contactId),
+    volume: await loadNfeVolumeForSalesOrder(admin, tenantId, review.id),
     endereco,
     formaPagamentoId,
   });

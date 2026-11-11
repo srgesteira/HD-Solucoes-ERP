@@ -327,7 +327,17 @@ export type BlingNfeCreateItemInput = {
   usage_type?: string | null;
 };
 
+/** Grupo `transporte.volume` do POST /nfe (qVol, espécie, pesos → <vol> no XML). */
+export type BlingNfeVolume = {
+  quantidade: number;
+  especie: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  pesoBruto?: number;
+  pesoLiquido?: number;
+};
+
 export type BlingNfeCreateBodyInput = {
+  /** Volumes e peso da expedição (opcional). */
+  volume?: BlingNfeVolume | null;
   salesOrderId: string;
   contactId?: number | null;
   clientName: string;
@@ -401,7 +411,9 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
   desconto?: number;
   observacoes: string;
   parcelas: ReturnType<typeof buildBlingNfeParcelas>;
-  transporte: ReturnType<typeof buildBlingTransportePayload>;
+  transporte: ReturnType<typeof buildBlingTransportePayload> & {
+    volume?: BlingNfeVolume;
+  };
 } {
   const numeroDocumento = digitsOnlyDoc(input.clientDocument);
   if (numeroDocumento.length < 11) {
@@ -506,11 +518,16 @@ export function buildBlingNfeCreateBody(input: BlingNfeCreateBodyInput): {
       semCobranca: input.semCobranca === true,
       formaPagamentoId: input.formaPagamentoId,
     }),
-    transporte: buildBlingTransportePayload({
-      shippingType: input.shippingType,
-      freightCost: input.freightCost,
-      carrierName: input.carrierName,
-    }),
+    transporte: {
+      ...buildBlingTransportePayload({
+        shippingType: input.shippingType,
+        freightCost: input.freightCost,
+        carrierName: input.carrierName,
+      }),
+      ...(input.volume && input.volume.quantidade > 0
+        ? { volume: input.volume }
+        : {}),
+    },
   };
 }
 
