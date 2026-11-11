@@ -128,7 +128,8 @@ function filtroHtml(d: LabelPrintData): string {
 </div></div>`
     : `<div class="etiqueta-filtro__center-col">
   <div class="etiqueta-filtro__text-block">
-    <div class="etiqueta-filtro__line">${esc(d.codigo)} ${esc(d.descricao)}</div>
+    <div class="etiqueta-filtro__line">${esc(d.codigo)}</div>
+    <div class="etiqueta-filtro__line">${esc(d.descricao)}${d.classe && !d.descricao.toUpperCase().includes(d.classe.toUpperCase()) ? ` ${esc(d.classe)}` : ""}</div>
     ${d.medida ? `<div class="etiqueta-filtro__line">${esc(d.medida)}</div>` : ""}
   </div>
   <div class="etiqueta-filtro__trace"><span>SÉRIE: ${d.serie}/${d.serieTotal} · LOTE: ${esc(d.lote)}</span>${trace ? `<span>${esc(trace)}</span>` : ""}</div>
