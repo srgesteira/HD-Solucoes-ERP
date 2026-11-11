@@ -26,6 +26,7 @@ import {
   ProductionScheduleConflictDialog,
   type ProductionScheduleConflict,
 } from "@/components/pcp/production-schedule-conflict-dialog";
+import { ProductionLabelModal } from "@/components/production/production-label-modal";
 
 type Props = {
   /** Sem cabeçalho de página (uso na aba do PCP). */
@@ -44,6 +45,10 @@ export function PcpLinesPlanningView({
   const qc = useQueryClient();
   const [selectedLineId, setSelectedLineId] = useState(fixedLineId ?? "");
   const [showFinished, setShowFinished] = useState(false);
+  const [labelTarget, setLabelTarget] = useState<{
+    orderItemId: string;
+    canFinish: boolean;
+  } | null>(null);
   const [scheduleConflict, setScheduleConflict] = useState<{
     orderItemId: string;
     field: "production_start" | "production_end";
@@ -314,6 +319,9 @@ export function PcpLinesPlanningView({
       }}
       onStartProduction={(orderItemId) => startMut.mutate(orderItemId)}
       onFinishProduction={(orderItemId) => finishMut.mutate(orderItemId)}
+      onPrintLabel={(orderItemId, canFinish) =>
+        setLabelTarget({ orderItemId, canFinish })
+      }
       apontamentoPending={apontamentoPending || programMut.isPending}
     />
       {!showFinished ? (
@@ -377,6 +385,16 @@ export function PcpLinesPlanningView({
     />
   ) : null;
 
+  const labelModal = (
+    <ProductionLabelModal
+      open={Boolean(labelTarget)}
+      orderItemId={labelTarget?.orderItemId ?? null}
+      canFinish={labelTarget?.canFinish ?? false}
+      onFinish={(orderItemId) => finishMut.mutate(orderItemId)}
+      onClose={() => setLabelTarget(null)}
+    />
+  );
+
   if (embedded) {
     if (isLoading) {
       return (
@@ -395,6 +413,7 @@ export function PcpLinesPlanningView({
       <>
         {panel}
         {conflictDialog}
+        {labelModal}
       </>
     );
   }
@@ -430,6 +449,7 @@ export function PcpLinesPlanningView({
         panel
       )}
       {conflictDialog}
+      {labelModal}
       </div>
     </AppPage>
   );

@@ -43,6 +43,8 @@ type Props = {
   onNotes: (orderItemId: string, notes: string) => void;
   onStartProduction: (orderItemId: string) => void;
   onFinishProduction: (orderItemId: string) => void;
+  /** Abre o modal de etiqueta (modelo salvo por produto). */
+  onPrintLabel?: (orderItemId: string, canFinish: boolean) => void;
   apontamentoPending: boolean;
   /** Histórico: só leitura, sem edição nem conclusão. */
   readOnly?: boolean;
@@ -73,6 +75,7 @@ export function PcpLinesLegacyPanel({
   onNotes,
   onStartProduction,
   onFinishProduction,
+  onPrintLabel,
   apontamentoPending,
   readOnly = false,
   emptyMessage,
@@ -373,6 +376,22 @@ export function PcpLinesLegacyPanel({
                           it.apontamento_end_at ?? it.production_completed_at
                         )}
                       </span>
+                    ) : null}
+                    {it.order_item_id && onPrintLabel && !qualityControlMode ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 w-fit px-2 text-[10px]"
+                        onClick={() =>
+                          onPrintLabel(
+                            it.order_item_id!,
+                            !readOnly && apontStatus === "in_progress" && !cqBlocked
+                          )
+                        }
+                      >
+                        Imprimir etiqueta
+                      </Button>
                     ) : null}
                     {!readOnly && it.order_item_id ? (
                       <div className="flex flex-wrap gap-1.5 pt-0.5">
