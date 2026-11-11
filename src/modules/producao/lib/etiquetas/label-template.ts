@@ -45,7 +45,7 @@ export type LabelFormato = {
 };
 
 export const LABEL_FORMATOS: Record<"painel" | "filtro", LabelFormato> = {
-  painel: { largura_mm: 50, altura_mm: 30, impressora: "" },
+  painel: { largura_mm: 50, altura_mm: 30, impressora: "Elgin L42 Pro" },
   filtro: { largura_mm: 100, altura_mm: 20, impressora: "Elgin L42 Pro" },
 };
 
