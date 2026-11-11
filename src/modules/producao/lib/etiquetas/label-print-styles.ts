@@ -572,7 +572,7 @@ html, body { margin: 0; padding: 0; width: ${w}mm; background: #fff; }
 .etiqueta-painel__logo-text { font-family: "Arial Black", Arial, sans-serif; font-size: 8pt; font-weight: 900; line-height: 1; }
 .etiqueta-painel__qr { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; }
 .etiqueta-painel__qr img { width: ${(h * 0.4).toFixed(1)}mm; height: ${(h * 0.4).toFixed(1)}mm; display: block; }
-.etiqueta-painel__site { font-size: 3.6pt; font-weight: 700; line-height: 1; margin-top: 0.3mm; white-space: nowrap; }
+.etiqueta-painel__site { font-size: 3.6pt; font-weight: 700; line-height: 1.2; margin-top: 0.8mm; display: block; white-space: nowrap; }
 .etiqueta-painel__code { font-size: 7.5pt; font-weight: 800; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .etiqueta-painel__desc { font-size: 6pt; font-weight: 700; line-height: 1.05; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .etiqueta-painel__line { font-size: 5.6pt; font-weight: 700; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
