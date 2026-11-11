@@ -103,8 +103,12 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const descricao = (item.description || product?.name || "").trim();
   const codigo = (product?.technical_code || product?.code || "").trim();
+  let descricao = (item.description || product?.name || "").trim();
+  // "HD1-XXX — Painel ..." → "Painel ..." (o código já sai em linha própria)
+  if (codigo && descricao.toUpperCase().startsWith(codigo.toUpperCase())) {
+    descricao = descricao.slice(codigo.length).replace(/^[\s—–\-:·|]+/, "").trim() || descricao;
+  }
 
   return apiOk({
     order_item_id: item.id,

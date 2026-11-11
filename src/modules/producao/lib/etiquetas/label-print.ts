@@ -78,7 +78,8 @@ function logoHtml(d: LabelPrintData, imgClass: string, textClass: string): strin
 
 function traceLine(d: LabelPrintData): string {
   const parts: string[] = [`PV: ${d.pedido}`];
-  if (d.op) parts.push(`OP: ${d.op}`);
+  // OP derivada do PV (PV-2026-0022-001) só repete o PV → omite para caber.
+  if (d.op && !d.op.startsWith(d.pedido)) parts.push(`OP: ${d.op}`);
   if (d.pedidoCliente?.trim()) parts.push(`PED.: ${d.pedidoCliente.trim()}`);
   return parts.join(" · ");
 }
