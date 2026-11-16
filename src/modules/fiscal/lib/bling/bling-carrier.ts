@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { splitEmailList } from "@/shared/utils/email/split-email-list";
 import type { Database } from "@/modules/core/types/database";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import {
@@ -168,7 +169,7 @@ export async function resolveBlingCarrier(
         blingContactId = await createBlingContact(admin, tenantId, {
           name: nome,
           document: doc,
-          email: supplier.email,
+          email: splitEmailList(supplier.email)[0] ?? null,
           phone: supplier.phone,
           address: supplierAddressLine(supplier),
         });

@@ -59,9 +59,11 @@ export async function sendPurchaseOrderEmail(args: {
     ...new Set(
       (args.toOverride?.length
         ? args.toOverride
-        : args.order.supplier_email
-          ? [args.order.supplier_email]
-          : []
+        : args.order.supplier_emails?.length
+          ? args.order.supplier_emails
+          : args.order.supplier_email
+            ? [args.order.supplier_email]
+            : []
       )
         .map((e) => e.trim())
         .filter(Boolean)

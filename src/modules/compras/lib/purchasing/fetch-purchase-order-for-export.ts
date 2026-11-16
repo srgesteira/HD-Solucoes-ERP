@@ -3,6 +3,7 @@ import type { Database } from "@/modules/core/types/database";
 import { computePurchaseOrderTotal, num } from "@/modules/compras/lib/purchasing/purchase-order-totals";
 import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
 import { fmtPoBRL, fmtPoDate } from "@/modules/compras/lib/purchasing/purchase-order-display";
+import { splitEmailList } from "@/shared/utils/email/split-email-list";
 
 type Admin = SupabaseClient<Database>;
 
@@ -41,6 +42,8 @@ export type PurchaseOrderExportData = {
   total: number;
   supplier_name: string;
   supplier_email: string | null;
+  /** Todos os e-mails do cadastro do fornecedor (campo aceita lista). */
+  supplier_emails: string[];
   items: {
     description: string;
     quantity: number;
@@ -213,7 +216,8 @@ export async function fetchPurchaseOrderForExport(
     total_tax_non_creditable,
     total,
     supplier_name: supplierDisplayName(supplier),
-    supplier_email: supplier?.email?.trim() || null,
+    supplier_email: splitEmailList(supplier?.email)[0] ?? null,
+    supplier_emails: splitEmailList(supplier?.email),
     items,
   };
 }

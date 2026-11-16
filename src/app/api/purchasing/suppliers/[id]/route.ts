@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { normalizeEmailList } from "@/shared/utils/email/split-email-list";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
@@ -97,7 +98,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
   if (b.email !== undefined) {
     updateData.email =
-      b.email == null ? null : String(b.email).trim() || null;
+      b.email == null ? null : normalizeEmailList(String(b.email));
   }
   if (b.phone !== undefined) {
     updateData.phone =

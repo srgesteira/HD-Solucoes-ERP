@@ -196,15 +196,19 @@ export function SupplierFormFields({
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="supplier-email">E-mail</Label>
+            <Label htmlFor="supplier-email">E-mails (pedido de compra)</Label>
             <Input
               id="supplier-email"
-              type="email"
+              type="text"
+              inputMode="email"
               value={formData.email}
               onChange={(e) => onChange("email", e.target.value)}
-              placeholder="contacto@empresa.com.br"
+              placeholder="compras@empresa.com.br; vendedor@empresa.com.br"
               autoComplete="email"
             />
+            <p className="text-xs text-slate-500">
+              Mais de um e-mail: separe com ponto e vírgula. O PC vai para todos.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="supplier-phone">Telefone</Label>

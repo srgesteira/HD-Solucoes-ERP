@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { normalizeEmailList } from "@/shared/utils/email/split-email-list";
 import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk, supabaseErrorToHttp } from "@/modules/core/lib/http";
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
       b.legal_name == null ? null : String(b.legal_name).trim() || null,
     document:
       b.document == null ? null : String(b.document).trim() || null,
-    email: b.email == null ? null : String(b.email).trim() || null,
+    email: b.email == null ? null : normalizeEmailList(String(b.email)),
     phone: b.phone == null ? null : String(b.phone).trim() || null,
     website:
       b.website == null ? null : String(b.website).trim() || null,
