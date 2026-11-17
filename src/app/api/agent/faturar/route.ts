@@ -57,7 +57,7 @@ async function acharPedido(admin: Admin, tenant: string, pv: string): Promise<Pe
   const exato = await db.from("sales_orders").select(campos).eq("tenant_id", tenant).eq("order_number", q).limit(1);
   if (exato.error) return exato.error.message;
   if (exato.data?.length) return exato.data[0] as Pedido;
-  const num = q.replace(/\D/g, "");
+  const num = q.match(/(\d+)\D*$/)?.[1] ?? "";
   if (!num) return `Pedido ${pv} não encontrado.`;
   const parcial = await db
     .from("sales_orders")
@@ -69,7 +69,7 @@ async function acharPedido(admin: Admin, tenant: string, pv: string): Promise<Pe
   if (parcial.error) return parcial.error.message;
   const lista = (parcial.data ?? []) as Pedido[];
   const certos = lista.filter(
-    (p) => p.order_number.replace(/\D/g, "") === num || Number(p.order_number.split("-").pop()) === Number(num)
+    (p) => Number(p.order_number.split("-").pop()) === Number(num)
   );
   if (certos.length === 1) return certos[0];
   if (certos.length > 1) return `Mais de um pedido bate com "${pv}": ${certos.map((p) => p.order_number).join(", ")}.`;
