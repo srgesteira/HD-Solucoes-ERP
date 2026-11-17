@@ -55,8 +55,51 @@ export async function POST(request: NextRequest) {
   if (typeof tenant !== "string") return tenant;
   const db = asUntypedAdmin(admin);
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-  const orc = String(b.orcamento ?? "").trim();
   const nota = String(b.nota ?? "").trim();
+
+  // Pedido de cotação ainda sem orçamento no ERP → oportunidade "a responder" (aparece na carteira).
+  if (b.a_responder === true || typeof b.cliente === "string") {
+    const cli = String(b.cliente ?? "").trim();
+    const titulo = String(b.titulo ?? "").trim();
+    if (!cli || !titulo) return apiError("Informe cliente e titulo.", 400);
+    const { data: cs } = await db
+      .from("customers")
+      .select("id, name, trade_name")
+      .eq("tenant_id", tenant)
+      .or(`name.ilike.%${cli.replace(/[%,()]/g, " ")}%,trade_name.ilike.%${cli.replace(/[%,()]/g, " ")}%`)
+      .limit(5);
+    const lista = (cs ?? []) as Array<{ id: string; name: string }>;
+    if (lista.length !== 1) return apiError(lista.length ? `Mais de um cliente bate com ${cli}: ${lista.map((c) => c.name).join(", ")}` : `Cliente ${cli} não encontrado.`, 404);
+    const prometido = typeof b.prometido === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.prometido) ? b.prometido : null;
+    const falta = String(b.falta ?? "").trim();
+    const { data: ex } = await db
+      .from("crm_opportunities")
+      .select("id")
+      .eq("tenant_id", tenant)
+      .eq("customer_id", lista[0].id)
+      .is("quote_id", null)
+      .eq("title", titulo)
+      .maybeSingle();
+    const campos = { next_action: falta ? `Falta: ${falta}` : "Falta: definir com o Helder", next_action_at: prometido };
+    let oppId = (ex as { id?: string } | null)?.id ?? null;
+    if (oppId) {
+      await db.from("crm_opportunities").update(campos).eq("id", oppId);
+    } else {
+      const ins = await db
+        .from("crm_opportunities")
+        .insert({ tenant_id: tenant, customer_id: lista[0].id, title: titulo, stage: "qualificado", source: "cotacao", ...campos })
+        .select("id")
+        .single();
+      if (ins.error) return apiError(ins.error.message, 500);
+      oppId = (ins.data as { id: string }).id;
+    }
+    if (nota) {
+      await db.from("crm_activities").insert({ tenant_id: tenant, customer_id: lista[0].id, opportunity_id: oppId, type: "nota", summary: nota.slice(0, 2000), created_by: "claude" });
+    }
+    return apiOk({ a_responder: true, cliente: lista[0].name, titulo, ...campos });
+  }
+
+  const orc = String(b.orcamento ?? "").trim();
   if (!orc || !nota) return apiError("Informe orcamento e nota.", 400);
 
   const num = orc.match(/(\d+)\D*$/)?.[1] ?? "";

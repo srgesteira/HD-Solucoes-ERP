@@ -105,7 +105,20 @@ export async function GET(request: NextRequest) {
         }
       } else {
         const aResponder = (qs.data ?? []).filter((x) => x.status === "draft");
-        L.push(`ORÇAMENTOS A RESPONDER ${aResponder.length}`);
+        const { data: semOrc } = await asUntypedAdmin(admin)
+          .from("crm_opportunities")
+          .select("title, next_action, next_action_at, created_at, customer:customers(name, trade_name)")
+          .eq("tenant_id", tenantId)
+          .is("quote_id", null)
+          .in("stage", ["novo", "qualificado"])
+          .order("created_at", { ascending: true });
+        const pend = (semOrc ?? []) as unknown as Array<{ title: string; next_action: string | null; next_action_at: string | null; created_at: string; customer: { name: string; trade_name: string | null } | null }>;
+        L.push(`ORÇAMENTOS A RESPONDER ${aResponder.length + pend.length}`);
+        for (const o of pend) {
+          const pr = o.next_action_at ? ` · prometido ${o.next_action_at.slice(8, 10)}/${o.next_action_at.slice(5, 7)}${o.next_action_at < hoje ? " ⚠ VENCIDO" : ""}` : "";
+          L.push(`  (sem orçamento no ERP) ${short(o.customer?.trade_name || o.customer?.name)} — ${o.title} · pedido há ${daysSince(o.created_at)}d${pr}`);
+          L.push(`    ${String(o.next_action ?? "Falta: definir com o Helder").slice(0, 160)}`);
+        }
         for (const x of aResponder) {
           const falta = linhaDe(x.notes, "falta") || "não registrado (perguntar ao Helder)";
           const prometido = linhaDe(x.notes, "prometido");
