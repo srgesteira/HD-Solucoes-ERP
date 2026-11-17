@@ -70,7 +70,7 @@ const GERAL: Segmento = {
   palavras: /.*/,
   assunto: "Equipamentos sob medida para salas limpas e HVAC industrial",
   oferta:
-    "Fabricamos sob medida fluxo laminar, FFU, caixas terminais HEPA, caixas de filtragem e ventilação e UTAs, e também fornecemos filtros G4, F7/F9 e HEPA.",
+    "Fazemos fluxo laminar, FFU, caixas terminais HEPA, caixas de filtragem e ventilação e UTAs, e também fornecemos filtros G4, F7/F9 e HEPA.",
   curto: "equipamentos de filtragem ou salas limpas",
   link: SITE,
 };
