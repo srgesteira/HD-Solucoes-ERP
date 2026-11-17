@@ -80,9 +80,14 @@ export function segmentoDe(texto: string | null | undefined): Segmento {
   return SEGMENTOS.find((s) => s.palavras.test(t)) ?? GERAL;
 }
 
-/** Frase personalizada só entra se já vier pronta (começa com maiúscula e termina com ponto). */
+/**
+ * Frase personalizada só entra se foi escrita PARA O CLIENTE, marcada com "Frase:" no gancho
+ * (ex.: "Frase: Vi que a Acme está ampliando a fábrica de Jundiaí."). Gancho sem "Frase:" é nota interna.
+ */
 function frasePronta(gancho: string | null | undefined): string {
-  const g = String(gancho ?? "").trim();
+  const m = String(gancho ?? "").match(/Frase:\s*(.+)$/i);
+  if (!m) return "";
+  const g = m[1].trim();
   return g.length > 15 && g.length < 300 && /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/.test(g) && /[.!]$/.test(g) && !/https?:\/\//.test(g) ? g : "";
 }
 
@@ -115,8 +120,9 @@ export function montarEmail(args: {
     };
   }
 
-  const base = args.assuntoAnterior || s.assunto;
-  const assunto = /^re:/i.test(base) ? base : `Re: ${base}`;
+  const assunto = args.assuntoAnterior
+    ? /^re:/i.test(args.assuntoAnterior) ? args.assuntoAnterior : `Re: ${args.assuntoAnterior}`
+    : `${s.assunto} — HD Industrial`;
   if (args.passo === "fu1") {
     return {
       assunto,
