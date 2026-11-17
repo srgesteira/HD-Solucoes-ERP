@@ -119,9 +119,20 @@ export async function GET(request: NextRequest) {
           L.push(`  (sem orçamento no ERP) ${short(o.customer?.trade_name || o.customer?.name)} — ${o.title} · pedido há ${daysSince(o.created_at)}d${pr}`);
           L.push(`    ${String(o.next_action ?? "Falta: definir com o Helder").slice(0, 160)}`);
         }
+        const { data: oppsQ } = await asUntypedAdmin(admin)
+          .from("crm_opportunities")
+          .select("next_action, next_action_at, quote:quotes(quote_number)")
+          .eq("tenant_id", tenantId)
+          .not("quote_id", "is", null);
+        const oq = new Map(
+          ((oppsQ ?? []) as unknown as Array<{ next_action: string | null; next_action_at: string | null; quote: { quote_number: string } | null }>).map((o) => [o.quote?.quote_number ?? "", o])
+        );
         for (const x of aResponder) {
-          const falta = linhaDe(x.notes, "falta") || "não registrado (perguntar ao Helder)";
-          const prometido = linhaDe(x.notes, "prometido");
+          const o = oq.get(x.quote_number);
+          const falta = (o?.next_action ?? "").replace(/^falta:\s*/i, "") || linhaDe(x.notes, "falta") || "não registrado (perguntar ao Helder)";
+          const prometido = o?.next_action_at
+            ? `${o.next_action_at.slice(8, 10)}/${o.next_action_at.slice(5, 7)}${o.next_action_at < hoje ? " ⚠ VENCIDO" : ""}`
+            : linhaDe(x.notes, "prometido");
           L.push(`  ${x.quote_number} ${short(x.client_name)} · pedido há ${daysSince(x.quote_date ?? x.updated_at)}d${prometido ? ` · prometido ${prometido}` : ""}`);
           L.push(`    falta: ${falta}`);
         }
