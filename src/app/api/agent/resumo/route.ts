@@ -57,16 +57,17 @@ export async function GET(request: NextRequest) {
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   // ?modo=hoje → só o que pede ação hoje (economiza tokens nas rotinas diárias)
-  if (request.nextUrl.searchParams.get("modo") === "carteira") {
+  const modo = request.nextUrl.searchParams.get("modo");
+  if (modo === "carteira" || modo === "followup") {
     try {
       const [qs, pvs] = await Promise.all([
         admin
           .from("quotes")
-          .select("quote_number, client_name, total, status, updated_at, send_count, quote_date")
+          .select("quote_number, client_name, total, status, updated_at, send_count, quote_date, notes")
           .eq("tenant_id", tenantId)
           .in("status", ["draft", "sent", "approved", "revision"])
           .is("converted_to_sale_id", null)
-          .order("updated_at", { ascending: false }),
+          .order("quote_date", { ascending: true }),
         admin
           .from("sales_orders")
           .select("order_number, client_name, total, status, expected_delivery, pcp_reply_comercial_observation")
@@ -77,20 +78,37 @@ export async function GET(request: NextRequest) {
       if (qs.error || pvs.error) throw new Error((qs.error || pvs.error)!.message);
       const hoje = new Date().toISOString().slice(0, 10);
       const L: string[] = [];
-      const enviados = (qs.data ?? []).filter((x) => x.status !== "draft");
-      const rascunhos = (qs.data ?? []).filter((x) => x.status === "draft");
-      L.push(`ORÇAMENTOS ENVIADOS ${enviados.length} · R$ ${brl(enviados.reduce((s, x) => s + Number(x.total ?? 0), 0))}`);
-      for (const x of enviados)
-        L.push(`  ${x.quote_number} ${short(x.client_name)} R$${brl(x.total)} · ${x.status} · parado ${daysSince(x.updated_at)}d`);
-      L.push(`ORÇAMENTOS EM ELABORAÇÃO ${rascunhos.length}`);
-      for (const x of rascunhos) L.push(`  ${x.quote_number} ${short(x.client_name)} · desde ${daysSince(x.quote_date ?? x.updated_at)}d`);
-      const ab = pvs.data ?? [];
-      L.push(`PEDIDOS ABERTOS ${ab.length} · R$ ${brl(ab.reduce((s, x) => s + Number(x.total ?? 0), 0))}`);
-      for (const x of ab) {
-        const etapa = /etapa=(\w+)/.exec(String(x.pcp_reply_comercial_observation ?? ""))?.[1] ?? (x.status === "shipped" ? "expedido" : "sem plano");
-        const atraso = x.expected_delivery && x.expected_delivery < hoje && x.status !== "shipped" ? " ⚠ ATRASADO" : "";
-        const ent = x.expected_delivery ? `${x.expected_delivery.slice(8, 10)}/${x.expected_delivery.slice(5, 7)}` : "?";
-        L.push(`  ${x.order_number} ${short(x.client_name)} R$${brl(x.total)} · entrega ${ent} · ${etapa}${atraso}`);
+      const linhaDe = (notes: unknown, chave: string) =>
+        String(notes ?? "")
+          .split("\n")
+          .map((s) => s.trim())
+          .find((s) => s.toLowerCase().startsWith(chave))
+          ?.slice(chave.length)
+          .replace(/^[:\s]+/, "") ?? "";
+      if (modo === "followup") {
+        const enviados = (qs.data ?? []).filter((x) => x.status !== "draft");
+        L.push(`FOLLOW-UP — ${enviados.length} orçamento(s) enviados · R$ ${brl(enviados.reduce((s, x) => s + Number(x.total ?? 0), 0))}`);
+        for (const x of [...enviados].sort((a, b) => String(a.updated_at).localeCompare(String(b.updated_at))))
+          L.push(`  ${x.quote_number} ${short(x.client_name)} R$${brl(x.total)} · parado ${daysSince(x.updated_at)}d · enviado ${x.send_count ?? 0}x`);
+      } else {
+        const aResponder = (qs.data ?? []).filter((x) => x.status === "draft");
+        L.push(`ORÇAMENTOS A RESPONDER ${aResponder.length}`);
+        for (const x of aResponder) {
+          const falta = linhaDe(x.notes, "falta") || "não registrado (perguntar ao Helder)";
+          const prometido = linhaDe(x.notes, "prometido");
+          L.push(`  ${x.quote_number} ${short(x.client_name)} · pedido há ${daysSince(x.quote_date ?? x.updated_at)}d${prometido ? ` · prometido ${prometido}` : ""}`);
+          L.push(`    falta: ${falta}`);
+        }
+        const ab = pvs.data ?? [];
+        L.push(`PEDIDOS ABERTOS ${ab.length} · R$ ${brl(ab.reduce((s, x) => s + Number(x.total ?? 0), 0))}`);
+        for (const x of ab) {
+          const etapa = /etapa=(\w+)/.exec(String(x.pcp_reply_comercial_observation ?? ""))?.[1] ?? (x.status === "shipped" ? "expedido" : "sem plano");
+          const atraso = x.expected_delivery && x.expected_delivery < hoje && x.status !== "shipped" ? " ⚠ ATRASADO" : "";
+          const ent = x.expected_delivery ? `${x.expected_delivery.slice(8, 10)}/${x.expected_delivery.slice(5, 7)}` : "?";
+          L.push(`  ${x.order_number} ${short(x.client_name)} R$${brl(x.total)} · entrega ${ent} · ${etapa}${atraso}`);
+        }
+        const enviados = (qs.data ?? []).filter((x) => x.status !== "draft");
+        L.push(`(follow-up: ${enviados.length} orçamentos enviados aguardando — ver modo=followup)`);
       }
       return new NextResponse(L.join("\n"), {
         headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
