@@ -238,7 +238,23 @@ export async function POST(request: NextRequest) {
       return apiOk({ emitido: true, resultado: r });
     }
 
-    return apiError('acao deve ser "planejar" ou "emitir_pc".', 400);
+    if (acao === "fornecedor_preferido") {
+      const itens = Array.isArray(b.itens) ? (b.itens as Array<{ produto_id?: string; fornecedor_id?: string }>) : [];
+      const db = asUntypedAdmin(admin);
+      const out: string[] = [];
+      for (const it of itens) {
+        if (!it.produto_id || !it.fornecedor_id) continue;
+        const { error } = await db
+          .from("products")
+          .update({ preferred_supplier_id: it.fornecedor_id })
+          .eq("id", it.produto_id)
+          .eq("tenant_id", tenant);
+        out.push(`${it.produto_id.slice(0, 8)} ${error ? "ERRO " + error.message : "ok"}`);
+      }
+      return apiOk({ atualizados: out.filter((x) => x.endsWith("ok")).length, detalhes: out });
+    }
+
+    return apiError('acao deve ser "planejar", "emitir_pc" ou "fornecedor_preferido".', 400);
   } catch (e) {
     return apiError(e instanceof Error ? e.message : "Erro no comprador.", 500);
   }
