@@ -3,6 +3,7 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError } from "@/modules/core/lib/http";
 import { getCurrentTenantId } from "@/modules/core/lib/tenant";
 import { assertFinanceOrReportsAccess } from "@/modules/core/lib/module-access";
+import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { buildTodayBrief } from "@/modules/agent/lib/today-brief";
 
 export const dynamic = "force-dynamic";
@@ -88,8 +89,20 @@ export async function GET(request: NextRequest) {
       if (modo === "followup") {
         const enviados = (qs.data ?? []).filter((x) => x.status !== "draft");
         L.push(`FOLLOW-UP — ${enviados.length} orçamento(s) enviados · R$ ${brl(enviados.reduce((s, x) => s + Number(x.total ?? 0), 0))}`);
-        for (const x of [...enviados].sort((a, b) => String(a.updated_at).localeCompare(String(b.updated_at))))
-          L.push(`  ${x.quote_number} ${short(x.client_name)} R$${brl(x.total)} · parado ${daysSince(x.updated_at)}d · enviado ${x.send_count ?? 0}x`);
+        const { data: opps } = await asUntypedAdmin(admin)
+          .from("crm_opportunities")
+          .select("quote_id, next_action, next_action_at, quote:quotes(quote_number)")
+          .eq("tenant_id", tenantId)
+          .not("quote_id", "is", null);
+        const porOrc = new Map(
+          ((opps ?? []) as unknown as Array<{ next_action: string | null; next_action_at: string | null; quote: { quote_number: string } | null }>).map((o) => [o.quote?.quote_number ?? "", o])
+        );
+        for (const x of [...enviados].sort((a, b) => String(a.updated_at).localeCompare(String(b.updated_at)))) {
+          const o = porOrc.get(x.quote_number);
+          const quando = o?.next_action_at ? `retomar ${o.next_action_at.slice(8, 10)}/${o.next_action_at.slice(5, 7)}${o.next_action_at <= hoje ? " ⚠ HOJE" : ""}` : "sem data de retorno";
+          L.push(`  ${x.quote_number} ${short(x.client_name)} R$${brl(x.total)} · parado ${daysSince(x.updated_at)}d · ${quando}`);
+          if (o?.next_action) L.push(`    ${String(o.next_action).slice(0, 140)}`);
+        }
       } else {
         const aResponder = (qs.data ?? []).filter((x) => x.status === "draft");
         L.push(`ORÇAMENTOS A RESPONDER ${aResponder.length}`);
