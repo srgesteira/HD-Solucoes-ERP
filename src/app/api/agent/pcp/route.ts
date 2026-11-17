@@ -183,6 +183,27 @@ async function analisar(admin: Admin, tenant: string, lista: PV[]) {
     const { data } = await db.from("purchase_orders").select(campos).eq("tenant_id", tenant).in("po_number", numeros);
     for (const pc of (data ?? []) as PC[]) if (!pcs.some((x) => x.id === pc.id)) pcs.push(pc);
   }
+  // … e as que citam o PV nas observações do PC ("Ref. PV-2026-0027 …").
+  {
+    const { data } = await db
+      .from("purchase_orders")
+      .select(campos + ", notes")
+      .eq("tenant_id", tenant)
+      .neq("status", "cancelled")
+      .ilike("notes", "%PV-%")
+      .order("order_date", { ascending: false })
+      .limit(200);
+    for (const pc of (data ?? []) as Array<PC & { notes: string | null }>) {
+      const refs = String(pc.notes ?? "").match(/PV-\d{4}-\d+/gi) ?? [];
+      for (const ref of refs) {
+        const so = lista.find((x) => x.order_number.toUpperCase() === ref.toUpperCase());
+        if (!so) continue;
+        if (!pcsPorPv.has(so.id)) pcsPorPv.set(so.id, new Set());
+        pcsPorPv.get(so.id)!.add(pc.id);
+        if (!pcs.some((x) => x.id === pc.id)) pcs.push(pc);
+      }
+    }
+  }
   const fornIds = [...new Set(pcs.map((p) => p.supplier_id).filter((x): x is string => !!x))];
   const forn = new Map<string, string>();
   if (fornIds.length) {

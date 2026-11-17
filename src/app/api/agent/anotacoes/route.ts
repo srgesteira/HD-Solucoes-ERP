@@ -60,16 +60,33 @@ export async function POST(request: NextRequest) {
   // Pedido de cotação ainda sem orçamento no ERP → oportunidade "a responder" (aparece na carteira).
   if (b.a_responder === true || typeof b.cliente === "string") {
     const cli = String(b.cliente ?? "").trim();
+    const email = String(b.email ?? "").trim().toLowerCase();
     const titulo = String(b.titulo ?? "").trim();
-    if (!cli || !titulo) return apiError("Informe cliente e titulo.", 400);
-    const { data: cs } = await db
-      .from("customers")
-      .select("id, name, trade_name")
-      .eq("tenant_id", tenant)
-      .or(`name.ilike.%${cli.replace(/[%,()]/g, " ")}%,trade_name.ilike.%${cli.replace(/[%,()]/g, " ")}%`)
-      .limit(5);
-    const lista = (cs ?? []) as Array<{ id: string; name: string }>;
-    if (lista.length !== 1) return apiError(lista.length ? `Mais de um cliente bate com ${cli}: ${lista.map((c) => c.name).join(", ")}` : `Cliente ${cli} não encontrado.`, 404);
+    if ((!cli && !email) || !titulo) return apiError("Informe cliente (ou email) e titulo.", 400);
+    let lista: Array<{ id: string; name: string }> = [];
+    if (cli) {
+      const { data: cs } = await db
+        .from("customers")
+        .select("id, name, trade_name")
+        .eq("tenant_id", tenant)
+        .or(`name.ilike.%${cli.replace(/[%,()]/g, " ")}%,trade_name.ilike.%${cli.replace(/[%,()]/g, " ")}%`)
+        .limit(5);
+      lista = (cs ?? []) as Array<{ id: string; name: string }>;
+    } else {
+      // Pelo e-mail do remetente: contato do CRM, e-mail do cliente, ou domínio (não genérico).
+      const dom = email.split("@")[1] ?? "";
+      const generico = /^(gmail|hotmail|outlook|yahoo|live|uol|bol|terra|icloud)\./i.test(dom);
+      const { data: ct } = await db.from("crm_contacts").select("customer_id").eq("tenant_id", tenant).ilike("email", email).limit(1);
+      const viaContato = (ct?.[0] as { customer_id?: string } | undefined)?.customer_id;
+      const filtro = viaContato
+        ? `id.eq.${viaContato}`
+        : generico || !dom
+          ? `email.ilike.${email}`
+          : `email.ilike.${email},email.ilike.%@${dom}`;
+      const { data: cs } = await db.from("customers").select("id, name, trade_name").eq("tenant_id", tenant).or(filtro).limit(5);
+      lista = (cs ?? []) as Array<{ id: string; name: string }>;
+    }
+    if (lista.length !== 1) return apiError(lista.length ? `Mais de um cliente bate com ${cli || email}: ${lista.map((c) => c.name).join(", ")}` : `Cliente ${cli || email} não encontrado.`, 404);
     const prometido = typeof b.prometido === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.prometido) ? b.prometido : null;
     const falta = String(b.falta ?? "").trim();
     const { data: ex } = await db
