@@ -57,6 +57,49 @@ export async function GET(request: NextRequest) {
   if (!tenantId) return apiError("Tenant não encontrado", 403);
 
   // ?modo=hoje → só o que pede ação hoje (economiza tokens nas rotinas diárias)
+  if (request.nextUrl.searchParams.get("modo") === "carteira") {
+    try {
+      const [qs, pvs] = await Promise.all([
+        admin
+          .from("quotes")
+          .select("quote_number, client_name, total, status, updated_at, send_count, quote_date")
+          .eq("tenant_id", tenantId)
+          .in("status", ["draft", "sent", "approved", "revision"])
+          .is("converted_to_sale_id", null)
+          .order("updated_at", { ascending: false }),
+        admin
+          .from("sales_orders")
+          .select("order_number, client_name, total, status, expected_delivery, pcp_reply_comercial_observation")
+          .eq("tenant_id", tenantId)
+          .in("status", ["confirmed", "in_production", "shipped"])
+          .order("expected_delivery", { ascending: true }),
+      ]);
+      if (qs.error || pvs.error) throw new Error((qs.error || pvs.error)!.message);
+      const hoje = new Date().toISOString().slice(0, 10);
+      const L: string[] = [];
+      const enviados = (qs.data ?? []).filter((x) => x.status !== "draft");
+      const rascunhos = (qs.data ?? []).filter((x) => x.status === "draft");
+      L.push(`ORÇAMENTOS ENVIADOS ${enviados.length} · R$ ${brl(enviados.reduce((s, x) => s + Number(x.total ?? 0), 0))}`);
+      for (const x of enviados)
+        L.push(`  ${x.quote_number} ${short(x.client_name)} R$${brl(x.total)} · ${x.status} · parado ${daysSince(x.updated_at)}d`);
+      L.push(`ORÇAMENTOS EM ELABORAÇÃO ${rascunhos.length}`);
+      for (const x of rascunhos) L.push(`  ${x.quote_number} ${short(x.client_name)} · desde ${daysSince(x.quote_date ?? x.updated_at)}d`);
+      const ab = pvs.data ?? [];
+      L.push(`PEDIDOS ABERTOS ${ab.length} · R$ ${brl(ab.reduce((s, x) => s + Number(x.total ?? 0), 0))}`);
+      for (const x of ab) {
+        const etapa = /etapa=(\w+)/.exec(String(x.pcp_reply_comercial_observation ?? ""))?.[1] ?? (x.status === "shipped" ? "expedido" : "sem plano");
+        const atraso = x.expected_delivery && x.expected_delivery < hoje && x.status !== "shipped" ? " ⚠ ATRASADO" : "";
+        const ent = x.expected_delivery ? `${x.expected_delivery.slice(8, 10)}/${x.expected_delivery.slice(5, 7)}` : "?";
+        L.push(`  ${x.order_number} ${short(x.client_name)} R$${brl(x.total)} · entrega ${ent} · ${etapa}${atraso}`);
+      }
+      return new NextResponse(L.join("\n"), {
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    } catch (e) {
+      return apiError("Erro na carteira: " + (e instanceof Error ? e.message : String(e)), 500);
+    }
+  }
+
   if (request.nextUrl.searchParams.get("modo") === "hoje") {
     try {
       const text = await buildTodayBrief(admin, tenantId);
