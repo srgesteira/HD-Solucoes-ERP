@@ -30,8 +30,9 @@ export const runtime = "nodejs";
 type Admin = ReturnType<typeof createSupabaseAdminClient>;
 
 async function resolveTenant(request: NextRequest, admin: Admin): Promise<string | NextResponse> {
-  const key = process.env.AGENT_API_KEY;
-  if (key && request.headers.get("authorization") === `Bearer ${key}`) {
+  const key = (process.env.AGENT_API_KEY ?? "").trim();
+  const sent = (request.headers.get("authorization") ?? "").trim().replace(/^bearer\s+/i, "").trim();
+  if (key && sent && sent === key) {
     const { data } = await admin.from("tenants").select("id").limit(1);
     return data?.[0]?.id ?? apiError("Tenant não encontrado", 403);
   }
