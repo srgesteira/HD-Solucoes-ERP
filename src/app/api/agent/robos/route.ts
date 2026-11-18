@@ -66,8 +66,29 @@ export async function GET(request: NextRequest) {
     .order("due_date", { ascending: true });
   if (error) return apiError("Erro ao ler contas a pagar: " + error.message, 500);
 
+  // Boletos que o Helder combinou de emitir até hoje (nota "Boleto: emitir em AAAA-MM-DD" na conta a receber).
+  const { data: recs } = await admin
+    .from("receivables")
+    .select("id, client_name, description, current_amount, due_date, notes")
+    .eq("tenant_id", tenant)
+    .eq("is_forecast", false)
+    .in("status", ["pending", "partial", "overdue"])
+    .ilike("notes", "%Boleto: emitir em%");
+  const boletos = (recs ?? [])
+    .map((r) => ({ r, quando: /Boleto: emitir em (\d{4}-\d{2}-\d{2})/.exec(String(r.notes ?? ""))?.[1] ?? "" }))
+    .filter((x) => x.quando && x.quando <= today)
+    .map(({ r, quando }) => ({
+      id: r.id,
+      cliente: r.client_name,
+      descricao: r.description,
+      valor: money(r.current_amount),
+      vencimento: r.due_date,
+      emitir_em: quando,
+    }));
+
   return apiOk({
     hoje: today,
+    boletos,
     itens: (data ?? []).map((p) => ({
       id: p.id,
       descricao: p.description,
@@ -91,7 +112,41 @@ export async function POST(request: NextRequest) {
   } catch {
     return apiError("JSON inválido", 400);
   }
-  if (body.acao !== "conciliar") return apiError("acao inválida (use conciliar)", 400);
+  if (body.acao === "boleto") {
+    // { acao:"boleto", pv:"PV-2026-0011" | "11", emitir_em?: "AAAA-MM-DD", emitido?: true }
+    const b = body as unknown as { pv?: string; emitir_em?: string; emitido?: boolean };
+    const num = String(b.pv ?? "").match(/(\d+)\D*$/)?.[1] ?? "";
+    if (!num) return apiError("Informe pv.", 400);
+    const { data: sos } = await admin.from("sales_orders").select("id, order_number").eq("tenant_id", tenant).ilike("order_number", `%${num.replace(/^0+/, "") || "0"}`);
+    const so = (sos ?? []).find((s) => Number(String(s.order_number).split("-").pop()) === Number(num));
+    if (!so) return apiError(`PV ${b.pv} não encontrado.`, 404);
+    const { data: recs, error: er } = await admin
+      .from("receivables")
+      .select("id, notes")
+      .eq("tenant_id", tenant)
+      .eq("sales_order_id", so.id)
+      .eq("is_forecast", false)
+      .in("status", ["pending", "partial", "overdue"]);
+    if (er) return apiError(er.message, 500);
+    const hoje = todayIsoSaoPaulo();
+    const linha = b.emitido
+      ? `Boleto: emitido em ${hoje}`
+      : /^\d{4}-\d{2}-\d{2}$/.test(String(b.emitir_em ?? ""))
+        ? `Boleto: emitir em ${b.emitir_em}`
+        : null;
+    if (!linha) return apiError("Informe emitir_em (AAAA-MM-DD) ou emitido:true.", 400);
+    for (const r of recs ?? []) {
+      const base = String(r.notes ?? "")
+        .split("\n")
+        .filter((l) => !/^Boleto: /.test(l.trim()))
+        .join("\n")
+        .trim();
+      await admin.from("receivables").update({ notes: (base ? base + "\n" : "") + linha }).eq("id", r.id).eq("tenant_id", tenant);
+    }
+    return apiOk({ pv: so.order_number, parcelas: (recs ?? []).length, nota: linha });
+  }
+
+  if (body.acao !== "conciliar") return apiError("acao inválida (use conciliar ou boleto)", 400);
   const linhas = Array.isArray(body.linhas) ? body.linhas : [];
   if (!linhas.length) return apiError("linhas vazias", 400);
   if (linhas.length > 500) return apiError("no máximo 500 linhas por vez", 400);
