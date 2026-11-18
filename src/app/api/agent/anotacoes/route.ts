@@ -57,6 +57,16 @@ export async function POST(request: NextRequest) {
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const nota = String(b.nota ?? "").trim();
 
+  // Próxima ação do cliente no CRM (a que o Prospector respeita): { cliente_id, proxima_acao, proximo_contato }
+  if (typeof b.cliente_id === "string" && typeof b.proxima_acao === "string") {
+    const upd: Record<string, unknown> = { next_action: b.proxima_acao.trim() || null };
+    if (typeof b.proximo_contato === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.proximo_contato)) upd.next_contact_at = b.proximo_contato;
+    const { error: e1 } = await db.from("customers").update(upd).eq("id", b.cliente_id).eq("tenant_id", tenant);
+    if (e1) return apiError(e1.message, 500);
+    if (nota) await db.from("crm_activities").insert({ tenant_id: tenant, customer_id: b.cliente_id, type: "nota", summary: nota.slice(0, 2000), created_by: "claude" });
+    return apiOk({ cliente_id: b.cliente_id, ...upd });
+  }
+
   // Pedido de cotação ainda sem orçamento no ERP → oportunidade "a responder" (aparece na carteira).
   if (b.a_responder === true || typeof b.cliente === "string") {
     const cli = String(b.cliente ?? "").trim();
