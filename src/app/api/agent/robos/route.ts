@@ -104,6 +104,44 @@ export async function POST(request: NextRequest) {
   const sem_par: unknown[] = [];
   const ambiguos: unknown[] = [];
   const usados = new Set<string>();
+  const ja_conciliados: unknown[] = [];
+
+  // Movimentos já lançados no ERP no período do extrato (para não perguntar de novo o que já foi baixado).
+  const datas = linhas.map((l) => String(l?.data ?? "").slice(0, 10)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  type Mov = { id: string; direction: string; amount: number; movement_date: string; description: string };
+  let movs: Mov[] = [];
+  if (datas.length) {
+    const { data: mv } = await rpc
+      .from("financial_movements")
+      .select("id, direction, amount, movement_date, description")
+      .eq("tenant_id", tenant)
+      .gte("movement_date", addDays(datas[0], -5))
+      .lte("movement_date", addDays(datas[datas.length - 1], 5));
+    movs = (mv ?? []) as Mov[];
+  }
+  const movUsados = new Set<string>();
+  const dist = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
+  const jaLancado = (data: string, valor: number): string | null => {
+    const dir = valor < 0 ? "out" : "in";
+    const abs = Math.abs(valor);
+    const um = movs
+      .filter((m) => !movUsados.has(m.id) && m.direction === dir && Math.abs(money(m.amount) - abs) < 0.01 && dist(m.movement_date, data) <= 5)
+      .sort((a, b) => dist(a.movement_date, data) - dist(b.movement_date, data))[0];
+    if (um) {
+      movUsados.add(um.id);
+      return um.description;
+    }
+    // Boletos/créditos do mesmo dia somados num lançamento só do banco.
+    for (const delta of [0, 1, -1]) {
+      const dia = addDays(data, delta);
+      const doDia = movs.filter((m) => !movUsados.has(m.id) && m.direction === dir && m.movement_date === dia);
+      if (doDia.length > 1 && Math.abs(money(doDia.reduce((s, m) => s + Number(m.amount), 0)) - abs) < 0.01) {
+        doDia.forEach((m) => movUsados.add(m.id));
+        return doDia.map((m) => m.description).join(" + ").slice(0, 200);
+      }
+    }
+    return null;
+  };
 
   for (const l of linhas) {
     const data = String(l?.data ?? "").slice(0, 10);
@@ -131,7 +169,9 @@ export async function POST(request: NextRequest) {
         (c) => !usados.has(c.id) && Math.abs(money(c.current_amount) - abs) < 0.01
       );
       if (iguais.length === 0) {
-        sem_par.push({ data, valor, descricao });
+        const ja = jaLancado(data, valor);
+        if (ja) ja_conciliados.push({ data, valor, descricao, no_erp: ja });
+        else sem_par.push({ data, valor, descricao });
         continue;
       }
       if (iguais.length > 1) {
@@ -178,7 +218,9 @@ export async function POST(request: NextRequest) {
           Math.abs(money(Number(c.current_amount ?? 0) - Number(c.paid_amount ?? 0)) - abs) < 0.01
       );
       if (iguais.length === 0) {
-        sem_par.push({ data, valor, descricao });
+        const ja = jaLancado(data, valor);
+        if (ja) ja_conciliados.push({ data, valor, descricao, no_erp: ja });
+        else sem_par.push({ data, valor, descricao });
         continue;
       }
       if (iguais.length > 1) {
@@ -220,5 +262,5 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return apiOk({ dry_run: dry, baixados, sem_par, ambiguos });
+  return apiOk({ dry_run: dry, baixados, sem_par, ambiguos, ja_conciliados });
 }
