@@ -86,6 +86,11 @@ export async function POST(request: NextRequest) {
         subject: b.subject ? String(b.subject) : undefined,
         text: String(b.text),
         reply: reply?.uid ? { folder: reply.folder ?? "inbox", uid: Number(reply.uid) } : undefined,
+        attachments: Array.isArray(b.anexos)
+          ? (b.anexos as Array<{ nome?: string; base64?: string; tipo?: string }>)
+              .filter((a) => a?.nome && a?.base64)
+              .map((a) => ({ filename: String(a.nome), content: Buffer.from(String(a.base64), "base64"), contentType: a.tipo }))
+          : undefined,
       })
     );
   } catch (e) {

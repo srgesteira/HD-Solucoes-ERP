@@ -146,6 +146,8 @@ export type SendArgs = {
   text: string;
   /** Responder em cima de uma mensagem existente (mantém a conversa). */
   reply?: { folder: string; uid: number };
+  /** Anexos (base64). */
+  attachments?: { filename: string; content: Buffer; contentType?: string }[];
 };
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -190,6 +192,7 @@ export async function sendMessage(cfg: OutboundMailConfig, args: SendArgs): Prom
     html,
     inReplyTo,
     references,
+    attachments: args.attachments,
   };
 
   const transport = nodemailer.createTransport({
@@ -203,5 +206,6 @@ export async function sendMessage(cfg: OutboundMailConfig, args: SendArgs): Prom
   // O Zoho já guarda cópia em Enviados dos e-mails enviados por SMTP
   // (configuração "Salvar uma cópia dos e-mails enviados"), então não duplicamos.
   const saved = `id ${info.messageId}`;
-  return `Enviado para ${args.to.join(", ")}${args.cc?.length ? " (cc " + args.cc.join(", ") + ")" : ""} | ${subject} | ${saved}`;
+  const anexos = args.attachments?.length ? ` | anexos: ${args.attachments.map((a) => a.filename).join(", ")}` : "";
+  return `Enviado para ${args.to.join(", ")}${args.cc?.length ? " (cc " + args.cc.join(", ") + ")" : ""} | ${subject}${anexos} | ${saved}`;
 }
