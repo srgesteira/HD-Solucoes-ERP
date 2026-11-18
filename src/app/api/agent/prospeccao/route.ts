@@ -83,7 +83,7 @@ async function agenda(admin: Admin, tenant: string, limite: number): Promise<Ite
     const id = String(c.id);
     // Próxima ação escrita à mão (ex.: "e-mail voltou", "conferir conversa ativa") = não é com o robô.
     const proxima = String(c.next_action ?? "").trim();
-    if (proxima && !/^prospec[cç][aã]o\b/i.test(proxima)) continue;
+    if (proxima && !/^(prospec[cç][aã]o\b|1\s*[ºo°]?\s*contato\b|primeiro contato\b)/i.test(proxima)) continue;
     const [{ data: contatos }, { data: ativ }] = await Promise.all([
       db.from("crm_contacts").select("name, email, is_primary").eq("customer_id", id).order("is_primary", { ascending: false }),
       db
