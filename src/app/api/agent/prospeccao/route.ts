@@ -68,7 +68,7 @@ async function agenda(admin: Admin, tenant: string, limite: number): Promise<Ite
   const hoje = todayIsoSaoPaulo();
   const { data: clientes, error } = await db
     .from("customers")
-    .select("id, name, trade_name, email, segment, next_contact_at")
+    .select("id, name, trade_name, email, segment, next_contact_at, next_action")
     .eq("tenant_id", tenant)
     .eq("is_active", true)
     .in("crm_stage", ["lead", "contato"])
@@ -81,6 +81,9 @@ async function agenda(admin: Admin, tenant: string, limite: number): Promise<Ite
   for (const c of (clientes ?? []) as Array<Record<string, string | null>>) {
     if (itens.length >= limite) break;
     const id = String(c.id);
+    // Próxima ação escrita à mão (ex.: "e-mail voltou", "conferir conversa ativa") = não é com o robô.
+    const proxima = String(c.next_action ?? "").trim();
+    if (proxima && !/^prospec[cç][aã]o\b/i.test(proxima)) continue;
     const [{ data: contatos }, { data: ativ }] = await Promise.all([
       db.from("crm_contacts").select("name, email, is_primary").eq("customer_id", id).order("is_primary", { ascending: false }),
       db
