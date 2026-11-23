@@ -1,0 +1,63 @@
+{
+  "name": "Robô 0 - Heartbeat",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "a1f0c0de-0000-4000-8000-000000000001",
+      "name": "A cada 10 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hd-solucoes-erp.vercel.app/api/agent/heartbeat",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ robo: 'n8n', info: { workflow: 'Robô 0 - Heartbeat', em: $now.toISO() } }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "a1f0c0de-0000-4000-8000-000000000002",
+      "name": "Avisar ERP que está vivo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "Credencial: Header Auth com Name = Authorization e Value = Bearer <AGENT_API_KEY> (a mesma chave que os outros robôs usam)."
+    }
+  ],
+  "connections": {
+    "A cada 10 min": {
+      "main": [
+        [
+          {
+            "node": "Avisar ERP que está vivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none"
+  },
+  "active": false
+}

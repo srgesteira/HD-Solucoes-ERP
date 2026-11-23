@@ -7,6 +7,11 @@ import { loadTenantMailConfig } from "@/shared/utils/email/load-tenant-mail-conf
 import { sendMessage } from "@/modules/agent/lib/zoho-mailbox";
 import { montarEmail, segmentoDe, type Passo } from "@/modules/agent/lib/prospeccao-modelos";
 import { todayIsoSaoPaulo } from "@/shared/utils/date";
+import {
+  LIMITE_DIARIO_PROSPECCAO,
+  enviosProspeccaoHoje,
+  restanteProspeccaoHoje,
+} from "@/modules/agent/lib/prospeccao-limite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,6 +27,10 @@ export const maxDuration = 300;
  *     envia pelo Zoho do helder@, registra no CRM e agenda o próximo passo
  *     (1º → FU1 em 7 dias · FU1 → FU2 em 14 dias · FU2 → inativo, volta em 90 dias).
  *   → dry_run devolve os e-mails montados sem enviar nem gravar.
+ *
+ * Trava diária: no máximo LIMITE_DIARIO_PROSPECCAO (15) e-mails de prospecção por dia, contados no CRM.
+ * O `limite` pedido nunca passa do que ainda resta hoje, e a contagem é refeita antes de cada envio
+ * — se o n8n chamar de novo ou pedir 50, o ERP bloqueia do mesmo jeito.
  */
 
 type Admin = ReturnType<typeof createSupabaseAdminClient>;
@@ -126,8 +135,14 @@ export async function GET(request: NextRequest) {
   if (typeof tenant !== "string") return tenant;
   const limite = Math.min(50, Math.max(1, Number(request.nextUrl.searchParams.get("limite") ?? 5) || 5));
   try {
-    const itens = await agenda(admin, tenant, limite);
-    return apiOk({ hoje: todayIsoSaoPaulo(), itens: itens.map((i) => ({ ...i, modelo: segmentoDe(i.segmento).chave })) });
+    const [itens, enviadosHoje] = await Promise.all([agenda(admin, tenant, limite), enviosProspeccaoHoje(admin, tenant)]);
+    return apiOk({
+      hoje: todayIsoSaoPaulo(),
+      limite_diario: LIMITE_DIARIO_PROSPECCAO,
+      enviados_hoje: enviadosHoje,
+      restante_hoje: Math.max(0, LIMITE_DIARIO_PROSPECCAO - enviadosHoje),
+      itens: itens.map((i) => ({ ...i, modelo: segmentoDe(i.segmento).chave })),
+    });
   } catch (e) {
     return apiError("Erro na agenda: " + (e instanceof Error ? e.message : String(e)), 500);
   }
@@ -143,10 +158,30 @@ export async function POST(request: NextRequest) {
   } catch {
     /* corpo vazio = padrão */
   }
-  const limite = Math.min(50, Math.max(1, Number(b.limite ?? 5) || 5));
+  const pedido = Math.min(50, Math.max(1, Number(b.limite ?? 5) || 5));
   const dry = b.dry_run === true;
   const db = asUntypedAdmin(admin);
   const hoje = todayIsoSaoPaulo();
+
+  // Trava diária (vale também no ensaio, para o ensaio mostrar o que de fato sairia).
+  let restante: number;
+  try {
+    restante = await restanteProspeccaoHoje(admin, tenant);
+  } catch (e) {
+    return apiError(e instanceof Error ? e.message : String(e), 500);
+  }
+  if (restante <= 0) {
+    return apiOk({
+      hoje,
+      dry_run: dry,
+      bloqueado: true,
+      motivo: `Limite diário de ${LIMITE_DIARIO_PROSPECCAO} e-mails de prospecção atingido.`,
+      enviados: [],
+      encerrados: [],
+      erros: [],
+    });
+  }
+  const limite = Math.min(pedido, restante);
 
   let itens: Item[];
   try {
@@ -185,6 +220,11 @@ export async function POST(request: NextRequest) {
       continue;
     }
     try {
+      // Recontagem antes de cada envio: cobre duas chamadas rodando ao mesmo tempo.
+      if ((await restanteProspeccaoHoje(admin, tenant)) <= 0) {
+        erros.push({ empresa: it.empresa, para: it.email, erro: "Limite diário atingido — não enviado." });
+        break;
+      }
       await sendMessage(cfg!, { to: [it.email], subject: assunto, text: texto });
       const rotulo = it.passo === "1o" ? "1º contato" : it.passo === "fu1" ? "follow-up 1" : "follow-up 2";
       await db.from("crm_activities").insert({
@@ -209,5 +249,5 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return apiOk({ hoje, dry_run: dry, enviados, encerrados, erros });
+  return apiOk({ hoje, dry_run: dry, limite_diario: LIMITE_DIARIO_PROSPECCAO, enviados, encerrados, erros });
 }
