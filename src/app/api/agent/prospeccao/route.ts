@@ -211,6 +211,7 @@ export async function POST(request: NextRequest) {
     const { assunto, texto } = montarEmail({
       passo: it.passo,
       nome: it.nome,
+      empresa: it.empresa,
       segmento: it.segmento,
       gancho: it.gancho,
       assuntoAnterior: it.assuntoAnterior,
