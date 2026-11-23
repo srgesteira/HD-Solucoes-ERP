@@ -10,8 +10,31 @@ export const runtime = "nodejs";
  * GET /api/status/n8n — pública (para o UptimeRobot).
  * 200 se o n8n mandou heartbeat há menos de 25 min; 503 se não (ou se nunca mandou).
  * Não devolve nada sensível: só a hora do último sinal e há quantos minutos foi.
+ *
+ * Fora do expediente (19h às 7h e sábado/domingo, horário de São Paulo) responde 200 sempre,
+ * porque o n8n roda no PC do Helder e o PC pode estar desligado — evita alerta falso de madrugada.
  */
 const LIMITE_MIN = 25;
+const INICIO_H = 7;
+const FIM_H = 19;
+
+/** Hora e dia da semana agora em São Paulo. */
+function agoraSaoPaulo(): { hora: number; diaSemana: string } {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    hour: "numeric",
+    hourCycle: "h23",
+    weekday: "short",
+  }).formatToParts(new Date());
+  const hora = Number(partes.find((p) => p.type === "hour")?.value ?? 0);
+  const diaSemana = partes.find((p) => p.type === "weekday")?.value ?? "";
+  return { hora, diaSemana };
+}
+
+function foraDoExpediente(): boolean {
+  const { hora, diaSemana } = agoraSaoPaulo();
+  return diaSemana === "Sat" || diaSemana === "Sun" || hora < INICIO_H || hora >= FIM_H;
+}
 
 function indisponivel(motivo: string, ultimo: string | null, minutos: number | null) {
   return NextResponse.json(
@@ -21,6 +44,9 @@ function indisponivel(motivo: string, ultimo: string | null, minutos: number | n
 }
 
 export async function GET() {
+  if (foraDoExpediente()) {
+    return apiOk({ ok: true, fora_do_expediente: true, expediente: "seg–sex, 7h às 19h (São Paulo)" });
+  }
   const { data, error } = await asUntypedAdmin(createSupabaseAdminClient())
     .from("robot_heartbeats")
     .select("last_seen_at")
