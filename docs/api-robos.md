@@ -58,6 +58,10 @@ Tudo grava em `agent_audit_log` com `ator = diretor`.
 
 `n8n`, `auditor`, `supervisor`, `recepcionista`, `financeiro`, `cobrador`, `pcp`, `notificador`, `prospector` (ativos) · `faturista`, `comprador`, `anotacoes`, `carteira` (pausados até a Fase 5).
 
+## Alerta financeiro do ERP (Ordem 3)
+
+`GET /api/alerts/finance-digest` (cron da Vercel 7h, seg–sex, ou sessão com acesso financeiro) grava em `agent_audit_log` uma linha `acao = alerta_financeiro`, robô `alertas_financeiros`, com `resultado = { colisao_caixa, hoje, amanha, entregas_venda_3d, chegadas_compra_3d, texto }`. Não manda mais Telegram. O Auditor das 8h lê com `GET /api/audit?robo=alertas_financeiros&limite=1`.
+
 ## Ainda por vir (Fase 4)
 
 Fila de aprovações (`/api/approvals`), regra das 17h30/18h, banco de aprendizado (`/api/learning`).
