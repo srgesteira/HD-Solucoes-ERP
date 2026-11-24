@@ -357,3 +357,114 @@ export async function travaEfeitoExternoDoRobo(
   }
   return travaEfeitoExterno(db, tenantId, agentId, action);
 }
+
+/* ------------------------------------------------------------------ */
+/* Fase 5 — log automático das rotas /api/agent/* chamadas por robô    */
+/* ------------------------------------------------------------------ */
+
+type Handler<C> = (request: NextRequest, ctx: C) => Promise<Response> | Response;
+
+const CAMPOS_DO_LOG = ["acao", "pv", "limite", "dry_run", "modo", "conta", "etapa", "cliente_id", "fornecedor_id", "aprovacao_id"];
+
+/**
+ * Envolve o handler de uma rota de robô. Quando quem chama é robô (Authorization presente):
+ *  - identifica o robô pelo token próprio, pelo cabeçalho x-robo ou pelo robô padrão da rota;
+ *  - robô pausado → 423 e linha 'recusado' (killswitch vale também para a chave antiga);
+ *  - depois da resposta, grava uma linha no log: ok (2xx), recusado (4xx), erro (5xx).
+ * O diretor logado na tela passa direto, sem log.
+ */
+export function comLogDoRobo<C = unknown>(
+  rota: string,
+  roboPadrao: string | ((request: NextRequest) => string),
+  handler: Handler<C>
+): Handler<C> {
+  return async (request: NextRequest, ctx: C) => {
+    const sent = bearer(request);
+    if (!sent) return handler(request, ctx);
+
+    const t0 = Date.now();
+    const db = asUntypedAdmin(createSupabaseAdminClient());
+    let agent: AgentRow | null = null;
+    let tenantId: string | null = null;
+    try {
+      if (sent.startsWith(TOKEN_PREFIX)) {
+        const { data } = await db.from("agents").select(AGENT_COLUMNS).eq("token_hash", hashToken(sent)).maybeSingle();
+        agent = (data as AgentRow | null) ?? null;
+        tenantId = agent?.tenant_id ?? null;
+      }
+      if (!tenantId) {
+        const { data } = await db.from("tenants").select("id").limit(1);
+        tenantId = (data?.[0]?.id as string) ?? null;
+      }
+      if (!agent && tenantId) {
+        const hint = (request.headers.get("x-robo") ?? "").trim().toLowerCase();
+        const padrao = typeof roboPadrao === "function" ? roboPadrao(request) : roboPadrao;
+        agent = (await findAgentBySlug(db, tenantId, hint || padrao)) ?? null;
+      }
+    } catch {
+      /* identificar o robô é melhor esforço; a rota segue com a própria autenticação */
+    }
+
+    let entrada: Record<string, unknown> = { metodo: request.method };
+    for (const [k, v] of request.nextUrl.searchParams) if (CAMPOS_DO_LOG.includes(k)) entrada[k] = v;
+    if (request.method !== "GET") {
+      const corpo = (await request.clone().json().catch(() => null)) as Record<string, unknown> | null;
+      if (corpo && typeof corpo === "object") {
+        for (const k of CAMPOS_DO_LOG) if (corpo[k] !== undefined) entrada[k] = corpo[k];
+      }
+    }
+    entrada = redactSecrets(entrada) as Record<string, unknown>;
+    const acao = `${rota}.${typeof entrada.acao === "string" && entrada.acao ? entrada.acao : request.method.toLowerCase()}`;
+
+    if (agent?.status === "pausado" && tenantId) {
+      const motivo = `Robô '${agent.slug}' está pausado (killswitch).`;
+      await writeAuditLog(db, { tenantId, agentId: agent.id, action: acao, outcome: "recusado", error: motivo, input: entrada });
+      return apiError(motivo, 423);
+    }
+
+    let res: Response;
+    try {
+      res = await handler(request, ctx);
+    } catch (e) {
+      if (tenantId) {
+        await writeAuditLog(db, {
+          tenantId,
+          agentId: agent?.id ?? null,
+          action: acao,
+          outcome: "erro",
+          error: e instanceof Error ? e.message : "Erro inesperado",
+          input: entrada,
+          durationMs: Date.now() - t0,
+        });
+      }
+      throw e;
+    }
+
+    if (tenantId) {
+      const outcome = res.status >= 500 ? "erro" : res.status >= 400 ? "recusado" : "ok";
+      let erro: string | null = null;
+      if (res.status >= 400) {
+        const txt = await res.clone().text().catch(() => "");
+        try {
+          erro = String((JSON.parse(txt) as { error?: string }).error ?? txt).slice(0, 300);
+        } catch {
+          erro = txt.slice(0, 300);
+        }
+      }
+      if (agent && res.status < 400) {
+        await db.from("agents").update({ last_seen_at: new Date().toISOString() }).eq("id", agent.id);
+      }
+      await writeAuditLog(db, {
+        tenantId,
+        agentId: agent?.id ?? null,
+        action: acao,
+        outcome,
+        error: erro,
+        input: entrada,
+        result: { http: res.status },
+        durationMs: Date.now() - t0,
+      });
+    }
+    return res;
+  };
+}

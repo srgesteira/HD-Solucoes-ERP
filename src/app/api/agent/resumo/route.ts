@@ -1,3 +1,4 @@
+import { comLogDoRobo } from "@/modules/agent/lib/governance";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError } from "@/modules/core/lib/http";
@@ -43,7 +44,7 @@ const short = (name: unknown) =>
 const daysSince = (iso: unknown) =>
   Math.floor((Date.now() - new Date(String(iso)).getTime()) / 86_400_000);
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   let tenantId: string | null = null;
 
@@ -241,3 +242,5 @@ export async function GET(request: NextRequest) {
     headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
   });
 }
+
+export const GET = comLogDoRobo("resumo", "hd_central", getHandler);

@@ -1,6 +1,11 @@
-import type { UntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import type { NextRequest, NextResponse } from "next/server";
+import { asUntypedAdmin, type UntypedAdmin } from "@/shared/db/supabase/untyped-tables";
+import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError, apiOk } from "@/modules/core/lib/http";
-import type { NextResponse } from "next/server";
+import { efeitoExternoPermitido, findAgentBySlug, redactSecrets, writeAuditLog } from "@/modules/agent/lib/governance";
+import { classificar, riscoParaFila, type TipoAprovacao } from "@/modules/agent/lib/risk-matrix";
+import { loadTenantMailConfig } from "@/shared/utils/email/load-tenant-mail-config";
+import { sendMessage } from "@/modules/agent/lib/zoho-mailbox";
 
 /** Fila de aprovações (Fase 4 — Módulo B): leitura e decisão compartilhadas pelas rotas. */
 
@@ -111,4 +116,161 @@ export async function decideApprovals(
     // Já decididos antes, expirados ou de outro tenant: não mudam (decisão é definitiva).
     ignorados: limpos.filter((id) => !feitos.has(id)),
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Criar pedido na fila e exigir aprovação (Fase 5)                    */
+/* ------------------------------------------------------------------ */
+
+export type NovoPedido = {
+  acao: string;
+  resumo: string;
+  tipo?: TipoAprovacao;
+  dados?: Record<string, unknown>;
+  origem?: string | null;
+  /** Identifica o objeto (ex.: "PV-2026-0031"): um pedido aprovado só vale para a mesma chave. */
+  chave?: string | null;
+};
+
+/** Cria o pedido na fila (risco pela matriz) e avisa o diretor por e-mail se for Alto e estiver no horário. */
+export async function criarAprovacao(db: UntypedAdmin, tenantId: string, agent: { id: string; name: string }, p: NovoPedido) {
+  const c = classificar(p.acao);
+  const tipo: TipoAprovacao = c.classe === "proibido" ? "pergunta" : p.tipo ?? c.tipo;
+  const risco = riscoParaFila(c);
+  const resumo = p.resumo.replace(/\s+/g, " ").trim().slice(0, 200);
+  const dados = {
+    ...(p.dados ? (redactSecrets(p.dados) as object) : {}),
+    _matriz: { acao: c.acao, classe: c.classe, descricao: c.descricao, fora_da_matriz: c.desconhecida },
+    ...(p.chave ? { _chave: p.chave } : {}),
+  };
+  const { data, error } = await db
+    .from("approvals")
+    .insert({ tenant_id: tenantId, agent_id: agent.id, kind: tipo, summary: resumo, payload: dados, source_url: p.origem ?? null, risk: risco })
+    .select("id, status, risk, kind, expires_at")
+    .single();
+  if (error) throw new Error("Erro ao criar o pedido: " + error.message);
+
+  let avisado = false;
+  if (risco === "alto" && efeitoExternoPermitido()) {
+    try {
+      const cfg = await loadTenantMailConfig(createSupabaseAdminClient(), tenantId);
+      const para = cfg?.from ? String(cfg.from).match(/[^\s<>"]+@[^\s<>"]+/)?.[0] : null;
+      if (cfg && para) {
+        const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://hd-solucoes-erp.vercel.app").replace(/\/$/, "");
+        await sendMessage(cfg, {
+          to: [para],
+          subject: `[Aprovação] ${agent.name}: ${resumo}`.slice(0, 180),
+          text: `Pedido novo de risco Alto na fila.\n\nRobô: ${agent.name}\nTipo: ${tipo}\nResumo: ${resumo}${p.origem ? `\nOrigem: ${p.origem}` : ""}\n\nAprovar ou rejeitar: ${base}/aprovacoes\n\nVale até as 18h de hoje; depois vira expirado e volta no resumo das 8h.`,
+        });
+        avisado = true;
+      }
+    } catch {
+      /* aviso é melhor esforço */
+    }
+  }
+
+  await writeAuditLog(db, {
+    tenantId,
+    agentId: agent.id,
+    action: "approvals.criar",
+    outcome: "ok",
+    input: { acao: c.acao, tipo, resumo, chave: p.chave ?? null },
+    result: { id: data.id, risco, diretor_avisado: avisado },
+    approvalId: data.id as string,
+  });
+
+  return {
+    id: data.id as string,
+    status: data.status as string,
+    risco: data.risk as string,
+    tipo: data.kind as string,
+    expira_em: data.expires_at as string,
+    classe_na_matriz: c.classe,
+    fora_da_matriz: c.desconhecida,
+    diretor_avisado: avisado,
+  };
+}
+
+/** Aprovação usada para executar vale por 24 h depois da decisão. */
+const VALIDADE_APROVADO_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Trava de aprovação para ações de risco Alto chamadas por ROBÔ (Fase 5).
+ *  - Diretor logado (sem Authorization) passa direto: ele mesmo está decidindo.
+ *  - Robô com `aprovacao_id` de um pedido APROVADO (mesma chave e ação, decidido há até 24 h) → segue.
+ *  - Robô sem aprovação → cria o pedido na fila (ou reaproveita o pendente da mesma chave) e devolve 202.
+ */
+export async function exigirAprovacao(
+  request: NextRequest,
+  tenantId: string,
+  roboSlug: string,
+  aprovacaoId: unknown,
+  p: NovoPedido & { acoesAceitas?: string[] }
+): Promise<{ ok: true; approvalId: string | null } | { ok: false; response: NextResponse }> {
+  if (!(request.headers.get("authorization") ?? "").trim()) return { ok: true, approvalId: null };
+
+  const db = asUntypedAdmin(createSupabaseAdminClient());
+  const hint = (request.headers.get("x-robo") ?? "").trim().toLowerCase();
+  const agent = (await findAgentBySlug(db, tenantId, hint || roboSlug)) ?? (await findAgentBySlug(db, tenantId, roboSlug));
+  if (!agent) return { ok: false, response: apiError(`Robô '${roboSlug}' não cadastrado.`, 400) };
+  const aceitas = new Set([p.acao, ...(p.acoesAceitas ?? [])].map((a) => a.toLowerCase()));
+
+  if (typeof aprovacaoId === "string" && aprovacaoId.trim()) {
+    const { data: ap } = await db
+      .from("approvals")
+      .select("id, status, payload, decided_at")
+      .eq("id", aprovacaoId.trim())
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const payload = (ap?.payload ?? {}) as { _chave?: string; _matriz?: { acao?: string } };
+    const motivo = !ap
+      ? "pedido de aprovação não encontrado"
+      : ap.status !== "aprovado"
+        ? `pedido está '${ap.status}', não aprovado`
+        : p.chave && payload._chave !== p.chave
+          ? `aprovação é de ${payload._chave ?? "outro item"}, não de ${p.chave}`
+          : !aceitas.has(String(payload._matriz?.acao ?? "").toLowerCase())
+            ? `aprovação é para '${payload._matriz?.acao ?? "?"}', não para '${p.acao}'`
+            : ap.decided_at && Date.now() - new Date(ap.decided_at as string).getTime() > VALIDADE_APROVADO_MS
+              ? "aprovação tem mais de 24 h; peça de novo"
+              : null;
+    if (motivo) {
+      await writeAuditLog(db, { tenantId, agentId: agent.id, action: `aprovacao.usar`, outcome: "recusado", error: motivo, approvalId: ap?.id ?? null });
+      return { ok: false, response: apiError(`Não executado: ${motivo}.`, 403) };
+    }
+    return { ok: true, approvalId: ap!.id as string };
+  }
+
+  // Sem aprovação: reaproveita o pedido pendente da mesma chave/ação ou cria um novo.
+  await expirePending(db, tenantId);
+  if (p.chave) {
+    const { data: pend } = await db
+      .from("approvals")
+      .select("id, payload, expires_at")
+      .eq("tenant_id", tenantId)
+      .eq("status", "pendente")
+      .eq("agent_id", agent.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    const igual = ((pend ?? []) as Array<{ id: string; payload: { _chave?: string; _matriz?: { acao?: string } }; expires_at: string }>).find(
+      (a) => a.payload?._chave === p.chave && aceitas.has(String(a.payload?._matriz?.acao ?? "").toLowerCase())
+    );
+    if (igual) {
+      return {
+        ok: false,
+        response: apiOk(
+          { aguardando_aprovacao: true, aprovacao_id: igual.id, expira_em: igual.expires_at, mensagem: "Já está na fila do diretor. Depois de aprovado, chame de novo com aprovacao_id." },
+          202
+        ),
+      };
+    }
+  }
+  const novo = await criarAprovacao(db, tenantId, agent, p);
+  return {
+    ok: false,
+    response: apiOk(
+      { aguardando_aprovacao: true, aprovacao_id: novo.id, expira_em: novo.expira_em, risco: novo.risco, mensagem: "Pedido criado na fila do diretor. Depois de aprovado, chame de novo com aprovacao_id." },
+      202
+    ),
+  };
 }

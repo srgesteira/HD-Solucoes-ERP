@@ -37,7 +37,7 @@ Leituras (`GET /api/audit`, `GET /api/agents`) e o heartbeat não obedecem janel
 - `desde`: `AAAA-MM-DD` (meia-noite de São Paulo) ou ISO. Padrão: últimas 24 h. `limite` máx. 500.
 - Robô ou administrador logado.
 - Resposta `{ desde, total, itens: [{ id, quando, robo, ator, acao, situacao, duracao_ms, erro, entrada, resultado, aprovacao_id }], resumo: { por_robo: { auditor: { ok: 3 } } } }`.
-- `&incluir=manha` (Auditor das 8h) acrescenta `manha: { aprovacoes_pendentes, aprovacoes_expiradas (desde `desde`), alerta_financeiro: { quando, colisao_caixa, texto } | null }`.
+- `&incluir=manha` (Auditor das 8h) acrescenta `manha: { rodou: { "<robô>": { ok, erro, recusado } }, robos: [{ robo, nome, status, ultimo_sinal }], aprovacoes_pendentes, aprovacoes_expiradas (desde `desde`), alerta_financeiro: { quando, colisao_caixa, texto } | null }` (Fase 6: o que rodou, o que falhou, o que espera decisão).
 
 ## Módulo D — registro (`agents`)
 
@@ -58,11 +58,22 @@ Tudo grava em `agent_audit_log` com `ator = diretor`.
 
 ## Robôs cadastrados (migration `20261123110000`)
 
-`n8n`, `auditor`, `supervisor`, `recepcionista`, `financeiro`, `cobrador`, `pcp`, `notificador`, `prospector` (ativos) · `faturista`, `comprador`, `anotacoes`, `carteira` (pausados até a Fase 5) · `hd_central` (Claude; migration `20261124100000`) e `alertas_financeiros`.
+Todos ativos desde a Fase 5: `n8n`, `auditor`, `supervisor`, `recepcionista`, `financeiro`, `cobrador`, `pcp`, `notificador`, `prospector`, `faturista`, `comprador`, `anotacoes`, `carteira` · `hd_central` (Claude; migration `20261124100000`) e `alertas_financeiros`.
 
 ## Alerta financeiro do ERP (Ordem 3)
 
 `GET /api/alerts/finance-digest` (cron da Vercel 7h, seg–sex, ou sessão com acesso financeiro) grava em `agent_audit_log` uma linha `acao = alerta_financeiro`, robô `alertas_financeiros`, com `resultado = { colisao_caixa, hoje, amanha, entregas_venda_3d, chegadas_compra_3d, texto }`. Não manda mais Telegram. O Auditor das 8h lê com `GET /api/audit?robo=alertas_financeiros&limite=1`.
+
+## Fase 5 — robôs ligados e log automático
+
+- Todas as rotas `/api/agent/*` (menos heartbeat) passam pela capa `comLogDoRobo`: chamada de **robô** (com Authorization) grava uma linha no log — `ok` (2xx), `recusado` (4xx), `erro` (5xx) — com ação `<rota>.<acao>` e os campos principais do pedido (sem segredos). O diretor logado não gera linha.
+- O robô é identificado pelo token próprio, pelo cabeçalho `x-robo` ou pelo padrão da rota: `anotacoes`→recepcionista, `pcp`→pcp, `robos` GET→cobrador / POST→financeiro, `resumo` e `mail`→hd_central, `prospeccao`→prospector, `faturar`→faturista, `comprador`→comprador.
+- Robô **pausado** → `423` na hora, inclusive com a chave antiga.
+- **Faturista** (`POST /api/agent/faturar` `emitir`/`enviar`) e **Comprador** (`POST /api/agent/comprador` `emitir_pc`), chamados por robô:
+  - sem `aprovacao_id` → cria o pedido na fila (ou reaproveita o pendente do mesmo PV / mesmas requisições) e responde `202 { aguardando_aprovacao: true, aprovacao_id, expira_em }`;
+  - com `aprovacao_id` de pedido **aprovado** (mesmo PV ou mesmo fornecedor + requisições, decidido há até 24 h) → executa. Uma aprovação de NF vale para emitir e enviar o mesmo PV;
+  - qualquer outra situação → `403` + linha `recusado`.
+- Faturista, Comprador, Anotações e Carteira estão `ativo` (migration `20261124120000`).
 
 ## MFA (tela de Aprovações e rotas do diretor)
 

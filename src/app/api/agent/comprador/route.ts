@@ -7,7 +7,8 @@ import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { calculateMaterialRequirements, processMrpForSalesOrder } from "@/modules/pcp/lib/mrp-service";
 import { issueRequisitionsAsPurchaseOrder } from "@/modules/compras/lib/purchasing/requisition-issue";
 
-import { travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
+import { comLogDoRobo, travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
+import { exigirAprovacao } from "@/modules/agent/lib/approvals";
 import { contextoFornecedorItem, limiteValidade } from "@/modules/agent/lib/learning";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -117,7 +118,7 @@ async function nomesFornecedores(admin: Admin, ids: string[]) {
   return m;
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const quem = await resolver(request, admin);
   if (quem instanceof NextResponse) return quem;
@@ -237,7 +238,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const quem = await resolver(request, admin);
   if (quem instanceof NextResponse) return quem;
@@ -266,6 +267,19 @@ export async function POST(request: NextRequest) {
       const ids = Array.isArray(b.requisicoes) ? b.requisicoes.filter((x): x is string => typeof x === "string") : [];
       if (!ids.length) return apiError("Informe requisicoes (ids).", 400);
       const fornecedor = typeof b.fornecedor_id === "string" && b.fornecedor_id.trim() ? b.fornecedor_id.trim() : null;
+      // Fase 5: robô só emite PC com pedido APROVADO pelo diretor (mesmo fornecedor e mesmas requisições).
+      const db = asUntypedAdmin(admin);
+      const { data: forn } = fornecedor
+        ? await db.from("suppliers").select("name").eq("id", fornecedor).eq("tenant_id", tenant).maybeSingle()
+        : { data: null };
+      const chave = `pc:${fornecedor ?? "sem-fornecedor"}:${[...ids].sort().join(",")}`.slice(0, 120);
+      const aprov = await exigirAprovacao(request, tenant, "comprador", b.aprovacao_id, {
+        acao: "compra.pedido",
+        chave,
+        resumo: `Pedido de compra para ${(forn?.name as string) ?? "fornecedor a definir"} — ${ids.length} requisição(ões)${b.pv ? ` do ${String(b.pv)}` : ""}`,
+        dados: { fornecedor_id: fornecedor, fornecedor: (forn?.name as string) ?? null, requisicoes: ids, pv: b.pv ?? null },
+      });
+      if (!aprov.ok) return aprov.response;
       const r = await issueRequisitionsAsPurchaseOrder(admin, tenant, userId, ids, { supplier_id: fornecedor });
       return apiOk({ emitido: true, resultado: r });
     }
@@ -291,3 +305,6 @@ export async function POST(request: NextRequest) {
     return apiError(e instanceof Error ? e.message : "Erro no comprador.", 500);
   }
 }
+
+export const GET = comLogDoRobo("comprador", "comprador", getHandler);
+export const POST = comLogDoRobo("comprador", "comprador", postHandler);

@@ -5,7 +5,7 @@ import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib
 import { loadTenantMailConfig } from "@/shared/utils/email/load-tenant-mail-config";
 import { listMessages, readMessage, searchMessages, sendMessage } from "@/modules/agent/lib/zoho-mailbox";
 
-import { travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
+import { comLogDoRobo, travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -38,7 +38,7 @@ async function config(tenantId: string) {
   return cfg;
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const t = await resolveTenant(request);
   if (typeof t !== "string") return t;
   const sp = request.nextUrl.searchParams;
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const t = await resolveTenant(request);
   if (typeof t !== "string") return t;
   const trava = await travaEfeitoExternoDoRobo(request, t, "mail.enviar");
@@ -100,3 +100,6 @@ export async function POST(request: NextRequest) {
     return text("Erro: " + (e instanceof Error ? e.message : String(e)), 500);
   }
 }
+
+export const GET = comLogDoRobo("mail", "hd_central", getHandler);
+export const POST = comLogDoRobo("mail", "hd_central", postHandler);

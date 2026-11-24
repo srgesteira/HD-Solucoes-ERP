@@ -13,7 +13,7 @@ import {
   restanteProspeccaoHoje,
 } from "@/modules/agent/lib/prospeccao-limite";
 
-import { travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
+import { comLogDoRobo, travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -143,7 +143,7 @@ async function agenda(admin: Admin, tenant: string, limite: number): Promise<Ite
   return itens;
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
@@ -270,3 +270,6 @@ export async function POST(request: NextRequest) {
 
   return apiOk({ hoje, dry_run: dry, limite_diario: LIMITE_DIARIO_PROSPECCAO, enviados, encerrados, erros });
 }
+
+export const GET = comLogDoRobo("prospeccao", "prospector", getHandler);
+export const POST = comLogDoRobo("prospeccao", "prospector", postHandler);

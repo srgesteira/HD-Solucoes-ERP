@@ -1,3 +1,4 @@
+import { comLogDoRobo } from "@/modules/agent/lib/governance";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
@@ -47,7 +48,7 @@ const addDays = (iso: string, n: number) => {
 };
 const money = (n: unknown) => Math.round(Number(n ?? 0) * 100) / 100;
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
@@ -101,7 +102,7 @@ export async function GET(request: NextRequest) {
 
 type Linha = { data: string; valor: number; descricao?: string };
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
@@ -319,3 +320,6 @@ export async function POST(request: NextRequest) {
 
   return apiOk({ dry_run: dry, baixados, sem_par, ambiguos, ja_conciliados });
 }
+
+export const GET = comLogDoRobo("robos", (r) => (r.method === "GET" ? "cobrador" : "financeiro"), getHandler);
+export const POST = comLogDoRobo("robos", (r) => (r.method === "GET" ? "cobrador" : "financeiro"), postHandler);

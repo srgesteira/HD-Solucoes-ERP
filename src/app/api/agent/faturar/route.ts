@@ -7,7 +7,8 @@ import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-or
 import { emitirNFe, consultarNFe } from "@/modules/faturamento/lib/nfe/focusnfe.service";
 import { sendAuthorizedNfeEmail } from "@/modules/fiscal/lib/bling/send-nfe-status-email";
 
-import { travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
+import { comLogDoRobo, travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
+import { exigirAprovacao } from "@/modules/agent/lib/approvals";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -131,7 +132,7 @@ async function resumo(admin: Admin, tenant: string, so: Pedido) {
   };
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
@@ -144,17 +145,27 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
-  const body = (await request.json().catch(() => ({}))) as { pv?: string; acao?: string; to?: unknown };
+  const body = (await request.json().catch(() => ({}))) as { pv?: string; acao?: string; to?: unknown; aprovacao_id?: unknown };
   const so = await acharPedido(admin, tenant, String(body.pv ?? ""));
   if (typeof so === "string") return apiError(so, 404);
   const acao = String(body.acao ?? "");
   if (acao === "emitir" || acao === "enviar") {
     const trava = await travaEfeitoExternoDoRobo(request, tenant, `faturar.${acao}`);
     if (trava) return trava;
+    // Fase 5: robô só emite/envia com pedido APROVADO pelo diretor na fila (uma aprovação vale para emitir e enviar o mesmo PV).
+    const valor = so.total != null ? ` (R$ ${Number(so.total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })})` : "";
+    const aprov = await exigirAprovacao(request, tenant, "faturista", body.aprovacao_id, {
+      acao: acao === "emitir" ? "nfe.emitir" : "nfe.enviar",
+      acoesAceitas: ["nfe.emitir", "nfe.enviar"],
+      chave: so.order_number,
+      resumo: `${acao === "emitir" ? "Emitir e enviar NF-e" : "Enviar NF-e"} do ${so.order_number} — ${so.client_name ?? "cliente"}${valor}`,
+      dados: { pv: so.order_number, cliente: so.client_name, total: so.total, pedido_cliente: so.customer_po_number },
+    });
+    if (!aprov.ok) return aprov.response;
   }
 
   try {
@@ -188,3 +199,6 @@ export async function POST(request: NextRequest) {
     return apiError(e instanceof Error ? e.message : "Erro no faturamento.", 500);
   }
 }
+
+export const GET = comLogDoRobo("faturar", "faturista", getHandler);
+export const POST = comLogDoRobo("faturar", "faturista", postHandler);

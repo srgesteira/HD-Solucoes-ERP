@@ -1,3 +1,4 @@
+import { comLogDoRobo } from "@/modules/agent/lib/governance";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
@@ -291,7 +292,7 @@ function texto(r: Awaited<ReturnType<typeof analisar>>) {
   ].join("\n");
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
@@ -310,7 +311,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
@@ -352,3 +353,6 @@ export async function POST(request: NextRequest) {
   const r = await analisar(admin, tenant, (await pedidos(admin, tenant, so.order_number)));
   return apiOk({ salvo: true, pedido: r.pedidos[0] });
 }
+
+export const GET = comLogDoRobo("pcp", "pcp", getHandler);
+export const POST = comLogDoRobo("pcp", "pcp", postHandler);

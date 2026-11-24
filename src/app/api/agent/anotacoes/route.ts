@@ -1,3 +1,4 @@
+import { comLogDoRobo } from "@/modules/agent/lib/governance";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
@@ -49,7 +50,7 @@ const MOTIVOS: Array<[RegExp, string]> = [
   [/desist|cancel|n[aã]o (vai|vão) fazer|perdeu|perdido|outro fornecedor|fechou com/i, "Cliente desistiu"],
 ];
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
@@ -204,7 +205,7 @@ export async function POST(request: NextRequest) {
   return apiOk({ orcamento: q.quote_number, cliente: q.client_name, nota_salva: true, retomar_em: retomar, proxima_acao: upd.next_action ?? null });
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const admin = createSupabaseAdminClient();
   const tenant = await resolveTenant(request, admin);
   if (typeof tenant !== "string") return tenant;
@@ -221,3 +222,6 @@ export async function GET(request: NextRequest) {
   if (error) return apiError(error.message, 500);
   return apiOk({ ate, followups: data ?? [] });
 }
+
+export const POST = comLogDoRobo("anotacoes", "recepcionista", postHandler);
+export const GET = comLogDoRobo("anotacoes", "recepcionista", getHandler);

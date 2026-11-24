@@ -195,7 +195,7 @@ export async function GET(request: NextRequest) {
   if ((sp.get("incluir") ?? "").split(",").includes("manha")) {
     await expirePending(db, tenantId);
     const cols = "id, kind, summary, risk, status, created_at, expires_at, decided_at, agents(slug, name)";
-    const [pend, exp, alerta] = await Promise.all([
+    const [pend, exp, alerta, contagem, robos] = await Promise.all([
       db.from("approvals").select(cols).eq("tenant_id", tenantId).eq("status", "pendente").order("created_at").limit(50),
       db
         .from("approvals")
@@ -215,12 +215,34 @@ export async function GET(request: NextRequest) {
         .gte("created_at", desde)
         .order("created_at", { ascending: false })
         .limit(1),
+      db
+        .from("agent_audit_log")
+        .select("outcome, agents(slug, name)")
+        .eq("tenant_id", tenantId)
+        .gte("created_at", desde)
+        .limit(5000),
+      db.from("agents").select("slug, name, status, last_seen_at").eq("tenant_id", tenantId).order("slug"),
     ]);
+    // Fase 6 — o que rodou, por robô, desde `desde`.
+    const rodou: Record<string, Partial<Record<AuditOutcome, number>>> = {};
+    for (const r of (contagem.data ?? []) as Array<{ outcome: AuditOutcome; agents: { slug: string; name: string } | null }>) {
+      const k = r.agents?.name ?? r.agents?.slug ?? "(sem robô)";
+      rodou[k] ??= {};
+      rodou[k][r.outcome] = (rodou[k][r.outcome] ?? 0) + 1;
+    }
+    const registro = ((robos.data ?? []) as Array<{ slug: string; name: string; status: string; last_seen_at: string | null }>).map((a) => ({
+      robo: a.slug,
+      nome: a.name,
+      status: a.status,
+      ultimo_sinal: a.last_seen_at,
+    }));
     type Ap = { id: string; kind: string; summary: string; risk: string; created_at: string; agents: { slug: string; name: string } | null };
     const fmt = (rows: unknown) =>
       ((rows ?? []) as Ap[]).map((a) => ({ id: a.id, tipo: a.kind, resumo: a.summary, risco: a.risk, robo: a.agents?.name ?? a.agents?.slug ?? null, criado_em: a.created_at }));
     const al = ((alerta.data ?? []) as Array<{ created_at: string; result: Record<string, unknown> | null }>)[0];
     manha = {
+      rodou,
+      robos: registro,
       aprovacoes_pendentes: fmt(pend.data),
       aprovacoes_expiradas: fmt(exp.data),
       alerta_financeiro: al

@@ -55,6 +55,7 @@ export const MATRIZ_DE_RISCO: Record<string, Regra> = {
     tipo: "envio_cliente",
   },
   "nfe.emitir": { classe: "alto", descricao: "Emitir NF-e", tipo: "nfe" },
+  "nfe.enviar": { classe: "alto", descricao: "Enviar NF-e autorizada ao cliente", tipo: "envio_cliente" },
   "compra.pedido": { classe: "alto", descricao: "Pedido de compra", tipo: "compra" },
   "financeiro.gasto_pagamento": { classe: "alto", descricao: "Gasto ou pagamento", tipo: "pagamento" },
   "envio.fora_do_padrao": { classe: "alto", descricao: "Envio fora do padrão", tipo: "envio_cliente" },
