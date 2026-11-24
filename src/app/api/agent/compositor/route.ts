@@ -37,7 +37,7 @@ type Db = ReturnType<typeof asUntypedAdmin>;
 
 type Prod = {
   id: string;
-  code: string | null;
+  technical_code: string | null;
   name: string;
   unit: string | null;
   cost_price: number | null;
@@ -59,7 +59,7 @@ type Prod = {
 };
 
 const PROD_COLS =
-  "id, code, name, unit, cost_price, is_active, composition_enabled, has_composition, default_is_external_labor, default_work_center_id, default_production_line_id, prefix_id, family_id, subfamily_id, material_id, finish_id, ncm, type, product_nature, prefix:product_prefixes!products_prefix_id_fkey(code)";
+  "id, technical_code, name, unit, cost_price, is_active, composition_enabled, has_composition, default_is_external_labor, default_work_center_id, default_production_line_id, prefix_id, family_id, subfamily_id, material_id, finish_id, ncm, type, product_nature, prefix:product_prefixes!products_prefix_id_fkey(code)";
 
 async function resolver(request: NextRequest, admin: Admin): Promise<{ tenant: string } | NextResponse> {
   const sent = (request.headers.get("authorization") ?? "").trim().replace(/^bearer\s+/i, "").trim();
@@ -91,7 +91,7 @@ async function resolver(request: NextRequest, admin: Admin): Promise<{ tenant: s
 
 async function porCodigo(db: Db, tenant: string, codigo: string): Promise<Prod | null> {
   const c = codigo.trim();
-  const { data } = await db.from("products").select(PROD_COLS).eq("tenant_id", tenant).ilike("code", c).limit(2);
+  const { data } = await db.from("products").select(PROD_COLS).eq("tenant_id", tenant).ilike("technical_code", c).limit(2);
   const rows = (data ?? []) as Prod[];
   return rows.length === 1 ? rows[0] : null;
 }
@@ -113,11 +113,11 @@ async function getHandler(request: NextRequest) {
     if (!p) return apiError(`Produto ${produto} não encontrado (ou código repetido).`, 404);
     const { data: linhas } = await db
       .from("product_components")
-      .select("quantity, unit_cost, is_labor, is_external_labor, component:products!product_components_component_product_id_fkey(code, name, unit)")
+      .select("quantity, unit_cost, is_labor, is_external_labor, component:products!product_components_component_product_id_fkey(technical_code, name, unit)")
       .eq("tenant_id", quem.tenant)
       .eq("parent_product_id", p.id);
     return apiOk({
-      produto: { codigo: p.code, nome: p.name, prefixo: pref(p), custo: Number(p.cost_price ?? 0) },
+      produto: { codigo: p.technical_code, nome: p.name, prefixo: pref(p), custo: Number(p.cost_price ?? 0) },
       composicao: linhas ?? [],
     });
   }
@@ -128,13 +128,13 @@ async function getHandler(request: NextRequest) {
   let q = db.from("products").select(PROD_COLS).eq("tenant_id", quem.tenant).eq("is_active", true);
   for (const t of termos) {
     const s = t.replace(/[%,()]/g, "");
-    q = q.or(`code.ilike.%${s}%,name.ilike.%${s}%`);
+    q = q.or(`technical_code.ilike.%${s}%,name.ilike.%${s}%`);
   }
-  const { data, error } = await q.order("code").limit(30);
+  const { data, error } = await q.order("technical_code").limit(30);
   if (error) return apiError(error.message, 500);
   return apiOk({
     itens: ((data ?? []) as Prod[]).map((p) => ({
-      codigo: p.code,
+      codigo: p.technical_code,
       nome: p.name,
       unidade: p.unit,
       prefixo: pref(p),
@@ -175,20 +175,20 @@ async function prepararLinhas(admin: Admin, db: Db, tenant: string, linhas: Linh
 
     if (pref(p) === "MO") {
       if (p.default_is_external_labor) {
-        out.push({ component_product_id: p.id, quantity: qtd, unit_cost: custoCad, is_labor: true, is_external_labor: true, work_center_id: null, resumo: `${p.code} ${p.name}` });
+        out.push({ component_product_id: p.id, quantity: qtd, unit_cost: custoCad, is_labor: true, is_external_labor: true, work_center_id: null, resumo: `${p.technical_code} ${p.name}` });
       } else {
         const wc = p.default_work_center_id;
-        if (!wc) return `Linha ${i + 1}: MO interna ${p.code} sem centro de trabalho padrão no cadastro.`;
+        if (!wc) return `Linha ${i + 1}: MO interna ${p.technical_code} sem centro de trabalho padrão no cadastro.`;
         const custo =
           custoCad > 0
             ? custoCad
             : await resolveLaborHourlyRateForBom(admin, tenant, { work_center_id: wc, production_line_id: p.default_production_line_id });
-        out.push({ component_product_id: p.id, quantity: qtd, unit_cost: custo, is_labor: true, is_external_labor: false, work_center_id: wc, resumo: `${p.code} ${p.name}` });
+        out.push({ component_product_id: p.id, quantity: qtd, unit_cost: custo, is_labor: true, is_external_labor: false, work_center_id: wc, resumo: `${p.technical_code} ${p.name}` });
       }
       continue;
     }
 
-    out.push({ component_product_id: p.id, quantity: qtd, unit_cost: custoCad, is_labor: false, is_external_labor: false, work_center_id: null, resumo: `${p.code} ${p.name}` });
+    out.push({ component_product_id: p.id, quantity: qtd, unit_cost: custoCad, is_labor: false, is_external_labor: false, work_center_id: null, resumo: `${p.technical_code} ${p.name}` });
   }
   return out;
 }
@@ -233,23 +233,23 @@ async function postHandler(request: NextRequest) {
     base = await porCodigo(db, tenant, pin.base_codigo);
     if (!base) return apiError(`Produto base ${pin.base_codigo} não encontrado.`, 404);
     if (!["HD1", "HD2", "AC", "SE"].includes(pref(base))) return apiError(`Produto base ${pin.base_codigo} tem prefixo ${pref(base)} — use HD1/HD2/AC/SE.`, 400);
-    const { data: jaTem } = await db.from("products").select("code").eq("tenant_id", tenant).ilike("name", pin.nome.trim()).limit(1);
-    if (jaTem?.length) return apiError(`Já existe produto com o nome «${pin.nome.trim()}» (${(jaTem[0] as { code?: string }).code}). Use produto.codigo.`, 409);
+    const { data: jaTem } = await db.from("products").select("technical_code").eq("tenant_id", tenant).ilike("name", pin.nome.trim()).limit(1);
+    if (jaTem?.length) return apiError(`Já existe produto com o nome «${pin.nome.trim()}» (${(jaTem[0] as { technical_code?: string }).technical_code}). Use produto.codigo.`, 409);
   }
 
   if (pai) {
     if (!canProductHaveBom(pref(pai), pai.composition_enabled, pai.has_composition) && !canToggleComposition(pref(pai))) {
-      return apiError(`Produto ${pai.code} (prefixo ${pref(pai)}) não pode ter composição.`, 400);
+      return apiError(`Produto ${pai.technical_code} (prefixo ${pref(pai)}) não pode ter composição.`, 400);
     }
     const { count } = await db.from("product_components").select("*", { count: "exact", head: true }).eq("tenant_id", tenant).eq("parent_product_id", pai.id);
     if ((count ?? 0) > 0 && !body.substituir) {
-      return apiError(`Produto ${pai.code} já tem composição (${count} linhas). Mande substituir: true para trocar.`, 409);
+      return apiError(`Produto ${pai.technical_code} já tem composição (${count} linhas). Mande substituir: true para trocar.`, 409);
     }
   }
 
   const resumo = linhas.map((l) => ({ item: l.resumo, qtd: l.quantity, custo_unit: l.unit_cost, subtotal: Math.round(l.quantity * l.unit_cost * 100) / 100 }));
   if (body.simular) {
-    return apiOk({ simulado: true, produto: pai ? pai.code : `novo a partir de ${base?.code}: ${pin.nome}`, custo_previsto: Math.round(custoPrevisto * 100) / 100, linhas: resumo });
+    return apiOk({ simulado: true, produto: pai ? pai.technical_code : `novo a partir de ${base?.technical_code}: ${pin.nome}`, custo_previsto: Math.round(custoPrevisto * 100) / 100, linhas: resumo });
   }
 
   if (!pai && base) {
@@ -313,10 +313,10 @@ async function postHandler(request: NextRequest) {
   await syncProductHasCompositionFromBom(admin, tenant, pai.id);
   await propagateComponentCostChange(admin, tenant, pai.id);
 
-  const { data: fim } = await db.from("products").select("code, name, cost_price").eq("id", pai.id).maybeSingle();
-  const f = fim as { code?: string; name?: string; cost_price?: number } | null;
+  const { data: fim } = await db.from("products").select("technical_code, name, cost_price").eq("id", pai.id).maybeSingle();
+  const f = fim as { technical_code?: string; name?: string; cost_price?: number } | null;
   return apiOk({
-    produto: { codigo: f?.code ?? pai.code, nome: f?.name ?? pai.name, criado: !!base },
+    produto: { codigo: f?.technical_code ?? pai.technical_code, nome: f?.name ?? pai.name, criado: !!base },
     custo_composicao: Math.round(Number(custo ?? custoPrevisto) * 100) / 100,
     linhas: resumo,
     aviso: "Preço de venda não foi mexido — fica com o Helder.",
