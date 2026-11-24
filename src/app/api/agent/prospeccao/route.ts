@@ -116,7 +116,18 @@ async function agenda(admin: Admin, tenant: string, limite: number): Promise<Ite
     const comAssunto = enviados.find((a) => /assunto:/i.test(String(a.summary ?? "")));
     const assuntoAnterior = comAssunto ? String(comAssunto.summary).replace(/^.*assunto:\s*/i, "").trim() : null;
 
-    const passo: Item["passo"] = enviados.length === 0 ? "1o" : enviados.length === 1 ? "fu1" : enviados.length === 2 ? "fu2" : "encerrar";
+    const contado: Item["passo"] = enviados.length === 0 ? "1o" : enviados.length === 1 ? "fu1" : enviados.length === 2 ? "fu2" : "encerrar";
+    // Contatos que já receberam e-mail antes do CRM registrar (planilha antiga, Zoho à mão):
+    // a próxima ação escrita manda no passo, nunca para trás. "encerrar" fecha a sequência.
+    const ordem: Array<Item["passo"]> = ["1o", "fu1", "fu2", "encerrar"];
+    const pedido: Item["passo"] | null = /encerrar/i.test(proxima)
+      ? "encerrar"
+      : /(follow[\s-]*up|fu)\s*2/i.test(proxima)
+        ? "fu2"
+        : /(follow[\s-]*up|fu)\s*1/i.test(proxima)
+          ? "fu1"
+          : null;
+    const passo: Item["passo"] = pedido && ordem.indexOf(pedido) > ordem.indexOf(contado) ? pedido : contado;
     itens.push({
       id,
       empresa: String(c.trade_name ?? c.name ?? ""),
