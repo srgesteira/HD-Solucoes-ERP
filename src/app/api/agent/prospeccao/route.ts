@@ -83,7 +83,9 @@ async function agenda(admin: Admin, tenant: string, limite: number): Promise<Ite
     .in("crm_stage", ["lead", "contato"])
     .lte("next_contact_at", hoje)
     .order("next_contact_at", { ascending: true })
-    .limit(limite * 4);
+    // Olha a fila inteira vencida: contatos com ação manual são pulados no laço abaixo,
+    // e antes (limite * 4) eles podiam ocupar todas as vagas e o robô terminava sem ninguém.
+    .limit(1000);
   if (error) throw new Error(error.message);
 
   const itens: Item[] = [];
