@@ -5,6 +5,7 @@ import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib
 import { loadTenantMailConfig } from "@/shared/utils/email/load-tenant-mail-config";
 import { listMessages, readMessage, searchMessages, sendMessage } from "@/modules/agent/lib/zoho-mailbox";
 
+import { travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -67,6 +68,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const t = await resolveTenant(request);
   if (typeof t !== "string") return t;
+  const trava = await travaEfeitoExternoDoRobo(request, t, "mail.enviar");
+  if (trava) return trava;
   let b: Record<string, unknown>;
   try {
     b = (await request.json()) as Record<string, unknown>;

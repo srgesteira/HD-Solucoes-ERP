@@ -7,6 +7,7 @@ import { validateSalesOrderCanEmitNfe } from "@/modules/faturamento/lib/sales-or
 import { emitirNFe, consultarNFe } from "@/modules/faturamento/lib/nfe/focusnfe.service";
 import { sendAuthorizedNfeEmail } from "@/modules/fiscal/lib/bling/send-nfe-status-email";
 
+import { travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -151,6 +152,10 @@ export async function POST(request: NextRequest) {
   const so = await acharPedido(admin, tenant, String(body.pv ?? ""));
   if (typeof so === "string") return apiError(so, 404);
   const acao = String(body.acao ?? "");
+  if (acao === "emitir" || acao === "enviar") {
+    const trava = await travaEfeitoExternoDoRobo(request, tenant, `faturar.${acao}`);
+    if (trava) return trava;
+  }
 
   try {
     if (acao === "emitir") {

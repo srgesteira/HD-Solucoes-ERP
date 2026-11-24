@@ -7,6 +7,8 @@ import { createServerSupabaseClient } from "@/shared/db/supabase/server";
 import { calculateMaterialRequirements, processMrpForSalesOrder } from "@/modules/pcp/lib/mrp-service";
 import { issueRequisitionsAsPurchaseOrder } from "@/modules/compras/lib/purchasing/requisition-issue";
 
+import { travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
+import { contextoFornecedorItem, limiteValidade } from "@/modules/agent/lib/learning";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -156,15 +158,42 @@ export async function GET(request: NextRequest) {
     const pm = new Map(
       ((prods ?? []) as Array<{ id: string; preferred_supplier_id: string | null; cost_price: number | null; technical_code: string | null }>).map((p) => [p.id, p])
     );
+    // Banco de aprendizado: item sem fornecedor preferido → usa a regra válida (6 meses) do comprador
+    // antes de perguntar. A regra só diz QUEM; o pedido de compra continua indo para a fila (risco Alto).
+    const aprendido = new Map<string, { fornecedor_id: string; ultimo_pc: string | null }>();
+    const semPreferido = prodIds.filter((id) => !pm.get(id)?.preferred_supplier_id);
+    if (semPreferido.length) {
+      const { data: comp } = await db.from("agents").select("id").eq("tenant_id", tenant).eq("slug", "comprador").maybeSingle();
+      if (comp?.id) {
+        const { data: regras } = await db
+          .from("robot_learning")
+          .select("context, approved_answer")
+          .eq("tenant_id", tenant)
+          .eq("agent_id", comp.id)
+          .gt("last_confirmed_at", limiteValidade())
+          .in("context", semPreferido.map(contextoFornecedorItem));
+        for (const r of (regras ?? []) as Array<{ context: string; approved_answer: Record<string, unknown> | null }>) {
+          const fid = r.approved_answer?.fornecedor_id;
+          if (typeof fid === "string") {
+            aprendido.set(r.context.slice("fornecedor_item:".length), {
+              fornecedor_id: fid,
+              ultimo_pc: typeof r.approved_answer?.ultimo_pc === "string" ? (r.approved_answer.ultimo_pc as string) : null,
+            });
+          }
+        }
+      }
+    }
     const abertas = await requisicoesDoPv(admin, tenant, so.id);
     const forn = await nomesFornecedores(admin, [
       ...[...pm.values()].map((p) => p.preferred_supplier_id ?? ""),
+      ...[...aprendido.values()].map((a) => a.fornecedor_id),
       ...abertas.map((a) => a.suggested_supplier_id ?? ""),
     ]);
     const grupos = new Map<string, { fornecedor: string; itens: unknown[]; custo_estimado: number }>();
     for (const f of faltas) {
       const p = pm.get(f.product_id);
-      const fid = p?.preferred_supplier_id ?? "";
+      const regra = aprendido.get(f.product_id);
+      const fid = p?.preferred_supplier_id ?? regra?.fornecedor_id ?? "";
       const g = grupos.get(fid) ?? { fornecedor: forn.get(fid) ?? "sem fornecedor preferido", itens: [], custo_estimado: 0 };
       const custo = Number(p?.cost_price ?? 0);
       g.itens.push({
@@ -176,6 +205,7 @@ export async function GET(request: NextRequest) {
         estoque: f.quantity_on_hand,
         a_caminho: f.quantity_incoming,
         custo_unit: custo || null,
+        fornecedor_por: p?.preferred_supplier_id ? "cadastro" : regra ? `banco_de_aprendizado (último ${regra.ultimo_pc ?? "PC"})` : "perguntar",
       });
       g.custo_estimado += custo * f.shortage;
       grupos.set(fid, g);
@@ -231,6 +261,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (acao === "emitir_pc") {
+      const trava = await travaEfeitoExternoDoRobo(request, tenant, "comprador.emitir_pc");
+      if (trava) return trava;
       const ids = Array.isArray(b.requisicoes) ? b.requisicoes.filter((x): x is string => typeof x === "string") : [];
       if (!ids.length) return apiError("Informe requisicoes (ids).", 400);
       const fornecedor = typeof b.fornecedor_id === "string" && b.fornecedor_id.trim() ? b.fornecedor_id.trim() : null;

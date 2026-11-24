@@ -34,6 +34,7 @@ const ROUTE_MENU_MODULE_RULES: { prefix: string; moduleKey: string }[] = [
   { prefix: "/quality", moduleKey: "qualidade" },
   { prefix: "/boards", moduleKey: "boards" },
   { prefix: "/settings", moduleKey: "core" },
+  { prefix: "/aprovacoes", moduleKey: "core" },
   { prefix: "/reports", moduleKey: "faturamento" },
   { prefix: "/dashboard", moduleKey: "faturamento" },
   { prefix: "/hr", moduleKey: "rh" },

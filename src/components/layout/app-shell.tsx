@@ -442,6 +442,13 @@ const MENU_STRUCTURE: NavEntry[] = [
   },
   {
     type: "link",
+    title: "Aprovações",
+    href: "/aprovacoes",
+    icon: ClipboardCheck,
+    module: "settings",
+  },
+  {
+    type: "link",
     title: "Saúde do dado",
     href: "/data-health",
     icon: Activity,

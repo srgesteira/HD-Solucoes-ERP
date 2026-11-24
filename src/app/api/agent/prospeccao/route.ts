@@ -13,6 +13,7 @@ import {
   restanteProspeccaoHoje,
 } from "@/modules/agent/lib/prospeccao-limite";
 
+import { travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -173,6 +174,10 @@ export async function POST(request: NextRequest) {
   }
   const pedido = Math.min(50, Math.max(1, Number(b.limite ?? 5) || 5));
   const dry = b.dry_run === true;
+  if (!dry) {
+    const trava = await travaEfeitoExternoDoRobo(request, tenant, "prospeccao.enviar");
+    if (trava) return trava;
+  }
   const db = asUntypedAdmin(admin);
   const hoje = todayIsoSaoPaulo();
 

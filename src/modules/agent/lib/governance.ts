@@ -303,3 +303,57 @@ export async function findAgentBySlug(db: UntypedAdmin, tenantId: string, slug: 
 }
 
 export { AGENT_COLUMNS };
+
+/* ------------------------------------------------------------------ */
+/* Regra das 17h30 (Ordem 4)                                           */
+/* ------------------------------------------------------------------ */
+
+/** Depois deste horário (São Paulo) nenhum efeito novo para fora: envio, NF-e, compra, pagamento. */
+export const CORTE_EFEITO_EXTERNO = "17:30:00";
+/** Antes deste horário também não (nada de robô de madrugada). */
+export const INICIO_EFEITO_EXTERNO = "07:00:00";
+
+export function efeitoExternoPermitido(now = nowTimeSaoPaulo()): boolean {
+  return now >= INICIO_EFEITO_EXTERNO && now < CORTE_EFEITO_EXTERNO;
+}
+
+/**
+ * Trava de horário para ações com efeito fora da empresa, chamada pelos robôs.
+ * Fora do horário: grava 'recusado' no log e devolve a resposta 403; dentro: devolve null.
+ */
+export async function travaEfeitoExterno(
+  db: UntypedAdmin,
+  tenantId: string,
+  agentId: string | null,
+  action: string,
+  now = nowTimeSaoPaulo()
+): Promise<NextResponse | null> {
+  if (efeitoExternoPermitido(now)) return null;
+  const motivo = `Regra das 17h30: nenhum envio, NF-e, compra ou pagamento entre 17:30 e 07:00 (agora ${now.slice(0, 5)}, São Paulo).`;
+  await writeAuditLog(db, { tenantId, agentId, action, outcome: "recusado", actor: "sistema", error: motivo });
+  return apiError(motivo, 403);
+}
+
+/**
+ * Atalho para as rotas /api/agent/* com efeito externo: só trava quando quem chama é robô
+ * (Authorization presente). O diretor logado na tela do ERP não é barrado.
+ */
+export async function travaEfeitoExternoDoRobo(
+  request: NextRequest,
+  tenantId: string,
+  action: string
+): Promise<NextResponse | null> {
+  if (!bearer(request)) return null;
+  if (efeitoExternoPermitido()) return null;
+  const db = asUntypedAdmin(createSupabaseAdminClient());
+  const sent = bearer(request);
+  let agentId: string | null = null;
+  if (sent.startsWith(TOKEN_PREFIX)) {
+    const { data } = await db.from("agents").select("id").eq("token_hash", hashToken(sent)).maybeSingle();
+    agentId = (data?.id as string) ?? null;
+  } else {
+    const hint = (request.headers.get("x-robo") ?? "").trim().toLowerCase();
+    agentId = (await findAgentBySlug(db, tenantId, hint))?.id ?? null;
+  }
+  return travaEfeitoExterno(db, tenantId, agentId, action);
+}

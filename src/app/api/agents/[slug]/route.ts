@@ -9,6 +9,7 @@ import {
   hashToken,
   writeAuditLog,
 } from "@/modules/agent/lib/governance";
+import { requireFreshMfa } from "@/modules/agent/lib/mfa";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,9 +17,11 @@ export const runtime = "nodejs";
 /**
  * POST /api/agents/{slug} — gestão de um robô (Fase 4, Módulo D). Só administrador logado.
  *
- *   { acao: "pausar" }      → killswitch: as rotas do robô passam a recusar na hora.
- *   { acao: "retomar" }     → volta a 'ativo'.
- *   { acao: "novo_token" }  → gera token novo e invalida o anterior na hora.
+ *   { acao: "pausar" }      → killswitch: as rotas do robô passam a recusar na hora. Só login (sem MFA),
+ *                             para parar rápido.
+ *   { acao: "retomar" }     → volta a 'ativo'.                                          Exige MFA.
+ *   { acao: "revogar" }     → apaga o token próprio: ele deixa de valer na hora.          Exige MFA.
+ *   { acao: "novo_token" }  → gera token novo e invalida o anterior na hora.              Exige MFA.
  *                             O token aparece UMA vez nesta resposta; o banco guarda só o hash.
  *
  * Tudo grava em agent_audit_log com ator = 'diretor' (sem o token).
@@ -41,6 +44,26 @@ export async function POST(request: NextRequest, { params }: Params) {
     acao = typeof b?.acao === "string" ? b.acao : "";
   } catch {
     /* sem corpo */
+  }
+
+  // Pausar é o killswitch: basta estar logado como administrador. O resto exige MFA recente.
+  if (acao !== "pausar") {
+    const gate = await requireFreshMfa();
+    if (!gate.ok) return gate.response;
+  }
+
+  if (acao === "revogar") {
+    const { error } = await db.from("agents").update({ token_hash: null, token_rotated_at: new Date().toISOString() }).eq("id", agent.id);
+    if (error) return apiError("Erro ao revogar o token: " + error.message, 500);
+    await writeAuditLog(db, {
+      tenantId,
+      agentId: agent.id,
+      action: "agents.revogar",
+      outcome: "ok",
+      actor: "diretor",
+      result: { tinha_token: agent.token_rotated_at !== null },
+    });
+    return apiOk({ ok: true, robo: agent.slug, token: "revogado" });
   }
 
   if (acao === "pausar" || acao === "retomar") {
@@ -82,5 +105,5 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
   }
 
-  return apiError("acao inválida (use pausar, retomar ou novo_token).", 400);
+  return apiError("acao inválida (use pausar, retomar, revogar ou novo_token).", 400);
 }
