@@ -42,6 +42,8 @@ export const MATRIZ_DE_RISCO: Record<string, Regra> = {
   "financeiro.lancar_previsao": { classe: "baixo", descricao: "Lançar boleto/NF de compra como previsão" },
   "resposta.simples_sem_preco": { classe: "baixo", descricao: "Resposta simples sem preço" },
   "prospeccao.modelo_aprovado": { classe: "baixo", descricao: "Prospecção com modelo aprovado (até 15/dia)" },
+  "engenharia.gerar_equipamento": { classe: "baixo", descricao: "Desenhista: gerar equipamento de modelo homologado (DXF, PDF, lista de peças)" },
+  "engenharia.compor_produto": { classe: "baixo", descricao: "Compositor: custo e composição do produto no ERP (sem preço de venda)" },
 
   // --- Médio
   "estoque.entrada_pc": { classe: "medio", descricao: "Entrada de PC no estoque" },
