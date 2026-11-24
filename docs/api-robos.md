@@ -37,6 +37,7 @@ Leituras (`GET /api/audit`, `GET /api/agents`) e o heartbeat não obedecem janel
 - `desde`: `AAAA-MM-DD` (meia-noite de São Paulo) ou ISO. Padrão: últimas 24 h. `limite` máx. 500.
 - Robô ou administrador logado.
 - Resposta `{ desde, total, itens: [{ id, quando, robo, ator, acao, situacao, duracao_ms, erro, entrada, resultado, aprovacao_id }], resumo: { por_robo: { auditor: { ok: 3 } } } }`.
+- `&incluir=manha` (Auditor das 8h) acrescenta `manha: { aprovacoes_pendentes, aprovacoes_expiradas (desde `desde`), alerta_financeiro: { quando, colisao_caixa, texto } | null }`.
 
 ## Módulo D — registro (`agents`)
 

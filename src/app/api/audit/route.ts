@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { expirePending } from "@/modules/agent/lib/approvals";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
@@ -188,5 +189,45 @@ export async function GET(request: NextRequest) {
     porRobo[k][i.situacao] = (porRobo[k][i.situacao] ?? 0) + 1;
   }
 
-  return apiOk({ desde, total: itens.length, itens, resumo: { por_robo: porRobo } });
+  // ?incluir=manha → o que o Auditor das 8h precisa além do log: fila de aprovações
+  // (pendentes e expiradas desde `desde`) e o último alerta financeiro das 7h.
+  let manha: Record<string, unknown> | undefined;
+  if ((sp.get("incluir") ?? "").split(",").includes("manha")) {
+    await expirePending(db, tenantId);
+    const cols = "id, kind, summary, risk, status, created_at, expires_at, decided_at, agents(slug, name)";
+    const [pend, exp, alerta] = await Promise.all([
+      db.from("approvals").select(cols).eq("tenant_id", tenantId).eq("status", "pendente").order("created_at").limit(50),
+      db
+        .from("approvals")
+        .select(cols)
+        .eq("tenant_id", tenantId)
+        .eq("status", "expirado")
+        .gte("decided_at", desde)
+        .order("created_at")
+        .limit(50),
+      db
+        .from("agent_audit_log")
+        .select("created_at, result, agents!inner(slug)")
+        .eq("tenant_id", tenantId)
+        .eq("action", "alerta_financeiro")
+        .eq("outcome", "ok")
+        .eq("agents.slug", "alertas_financeiros")
+        .gte("created_at", desde)
+        .order("created_at", { ascending: false })
+        .limit(1),
+    ]);
+    type Ap = { id: string; kind: string; summary: string; risk: string; created_at: string; agents: { slug: string; name: string } | null };
+    const fmt = (rows: unknown) =>
+      ((rows ?? []) as Ap[]).map((a) => ({ id: a.id, tipo: a.kind, resumo: a.summary, risco: a.risk, robo: a.agents?.name ?? a.agents?.slug ?? null, criado_em: a.created_at }));
+    const al = ((alerta.data ?? []) as Array<{ created_at: string; result: Record<string, unknown> | null }>)[0];
+    manha = {
+      aprovacoes_pendentes: fmt(pend.data),
+      aprovacoes_expiradas: fmt(exp.data),
+      alerta_financeiro: al
+        ? { quando: al.created_at, colisao_caixa: al.result?.colisao_caixa ?? null, texto: al.result?.texto ?? null }
+        : null,
+    };
+  }
+
+  return apiOk({ desde, total: itens.length, itens, resumo: { por_robo: porRobo }, ...(manha ? { manha } : {}) });
 }
