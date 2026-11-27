@@ -5,7 +5,10 @@ import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib
 import { loadTenantMailConfig } from "@/shared/utils/email/load-tenant-mail-config";
 import { listMessages, readMessage, searchMessages, sendMessage } from "@/modules/agent/lib/zoho-mailbox";
 
-import { comLogDoRobo, travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
+import { authenticateAgent, comLogDoRobo, travaEfeitoExternoDoRobo } from "@/modules/agent/lib/governance";
+
+/** E-mail do dono: único destino permitido para robôs com token próprio (e-mail reserva do Escalar). */
+const EMAIL_DONO = (process.env.HELDER_EMAIL ?? "helder@hdindustrial.ind.br").toLowerCase();
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -66,10 +69,6 @@ async function getHandler(request: NextRequest) {
 }
 
 async function postHandler(request: NextRequest) {
-  const t = await resolveTenant(request);
-  if (typeof t !== "string") return t;
-  const trava = await travaEfeitoExternoDoRobo(request, t, "mail.enviar");
-  if (trava) return trava;
   let b: Record<string, unknown>;
   try {
     b = (await request.json()) as Record<string, unknown>;
@@ -79,6 +78,20 @@ async function postHandler(request: NextRequest) {
   const list = (v: unknown) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => String(x).trim()).filter(Boolean);
   const to = list(b.to);
   if (!to.length || !b.text) return text("Informe to e text.", 400);
+
+  // Robô com token próprio (hdr_): só pode mandar aviso simples para o dono (e-mail reserva).
+  let t: string | NextResponse;
+  if ((request.headers.get("authorization") ?? "").startsWith("Bearer hdr_")) {
+    const soDono = to.every((x) => x.toLowerCase() === EMAIL_DONO) && !list(b.cc).length && !b.anexos && !b.reply;
+    if (!soDono) return apiError("Robô só pode enviar e-mail para o dono.", 403);
+    const auth = await authenticateAgent(request, "mail.aviso_dono");
+    t = auth.ok ? auth.tenantId : auth.response;
+  } else {
+    t = await resolveTenant(request);
+  }
+  if (typeof t !== "string") return t;
+  const trava = await travaEfeitoExternoDoRobo(request, t, "mail.enviar");
+  if (trava) return trava;
   const reply = b.reply as { folder?: string; uid?: number } | undefined;
   try {
     const cfg = await config(t);
