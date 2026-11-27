@@ -51,8 +51,8 @@ async function getHandler(request: NextRequest) {
   if (isAgentKey(request)) {
     const { data } = await admin.from("tenants").select("id").limit(1);
     tenantId = data?.[0]?.id ?? null;
-  } else if ((request.headers.get("authorization") ?? "").startsWith("Bearer hdr_")) {
-    // Robô com token próprio (ex.: Auditor no resumo das 8h): só leitura.
+  } else if ((request.headers.get("authorization") ?? "").trim()) {
+    // Robô com token próprio ou chave (ex.: Auditor no resumo das 8h): só leitura.
     const auth = await authenticateAgent(request, "resumo.ler", { skipWindow: true, skipRateLimit: true });
     if (!auth.ok) return auth.response;
     tenantId = auth.tenantId;

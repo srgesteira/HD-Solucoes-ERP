@@ -81,7 +81,7 @@ async function postHandler(request: NextRequest) {
 
   // Robô com token próprio (hdr_): só pode mandar aviso simples para o dono (e-mail reserva).
   let t: string | NextResponse;
-  if ((request.headers.get("authorization") ?? "").startsWith("Bearer hdr_")) {
+  if (/^(bearer\s+)?hdr_/i.test((request.headers.get("authorization") ?? "").trim())) {
     const soDono = to.every((x) => x.toLowerCase() === EMAIL_DONO) && !list(b.cc).length && !b.anexos && !b.reply;
     if (!soDono) return apiError("Robô só pode enviar e-mail para o dono.", 403);
     const auth = await authenticateAgent(request, "mail.aviso_dono");
