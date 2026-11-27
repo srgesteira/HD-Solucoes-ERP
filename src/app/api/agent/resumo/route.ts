@@ -1,4 +1,4 @@
-import { comLogDoRobo } from "@/modules/agent/lib/governance";
+import { authenticateAgent, comLogDoRobo } from "@/modules/agent/lib/governance";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { apiError } from "@/modules/core/lib/http";
@@ -51,6 +51,11 @@ async function getHandler(request: NextRequest) {
   if (isAgentKey(request)) {
     const { data } = await admin.from("tenants").select("id").limit(1);
     tenantId = data?.[0]?.id ?? null;
+  } else if ((request.headers.get("authorization") ?? "").startsWith("Bearer hdr_")) {
+    // Robô com token próprio (ex.: Auditor no resumo das 8h): só leitura.
+    const auth = await authenticateAgent(request, "resumo.ler", { skipWindow: true, skipRateLimit: true });
+    if (!auth.ok) return auth.response;
+    tenantId = auth.tenantId;
   } else {
     const gate = await assertFinanceOrReportsAccess();
     if (!gate.ok) return gate.response;
