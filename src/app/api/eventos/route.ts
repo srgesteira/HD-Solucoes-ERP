@@ -11,9 +11,11 @@ export const runtime = "nodejs";
  * POST (robô: Bearer hdr_... ou chave antiga + header x-robo)
  *   { robo, tipo, severidade?: "critico"|"medio"|"baixo", resumo, dedupe_key,
  *     cliente?, pv?, payload?, acao_necessaria?, prazo? (ISO), origem? }
- *   → 201 { ok, id, duplicado: false }
- *   → 200 { ok, id, duplicado: true }  quando já existe evento ABERTO com a mesma dedupe_key
+ *   → 201 { ok, id, duplicado: false, severidade, incompleto, campos_faltando }
+ *   → 200 { ok, id, duplicado: true, atualizado }  quando já existe evento ABERTO com a mesma dedupe_key
  *     (o índice único parcial garante isso também para dois envios ao mesmo tempo).
+ *   Nunca rejeita por campo faltando (Norma v1.0, item 2): grava com incompleto=true, campos_faltando e
+ *   severidade elevada (baixo→medio). Reenvio completo da mesma dedupe_key limpa a marca (autocorreção).
  *
  * PATCH (robô ou HD Central) { id, status, hd_central_sessao?, tentativas_mais?: 1 }
  *   status: em_atendimento | aguardando_helder | falha_hd_central | resolvido | descartado
@@ -25,6 +27,26 @@ export const runtime = "nodejs";
 const SEVERIDADES = ["critico", "medio", "baixo"];
 const STATUS_PATCH = ["em_atendimento", "aguardando_helder", "falha_hd_central", "resolvido", "descartado"];
 const ABERTOS = ["aberto", "em_atendimento", "aguardando_helder", "falha_hd_central"];
+
+/**
+ * Campos obrigatórios por robô, além dos universais (robo, tipo, resumo, severidade, dedupe_key).
+ * Só o que o robô de fato manda hoje — exigir campo que ninguém envia marcaria tudo como incompleto.
+ */
+const CAMPOS_POR_ROBO: Record<string, string[]> = {
+  pcp: ["pv"],
+  recepcionista: ["payload.de", "payload.assunto"],
+};
+
+/** Incompleto é defeito do robô, não urgência do negócio: sobe no máximo até "medio" (nunca acorda o Helder sozinho). */
+function subirSeveridade(s: string): string {
+  return s === "baixo" ? "medio" : s;
+}
+
+function hashCurto(t: string): string {
+  let h = 0;
+  for (const c of t.slice(0, 300)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h.toString(36);
+}
 
 const txt = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
@@ -47,19 +69,31 @@ export async function POST(request: NextRequest) {
   }
   if (!b || typeof b !== "object" || Array.isArray(b)) return apiError("Corpo JSON inválido.", 400);
 
-  const robo = txt(b.robo, 40).toLowerCase();
-  const tipo = txt(b.tipo, 60);
-  const resumo = txt(b.resumo, 4000);
-  const dedupe = txt(b.dedupe_key, 200);
-  const severidade = txt(b.severidade, 10) || "medio";
-  if (!robo || !tipo || !resumo || !dedupe) return apiError("Informe robo, tipo, resumo e dedupe_key.", 400);
-  if (!SEVERIDADES.includes(severidade)) return apiError("'severidade' deve ser critico, medio ou baixo.", 400);
-  let prazo: string | null = null;
-  if (b.prazo != null) {
-    const d = new Date(String(b.prazo));
-    if (Number.isNaN(d.getTime())) return apiError("'prazo' inválido (use data ISO).", 400);
-    prazo = d.toISOString();
+  // Norma v1.0, item 2 — nunca rejeitar: o que faltar vira marca `incompleto` + campos_faltando.
+  const faltando: string[] = [];
+  const robo = txt(b.robo, 40).toLowerCase() || (faltando.push("robo"), "desconhecido");
+  const tipo = txt(b.tipo, 60) || (faltando.push("tipo"), "sem_tipo");
+  const resumo = txt(b.resumo, 4000) || (faltando.push("resumo"), "(sem resumo)");
+  let severidadeOriginal = txt(b.severidade, 10) || "medio";
+  if (!SEVERIDADES.includes(severidadeOriginal)) {
+    faltando.push("severidade");
+    severidadeOriginal = "medio";
   }
+  const payload = b.payload && typeof b.payload === "object" && !Array.isArray(b.payload) ? (b.payload as Record<string, unknown>) : {};
+  for (const campo of CAMPOS_POR_ROBO[robo] ?? []) {
+    const v = campo.startsWith("payload.") ? payload[campo.slice(8)] : b[campo];
+    if (v == null || (typeof v === "string" && !v.trim())) faltando.push(campo);
+  }
+  let prazo: string | null = null;
+  if (b.prazo != null && String(b.prazo).trim()) {
+    const d = new Date(String(b.prazo));
+    if (Number.isNaN(d.getTime())) faltando.push("prazo");
+    else prazo = d.toISOString();
+  }
+  const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  const dedupe = txt(b.dedupe_key, 200) || (faltando.push("dedupe_key"), `${robo}:${tipo}:${hashCurto(resumo)}:${hoje}`);
+  const incompleto = faltando.length > 0;
+  const severidade = incompleto ? subirSeveridade(severidadeOriginal) : severidadeOriginal;
 
   const agent = await agenteDo(auth, robo);
   const linha = {
@@ -71,42 +105,79 @@ export async function POST(request: NextRequest) {
     dedupe_key: dedupe,
     cliente: txt(b.cliente, 200) || null,
     pv: txt(b.pv, 40) || null,
-    payload: b.payload && typeof b.payload === "object" ? b.payload : {},
+    payload,
     acao_necessaria: txt(b.acao_necessaria, 1000) || null,
     prazo,
     origem: txt(b.origem, 120) || null,
+    incompleto,
+    campos_faltando: incompleto ? faltando : null,
+    severidade_original: incompleto ? severidadeOriginal : null,
   };
 
   const ins = await auth.db.from("eventos_hd").insert(linha).select("id").single();
   let id: number | null = (ins.data as { id: number } | null)?.id ?? null;
   let duplicado = false;
+  let atualizado = false;
+  let severidadeFinal = severidade;
+  let incompletoFinal = incompleto;
 
   if (ins.error) {
     // 23505 = unique_violation no índice parcial (já existe evento aberto com a mesma dedupe_key)
     if ((ins.error as { code?: string }).code !== "23505") return apiError("Erro ao gravar o evento: " + ins.error.message, 500);
     const ja = await auth.db
       .from("eventos_hd")
-      .select("id")
+      .select("id, status, severidade, incompleto, severidade_original")
       .eq("tenant_id", auth.tenantId)
       .eq("dedupe_key", dedupe)
       .in("status", ABERTOS)
       .limit(1)
       .maybeSingle();
-    id = (ja.data as { id: number } | null)?.id ?? null;
+    const existente = ja.data as { id: number; status: string; severidade: string; incompleto: boolean; severidade_original: string | null } | null;
+    id = existente?.id ?? null;
     duplicado = true;
+    severidadeFinal = existente?.severidade ?? severidade;
+    incompletoFinal = existente?.incompleto ?? false;
+    // Autocorreção: o mesmo evento chegou agora completo → limpa a marca.
+    // Ainda "aberto" (ninguém pegou): volta à severidade original. Já em atendimento: mantém a elevada.
+    if (existente?.incompleto && !incompleto) {
+      const novaSev = existente.status === "aberto" ? existente.severidade_original ?? severidade : existente.severidade;
+      const up = await auth.db
+        .from("eventos_hd")
+        .update({
+          incompleto: false,
+          campos_faltando: null,
+          severidade: novaSev,
+          resumo,
+          payload,
+          cliente: linha.cliente,
+          pv: linha.pv,
+          acao_necessaria: linha.acao_necessaria,
+          prazo,
+        })
+        .eq("tenant_id", auth.tenantId)
+        .eq("id", existente.id);
+      if (!up.error) {
+        atualizado = true;
+        severidadeFinal = novaSev;
+        incompletoFinal = false;
+      }
+    }
   }
 
   await writeAuditLog(auth.db, {
     tenantId: auth.tenantId,
     agentId: agent?.id ?? null,
-    action: duplicado ? "eventos.duplicado" : "eventos.abrir",
+    action: atualizado ? "eventos.completado" : duplicado ? "eventos.duplicado" : "eventos.abrir",
     outcome: duplicado ? "ignorado" : "ok",
-    input: { robo, tipo, severidade, dedupe_key: dedupe, pv: linha.pv },
+    input: { robo, tipo, severidade, dedupe_key: dedupe, pv: linha.pv, incompleto, campos_faltando: linha.campos_faltando },
     result: { id, duplicado },
     durationMs: Date.now() - started,
   });
 
-  return apiOk({ ok: true, id, duplicado }, duplicado ? 200 : 201);
+  return apiOk(
+    { ok: true, id, duplicado, atualizado, severidade: severidadeFinal, incompleto: incompletoFinal, campos_faltando: incompletoFinal ? linha.campos_faltando : null },
+    duplicado ? 200 : 201
+  );
 }
 
 export async function PATCH(request: NextRequest) {
