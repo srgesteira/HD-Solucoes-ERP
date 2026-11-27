@@ -1,6 +1,7 @@
 import { comLogDoRobo } from "@/modules/agent/lib/governance";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
+import { lerFeriados } from "@/modules/agent/lib/feriados";
 import { asUntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { apiError, apiOk } from "@/modules/core/lib/http";
 import { getCurrentTenantId, isCurrentUserTenantAdmin } from "@/modules/core/lib/tenant";
@@ -54,10 +55,11 @@ const diff = (a: string, b: string) =>
 const br = (iso: string | null | undefined) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "?");
 const isoOk = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
-// Etapa 4.2 — folga em dias úteis (seg–sex; feriados entram depois, na tabela do ERP).
+// Etapa 4.2/7 — folga em dias úteis (seg–sex, sem os feriados da tabela `feriados`).
+let FERIADOS: ReadonlySet<string> = new Set();
 const isUtil = (iso: string) => {
   const w = new Date(`${iso}T12:00:00Z`).getUTCDay();
-  return w !== 0 && w !== 6;
+  return w !== 0 && w !== 6 && !FERIADOS.has(iso);
 };
 /** Dias úteis de `de` (exclusive) até `ate` (inclusive); negativo se `ate` < `de`. */
 function uteisEntre(de: string, ate: string): number {
@@ -182,6 +184,7 @@ async function pedidos(admin: Admin, tenant: string, pv?: string): Promise<PV[]>
 
 async function analisar(admin: Admin, tenant: string, lista: PV[]) {
   const db = asUntypedAdmin(admin);
+  FERIADOS = await lerFeriados(db);
   const hoje = todayIsoSaoPaulo();
   if (!lista.length) return { hoje, pedidos: [] };
   const prazos = await lerPrazos(admin, tenant);

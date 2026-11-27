@@ -38,3 +38,12 @@ export function minutosUteis(de: Date, ate: Date, feriados: ReadonlySet<string> 
 
 /** Limite para virar "aguardando Helder" no painel: 10h30 úteis = 1 dia útil. */
 export const LIMITE_AGUARDANDO_MIN = 10 * 60 + 30;
+
+/** Agora é horário útil? (seg–sex, 7h–17h30 SP, fora de feriado) */
+export function dentroDoHorarioUtil(agora: Date, feriados: ReadonlySet<string> = new Set()): boolean {
+  const a = minutoLocal(agora);
+  return a.dow !== 0 && a.dow !== 6 && !feriados.has(a.iso) && a.min >= INICIO && a.min < FIM;
+}
+
+/** Intervalo entre pushes de um crítico sem resposta: 2 h úteis. */
+export const INTERVALO_REPUSH_MIN = 120;

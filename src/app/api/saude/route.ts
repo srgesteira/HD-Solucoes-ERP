@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/shared/db/supabase/admin";
 import { asUntypedAdmin, type UntypedAdmin } from "@/shared/db/supabase/untyped-tables";
 import { authenticateAgent } from "@/modules/agent/lib/governance";
 import { LIMITE_AGUARDANDO_MIN, minutosUteis } from "@/modules/agent/lib/tempo-util";
+import { lerFeriados } from "@/modules/agent/lib/feriados";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -73,8 +74,9 @@ export async function GET(request: NextRequest) {
     else if (r.outcome === "recusado") porRobo[k].recusado++;
   }
 
+  const feriados = await lerFeriados(db);
   const lista = ((eventos.data ?? []) as Evento[]).map((e) => {
-    const espera = e.status === "aguardando_helder" && e.aguardando_desde ? minutosUteis(new Date(e.aguardando_desde), agora) : null;
+    const espera = e.status === "aguardando_helder" && e.aguardando_desde ? minutosUteis(new Date(e.aguardando_desde), agora, feriados) : null;
     return { ...e, minutos_uteis_aguardando: espera, aguardando_helder_vencido: espera !== null && espera >= LIMITE_AGUARDANDO_MIN };
   });
   const contagem: Record<string, number> = {};
