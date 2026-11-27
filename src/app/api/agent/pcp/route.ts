@@ -54,6 +54,43 @@ const diff = (a: string, b: string) =>
 const br = (iso: string | null | undefined) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "?");
 const isoOk = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
+// Etapa 4.2 — folga em dias úteis (seg–sex; feriados entram depois, na tabela do ERP).
+const isUtil = (iso: string) => {
+  const w = new Date(`${iso}T12:00:00Z`).getUTCDay();
+  return w !== 0 && w !== 6;
+};
+/** Dias úteis de `de` (exclusive) até `ate` (inclusive); negativo se `ate` < `de`. */
+function uteisEntre(de: string, ate: string): number {
+  if (ate === de) return 0;
+  const sinal = ate > de ? 1 : -1;
+  let n = 0;
+  let d = de;
+  while (d !== ate) {
+    d = addDays(d, sinal);
+    if (isUtil(d)) n += sinal;
+  }
+  return n;
+}
+type Prazos = { chapa: number; chapa_com_solda: number; pintura: number; fonte: string };
+// Prazo pessimista (combinado + 20%) enquanto a tabela lead_times não responder.
+const PRAZOS_PADRAO: Prazos = { chapa: 6, chapa_com_solda: 12, pintura: 4, fonte: "padrão do código (combinado + 20%)" };
+async function lerPrazos(admin: Admin, tenant: string): Promise<Prazos> {
+  const { data, error } = await asUntypedAdmin(admin)
+    .from("lead_times")
+    .select("fornecedor, etapa, dias")
+    .eq("tenant_id", tenant);
+  if (error || !data?.length) return PRAZOS_PADRAO;
+  const p: Prazos = { ...PRAZOS_PADRAO, fonte: "tabela lead_times" };
+  for (const r of data as Array<{ fornecedor: string; etapa: string; dias: number }>) {
+    if (r.etapa === "chapa") p.chapa = r.dias;
+    else if (r.etapa === "chapa_com_solda") p.chapa_com_solda = r.dias;
+    else if (r.etapa === "pintura") p.pintura = r.dias;
+  }
+  return p;
+}
+const ANTES_DA_CHAPA = new Set(["planejar", "compra", "chapa", "solda"]);
+const ANTES_DA_PINTURA = new Set(["planejar", "compra", "chapa", "solda", "pintura"]);
+
 type Plano = {
   etapa?: string;
   pronto?: string;
@@ -147,6 +184,7 @@ async function analisar(admin: Admin, tenant: string, lista: PV[]) {
   const db = asUntypedAdmin(admin);
   const hoje = todayIsoSaoPaulo();
   if (!lista.length) return { hoje, pedidos: [] };
+  const prazos = await lerPrazos(admin, tenant);
 
   // Compras ligadas pelos itens (purchase_order_items.sales_order_item_id) …
   const { data: itensPv } = await db
@@ -263,6 +301,41 @@ async function analisar(admin: Admin, tenant: string, lista: PV[]) {
     else if (entrega && diff(entrega, hoje) <= 3 && etapa !== "pronto" && etapa !== "expedido")
       alertas.push(`Entrega em ${diff(entrega, hoje)} dia(s) e etapa ainda é "${etapa}".`);
 
+    // Folga (4.2) = dias úteis até a entrega − dias úteis que ainda faltam.
+    const pendentesSemAco = pendentes.filter((c) => !/l[ií]der/i.test(c.fornecedor));
+    const acoPendente = pendentes.some((c) => /l[ií]der/i.test(c.fornecedor));
+    const chegadaCompras = pendentesSemAco.map((c) => c.previsao).filter((d): d is string => !!d).sort().pop() ?? null;
+    const diasCompra = chegadaCompras ? Math.max(0, uteisEntre(hoje, chegadaCompras)) : 0;
+    const diasAco = ANTES_DA_CHAPA.has(etapa)
+      ? acoPendente
+        ? Math.max(0, uteisEntre(hoje, pendentes.filter((c) => /l[ií]der/i.test(c.fornecedor)).map((c) => c.previsao ?? hoje).sort().pop() ?? hoje))
+        : plano?.solda
+          ? prazos.chapa_com_solda
+          : prazos.chapa
+      : 0;
+    const diasPintura = plano?.pintura && ANTES_DA_PINTURA.has(etapa) ? prazos.pintura : 0;
+    const diasMontagem = etapa === "pronto" || etapa === "expedido" ? 0 : DIAS_MONTAGEM;
+    const faltam = diasCompra + diasAco + diasPintura + diasMontagem;
+    const ateEntrega = entrega ? uteisEntre(hoje, entrega) : null;
+    const folgaUteis = ateEntrega === null ? null : ateEntrega - faltam;
+    const encerrado = etapa === "pronto" || etapa === "expedido";
+    const severidade: "critico" | "medio" | "baixo" =
+      encerrado || folgaUteis === null
+        ? alertas.length && !encerrado ? "medio" : "baixo"
+        : (entrega && entrega < hoje) || folgaUteis <= 2
+          ? "critico"
+          : folgaUteis <= 5
+            ? "medio"
+            : "baixo";
+    const conta = {
+      folga_uteis: folgaUteis,
+      uteis_ate_entrega: ateEntrega,
+      faltam_uteis: faltam,
+      partes: { compra: diasCompra, aco_lider: diasAco, pintura: diasPintura, montagem: diasMontagem },
+      fonte_prazo: acoPendente ? "previsão do PC da Aço Líder + " + prazos.fonte : prazos.fonte,
+      tratar_hoje: severidade === "medio" && folgaUteis === 3,
+    };
+
     return {
       pv: pv.order_number,
       cliente: (pv.client_name ?? "").slice(0, 40),
@@ -274,6 +347,9 @@ async function analisar(admin: Admin, tenant: string, lista: PV[]) {
       previsao_pronto: pronto,
       previsao_base: pronto ? base : null,
       folga_dias: folga,
+      severidade,
+      conta,
+      dedupe_key: `pcp:${pv.order_number}:${hoje}`,
       compras,
       alertas,
     };
@@ -303,6 +379,8 @@ async function getHandler(request: NextRequest) {
     return apiOk({
       hoje: r.hoje,
       tem_alerta: r.pedidos.some((p) => p.alertas.length),
+      criticos: r.pedidos.filter((p) => p.severidade === "critico").map((p) => p.pv),
+      medios: r.pedidos.filter((p) => p.severidade === "medio").map((p) => p.pv),
       texto: texto(r),
       pedidos: soAlertas ? r.pedidos.filter((p) => p.alertas.length) : r.pedidos,
     });
