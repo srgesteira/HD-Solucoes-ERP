@@ -574,6 +574,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (error?.code === "23505") {
     return apiError("Número de pedido já existe", 409);
   }
+  if (error && /Etapa nao pode mudar/.test(error.message)) {
+    return apiError("Etapa travada: o pedido já tem chegada física registrada.", 409);
+  }
   if (error) {
     return apiError(
       "Erro ao atualizar pedido: " + error.message,
