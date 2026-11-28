@@ -137,6 +137,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
   const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 
+  // Esta rota só troca o prazo. Sem o campo no corpo, recusa — antes gravava null e apagava o prazo sem aviso.
+  // Para limpar o prazo de propósito, mande expected_delivery: null.
+  if (!("expected_delivery" in b) && !("expected_delivery_date" in b)) {
+    return apiError("PATCH só altera o prazo: informe expected_delivery (ou null para limpar). Para outros campos use PUT.", 400);
+  }
   const raw =
     b.expected_delivery_date ?? b.expected_delivery;
   const expected_delivery =
