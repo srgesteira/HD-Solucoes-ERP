@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 type Params = { params: Promise<{ id: string }> };
 
 /** Recalcula custos (rateio de extras) e marca o pedido como recebido. */
-export async function POST(_request: NextRequest, { params }: Params) {
+export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params;
 
   const supabase = await createServerSupabaseClient();
@@ -59,13 +59,30 @@ export async function POST(_request: NextRequest, { params }: Params) {
     return apiError("Pedido cancelado não pode ser recebido.", 400);
   }
 
+  // Norma v1.2 item 4: chegada física opcional no corpo { data_chegada_fisica: "AAAA-MM-DD" } (≠ data de registro).
+  let chegada: string | null = null;
+  try {
+    const b = (await request.json().catch(() => null)) as { data_chegada_fisica?: unknown } | null;
+    if (b?.data_chegada_fisica) {
+      const d = String(b.data_chegada_fisica).slice(0, 10);
+      const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > hoje || d < String(existing.order_date ?? "")) {
+        return apiError("data_chegada_fisica inválida (AAAA-MM-DD, entre o pedido e hoje)", 400);
+      }
+      chegada = d;
+    }
+  } catch { /* corpo vazio: segue sem chegada física */ }
+
   try {
     const { order, receive } = await finalizePurchaseOrderReceive(
       admin,
       tenantId,
       id
     );
-    return apiOk({ data: order, receive });
+    if (chegada) {
+      await admin.from("purchase_orders").update({ data_chegada_fisica: chegada } as never).eq("id", id).eq("tenant_id", tenantId);
+    }
+    return apiOk({ data: order, receive, data_chegada_fisica: chegada });
   } catch (err) {
     return apiError(
       err instanceof Error ? err.message : "Erro ao processar recebimento.",

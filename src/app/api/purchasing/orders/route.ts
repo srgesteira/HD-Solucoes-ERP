@@ -171,6 +171,12 @@ export async function POST(request: NextRequest) {
       ? null
       : String(b.expected_delivery).slice(0, 10);
 
+  // Norma v1.2 item 4: etapa definida na criação do pedido (base do P90 por fornecedor × etapa).
+  const etapa = b.etapa === undefined || b.etapa === null ? null : String(b.etapa);
+  if (etapa !== null && !["chapa", "chapa_com_solda", "pintura", "compra"].includes(etapa)) {
+    return apiError("etapa inválida (chapa, chapa_com_solda, pintura, compra)", 400);
+  }
+
   const notes =
     b.notes === undefined || b.notes === null
       ? null
@@ -301,6 +307,7 @@ export async function POST(request: NextRequest) {
       supplier_id,
       order_date,
       expected_delivery,
+      etapa,
       notes,
       status: "draft",
       requested_by: profile?.id ?? null,

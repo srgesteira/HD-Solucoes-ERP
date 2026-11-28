@@ -3462,6 +3462,10 @@ export type Database = {
       purchase_orders: {
         Row: {
           actual_delivery: string | null
+          calculavel: boolean
+          chegada_parcial: boolean
+          data_chegada_fisica: string | null
+          etapa: string | null
           approved_at: string | null
           approved_by: string | null
           created_at: string
@@ -3501,6 +3505,10 @@ export type Database = {
         }
         Insert: {
           actual_delivery?: string | null
+          calculavel?: boolean
+          chegada_parcial?: boolean
+          data_chegada_fisica?: string | null
+          etapa?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string
@@ -3540,6 +3548,10 @@ export type Database = {
         }
         Update: {
           actual_delivery?: string | null
+          calculavel?: boolean
+          chegada_parcial?: boolean
+          data_chegada_fisica?: string | null
+          etapa?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string

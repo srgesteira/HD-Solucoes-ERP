@@ -33,6 +33,7 @@ import {
 import { sortPurchaseOrderItemsByLineNumber } from "@/modules/compras/lib/purchasing/purchase-order-items-order";
 import { todayIsoSaoPaulo } from "@/shared/utils/date";
 
+const ETAPAS_PC = ["chapa", "chapa_com_solda", "pintura", "compra"];
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
@@ -371,6 +372,20 @@ export async function PUT(request: NextRequest, { params }: Params) {
       b.expected_delivery === null
         ? null
         : String(b.expected_delivery).slice(0, 10);
+  }
+  // Norma v1.2 item 4: etapa (travada no banco depois da chegada) e chegada física (≠ data de registro).
+  if (b.etapa !== undefined) {
+    const e = b.etapa === null ? null : String(b.etapa);
+    if (e !== null && !ETAPAS_PC.includes(e)) return apiError("etapa inválida (chapa, chapa_com_solda, pintura, compra)", 400);
+    updateData.etapa = e;
+  }
+  if (b.data_chegada_fisica !== undefined) {
+    if (b.data_chegada_fisica === null) updateData.data_chegada_fisica = null;
+    else {
+      const d = String(b.data_chegada_fisica).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > todayIsoSaoPaulo()) return apiError("data_chegada_fisica inválida (AAAA-MM-DD, não futura)", 400);
+      updateData.data_chegada_fisica = d;
+    }
   }
   if (b.actual_delivery !== undefined) {
     updateData.actual_delivery =
